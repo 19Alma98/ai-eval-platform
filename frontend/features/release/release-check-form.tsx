@@ -93,7 +93,7 @@ export function ReleaseCheckForm({
   return (
     <div className="flex max-w-2xl flex-col gap-6">
       <div>
-        <h1 className="text-lg font-semibold text-foreground">Release check</h1>
+        <h1 className="text-lg font-semibold text-foreground">Release</h1>
         <p className="mt-1 text-sm text-muted-foreground">
           Evaluate release policy against experiment metrics and regression
           limits.
@@ -185,7 +185,9 @@ export function ReleaseCheckForm({
         />
       ) : null}
 
-      {releaseCheck.data ? (
+      {releaseCheck.data &&
+      !releaseCheck.isPending &&
+      !releaseCheck.isError ? (
         <ReleaseResult projectId={projectId} result={releaseCheck.data} />
       ) : null}
     </div>
