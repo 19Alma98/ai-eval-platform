@@ -118,12 +118,7 @@ def parse_release_policy(raw: dict[str, Any]) -> ReleasePolicy:
             continue
         absolute_mins.append(_parse_absolute_min(key, value))
 
-    if (
-        not absolute_mins
-        and latency is None
-        and cost is None
-        and regression is None
-    ):
+    if not absolute_mins and latency is None and cost is None and regression is None:
         raise InvalidPolicyError("policy must define at least one rule")
 
     return ReleasePolicy(
@@ -143,9 +138,7 @@ def _require_float(block: str, field: str, value: Any) -> float:
 def _parse_absolute_min(name: str, value: dict[str, Any]) -> AbsoluteMinRule:
     unknown = set(value) - _MIN_KEYS
     if unknown:
-        raise InvalidPolicyError(
-            f"policy.{name} has unsupported keys: {sorted(unknown)}"
-        )
+        raise InvalidPolicyError(f"policy.{name} has unsupported keys: {sorted(unknown)}")
     if "min" not in value:
         raise InvalidPolicyError(f"policy.{name} requires min")
     return AbsoluteMinRule(evaluator_name=name, min_score=_require_float(name, "min", value["min"]))
@@ -180,9 +173,7 @@ def _parse_cost(value: dict[str, Any]) -> CostMeanRule:
 def _parse_regression(value: dict[str, Any]) -> RegressionRule:
     unknown = set(value) - _REGRESSION_KEYS
     if unknown:
-        raise InvalidPolicyError(
-            f"policy.regression has unsupported keys: {sorted(unknown)}"
-        )
+        raise InvalidPolicyError(f"policy.regression has unsupported keys: {sorted(unknown)}")
     if "max_delta" not in value:
         raise InvalidPolicyError("policy.regression requires max_delta")
     return RegressionRule(max_delta=_require_float("regression", "max_delta", value["max_delta"]))

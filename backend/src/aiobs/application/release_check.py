@@ -30,9 +30,7 @@ from aiobs.regression.policy import (
 
 class MissingBaselineError(Exception):
     def __init__(self) -> None:
-        super().__init__(
-            "baseline_experiment_id is required when policy includes regression"
-        )
+        super().__init__("baseline_experiment_id is required when policy includes regression")
 
 
 @dataclass(frozen=True, slots=True)
@@ -108,9 +106,7 @@ class ReleaseCheck:
         baseline_id: uuid.UUID | None = None
         regression_deltas: list[RegressionDeltaInput] = []
         if policy.regression is not None:
-            baseline_id = (
-                command.baseline_experiment_id or experiment.baseline_experiment_id
-            )
+            baseline_id = command.baseline_experiment_id or experiment.baseline_experiment_id
             if baseline_id is None:
                 raise MissingBaselineError()
             baseline = await self._experiments.get_by_id(baseline_id)

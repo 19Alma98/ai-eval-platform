@@ -131,18 +131,14 @@ def test_evaluate_regression_max_delta() -> None:
     ok = evaluate_policy(
         policy,
         candidate=[],
-        regression_deltas=[
-            RegressionDeltaInput(evaluator_name="quality", mean_score_delta=-0.02)
-        ],
+        regression_deltas=[RegressionDeltaInput(evaluator_name="quality", mean_score_delta=-0.02)],
     )
     assert ok.status == "passed"
 
     bad = evaluate_policy(
         policy,
         candidate=[],
-        regression_deltas=[
-            RegressionDeltaInput(evaluator_name="quality", mean_score_delta=-0.05)
-        ],
+        regression_deltas=[RegressionDeltaInput(evaluator_name="quality", mean_score_delta=-0.05)],
     )
     assert bad.status == "failed"
     assert bad.checks[0].metric == "regression.quality.mean_score"
