@@ -54,6 +54,7 @@ export function ReleaseCheckForm({
       const message =
         err instanceof Error ? err.message : "Invalid policy YAML";
       setParseError(message);
+      releaseCheck.reset();
       return;
     }
 
@@ -186,6 +187,7 @@ export function ReleaseCheckForm({
       ) : null}
 
       {releaseCheck.data &&
+      !parseError &&
       !releaseCheck.isPending &&
       !releaseCheck.isError ? (
         <ReleaseResult projectId={projectId} result={releaseCheck.data} />

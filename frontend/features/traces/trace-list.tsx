@@ -181,7 +181,7 @@ export function TraceList() {
           description={
             statusFilter
               ? "No traces match this filter."
-              : "No traces yet. Run the OTLP example against this project."
+              : "No traces in this time range."
           }
         />
       </div>

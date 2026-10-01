@@ -125,6 +125,8 @@ export function ExperimentCompareView({
   }
 
   const comparison = compareQuery.data;
+  const unavailableCount =
+    comparison?.metrics.filter((m) => m.status === "unavailable").length ?? 0;
 
   return (
     <div className="flex flex-col gap-3">
@@ -160,6 +162,12 @@ export function ExperimentCompareView({
               Unchanged{" "}
               <span className="font-mono tabular-nums text-foreground">
                 {comparison.unchanged.length}
+              </span>
+            </span>
+            <span>
+              Unavailable{" "}
+              <span className="font-mono tabular-nums text-status-warn">
+                {unavailableCount}
               </span>
             </span>
           </div>
