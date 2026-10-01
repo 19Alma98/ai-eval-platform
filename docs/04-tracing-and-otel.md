@@ -62,10 +62,15 @@ The project should expose a documented compatibility matrix:
 | OTLP HTTP | supported |
 | OTLP gRPC | planned |
 | OpenTelemetry Python | supported |
-| Python SDK (`aiobs`) | supported |
+| Python SDK (`aiobs`) | supported (v0.1) |
 | OpenInference attributes | supported where applicable |
 | GenAI semantic conventions | supported/normalized |
+| Instrumentor `openai` | documented / best-effort outside CI — `aiobs[openai]` + `openai` |
+| Instrumentor `anthropic` | documented / best-effort outside CI — `aiobs[anthropic]` + `anthropic` |
+| Instrumentor `langchain` | documented / best-effort outside CI — `aiobs[langchain]` + LangChain |
+| Instrumentor `llama_index` | documented / best-effort outside CI — `aiobs[llama-index]` + `llama_index` |
+| Instrumentor `bedrock` | documented / best-effort outside CI — `aiobs[bedrock]` + Bedrock runtime (`boto3`) |
 
-Tier-1 OpenInference instrumentors (OpenAI, Anthropic, LangChain, LlamaIndex, Bedrock) are documented in [`sdk/README.md`](../sdk/README.md) and supported on a best-effort basis outside default CI; install the matching `aiobs[...]` extra and provider SDK locally.
+Install extras and manual smoke steps for tier-1 instrumentors: [`sdk/README.md`](../sdk/README.md).
 
 Because GenAI semantic conventions are evolving, isolate normalization in one module so schema migrations do not affect the domain layer.
