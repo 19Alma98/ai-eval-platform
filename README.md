@@ -63,6 +63,15 @@ set AIOBS_PROJECT_SLUG=demo
 python main.py
 ```
 
+### Instrument with Python SDK
+
+```bash
+cd sdk && uv sync --extra openai && cd ..
+# see examples/sdk_hello/README.md
+```
+
+Package docs: [`sdk/README.md`](sdk/README.md).
+
 ### List / get traces
 
 ```bash

@@ -25,6 +25,7 @@ Deliver:
 - trace/span persistence
 - trace explorer
 - Python example app
+- Python SDK helper (`sdk/`, package `aiobs`; completes “Native SDK helper” in tracing docs)
 
 Demo:
 instrument a tiny AI app and inspect a real trace.

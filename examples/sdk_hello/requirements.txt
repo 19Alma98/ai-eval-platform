@@ -1,0 +1,6 @@
+# From repo root, prefer:
+#   cd sdk && uv sync --extra openai --extra dev
+#   uv pip install openai
+# Or:
+-e ../../sdk[openai]
+openai>=2.8.0

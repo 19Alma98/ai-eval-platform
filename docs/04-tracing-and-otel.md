@@ -14,7 +14,7 @@ Initial options:
 
 1. OTLP/HTTP ingestion endpoint.
 2. OTLP/gRPC in a later milestone.
-3. Native SDK helper for Python applications.
+3. Native SDK helper for Python applications — delivered as [`sdk/README.md`](../sdk/README.md) (`pip install aiobs`).
 
 ## Trace normalization
 
@@ -62,7 +62,10 @@ The project should expose a documented compatibility matrix:
 | OTLP HTTP | supported |
 | OTLP gRPC | planned |
 | OpenTelemetry Python | supported |
+| Python SDK (`aiobs`) | supported |
 | OpenInference attributes | supported where applicable |
 | GenAI semantic conventions | supported/normalized |
+
+Tier-1 OpenInference instrumentors (OpenAI, Anthropic, LangChain, LlamaIndex, Bedrock) are documented in [`sdk/README.md`](../sdk/README.md) and supported on a best-effort basis outside default CI; install the matching `aiobs[...]` extra and provider SDK locally.
 
 Because GenAI semantic conventions are evolving, isolate normalization in one module so schema migrations do not affect the domain layer.
