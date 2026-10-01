@@ -143,3 +143,17 @@ export type EvaluateResponse = {
     results: unknown[];
   }[];
 };
+
+export type ReleaseCheckItemResponse = {
+  metric: string;
+  actual: number | null;
+  threshold: number | null;
+  status: string;
+};
+
+export type ReleaseCheckResponse = {
+  status: string;
+  experiment_id: string;
+  baseline_experiment_id: string | null;
+  checks: ReleaseCheckItemResponse[];
+};
