@@ -4,6 +4,8 @@ from pathlib import Path
 from typing import Any
 from unittest.mock import MagicMock, patch
 
+from typer.testing import CliRunner
+
 from aiobs_cli.main import (
     EXIT_CONFIG,
     EXIT_GATE_FAILED,
@@ -13,7 +15,6 @@ from aiobs_cli.main import (
     load_policy_file,
     split_meta,
 )
-from typer.testing import CliRunner
 
 runner = CliRunner()
 
@@ -49,9 +50,7 @@ quality:
     return path
 
 
-def _mock_response(
-    status_code: int, json_body: dict[str, Any] | None = None
-) -> MagicMock:
+def _mock_response(status_code: int, json_body: dict[str, Any] | None = None) -> MagicMock:
     response = MagicMock()
     response.status_code = status_code
     response.text = "error"

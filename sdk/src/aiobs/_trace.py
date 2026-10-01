@@ -3,15 +3,12 @@ from __future__ import annotations
 import functools
 import json
 from collections.abc import Callable
-from typing import Any, ParamSpec, TypeVar, overload
+from typing import Any, cast, overload
 
 from opentelemetry import trace as otel_trace
-from opentelemetry.trace import Status, StatusCode
+from opentelemetry.trace import Span, Status, StatusCode
 
 from aiobs._config import MAX_CAPTURE_BYTES
-
-P = ParamSpec("P")
-R = TypeVar("R")
 
 _TRACER_NAME = "aiobs"
 _TRUNCATE_MARKER = "…[truncated]"
@@ -44,7 +41,7 @@ def _serialize_args(args: tuple[Any, ...], kwargs: dict[str, Any]) -> str:
     return truncate_value(payload)
 
 
-def _current_span():
+def _current_span() -> Span:
     return otel_trace.get_current_span()
 
 
@@ -106,11 +103,11 @@ def current_trace_id() -> str | None:
 
 
 @overload
-def trace(name: Callable[P, R]) -> Callable[P, R]: ...
+def trace[**P, R](name: Callable[P, R]) -> Callable[P, R]: ...
 
 
 @overload
-def trace(
+def trace[**P, R](
     name: str | None = None,
     *,
     kind: str = "CHAIN",
@@ -119,7 +116,7 @@ def trace(
 ) -> Callable[[Callable[P, R]], Callable[P, R]]: ...
 
 
-def trace(
+def trace[**P, R](
     name: str | Callable[P, R] | None = None,
     *,
     kind: str = "CHAIN",
@@ -156,11 +153,11 @@ def trace(
 
 
 @overload
-def trace_async(name: Callable[P, R]) -> Callable[P, R]: ...
+def trace_async[**P, R](name: Callable[P, R]) -> Callable[P, R]: ...
 
 
 @overload
-def trace_async(
+def trace_async[**P, R](
     name: str | None = None,
     *,
     kind: str = "CHAIN",
@@ -169,7 +166,7 @@ def trace_async(
 ) -> Callable[[Callable[P, R]], Callable[P, R]]: ...
 
 
-def trace_async(
+def trace_async[**P, R](
     name: str | Callable[P, R] | None = None,
     *,
     kind: str = "CHAIN",
@@ -187,7 +184,7 @@ def trace_async(
                 if capture_input:
                     span.set_attribute("input.value", _serialize_args(args, kwargs))
                 try:
-                    result = await fn(*args, **kwargs)  # type: ignore[misc]
+                    result = cast(R, await fn(*args, **kwargs))  # type: ignore[misc]
                 except Exception as exc:
                     span.record_exception(exc)
                     span.set_status(Status(StatusCode.ERROR, str(exc)))
@@ -196,7 +193,7 @@ def trace_async(
                     span.set_attribute("output.value", truncate_value(result))
                 return result
 
-        return wrapper  # type: ignore[return-value]
+        return cast(Callable[P, R], wrapper)
 
     if callable(name):
         fn = name

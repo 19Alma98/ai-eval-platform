@@ -68,16 +68,12 @@ def activate_instrumentors(
     for key in selected:
         spec = TIER1.get(key)
         if spec is None:
-            raise ValueError(
-                f"unknown instrumentor key: {key!r}; known={sorted(TIER1)}"
-            )
+            raise ValueError(f"unknown instrumentor key: {key!r}; known={sorted(TIER1)}")
         if not _any_target_available(spec):
             logger.debug("aiobs: skip %s (target library not installed)", key)
             continue
         if not _module_available(spec.instrumentor_module):
-            logger.debug(
-                "aiobs: skip %s (OpenInference instrumentor not installed)", key
-            )
+            logger.debug("aiobs: skip %s (OpenInference instrumentor not installed)", key)
             continue
         module = importlib.import_module(spec.instrumentor_module)
         cls = getattr(module, spec.instrumentor_class)

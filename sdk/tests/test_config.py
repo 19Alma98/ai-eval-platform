@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import pytest
+
 from aiobs._config import project_headers, resolve_config
 
 
@@ -24,9 +25,7 @@ def test_resolve_config_from_env(monkeypatch: pytest.MonkeyPatch) -> None:
     assert cfg.project_id == "11111111-1111-1111-1111-111111111111"
     assert cfg.endpoint == "http://api:8000/v1/traces"
     assert cfg.service_name == "my-svc"
-    assert project_headers(cfg) == {
-        "X-Project-Id": "11111111-1111-1111-1111-111111111111"
-    }
+    assert project_headers(cfg) == {"X-Project-Id": "11111111-1111-1111-1111-111111111111"}
 
 
 def test_resolve_config_rejects_both(monkeypatch: pytest.MonkeyPatch) -> None:

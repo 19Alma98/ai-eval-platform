@@ -78,9 +78,7 @@ def check(
     base_url: Annotated[str | None, typer.Option("--base-url")] = None,
     project_id: Annotated[str | None, typer.Option("--project-id")] = None,
     experiment_id: Annotated[str | None, typer.Option("--experiment-id")] = None,
-    baseline_experiment_id: Annotated[
-        str | None, typer.Option("--baseline-experiment-id")
-    ] = None,
+    baseline_experiment_id: Annotated[str | None, typer.Option("--baseline-experiment-id")] = None,
 ) -> None:
     """Evaluate a release policy against an experiment via the API."""
     try:
@@ -89,20 +87,14 @@ def check(
         resolved_base = resolve_str(base_url, meta, "api_base_url", "base_url")
         resolved_project = resolve_str(project_id, meta, "project_id")
         resolved_experiment = resolve_str(experiment_id, meta, "experiment_id")
-        resolved_baseline = resolve_str(
-            baseline_experiment_id, meta, "baseline_experiment_id"
-        )
+        resolved_baseline = resolve_str(baseline_experiment_id, meta, "baseline_experiment_id")
 
         if not resolved_base:
-            raise typer.BadParameter(
-                "api base URL required (--base-url or api_base_url)"
-            )
+            raise typer.BadParameter("api base URL required (--base-url or api_base_url)")
         if not resolved_project:
             raise typer.BadParameter("project_id required (--project-id or project_id)")
         if not resolved_experiment:
-            raise typer.BadParameter(
-                "experiment_id required (--experiment-id or experiment_id)"
-            )
+            raise typer.BadParameter("experiment_id required (--experiment-id or experiment_id)")
         if not policy_body:
             raise typer.BadParameter("policy file has no rule blocks")
 
@@ -117,9 +109,7 @@ def check(
                 _parse_uuid(resolved_baseline, "baseline_experiment_id")
             )
 
-        url = (
-            f"{resolved_base.rstrip('/')}/api/v1/projects/{project_uuid}/release-check"
-        )
+        url = f"{resolved_base.rstrip('/')}/api/v1/projects/{project_uuid}/release-check"
         try:
             response = httpx.post(url, json=payload, timeout=60.0)
         except httpx.HTTPError as exc:
@@ -127,15 +117,11 @@ def check(
             raise typer.Exit(EXIT_INFRA) from exc
 
         if response.status_code >= 500:
-            console.print(
-                f"[red]Infrastructure error:[/red] HTTP {response.status_code}"
-            )
+            console.print(f"[red]Infrastructure error:[/red] HTTP {response.status_code}")
             console.print(response.text)
             raise typer.Exit(EXIT_INFRA)
         if response.status_code >= 400:
-            console.print(
-                f"[red]Configuration/API error:[/red] HTTP {response.status_code}"
-            )
+            console.print(f"[red]Configuration/API error:[/red] HTTP {response.status_code}")
             console.print(response.text)
             raise typer.Exit(EXIT_CONFIG)
 

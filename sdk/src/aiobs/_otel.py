@@ -25,15 +25,16 @@ def _shutdown_and_reset_global_tracer_provider() -> None:
     shutdown_targets: set[TracerProvider] = set()
     if _PROVIDER is not None:
         shutdown_targets.add(_PROVIDER)
-    otel_tp = trace._TRACER_PROVIDER  # type: ignore[attr-defined]
+    otel_tp = getattr(trace, "_TRACER_PROVIDER", None)
     if isinstance(otel_tp, TracerProvider):
         shutdown_targets.add(otel_tp)
     for provider in shutdown_targets:
         provider.shutdown()
 
     _PROVIDER = None
-    trace._TRACER_PROVIDER = None  # type: ignore[attr-defined]
-    trace._TRACER_PROVIDER_SET_ONCE = Once()  # type: ignore[attr-defined]
+    # Private OTEL globals — used to allow force=True re-init in tests/apps.
+    setattr(trace, "_TRACER_PROVIDER", None)  # noqa: B010
+    setattr(trace, "_TRACER_PROVIDER_SET_ONCE", Once())  # noqa: B010
 
 
 def _reset_for_tests() -> None:
