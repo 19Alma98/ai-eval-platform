@@ -62,3 +62,16 @@ export function flattenVisible(
   walk(tree);
   return rows;
 }
+
+/** Pre-order walk: all spans in the tree, regardless of collapse state. */
+export function collectSpanIdsPreOrder(tree: SpanNode[]): string[] {
+  const ids: string[] = [];
+  function walk(nodes: SpanNode[]) {
+    for (const node of nodes) {
+      ids.push(node.span.span_id);
+      walk(node.children);
+    }
+  }
+  walk(tree);
+  return ids;
+}

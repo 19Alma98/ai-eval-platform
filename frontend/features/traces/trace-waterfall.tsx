@@ -17,9 +17,11 @@ import { formatDurationMs } from "@/lib/format";
 import { cn } from "@/lib/cn";
 import {
   buildSpanTree,
+  collectSpanIdsPreOrder,
   flattenVisible,
   type FlatSpanRow,
 } from "./build-span-tree";
+import { kindBarClass, kindTextClass } from "./span-kind";
 
 const ROW_HEIGHT = 32;
 const VIRTUALIZE_THRESHOLD = 200;
@@ -52,24 +54,6 @@ function spanDurationMs(span: Span): number {
   );
 }
 
-function kindBarClass(kind: string): string {
-  const k = kind.toUpperCase();
-  if (k === "LLM") return "bg-kind-llm/35 border-kind-llm/50";
-  if (k === "CHAIN") return "bg-kind-chain/35 border-kind-chain/50";
-  if (k === "RETRIEVER") return "bg-kind-retriever/35 border-kind-retriever/50";
-  if (k === "TOOL") return "bg-kind-tool/35 border-kind-tool/50";
-  return "bg-kind-other/35 border-kind-other/50";
-}
-
-function kindTextClass(kind: string): string {
-  const k = kind.toUpperCase();
-  if (k === "LLM") return "text-kind-llm";
-  if (k === "CHAIN") return "text-kind-chain";
-  if (k === "RETRIEVER") return "text-kind-retriever";
-  if (k === "TOOL") return "text-kind-tool";
-  return "text-kind-other";
-}
-
 function spanMatchesSearch(span: Span, query: string): boolean {
   if (!query) return false;
   const q = query.toLowerCase();
@@ -99,18 +83,75 @@ export function TraceWaterfall({
     [tree, collapsed],
   );
 
+  const virtualize = trace.spans.length > VIRTUALIZE_THRESHOLD;
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const [scrollTop, setScrollTop] = useState(0);
+  const [viewportHeight, setViewportHeight] = useState(400);
+
+  const spanById = useMemo(() => {
+    const m = new Map<string, Span>();
+    for (const s of trace.spans) m.set(s.span_id, s);
+    return m;
+  }, [trace.spans]);
+
   const matchIds = useMemo(() => {
-    if (!search.trim()) return [];
-    return rows
-      .filter((r) => spanMatchesSearch(r.node.span, search.trim()))
-      .map((r) => r.node.span.span_id);
-  }, [rows, search]);
+    const q = search.trim();
+    if (!q) return [];
+    const preOrder = collectSpanIdsPreOrder(tree);
+    return preOrder.filter((id) => {
+      const span = spanById.get(id);
+      return span != null && spanMatchesSearch(span, q);
+    });
+  }, [tree, spanById, search]);
 
   useEffect(() => {
     setMatchIndex(0);
   }, [search, matchIds.length]);
 
   const activeMatchId = matchIds[matchIndex] ?? null;
+
+  const parentByChildId = useMemo(() => {
+    const m = new Map<string, string>();
+    for (const s of trace.spans) {
+      if (s.parent_span_id != null) m.set(s.span_id, s.parent_span_id);
+    }
+    return m;
+  }, [trace.spans]);
+
+  useEffect(() => {
+    if (!activeMatchId) return;
+    onSelectSpan(activeMatchId);
+    setCollapsed((prev) => {
+      const next = new Set(prev);
+      let id: string | undefined = activeMatchId;
+      while (id) {
+        const parentId = parentByChildId.get(id);
+        if (parentId) next.delete(parentId);
+        id = parentId;
+      }
+      return next;
+    });
+  }, [activeMatchId, parentByChildId, onSelectSpan]);
+
+  useEffect(() => {
+    if (!activeMatchId) return;
+    const rowIndex = rows.findIndex(
+      (r) => r.node.span.span_id === activeMatchId,
+    );
+    if (rowIndex < 0) return;
+    const el = scrollRef.current;
+    if (!el) return;
+    const rowTop = rowIndex * ROW_HEIGHT;
+    const rowBottom = rowTop + ROW_HEIGHT;
+    const viewTop = el.scrollTop;
+    const viewBottom = viewTop + el.clientHeight;
+    let nextTop = viewTop;
+    if (rowTop < viewTop) nextTop = rowTop;
+    else if (rowBottom > viewBottom) nextTop = rowBottom - el.clientHeight;
+    else return;
+    el.scrollTop = nextTop;
+    setScrollTop(nextTop);
+  }, [activeMatchId, rows]);
 
   const bounds = useMemo(() => traceBounds(trace), [trace]);
   const durationMs = bounds.end - bounds.start;
@@ -123,11 +164,6 @@ export function TraceWaterfall({
       return next;
     });
   }, []);
-
-  const virtualize = trace.spans.length > VIRTUALIZE_THRESHOLD;
-  const scrollRef = useRef<HTMLDivElement>(null);
-  const [scrollTop, setScrollTop] = useState(0);
-  const [viewportHeight, setViewportHeight] = useState(400);
 
   useEffect(() => {
     const el = scrollRef.current;

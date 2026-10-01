@@ -17,6 +17,8 @@ import {
   spanInputOutput,
   spanTokenSummary,
 } from "./span-metrics";
+import { kindTextClass } from "./span-kind";
+import { cn } from "@/lib/cn";
 
 type SpanSidebarProps = {
   span: Span | null;
@@ -66,7 +68,9 @@ export function SpanSidebar({ span, trace }: SpanSidebarProps) {
           </div>
           <div>
             <dt className="text-muted-foreground">Kind</dt>
-            <dd>{span.kind}</dd>
+            <dd className={cn("uppercase", kindTextClass(span.kind))}>
+              {span.kind}
+            </dd>
           </div>
           <div>
             <dt className="text-muted-foreground">Tokens (total)</dt>
