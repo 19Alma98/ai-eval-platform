@@ -48,7 +48,7 @@ def init(
     project_slug: str | None = None,
     endpoint: str | None = None,
     service_name: str | None = None,
-    instrument: Literal["auto"] | Sequence[str] | Literal[False] = "auto",
+    instrument: Literal["auto", False] | Sequence[str] = "auto",
     force: bool = False,
 ) -> None:
     global _PROVIDER, _INITIALIZED

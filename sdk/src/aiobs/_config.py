@@ -24,7 +24,9 @@ def resolve_config(
     service_name: str | None = None,
 ) -> ResolvedConfig:
     pid = project_id if project_id is not None else os.getenv("AIOBS_PROJECT_ID")
-    pslug = project_slug if project_slug is not None else os.getenv("AIOBS_PROJECT_SLUG")
+    pslug = (
+        project_slug if project_slug is not None else os.getenv("AIOBS_PROJECT_SLUG")
+    )
     # Treat empty strings as unset
     pid = pid or None
     pslug = pslug or None
@@ -36,9 +38,7 @@ def resolve_config(
         )
 
     return ResolvedConfig(
-        endpoint=endpoint
-        or os.getenv("AIOBS_OTLP_ENDPOINT")
-        or DEFAULT_ENDPOINT,
+        endpoint=endpoint or os.getenv("AIOBS_OTLP_ENDPOINT") or DEFAULT_ENDPOINT,
         service_name=service_name
         or os.getenv("AIOBS_SERVICE_NAME")
         or DEFAULT_SERVICE_NAME,

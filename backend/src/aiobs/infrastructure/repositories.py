@@ -131,9 +131,7 @@ class SqlAlchemyTraceRepository:
                 existing.start_time is None or trace.start_time < existing.start_time
             ):
                 existing.start_time = trace.start_time
-            if trace.end_time and (
-                existing.end_time is None or trace.end_time > existing.end_time
-            ):
+            if trace.end_time and (existing.end_time is None or trace.end_time > existing.end_time):
                 existing.end_time = trace.end_time
             if trace.input is not None:
                 existing.input = trace.input

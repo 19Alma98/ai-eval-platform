@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import pytest
-
 from aiobs._config import project_headers, resolve_config
 
 

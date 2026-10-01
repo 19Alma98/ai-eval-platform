@@ -71,7 +71,9 @@ def warn_content_capture(base: str) -> None:
     _ = base
 
 
-def run_rag(mode: str, *, project_slug: str, env_extra: dict[str, str]) -> list[dict[str, Any]]:
+def run_rag(
+    mode: str, *, project_slug: str, env_extra: dict[str, str]
+) -> list[dict[str, Any]]:
     # Use the backend uv env with the `examples` optional extra (OTLP SDK + httpx).
     cmd = [
         "uv",
@@ -113,13 +115,17 @@ def run_rag(mode: str, *, project_slug: str, env_extra: dict[str, str]) -> list[
     return results
 
 
-def wait_for_trace(base: str, project_id: str, trace_id: str, *, attempts: int = 20) -> dict[str, Any]:
+def wait_for_trace(
+    base: str, project_id: str, trace_id: str, *, attempts: int = 20
+) -> dict[str, Any]:
     url = f"{base}/api/v1/projects/{project_id}/traces/{trace_id}"
     last_err: Exception | None = None
     for _ in range(attempts):
         try:
             detail = http_json("GET", url)
-            if detail and (detail.get("input") is not None or detail.get("output") is not None):
+            if detail and (
+                detail.get("input") is not None or detail.get("output") is not None
+            ):
                 return detail
             if detail:
                 # Trace exists but content missing — still usable if we patch expected via results
@@ -156,7 +162,10 @@ def create_dataset_from_runs(
                 body={
                     "trace_id": run["trace_id"],
                     "expected_output": expected,
-                    "metadata": {"mode": run.get("mode"), "doc_ids": run.get("doc_ids")},
+                    "metadata": {
+                        "mode": run.get("mode"),
+                        "doc_ids": run.get("doc_ids"),
+                    },
                 },
             )
             print(f"  from-trace {run['trace_id'][:8]}… ok")
@@ -232,7 +241,9 @@ def create_and_evaluate(
         body={"evaluator_ids": [evaluator_id]},
     )
     run = evaluated["runs"][0]
-    print(f"experiment {name}: status={evaluated['experiment']['status']} run={run['status']}")
+    print(
+        f"experiment {name}: status={evaluated['experiment']['status']} run={run['status']}"
+    )
     summary = http_json("GET", f"{base}/api/v1/experiments/{experiment_id}/summary")
     for row in summary.get("evaluators") or []:
         print(
@@ -277,15 +288,19 @@ def run_aiobs_check(policy: Path, base: str) -> int:
         base,
     ]
     print("running:", " ".join(cmd))
-    proc = subprocess.run(cmd, cwd=str(CLI_DIR))
+    proc = subprocess.run(cmd, cwd=str(CLI_DIR), check=False)
     return proc.returncode
 
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--base-url", default=os.getenv("AIOBS_BASE_URL", "http://localhost:8000"))
+    parser.add_argument(
+        "--base-url", default=os.getenv("AIOBS_BASE_URL", "http://localhost:8000")
+    )
     parser.add_argument("--project-slug", default="rag-faq")
-    parser.add_argument("--skip-check", action="store_true", help="Skip aiobs check subprocess")
+    parser.add_argument(
+        "--skip-check", action="store_true", help="Skip aiobs check subprocess"
+    )
     args = parser.parse_args(argv)
 
     base = args.base_url.rstrip("/")

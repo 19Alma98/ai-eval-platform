@@ -6,6 +6,7 @@
 from dataclasses import dataclass
 from typing import Protocol, Any
 
+
 @dataclass(frozen=True)
 class EvaluationSample:
     input: Any
@@ -14,6 +15,7 @@ class EvaluationSample:
     context: Any | None
     metadata: dict[str, Any]
 
+
 @dataclass(frozen=True)
 class EvaluationResult:
     score: float | None
@@ -21,14 +23,14 @@ class EvaluationResult:
     explanation: str | None
     metadata: dict[str, Any]
 
+
 class Evaluator(Protocol):
     name: str
 
     async def evaluate(
         self,
         sample: EvaluationSample,
-    ) -> EvaluationResult:
-        ...
+    ) -> EvaluationResult: ...
 ```
 
 ## Built-in evaluators — MVP

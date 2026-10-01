@@ -4,9 +4,6 @@ from pathlib import Path
 from typing import Any
 from unittest.mock import MagicMock, patch
 
-import pytest
-from typer.testing import CliRunner
-
 from aiobs_cli.main import (
     EXIT_CONFIG,
     EXIT_GATE_FAILED,
@@ -16,6 +13,7 @@ from aiobs_cli.main import (
     load_policy_file,
     split_meta,
 )
+from typer.testing import CliRunner
 
 runner = CliRunner()
 
@@ -23,15 +21,12 @@ runner = CliRunner()
 def test_load_and_split_meta(tmp_path: Path) -> None:
     path = tmp_path / "aiobs.yaml"
     path.write_text(
-        "\n".join(
-            [
-                "api_base_url: http://localhost:8000",
-                "project_id: 11111111-1111-1111-1111-111111111111",
-                "experiment_id: 22222222-2222-2222-2222-222222222222",
-                "quality:",
-                "  min: 0.85",
-            ]
-        ),
+        """api_base_url: http://localhost:8000
+project_id: 11111111-1111-1111-1111-111111111111
+experiment_id: 22222222-2222-2222-2222-222222222222
+quality:
+  min: 0.85
+""",
         encoding="utf-8",
     )
     raw = load_policy_file(path)
@@ -43,21 +38,20 @@ def test_load_and_split_meta(tmp_path: Path) -> None:
 def _policy_file(tmp_path: Path) -> Path:
     path = tmp_path / "aiobs.yaml"
     path.write_text(
-        "\n".join(
-            [
-                "api_base_url: http://localhost:8000",
-                "project_id: 11111111-1111-1111-1111-111111111111",
-                "experiment_id: 22222222-2222-2222-2222-222222222222",
-                "quality:",
-                "  min: 0.85",
-            ]
-        ),
+        """api_base_url: http://localhost:8000
+project_id: 11111111-1111-1111-1111-111111111111
+experiment_id: 22222222-2222-2222-2222-222222222222
+quality:
+  min: 0.85
+""",
         encoding="utf-8",
     )
     return path
 
 
-def _mock_response(status_code: int, json_body: dict[str, Any] | None = None) -> MagicMock:
+def _mock_response(
+    status_code: int, json_body: dict[str, Any] | None = None
+) -> MagicMock:
     response = MagicMock()
     response.status_code = status_code
     response.text = "error"

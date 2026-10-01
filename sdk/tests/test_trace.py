@@ -2,17 +2,16 @@ from __future__ import annotations
 
 import asyncio
 
+import aiobs
 import pytest
+from aiobs import _otel
+from aiobs._config import MAX_CAPTURE_BYTES
+from aiobs._trace import truncate_value
 from opentelemetry import trace
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import SimpleSpanProcessor
 from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
 from opentelemetry.trace import StatusCode
-
-import aiobs
-from aiobs import _otel
-from aiobs._config import MAX_CAPTURE_BYTES
-from aiobs._trace import truncate_value
 
 _shared_exporter: InMemorySpanExporter | None = None
 

@@ -26,7 +26,9 @@ def load_faq() -> list[dict[str, Any]]:
     return json.loads(FAQ_PATH.read_text(encoding="utf-8"))
 
 
-def retrieve(faq: list[dict[str, Any]], question: str, *, top_k: int = 2) -> list[dict[str, Any]]:
+def retrieve(
+    faq: list[dict[str, Any]], question: str, *, top_k: int = 2
+) -> list[dict[str, Any]]:
     q = question.lower()
     scored: list[tuple[int, dict[str, Any]]] = []
     for item in faq:
@@ -63,7 +65,9 @@ def setup_tracer() -> tuple[trace.Tracer, TracerProvider]:
     return trace.get_tracer("rag-faq"), provider
 
 
-def call_ollama(prompt: str, *, model: str, host: str, timeout: float) -> tuple[str, dict[str, Any]]:
+def call_ollama(
+    prompt: str, *, model: str, host: str, timeout: float
+) -> tuple[str, dict[str, Any]]:
     url = f"{host.rstrip('/')}/api/chat"
     payload = {
         "model": model,
@@ -125,9 +129,7 @@ def answer_question(
                     retriever.set_status(Status(StatusCode.ERROR, "no documents"))
 
         if mode == "good" and docs:
-            context = "\n\n".join(
-                f"Q: {d['question']}\nA: {d['answer']}" for d in docs
-            )
+            context = "\n\n".join(f"Q: {d['question']}\nA: {d['answer']}" for d in docs)
             must = str(docs[0].get("must_contain") or "")
             prompt = (
                 f"Context:\n{context}\n\nQuestion: {question}\n"
@@ -161,7 +163,7 @@ def answer_question(
                 elif must and must.lower() not in answer.lower():
                     # Keep contains evaluator reliable for the portfolio demo.
                     answer = f"{answer} {must}".strip()
-            except Exception as exc:  # noqa: BLE001 — surface in span + re-raise
+            except Exception as exc:
                 llm.set_status(Status(StatusCode.ERROR, str(exc)))
                 chain.set_status(Status(StatusCode.ERROR, str(exc)))
                 raise

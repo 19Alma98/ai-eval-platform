@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any
+from typing import Annotated, Any
 from uuid import UUID
 
 import httpx
@@ -71,11 +71,16 @@ def _parse_uuid(value: str, label: str) -> UUID:
 
 @app.command("check")
 def check(
-    policy: Path = typer.Option(..., "--policy", exists=True, dir_okay=False, readable=True),
-    base_url: str | None = typer.Option(None, "--base-url"),
-    project_id: str | None = typer.Option(None, "--project-id"),
-    experiment_id: str | None = typer.Option(None, "--experiment-id"),
-    baseline_experiment_id: str | None = typer.Option(None, "--baseline-experiment-id"),
+    policy: Annotated[
+        Path,
+        typer.Option(..., "--policy", exists=True, dir_okay=False, readable=True),
+    ],
+    base_url: Annotated[str | None, typer.Option("--base-url")] = None,
+    project_id: Annotated[str | None, typer.Option("--project-id")] = None,
+    experiment_id: Annotated[str | None, typer.Option("--experiment-id")] = None,
+    baseline_experiment_id: Annotated[
+        str | None, typer.Option("--baseline-experiment-id")
+    ] = None,
 ) -> None:
     """Evaluate a release policy against an experiment via the API."""
     try:
@@ -89,7 +94,9 @@ def check(
         )
 
         if not resolved_base:
-            raise typer.BadParameter("api base URL required (--base-url or api_base_url)")
+            raise typer.BadParameter(
+                "api base URL required (--base-url or api_base_url)"
+            )
         if not resolved_project:
             raise typer.BadParameter("project_id required (--project-id or project_id)")
         if not resolved_experiment:
@@ -110,7 +117,9 @@ def check(
                 _parse_uuid(resolved_baseline, "baseline_experiment_id")
             )
 
-        url = f"{resolved_base.rstrip('/')}/api/v1/projects/{project_uuid}/release-check"
+        url = (
+            f"{resolved_base.rstrip('/')}/api/v1/projects/{project_uuid}/release-check"
+        )
         try:
             response = httpx.post(url, json=payload, timeout=60.0)
         except httpx.HTTPError as exc:
@@ -118,11 +127,15 @@ def check(
             raise typer.Exit(EXIT_INFRA) from exc
 
         if response.status_code >= 500:
-            console.print(f"[red]Infrastructure error:[/red] HTTP {response.status_code}")
+            console.print(
+                f"[red]Infrastructure error:[/red] HTTP {response.status_code}"
+            )
             console.print(response.text)
             raise typer.Exit(EXIT_INFRA)
         if response.status_code >= 400:
-            console.print(f"[red]Configuration/API error:[/red] HTTP {response.status_code}")
+            console.print(
+                f"[red]Configuration/API error:[/red] HTTP {response.status_code}"
+            )
             console.print(response.text)
             raise typer.Exit(EXIT_CONFIG)
 
@@ -138,7 +151,7 @@ def check(
         raise typer.Exit(EXIT_CONFIG) from exc
     except typer.Exit:
         raise
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         console.print(f"[red]Unexpected error:[/red] {exc}")
         raise typer.Exit(EXIT_INFRA) from exc
 

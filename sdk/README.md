@@ -31,6 +31,7 @@ aiobs.init(project_slug="demo", instrument="auto")
 
 client = OpenAI(base_url="http://localhost:11434/v1", api_key="ollama")
 
+
 @aiobs.trace
 def ask(q: str) -> str:
     r = client.chat.completions.create(
@@ -38,6 +39,7 @@ def ask(q: str) -> str:
         messages=[{"role": "user", "content": q}],
     )
     return r.choices[0].message.content or ""
+
 
 ask("ping")
 aiobs.flush()

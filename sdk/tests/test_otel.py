@@ -2,12 +2,11 @@ from __future__ import annotations
 
 import logging
 
+import aiobs
 import pytest
+from aiobs import _otel
 from opentelemetry import trace
 from opentelemetry.sdk.trace import TracerProvider
-
-import aiobs
-from aiobs import _otel
 
 
 @pytest.fixture(autouse=True)

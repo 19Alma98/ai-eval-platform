@@ -5,9 +5,8 @@ import types
 from unittest.mock import MagicMock
 
 import pytest
-from opentelemetry.sdk.trace import TracerProvider
-
 from aiobs.instrumentation import TIER1, activate_instrumentors
+from opentelemetry.sdk.trace import TracerProvider
 
 
 def test_tier1_keys() -> None:
@@ -16,7 +15,14 @@ def test_tier1_keys() -> None:
 
 def test_skips_missing_packages(monkeypatch: pytest.MonkeyPatch) -> None:
     # Ensure targets are not importable
-    for mod in ("openai", "anthropic", "langchain", "langchain_core", "llama_index", "boto3"):
+    for mod in (
+        "openai",
+        "anthropic",
+        "langchain",
+        "langchain_core",
+        "llama_index",
+        "boto3",
+    ):
         monkeypatch.setitem(sys.modules, mod, None)  # type: ignore[arg-type]
         # Better: remove if present
         sys.modules.pop(mod, None)
@@ -33,7 +39,7 @@ def test_activates_when_both_present(monkeypatch: pytest.MonkeyPatch) -> None:
     fake_mod = types.ModuleType("openinference.instrumentation.openai")
     instrumentor_instance = MagicMock()
     fake_cls = MagicMock(return_value=instrumentor_instance)
-    setattr(fake_mod, "OpenAIInstrumentor", fake_cls)
+    fake_mod.OpenAIInstrumentor = fake_cls
 
     # Ensure parent packages exist for import machinery
     oi = types.ModuleType("openinference")
