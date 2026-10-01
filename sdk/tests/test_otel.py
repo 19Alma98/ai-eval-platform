@@ -3,6 +3,7 @@ from __future__ import annotations
 import logging
 
 import pytest
+from opentelemetry import trace
 from opentelemetry.sdk.trace import TracerProvider
 
 import aiobs
@@ -43,7 +44,16 @@ def test_init_force_reconfigures(monkeypatch: pytest.MonkeyPatch) -> None:
     aiobs.init(project_slug="demo", instrument=False)
     aiobs.init(project_slug="demo", instrument=False, force=True)
     assert isinstance(_otel._PROVIDER, TracerProvider)
+    assert trace.get_tracer_provider() is _otel._PROVIDER
     assert _otel._INITIALIZED is True
+
+
+def test_init_honors_service_name_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("AIOBS_SERVICE_NAME", "env-svc")
+    aiobs.init(project_slug="demo", instrument=False)
+    provider = _otel._PROVIDER
+    assert isinstance(provider, TracerProvider)
+    assert provider.resource.attributes.get("service.name") == "env-svc"
 
 
 def test_flush_without_init_returns_true() -> None:

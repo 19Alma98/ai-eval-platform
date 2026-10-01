@@ -20,8 +20,8 @@ _PROVIDER: TracerProvider | None = None
 _INITIALIZED: bool = False
 
 
-def _reset_for_tests() -> None:
-    global _PROVIDER, _INITIALIZED
+def _shutdown_and_reset_global_tracer_provider() -> None:
+    global _PROVIDER
     shutdown_targets: set[TracerProvider] = set()
     if _PROVIDER is not None:
         shutdown_targets.add(_PROVIDER)
@@ -32,9 +32,14 @@ def _reset_for_tests() -> None:
         provider.shutdown()
 
     _PROVIDER = None
-    _INITIALIZED = False
     trace._TRACER_PROVIDER = None  # type: ignore[attr-defined]
     trace._TRACER_PROVIDER_SET_ONCE = Once()  # type: ignore[attr-defined]
+
+
+def _reset_for_tests() -> None:
+    global _INITIALIZED
+    _shutdown_and_reset_global_tracer_provider()
+    _INITIALIZED = False
 
 
 def init(
@@ -42,7 +47,7 @@ def init(
     project_id: str | None = None,
     project_slug: str | None = None,
     endpoint: str | None = None,
-    service_name: str = "aiobs-app",
+    service_name: str | None = None,
     instrument: Literal["auto"] | Sequence[str] | Literal[False] = "auto",
     force: bool = False,
 ) -> None:
@@ -51,6 +56,9 @@ def init(
     if _INITIALIZED and not force:
         logger.info("aiobs already initialized; skipping (pass force=True to re-init)")
         return
+
+    if force:
+        _shutdown_and_reset_global_tracer_provider()
 
     config = resolve_config(
         project_id=project_id,
