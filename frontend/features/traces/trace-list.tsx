@@ -178,7 +178,11 @@ export function TraceList() {
         />
         <EmptyState
           title="Traces"
-          description="No traces yet. Run the OTLP example against this project."
+          description={
+            statusFilter
+              ? "No traces match this filter."
+              : "No traces yet. Run the OTLP example against this project."
+          }
         />
       </div>
     );
