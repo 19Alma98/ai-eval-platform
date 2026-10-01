@@ -1,0 +1,55 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: aiobs
+          POSTGRES_PASSWORD: aiobs
+          POSTGRES_DB: aiobs
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U aiobs -d aiobs"
+          --health-interval 2s
+          --health-timeout 5s
+          --health-retries 15
+
+    defaults:
+      run:
+        working-directory: backend
+
+    env:
+      DATABASE_URL: postgresql+asyncpg://aiobs:aiobs@localhost:5432/aiobs
+      TEST_DATABASE_URL: postgresql+asyncpg://aiobs:aiobs@localhost:5432/aiobs
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          version: "0.8.4"
+
+      - name: Set up Python
+        run: uv python install 3.12
+
+      - name: Install dependencies
+        run: uv sync --all-extras
+
+      - name: Ruff
+        run: uv run ruff check src tests
+
+      - name: Mypy
+        run: uv run mypy src/aiobs
+
+      - name: Pytest
+        run: uv run pytest -v
