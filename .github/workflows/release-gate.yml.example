@@ -1,0 +1,64 @@
+# Example workflow: fail the job when an AIOBS release gate fails.
+# This file is intentionally named *.yml.example so GitHub Actions does not run it.
+# Copy to release-gate.yml (or into a consumer repo) and adapt.
+# Requires a reachable AIOBS API with evaluated experiment runs already available.
+#
+# Exit codes from `aiobs check`:
+#   0 pass | 1 gate failed | 2 config error | 3 infra error
+
+name: Release gate example
+
+on:
+  workflow_dispatch:
+    inputs:
+      project_id:
+        description: AIOBS project UUID
+        required: true
+      experiment_id:
+        description: Candidate experiment UUID
+        required: true
+      baseline_experiment_id:
+        description: Baseline experiment UUID (optional if set on experiment)
+        required: false
+      api_base_url:
+        description: AIOBS API base URL
+        required: true
+        default: http://localhost:8000
+
+jobs:
+  release-gate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          version: "0.8.4"
+
+      - name: Set up Python
+        run: uv python install 3.12
+
+      - name: Install aiobs CLI
+        working-directory: cli
+        run: uv sync
+
+      - name: Run release check
+        working-directory: cli
+        env:
+          AIOBS_BASE_URL: ${{ inputs.api_base_url }}
+          AIOBS_PROJECT_ID: ${{ inputs.project_id }}
+          AIOBS_EXPERIMENT_ID: ${{ inputs.experiment_id }}
+          AIOBS_BASELINE_ID: ${{ inputs.baseline_experiment_id }}
+        run: |
+          ARGS=(
+            check
+            --policy ../examples/aiobs.yaml
+            --base-url "$AIOBS_BASE_URL"
+            --project-id "$AIOBS_PROJECT_ID"
+            --experiment-id "$AIOBS_EXPERIMENT_ID"
+          )
+          if [ -n "${AIOBS_BASELINE_ID:-}" ]; then
+            ARGS+=(--baseline-experiment-id "$AIOBS_BASELINE_ID")
+          fi
+          uv run aiobs "${ARGS[@]}"

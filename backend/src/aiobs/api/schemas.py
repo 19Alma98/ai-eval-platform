@@ -254,3 +254,23 @@ class ExperimentCompareResponse(BaseModel):
     regressions: list[MetricComparisonResponse]
     improved: list[MetricComparisonResponse]
     unchanged: list[MetricComparisonResponse]
+
+
+class ReleaseCheckRequest(BaseModel):
+    experiment_id: uuid.UUID
+    policy: dict[str, Any]
+    baseline_experiment_id: uuid.UUID | None = None
+
+
+class ReleaseCheckItemResponse(BaseModel):
+    metric: str
+    actual: float | None
+    threshold: float | None
+    status: str
+
+
+class ReleaseCheckResponse(BaseModel):
+    status: str
+    experiment_id: uuid.UUID
+    baseline_experiment_id: uuid.UUID | None
+    checks: list[ReleaseCheckItemResponse]

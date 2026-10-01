@@ -1,0 +1,17 @@
+# Meta fields used by the CLI (stripped before POST /release-check).
+api_base_url: http://localhost:8000
+project_id: 00000000-0000-0000-0000-000000000000
+experiment_id: 00000000-0000-0000-0000-000000000000
+baseline_experiment_id: 00000000-0000-0000-0000-000000000001
+
+# Policy blocks: keys (except regression) bind to evaluator entity names.
+quality:
+  min: 0.85
+groundedness:
+  min: 0.90
+latency:
+  p95_max_ms: 2000
+cost:
+  max_per_request_usd: 0.03
+regression:
+  max_delta: -0.03

@@ -136,7 +136,14 @@ Fields:
 
 ## ReleasePolicy
 
-Machine-readable quality gate.
+Machine-readable quality gate. Phase 4 evaluates it statelessly (YAML/file or inline API body); keys other than `regression` bind to evaluator entity names.
+
+Semantics:
+- `{name}.min` — pass if latest-run `mean_score >= min`
+- `latency.p95_max_ms` — pass if p95 of result `metadata.latency_ms` (nearest-rank) `<=` threshold
+- `cost.max_per_request_usd` — pass if mean of result `metadata.cost_usd` `<=` threshold
+- `regression.max_delta` — for each shared evaluator, pass if `mean_score` delta (candidate − baseline) `>= max_delta`
+- Missing run/metadata/score → check `unavailable` → overall failed
 
 Example:
 

@@ -23,6 +23,7 @@ from aiobs.application.experiments import (
     ListExperiments,
 )
 from aiobs.application.projects import CreateProject, GetProject, ListProjects
+from aiobs.application.release_check import ReleaseCheck
 from aiobs.application.traces import (
     CreateTrace,
     GetTrace,
@@ -243,3 +244,12 @@ def get_compare_experiments(
     runs: SqlAlchemyEvaluationRunRepository = Depends(get_evaluation_run_repository),
 ) -> CompareExperiments:
     return CompareExperiments(experiments, runs)
+
+
+def get_release_check(
+    projects: SqlAlchemyProjectRepository = Depends(get_project_repository),
+    experiments: SqlAlchemyExperimentRepository = Depends(get_experiment_repository),
+    runs: SqlAlchemyEvaluationRunRepository = Depends(get_evaluation_run_repository),
+    compare: CompareExperiments = Depends(get_compare_experiments),
+) -> ReleaseCheck:
+    return ReleaseCheck(projects, experiments, runs, compare)

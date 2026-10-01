@@ -2,14 +2,23 @@
 
 ## CLI
 
-Package name: `aiobs`.
+Package: `aiobs-cli` (repo `cli/`), console script `aiobs`.
 
 Implementation:
 - Typer
 - httpx
 - Rich
+- PyYAML
 
-Commands:
+Phase 4 command:
+
+```text
+aiobs check --policy aiobs.yaml [--base-url URL] [--project-id ID] [--experiment-id ID] [--baseline-experiment-id ID]
+```
+
+YAML may include meta fields (`api_base_url`, `project_id`, `experiment_id`, `baseline_experiment_id`) plus policy blocks. Flags override meta fields. The CLI strips meta keys and POSTs the remainder as `policy` to `POST /api/v1/projects/{project_id}/release-check`.
+
+Planned later (not Phase 4):
 
 ```text
 aiobs init
@@ -20,19 +29,20 @@ aiobs dataset create
 aiobs dataset add
 aiobs experiment run
 aiobs experiment compare
-aiobs check
 ```
 
 `aiobs login` is not required for v0.1. The CLI talks to a local/self-hosted API on a trusted network. An optional API-key flag may be added later without becoming an MVP dependency.
 
 ## CI integration
 
+See `.github/workflows/release-gate.yml.example` and `examples/aiobs.yaml`.
+
 Example:
 
 ```yaml
 - name: Run AI evaluation gate
   run: |
-    aiobs experiment run support-regression
+    # Assume experiment evaluation already completed against the API
     aiobs check --policy aiobs.yaml
 ```
 

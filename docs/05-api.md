@@ -114,22 +114,38 @@ Classification uses higher-is-better with `|delta| < 0.01` treated as unchanged.
 POST /projects/{project_id}/release-check
 ```
 
+Policy keys (except `regression`) are evaluator names. See `docs/02-domain-model.md` for rule semantics.
+
 Input:
 ```json
 {
   "experiment_id": "exp_123",
+  "baseline_experiment_id": "exp_baseline",
   "policy": {
     "quality": {"min": 0.85},
-    "latency": {"p95_max_ms": 2000}
+    "groundedness": {"min": 0.90},
+    "latency": {"p95_max_ms": 2000},
+    "cost": {"max_per_request_usd": 0.03},
+    "regression": {"max_delta": -0.03}
   }
 }
 ```
 
-Response:
+`baseline_experiment_id` is required when `policy.regression` is set unless the experiment already has `baseline_experiment_id`.
+
+Response (HTTP 200 for both pass and fail):
 ```json
 {
   "status": "failed",
+  "experiment_id": "exp_123",
+  "baseline_experiment_id": "exp_baseline",
   "checks": [
+    {
+      "metric": "quality.min",
+      "actual": 0.91,
+      "threshold": 0.85,
+      "status": "passed"
+    },
     {
       "metric": "latency.p95",
       "actual": 2610,
@@ -140,15 +156,12 @@ Response:
 }
 ```
 
+Errors: 404 project/experiment not found; 400 invalid policy, missing baseline for regression, or invalid run selection.
+
 ## CLI contract
 
-The CLI must use the same API/domain semantics:
+Phase 4 ships `aiobs check` (see `docs/08-cli-ci.md`). Additional CLI commands remain planned:
 
 ```bash
-aiobs init
-aiobs dataset create support-v1
-aiobs dataset add --from-trace TRACE_ID
-aiobs experiment run support-v1
-aiobs experiment compare EXP_A EXP_B
 aiobs check --policy aiobs.yaml
 ```

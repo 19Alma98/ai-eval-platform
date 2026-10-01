@@ -57,6 +57,20 @@ curl "http://localhost:8000/api/v1/projects/<project-uuid>/traces"
 curl "http://localhost:8000/api/v1/projects/<project-uuid>/traces/<otel-trace-id-hex>"
 ```
 
+## Release gate (Phase 4)
+
+After evaluating an experiment, check a YAML policy:
+
+```bash
+cd cli && uv sync
+uv run aiobs check --policy ../examples/aiobs.yaml \
+  --base-url http://localhost:8000 \
+  --project-id <project-uuid> \
+  --experiment-id <experiment-uuid>
+```
+
+Exit codes: `0` pass, `1` gate failed, `2` config error, `3` infra error. Example workflow: [`.github/workflows/release-gate.yml.example`](.github/workflows/release-gate.yml.example). Design: [`docs/superpowers/specs/2026-10-01-phase4-release-gates-design.md`](docs/superpowers/specs/2026-10-01-phase4-release-gates-design.md).
+
 ## Documentation
 
 Technical specification lives in [`docs/`](docs/). Phase 1 design: [`docs/superpowers/specs/2026-09-30-phase1-otlp-traces-design.md`](docs/superpowers/specs/2026-09-30-phase1-otlp-traces-design.md).
