@@ -72,3 +72,74 @@ export type DatasetItem = {
 export type DatasetDetail = Dataset & {
   items: DatasetItem[];
 };
+
+export type Experiment = {
+  id: string;
+  project_id: string;
+  name: string;
+  dataset_id: string;
+  model_config: Record<string, unknown>;
+  application_version: string | null;
+  baseline_experiment_id: string | null;
+  status: string;
+  created_at: string;
+};
+
+export type Evaluator = {
+  id: string;
+  project_id: string;
+  name: string;
+  type: string;
+  config: Record<string, unknown>;
+  version: number;
+};
+
+export type EvaluatorSummary = {
+  evaluator_id: string;
+  evaluator_name: string | null;
+  run_id: string;
+  n_items: number;
+  n_scored: number;
+  n_error: number;
+  n_skipped: number;
+  mean_score: number | null;
+  pass_rate: number | null;
+};
+
+export type ExperimentSummary = {
+  experiment_id: string;
+  evaluators: EvaluatorSummary[];
+};
+
+export type MetricComparison = {
+  evaluator_id: string;
+  evaluator_name: string | null;
+  metric: string;
+  candidate: number | null;
+  baseline: number | null;
+  delta: number | null;
+  status: string;
+};
+
+export type ExperimentCompareResponse = {
+  experiment_id: string;
+  baseline_experiment_id: string;
+  metrics: MetricComparison[];
+  regressions: MetricComparison[];
+  improved: MetricComparison[];
+  unchanged: MetricComparison[];
+};
+
+export type EvaluateResponse = {
+  experiment: Experiment;
+  runs: {
+    id: string;
+    experiment_id: string;
+    evaluator_id: string;
+    status: string;
+    started_at: string | null;
+    finished_at: string | null;
+    metadata: Record<string, unknown>;
+    results: unknown[];
+  }[];
+};
