@@ -28,6 +28,7 @@ import {
   listDatasets,
 } from "@/lib/api/datasets";
 import { LoadingBlock } from "@/components/loading-block";
+import { datasetQueryKey } from "@/features/datasets/use-datasets";
 
 type AddToDatasetDialogProps = {
   projectId: string;
@@ -69,8 +70,9 @@ export function AddToDatasetDialog({
         ...(sourceSpanId ? { source_span_id: sourceSpanId } : {}),
       });
     },
-    onSuccess: () => {
+    onSuccess: (item) => {
       queryClient.invalidateQueries({ queryKey: ["datasets", projectId] });
+      queryClient.invalidateQueries({ queryKey: datasetQueryKey(item.dataset_id) });
       toast.success("Added trace to dataset");
       setOpen(false);
       setNewName("");
