@@ -1,0 +1,73 @@
+from __future__ import annotations
+
+import logging
+from collections.abc import Sequence
+from typing import Literal
+
+from opentelemetry import trace
+from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
+from opentelemetry.sdk.resources import Resource
+from opentelemetry.sdk.trace import TracerProvider
+from opentelemetry.sdk.trace.export import BatchSpanProcessor
+
+from aiobs._config import project_headers, resolve_config
+from aiobs.instrumentation import activate_instrumentors
+
+logger = logging.getLogger("aiobs")
+
+_PROVIDER: TracerProvider | None = None
+_INITIALIZED: bool = False
+
+
+def _reset_for_tests() -> None:
+    global _PROVIDER, _INITIALIZED
+    if _PROVIDER is not None:
+        _PROVIDER.shutdown()
+    _PROVIDER = None
+    _INITIALIZED = False
+
+
+def init(
+    *,
+    project_id: str | None = None,
+    project_slug: str | None = None,
+    endpoint: str | None = None,
+    service_name: str = "aiobs-app",
+    instrument: Literal["auto"] | Sequence[str] | Literal[False] = "auto",
+    force: bool = False,
+) -> None:
+    global _PROVIDER, _INITIALIZED
+
+    if _INITIALIZED and not force:
+        logger.info("aiobs already initialized; skipping (pass force=True to re-init)")
+        return
+
+    config = resolve_config(
+        project_id=project_id,
+        project_slug=project_slug,
+        endpoint=endpoint,
+        service_name=service_name,
+    )
+    headers = project_headers(config)
+    resource = Resource.create({"service.name": config.service_name})
+    provider = TracerProvider(resource=resource)
+    exporter = OTLPSpanExporter(endpoint=config.endpoint, headers=headers)
+    provider.add_span_processor(BatchSpanProcessor(exporter))
+    trace.set_tracer_provider(provider)
+
+    if instrument is not False:
+        keys: Sequence[str] | None
+        if instrument == "auto":
+            keys = None  # means all registered
+        else:
+            keys = list(instrument)
+        activate_instrumentors(keys, provider)
+
+    _PROVIDER = provider
+    _INITIALIZED = True
+
+
+def flush(timeout_millis: int = 5000) -> bool:
+    if _PROVIDER is None:
+        return True
+    return bool(_PROVIDER.force_flush(timeout_millis))
