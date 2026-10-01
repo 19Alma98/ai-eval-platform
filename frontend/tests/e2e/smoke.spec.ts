@@ -11,9 +11,16 @@ test("trace list and release page render", async ({ page, request }) => {
 
   await page.goto(`/traces?project=${id}`);
   await expect(page.getByRole("heading", { name: "Traces" })).toBeVisible();
-  await expect(page.getByText(/No traces yet|trace/i)).toBeVisible();
+
+  const main = page.locator("main");
+  const emptyTraces = main.getByText(
+    "No traces yet. Run the OTLP example against this project.",
+  );
+  const tracesTable = main.getByRole("region", { name: "Traces" });
+  await expect(emptyTraces.or(tracesTable)).toBeVisible();
 
   await page.goto(`/release?project=${id}`);
   await expect(page.getByRole("heading", { name: "Release" })).toBeVisible();
-  await expect(page.getByText(/policy/i)).toBeVisible();
+  await expect(page.getByLabel("Policy (YAML)")).toBeVisible();
+  await expect(page.locator("#release-policy")).toBeVisible();
 });
