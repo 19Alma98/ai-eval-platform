@@ -68,3 +68,7 @@ export type DatasetItem = {
   source_trace_id: string | null;
   source_span_id: string | null;
 };
+
+export type DatasetDetail = Dataset & {
+  items: DatasetItem[];
+};

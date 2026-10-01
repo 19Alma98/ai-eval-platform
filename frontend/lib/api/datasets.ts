@@ -1,8 +1,12 @@
 import { apiGet, apiPost } from "./client";
-import type { Dataset, DatasetItem } from "./types";
+import type { Dataset, DatasetDetail, DatasetItem } from "./types";
 
 export function listDatasets(projectId: string) {
   return apiGet<Dataset[]>(`/api/v1/projects/${projectId}/datasets`);
+}
+
+export function getDataset(datasetId: string) {
+  return apiGet<DatasetDetail>(`/api/v1/datasets/${datasetId}`);
 }
 
 export function createDataset(
