@@ -2,14 +2,16 @@ from __future__ import annotations
 
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 
 from aiobs.api.deps import (
+    get_compare_experiments,
     get_create_experiment,
     get_evaluate_experiment,
     get_get_experiment,
     get_list_experiment_runs,
     get_list_experiments,
+    get_summarize_experiment,
 )
 from aiobs.api.deps import (
     get_evaluation_run as get_evaluation_run_use_case,
@@ -20,7 +22,18 @@ from aiobs.api.schemas import (
     EvaluateResponse,
     EvaluationResultResponse,
     EvaluationRunResponse,
+    EvaluatorSummaryResponse,
+    ExperimentCompareResponse,
     ExperimentResponse,
+    ExperimentSummaryResponse,
+    MetricComparisonResponse,
+)
+from aiobs.application.compare import (
+    CompareExperiments,
+    ExperimentComparison,
+    ExperimentSummary,
+    InvalidCompareSelectionError,
+    SummarizeExperiment,
 )
 from aiobs.application.datasets import DatasetNotFoundError
 from aiobs.application.evaluate import (
@@ -42,6 +55,7 @@ from aiobs.application.experiments import (
 from aiobs.application.projects import ProjectNotFoundError
 from aiobs.domain.evaluation import EvaluationResultRecord, EvaluationRun
 from aiobs.domain.experiment import Experiment
+from aiobs.regression.aggregate import MetricComparison
 
 router = APIRouter(tags=["experiments"])
 
@@ -87,6 +101,49 @@ def _run_response(
         finished_at=run.finished_at,
         metadata=run.metadata,
         results=[_result_response(r) for r in (results or [])],
+    )
+
+
+def _summary_response(summary: ExperimentSummary) -> ExperimentSummaryResponse:
+    return ExperimentSummaryResponse(
+        experiment_id=summary.experiment_id,
+        evaluators=[
+            EvaluatorSummaryResponse(
+                evaluator_id=item.evaluator_id,
+                evaluator_name=item.evaluator_name,
+                run_id=item.run_id,
+                n_items=item.aggregates.n_items,
+                n_scored=item.aggregates.n_scored,
+                n_error=item.aggregates.n_error,
+                n_skipped=item.aggregates.n_skipped,
+                mean_score=item.aggregates.mean_score,
+                pass_rate=item.aggregates.pass_rate,
+            )
+            for item in summary.evaluators
+        ],
+    )
+
+
+def _metric_response(metric: MetricComparison) -> MetricComparisonResponse:
+    return MetricComparisonResponse(
+        evaluator_id=metric.evaluator_id,
+        evaluator_name=metric.evaluator_name,
+        metric=metric.metric,
+        candidate=metric.candidate,
+        baseline=metric.baseline,
+        delta=metric.delta,
+        status=metric.status,
+    )
+
+
+def _compare_response(comparison: ExperimentComparison) -> ExperimentCompareResponse:
+    return ExperimentCompareResponse(
+        experiment_id=comparison.experiment_id,
+        baseline_experiment_id=comparison.baseline_experiment_id,
+        metrics=[_metric_response(m) for m in comparison.metrics],
+        regressions=[_metric_response(m) for m in comparison.regressions],
+        improved=[_metric_response(m) for m in comparison.improved],
+        unchanged=[_metric_response(m) for m in comparison.unchanged],
     )
 
 
@@ -169,6 +226,56 @@ async def evaluate_experiment(
         experiment=_experiment_response(outcome.experiment),
         runs=[_run_response(run, outcome.results_by_run.get(run.id, [])) for run in outcome.runs],
     )
+
+
+@router.get(
+    "/api/v1/experiments/{experiment_id}/summary",
+    response_model=ExperimentSummaryResponse,
+)
+async def summarize_experiment(
+    experiment_id: uuid.UUID,
+    run_ids: list[uuid.UUID] | None = Query(default=None),
+    evaluator_ids: list[uuid.UUID] | None = Query(default=None),
+    use_case: SummarizeExperiment = Depends(get_summarize_experiment),
+) -> ExperimentSummaryResponse:
+    try:
+        summary = await use_case.execute(
+            experiment_id,
+            run_ids=run_ids,
+            evaluator_ids=evaluator_ids,
+        )
+    except ExperimentNotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    except InvalidCompareSelectionError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+    return _summary_response(summary)
+
+
+@router.get(
+    "/api/v1/experiments/{experiment_id}/compare/{baseline_id}",
+    response_model=ExperimentCompareResponse,
+)
+async def compare_experiments(
+    experiment_id: uuid.UUID,
+    baseline_id: uuid.UUID,
+    evaluator_ids: list[uuid.UUID] | None = Query(default=None),
+    candidate_run_ids: list[uuid.UUID] | None = Query(default=None),
+    baseline_run_ids: list[uuid.UUID] | None = Query(default=None),
+    use_case: CompareExperiments = Depends(get_compare_experiments),
+) -> ExperimentCompareResponse:
+    try:
+        comparison = await use_case.execute(
+            experiment_id,
+            baseline_id,
+            evaluator_ids=evaluator_ids,
+            candidate_run_ids=candidate_run_ids,
+            baseline_run_ids=baseline_run_ids,
+        )
+    except ExperimentNotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    except InvalidCompareSelectionError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+    return _compare_response(comparison)
 
 
 @router.get(

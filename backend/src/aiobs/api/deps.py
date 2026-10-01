@@ -3,6 +3,7 @@ from collections.abc import AsyncGenerator
 from fastapi import Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from aiobs.application.compare import CompareExperiments, SummarizeExperiment
 from aiobs.application.datasets import (
     AddDatasetItem,
     AddDatasetItemFromTrace,
@@ -228,3 +229,17 @@ def get_evaluation_run(
     experiments: SqlAlchemyExperimentRepository = Depends(get_experiment_repository),
 ) -> GetEvaluationRun:
     return GetEvaluationRun(runs, experiments)
+
+
+def get_summarize_experiment(
+    experiments: SqlAlchemyExperimentRepository = Depends(get_experiment_repository),
+    runs: SqlAlchemyEvaluationRunRepository = Depends(get_evaluation_run_repository),
+) -> SummarizeExperiment:
+    return SummarizeExperiment(experiments, runs)
+
+
+def get_compare_experiments(
+    experiments: SqlAlchemyExperimentRepository = Depends(get_experiment_repository),
+    runs: SqlAlchemyEvaluationRunRepository = Depends(get_evaluation_run_repository),
+) -> CompareExperiments:
+    return CompareExperiments(experiments, runs)

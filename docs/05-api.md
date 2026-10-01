@@ -59,16 +59,32 @@ POST /datasets/{dataset_id}/items/from-trace
 GET /projects/{project_id}/experiments
 POST /projects/{project_id}/experiments
 GET /experiments/{experiment_id}
-POST /experiments/{experiment_id}/run
-POST /experiments/{experiment_id}/cancel
+POST /experiments/{experiment_id}/evaluate
+GET /experiments/{experiment_id}/runs
+GET /experiments/{experiment_id}/summary
+GET /evaluation-runs/{run_id}
 ```
+
+`POST /experiments/{experiment_id}/evaluate` runs the selected evaluators against the experiment dataset and persists evaluation runs/results. (`POST .../run` and `POST .../cancel` remain future; evaluate is the v0.1 execution path.)
+
+### Summary
+
+```http
+GET /experiments/{experiment_id}/summary
+```
+
+Optional query params:
+
+- `run_ids` — explicit runs (must belong to the experiment); default = latest run per evaluator
+- `evaluator_ids` — filter after run selection
+
+Response includes per-evaluator aggregates: `mean_score`, `pass_rate`, item counts.
 
 ## Evaluators
 
 ```http
 GET /projects/{project_id}/evaluators
 POST /projects/{project_id}/evaluators
-POST /experiments/{experiment_id}/evaluate
 ```
 
 ## Comparison
@@ -77,13 +93,21 @@ POST /experiments/{experiment_id}/evaluate
 GET /experiments/{experiment_id}/compare/{baseline_id}
 ```
 
-Response should include:
-- aggregate metric deltas
-- confidence/uncertainty where applicable
-- regressions
-- improved metrics
-- unchanged metrics
+Optional query params:
 
+- `evaluator_ids`
+- `candidate_run_ids`
+- `baseline_run_ids`
+
+Default run selection: latest run per `evaluator_id` on each side. Comparison uses the intersection of evaluator IDs.
+
+Response includes:
+
+- aggregate metric deltas (`mean_score`, `pass_rate`)
+- status per metric: `regression` | `improved` | `unchanged` | `unavailable`
+- `regressions`, `improved`, `unchanged` subsets
+
+Classification uses higher-is-better with `|delta| < 0.01` treated as unchanged.
 ## Release gate
 
 ```http

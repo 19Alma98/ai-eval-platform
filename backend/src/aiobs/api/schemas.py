@@ -218,3 +218,39 @@ class EvaluationRunResponse(BaseModel):
 class EvaluateResponse(BaseModel):
     experiment: ExperimentResponse
     runs: list[EvaluationRunResponse]
+
+
+class EvaluatorSummaryResponse(BaseModel):
+    evaluator_id: uuid.UUID
+    evaluator_name: str | None = None
+    run_id: uuid.UUID
+    n_items: int
+    n_scored: int
+    n_error: int
+    n_skipped: int
+    mean_score: float | None
+    pass_rate: float | None
+
+
+class ExperimentSummaryResponse(BaseModel):
+    experiment_id: uuid.UUID
+    evaluators: list[EvaluatorSummaryResponse]
+
+
+class MetricComparisonResponse(BaseModel):
+    evaluator_id: uuid.UUID
+    evaluator_name: str | None = None
+    metric: str
+    candidate: float | None
+    baseline: float | None
+    delta: float | None
+    status: str
+
+
+class ExperimentCompareResponse(BaseModel):
+    experiment_id: uuid.UUID
+    baseline_experiment_id: uuid.UUID
+    metrics: list[MetricComparisonResponse]
+    regressions: list[MetricComparisonResponse]
+    improved: list[MetricComparisonResponse]
+    unchanged: list[MetricComparisonResponse]
