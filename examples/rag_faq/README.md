@@ -1,6 +1,8 @@
 # RAG FAQ portfolio example
 
-Tiny FAQ RAG app that talks to local **Ollama**, exports OpenInference spans to the platform via OTLP, and is driven end-to-end by `scripts/portfolio_demo.py`.
+Tiny FAQ RAG app that talks to local **Ollama** via the OpenAI-compatible API,
+exports OpenInference spans through the **aiobs SDK**, and is driven end-to-end
+by `scripts/portfolio_demo.py`.
 
 ## Prerequisites
 
@@ -15,38 +17,44 @@ ollama pull gemma4:e2b
 # export OLLAMA_MODEL=gemma4:e2b
 ```
 
-## Install (single backend env)
+## Install (SDK env)
 
-Client deps live in the backend optional extra `examples` ([`backend/pyproject.toml`](../../backend/pyproject.toml)):
+Use the **SDK** virtualenv — do not install the client SDK into the backend env
+(both packages are named `aiobs`):
 
 ```bash
-cd backend
-uv sync --extra examples
-# or with tests/lint too:
-# uv sync --all-extras
+cd sdk
+uv sync --extra openai --extra dev
 ```
 
 ## Single question
 
 ```bash
-cd backend
+cd sdk
 export AIOBS_PROJECT_SLUG=rag-faq
-uv run --extra examples python ../examples/rag_faq/main.py "Does the platform require login?"
+uv run --extra openai --with openai python ../examples/rag_faq/main.py \
+  "Does the platform require login?"
 # broken path (no retrieval / low-quality answer):
-uv run --extra examples python ../examples/rag_faq/main.py --mode broken "Does the platform require login?"
+uv run --extra openai --with openai python ../examples/rag_faq/main.py \
+  --mode broken "Does the platform require login?"
 ```
+
+Spans: parent `@aiobs.trace` CHAIN (`faq-rag`), optional RETRIEVER child
+(`faq-retrieve`), and an LLM child from `openinference-instrumentation-openai`.
+Custom I/O and attributes use `aiobs.set_input` / `set_output` / `set_attribute`
+(no OpenTelemetry imports in app code).
 
 ## Full portfolio loop
 
 From the repo root:
 
 ```bash
-cd backend && uv sync --extra examples && cd ..
+cd sdk && uv sync --extra openai --extra dev && cd ..
 cd cli && uv sync && cd ..
 python scripts/portfolio_demo.py
 ```
 
-(`portfolio_demo.py` invokes the RAG app via `uv run --extra examples` from `backend/`.)
+(`portfolio_demo.py` invokes the RAG app via `uv run --extra openai --with openai` from `sdk/`.)
 
 This will:
 

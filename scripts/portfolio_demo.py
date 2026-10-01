@@ -15,7 +15,7 @@ from pathlib import Path
 from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
-BACKEND_DIR = ROOT / "backend"
+SDK_DIR = ROOT / "sdk"
 RAG_DIR = ROOT / "examples" / "rag_faq"
 FAQ_PATH = RAG_DIR / "faq.json"
 POLICY_PATH = RAG_DIR / "aiobs.yaml"
@@ -74,12 +74,14 @@ def warn_content_capture(base: str) -> None:
 def run_rag(
     mode: str, *, project_slug: str, env_extra: dict[str, str]
 ) -> list[dict[str, Any]]:
-    # Use the backend uv env with the `examples` optional extra (OTLP SDK + httpx).
+    # Use the SDK uv env (not backend — both packages are named `aiobs`).
     cmd = [
         "uv",
         "run",
         "--extra",
-        "examples",
+        "openai",
+        "--with",
+        "openai",
         "python",
         str(RAG_DIR / "main.py"),
         "--mode",
@@ -94,7 +96,7 @@ def run_rag(
     print(f"running rag_faq mode={mode} ...")
     proc = subprocess.run(
         cmd,
-        cwd=str(BACKEND_DIR),
+        cwd=str(SDK_DIR),
         env=env,
         check=True,
         capture_output=True,

@@ -95,3 +95,36 @@ def test_trace_async(spans: InMemorySpanExporter) -> None:
     span = spans.get_finished_spans()[0]
     assert span.name == "async-faq"
     assert dict(span.attributes or {})["openinference.span.kind"] == "CHAIN"
+
+
+def test_span_helpers_set_io_attrs_and_trace_id(spans: InMemorySpanExporter) -> None:
+    seen: dict[str, str | None] = {}
+
+    @aiobs.trace(name="helpers", capture_input=False, capture_output=False)
+    def run(q: str) -> str:
+        aiobs.set_input(q)
+        aiobs.set_attribute("rag.mode", "good")
+        aiobs.set_attributes({"retrieval.document_count": 2})
+        aiobs.set_output("done")
+        seen["trace_id"] = aiobs.current_trace_id()
+        return "ignored"
+
+    assert run("ping") == "ignored"
+    span = spans.get_finished_spans()[0]
+    attrs = dict(span.attributes or {})
+    assert attrs["input.value"] == "ping"
+    assert attrs["output.value"] == "done"
+    assert attrs["rag.mode"] == "good"
+    assert attrs["retrieval.document_count"] == 2
+    assert seen["trace_id"] == format(span.context.trace_id, "032x")
+
+
+def test_set_error_marks_span(spans: InMemorySpanExporter) -> None:
+    @aiobs.trace(name="err", capture_input=False, capture_output=False)
+    def run() -> None:
+        aiobs.set_error("no documents")
+
+    run()
+    span = spans.get_finished_spans()[0]
+    assert span.status.status_code == StatusCode.ERROR
+    assert span.status.description == "no documents"

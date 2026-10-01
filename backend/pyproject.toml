@@ -26,8 +26,8 @@ dev = [
     "ruff>=0.8.0",
     "mypy>=1.13.0",
 ]
-# Client-side deps for examples/rag_faq (and similar OTLP demos).
-# Install: uv sync --extra examples   (or --all-extras)
+# Deprecated: rag_faq now uses the SDK package (`cd sdk && uv sync --extra openai`).
+# Kept so existing `uv sync --extra examples` / --all-extras installs still succeed.
 examples = [
     "opentelemetry-api>=1.28.0",
     "opentelemetry-sdk>=1.28.0",

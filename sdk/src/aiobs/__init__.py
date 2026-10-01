@@ -3,7 +3,28 @@
 from __future__ import annotations
 
 from aiobs._otel import flush, init
-from aiobs._trace import trace, trace_async
+from aiobs._trace import (
+    current_trace_id,
+    set_attribute,
+    set_attributes,
+    set_error,
+    set_input,
+    set_output,
+    trace,
+    trace_async,
+)
 
-__all__ = ["__version__", "flush", "init", "trace", "trace_async"]
+__all__ = [
+    "__version__",
+    "current_trace_id",
+    "flush",
+    "init",
+    "set_attribute",
+    "set_attributes",
+    "set_error",
+    "set_input",
+    "set_output",
+    "trace",
+    "trace_async",
+]
 __version__ = "0.1.0"

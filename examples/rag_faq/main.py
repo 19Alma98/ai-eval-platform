@@ -1,4 +1,4 @@
-"""Minimal FAQ RAG app with OpenInference spans exported to aiobs via OTLP."""
+"""FAQ RAG demo using the aiobs SDK (OTLP + OpenInference)."""
 
 from __future__ import annotations
 
@@ -6,17 +6,11 @@ import argparse
 import json
 import os
 import sys
-import time
 from pathlib import Path
 from typing import Any
 
-import httpx
-from opentelemetry import trace
-from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
-from opentelemetry.sdk.resources import Resource
-from opentelemetry.sdk.trace import TracerProvider
-from opentelemetry.sdk.trace.export import BatchSpanProcessor
-from opentelemetry.trace import Status, StatusCode
+import aiobs
+from openai import OpenAI
 
 HERE = Path(__file__).resolve().parent
 FAQ_PATH = HERE / "faq.json"
@@ -45,34 +39,31 @@ def retrieve(
     return [item for _, item in scored[:top_k]]
 
 
-def setup_tracer() -> tuple[trace.Tracer, TracerProvider]:
-    endpoint = os.getenv("AIOBS_OTLP_ENDPOINT", "http://localhost:8000/v1/traces")
-    project_id = os.getenv("AIOBS_PROJECT_ID")
-    project_slug = os.getenv("AIOBS_PROJECT_SLUG", "rag-faq")
+@aiobs.trace(
+    name="faq-retrieve", kind="RETRIEVER", capture_input=False, capture_output=True
+)
+def retrieve_traced(
+    question: str, faq: list[dict[str, Any]], *, top_k: int = 2
+) -> list[dict[str, Any]]:
+    aiobs.set_input(question)
+    docs = retrieve(faq, question, top_k=top_k)
+    aiobs.set_attributes(
+        {
+            "retrieval.document_count": len(docs),
+            "retrieval.documents": [
+                {"id": d["id"], "question": d["question"]} for d in docs
+            ],
+        }
+    )
+    if not docs:
+        aiobs.set_error("no documents")
+    return docs
 
-    headers: dict[str, str] = {}
-    if project_id:
-        headers["X-Project-Id"] = project_id
-    else:
-        headers["X-Project-Slug"] = project_slug
 
-    resource = Resource.create({"service.name": "rag-faq"})
-    provider = TracerProvider(resource=resource)
-    exporter = OTLPSpanExporter(endpoint=endpoint, headers=headers)
-    # Batch so CHAIN/RETRIEVER/LLM for one question export together; flush explicitly.
-    provider.add_span_processor(BatchSpanProcessor(exporter))
-    trace.set_tracer_provider(provider)
-    return trace.get_tracer("rag-faq"), provider
-
-
-def call_ollama(
-    prompt: str, *, model: str, host: str, timeout: float
-) -> tuple[str, dict[str, Any]]:
-    url = f"{host.rstrip('/')}/api/chat"
-    payload = {
-        "model": model,
-        "stream": False,
-        "messages": [
+def call_ollama(client: OpenAI, prompt: str, *, model: str) -> str:
+    response = client.chat.completions.create(
+        model=model,
+        messages=[
             {
                 "role": "system",
                 "content": (
@@ -82,114 +73,55 @@ def call_ollama(
             },
             {"role": "user", "content": prompt},
         ],
-    }
-    with httpx.Client(timeout=timeout) as client:
-        response = client.post(url, json=payload)
-        response.raise_for_status()
-        body = response.json()
-    message = body.get("message") or {}
-    text = str(message.get("content") or "").strip()
-    meta = {
-        "prompt_eval_count": body.get("prompt_eval_count"),
-        "eval_count": body.get("eval_count"),
-        "total_duration": body.get("total_duration"),
-    }
-    return text, meta
+    )
+    return (response.choices[0].message.content or "").strip()
 
 
+@aiobs.trace(name="faq-rag", kind="CHAIN", capture_input=False, capture_output=False)
 def answer_question(
     question: str,
     *,
     mode: str,
     faq: list[dict[str, Any]],
+    client: OpenAI,
     model: str,
-    host: str,
-    timeout: float,
-    tracer: trace.Tracer,
 ) -> dict[str, Any]:
-    with tracer.start_as_current_span("faq-rag") as chain:
-        chain.set_attribute("openinference.span.kind", "CHAIN")
-        chain.set_attribute("input.value", question)
-        chain.set_attribute("rag.mode", mode)
+    aiobs.set_input(question)
+    aiobs.set_attribute("rag.mode", mode)
 
-        docs: list[dict[str, Any]] = []
-        if mode == "good":
-            with tracer.start_as_current_span("faq-retrieve") as retriever:
-                retriever.set_attribute("openinference.span.kind", "RETRIEVER")
-                docs = retrieve(faq, question)
-                retriever.set_attribute("retrieval.document_count", len(docs))
-                retriever.set_attribute(
-                    "retrieval.documents",
-                    json.dumps(
-                        [{"id": d["id"], "question": d["question"]} for d in docs],
-                        ensure_ascii=True,
-                    ),
-                )
-                if not docs:
-                    retriever.set_status(Status(StatusCode.ERROR, "no documents"))
+    docs: list[dict[str, Any]] = []
+    if mode == "good":
+        docs = retrieve_traced(question, faq)
 
-        if mode == "good" and docs:
-            context = "\n\n".join(f"Q: {d['question']}\nA: {d['answer']}" for d in docs)
-            must = str(docs[0].get("must_contain") or "")
-            prompt = (
-                f"Context:\n{context}\n\nQuestion: {question}\n"
-                f"Answer using the context. Your answer MUST include this exact phrase: {must}\n"
-                "Answer:"
-            )
-            use_ollama = True
-        else:
-            # Broken mode: no grounded context — force a low-quality fixed answer.
-            prompt = "Reply with exactly these three words and nothing else: No idea."
-            use_ollama = True
-            must = ""
+    if mode == "good" and docs:
+        context = "\n\n".join(f"Q: {d['question']}\nA: {d['answer']}" for d in docs)
+        must = str(docs[0].get("must_contain") or "")
+        prompt = (
+            f"Context:\n{context}\n\nQuestion: {question}\n"
+            f"Answer using the context. Your answer MUST include this exact phrase: {must}\n"
+            "Answer:"
+        )
+    else:
+        # Broken mode: no grounded context — force a low-quality fixed answer.
+        prompt = "Reply with exactly these three words and nothing else: No idea."
+        must = ""
 
-        answer = ""
-        ollama_meta: dict[str, Any] = {}
-        with tracer.start_as_current_span("ollama-chat") as llm:
-            llm.set_attribute("openinference.span.kind", "LLM")
-            llm.set_attribute("gen_ai.system", "ollama")
-            llm.set_attribute("gen_ai.request.model", model)
-            llm.set_attribute("llm.model_name", model)
-            llm.set_attribute("input.value", prompt)
-            started = time.perf_counter()
-            try:
-                if use_ollama:
-                    answer, ollama_meta = call_ollama(
-                        prompt, model=model, host=host, timeout=timeout
-                    )
-                if mode == "broken":
-                    # Guarantee regression even if the model ignores instructions.
-                    answer = "No idea."
-                elif must and must.lower() not in answer.lower():
-                    # Keep contains evaluator reliable for the portfolio demo.
-                    answer = f"{answer} {must}".strip()
-            except Exception as exc:
-                llm.set_status(Status(StatusCode.ERROR, str(exc)))
-                chain.set_status(Status(StatusCode.ERROR, str(exc)))
-                raise
-            latency_ms = (time.perf_counter() - started) * 1000.0
-            llm.set_attribute("output.value", answer)
-            llm.set_attribute(
-                "gen_ai.usage.prompt_tokens", ollama_meta.get("prompt_eval_count") or 0
-            )
-            llm.set_attribute(
-                "gen_ai.usage.completion_tokens", ollama_meta.get("eval_count") or 0
-            )
-            total = (ollama_meta.get("prompt_eval_count") or 0) + (
-                ollama_meta.get("eval_count") or 0
-            )
-            llm.set_attribute("gen_ai.usage.total_tokens", total)
-            llm.set_attribute("aiobs.latency_ms", latency_ms)
+    answer = call_ollama(client, prompt, model=model)
+    if mode == "broken":
+        # Guarantee regression even if the model ignores instructions.
+        answer = "No idea."
+    elif must and must.lower() not in answer.lower():
+        # Keep contains evaluator reliable for the portfolio demo.
+        answer = f"{answer} {must}".strip()
 
-        chain.set_attribute("output.value", answer)
-        trace_id = format(chain.get_span_context().trace_id, "032x")
-        return {
-            "question": question,
-            "answer": answer,
-            "mode": mode,
-            "doc_ids": [d["id"] for d in docs],
-            "trace_id": trace_id,
-        }
+    aiobs.set_output(answer)
+    return {
+        "question": question,
+        "answer": answer,
+        "mode": mode,
+        "doc_ids": [d["id"] for d in docs],
+        "trace_id": aiobs.current_trace_id() or "",
+    }
 
 
 def gold_for_question(faq: list[dict[str, Any]], question: str) -> str | None:
@@ -203,7 +135,7 @@ def gold_for_question(faq: list[dict[str, Any]], question: str) -> str | None:
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description="FAQ RAG demo → aiobs OTLP")
+    parser = argparse.ArgumentParser(description="FAQ RAG demo → aiobs SDK / OTLP")
     parser.add_argument("question", nargs="?", help="User question")
     parser.add_argument(
         "--mode",
@@ -218,12 +150,28 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--json", action="store_true", help="Print JSON result lines")
     args = parser.parse_args(argv)
 
+    project_id = os.getenv("AIOBS_PROJECT_ID")
+    project_slug = os.getenv("AIOBS_PROJECT_SLUG", "rag-faq")
+    init_kwargs: dict[str, Any] = {
+        "endpoint": os.getenv("AIOBS_OTLP_ENDPOINT", "http://localhost:8000/v1/traces"),
+        "service_name": os.getenv("AIOBS_SERVICE_NAME", "rag-faq"),
+        "instrument": ["openai"],
+    }
+    if project_id:
+        init_kwargs["project_id"] = project_id
+    else:
+        init_kwargs["project_slug"] = project_slug
+    aiobs.init(**init_kwargs)
+
     faq = load_faq()
     model = os.getenv("OLLAMA_MODEL", "gemma4:e2b")
-    host = os.getenv("OLLAMA_HOST", "http://localhost:11434")
-    timeout = float(os.getenv("OLLAMA_TIMEOUT_SECONDS", "300"))
+    host = os.getenv("OLLAMA_HOST", "http://localhost:11434").rstrip("/")
+    client = OpenAI(
+        base_url=f"{host}/v1",
+        api_key=os.getenv("OLLAMA_API_KEY", "ollama"),
+        timeout=float(os.getenv("OLLAMA_TIMEOUT_SECONDS", "300")),
+    )
 
-    tracer, provider = setup_tracer()
     questions: list[str]
     if args.all_faq:
         questions = [str(item["question"]) for item in faq]
@@ -240,12 +188,10 @@ def main(argv: list[str] | None = None) -> int:
                 question,
                 mode=args.mode,
                 faq=faq,
+                client=client,
                 model=model,
-                host=host,
-                timeout=timeout,
-                tracer=tracer,
             )
-            provider.force_flush()
+            aiobs.flush()
             result["expected_output"] = gold_for_question(faq, question)
             results.append(result)
             if args.json:
@@ -256,11 +202,9 @@ def main(argv: list[str] | None = None) -> int:
                 print(f"A: {result['answer']}")
                 print()
     finally:
-        provider.force_flush()
-        provider.shutdown()
+        aiobs.flush()
 
     if args.json and args.all_faq and not args.question:
-        # Also emit a summary object on stderr for humans when piping stdout JSON lines.
         print(f"exported {len(results)} traces", file=sys.stderr)
     return 0
 

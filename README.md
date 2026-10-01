@@ -23,7 +23,7 @@ curl http://localhost:8000/health
 End-to-end loop: traces → dataset → experiments → compare → release gate.
 
 1. Pull a local model: `ollama pull gemma4:e2b`
-2. Sync backend (includes example client libs): `cd backend && uv sync --extra examples && cd ..`
+2. Sync SDK (RAG client): `cd sdk && uv sync --extra openai --extra dev && cd ..`
 3. Sync CLI: `cd cli && uv sync && cd ..`
 4. Run: `python scripts/portfolio_demo.py`
 

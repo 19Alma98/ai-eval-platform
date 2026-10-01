@@ -44,6 +44,67 @@ def _serialize_args(args: tuple[Any, ...], kwargs: dict[str, Any]) -> str:
     return truncate_value(payload)
 
 
+def _current_span():
+    return otel_trace.get_current_span()
+
+
+def _attr_value(value: object) -> bool | int | float | str:
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, int) and not isinstance(value, bool):
+        return value
+    if isinstance(value, float):
+        return value
+    return truncate_value(value)
+
+
+def set_attribute(key: str, value: object) -> None:
+    """Set one attribute on the current aiobs span (no-op if none is active)."""
+    span = _current_span()
+    if not span.is_recording():
+        return
+    span.set_attribute(key, _attr_value(value))
+
+
+def set_attributes(attrs: dict[str, object] | None = None, **kwargs: object) -> None:
+    """Set multiple attributes on the current aiobs span."""
+    merged: dict[str, object] = {}
+    if attrs:
+        merged.update(attrs)
+    merged.update(kwargs)
+    for key, value in merged.items():
+        set_attribute(key, value)
+
+
+def set_input(value: object) -> None:
+    """Set OpenInference ``input.value`` on the current span."""
+    set_attribute("input.value", value)
+
+
+def set_output(value: object) -> None:
+    """Set OpenInference ``output.value`` on the current span."""
+    set_attribute("output.value", value)
+
+
+def set_error(description: str, *, exception: BaseException | None = None) -> None:
+    """Mark the current span as ERROR (optionally attach an exception)."""
+    span = _current_span()
+    if not span.is_recording():
+        return
+    if exception is not None:
+        span.record_exception(exception)
+    span.set_status(Status(StatusCode.ERROR, description))
+
+
+def current_trace_id() -> str | None:
+    """Return the current OTLP trace id as 32-char hex, or None if inactive."""
+    span = _current_span()
+    ctx = span.get_span_context()
+    if ctx is None or not ctx.is_valid:
+        return None
+    return format(ctx.trace_id, "032x")
+
+
 @overload
 def trace(name: Callable[P, R]) -> Callable[P, R]: ...
 

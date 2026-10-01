@@ -53,7 +53,13 @@ Runnable example: [`examples/sdk_hello/`](../examples/sdk_hello/README.md) (Olla
 |---|---|
 | `aiobs.init(...)` | OTLP exporter, project headers, optional `instrument="auto"` \| list \| `False` |
 | `@aiobs.trace` / `@aiobs.trace_async` | Parent CHAIN span; optional input/output capture (32 KiB cap) |
+| `aiobs.set_input` / `set_output` | Override OpenInference I/O on the current span (no OTEL import) |
+| `aiobs.set_attribute` / `set_attributes` | Custom attributes on the current span |
+| `aiobs.set_error(...)` | Mark current span ERROR |
+| `aiobs.current_trace_id()` | 32-char hex trace id while inside a `@trace` span |
 | `aiobs.flush()` | Drain the batch span processor before exit |
+
+App code should use these helpers instead of importing OpenTelemetry directly.
 
 ## Tier-1 compatibility matrix
 
