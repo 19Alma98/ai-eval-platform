@@ -1,5 +1,5 @@
 import { apiGet } from "./client";
-import type { TraceListResponse } from "./types";
+import type { TraceDetail, TraceListResponse } from "./types";
 
 export function listTraces(
   projectId: string,
@@ -20,5 +20,11 @@ export function listTraces(
   const qs = params.toString();
   return apiGet<TraceListResponse>(
     `/api/v1/projects/${projectId}/traces${qs ? `?${qs}` : ""}`,
+  );
+}
+
+export function getTrace(projectId: string, traceId: string) {
+  return apiGet<TraceDetail>(
+    `/api/v1/projects/${projectId}/traces/${encodeURIComponent(traceId)}`,
   );
 }
