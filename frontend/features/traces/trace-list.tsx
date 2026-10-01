@@ -225,6 +225,7 @@ function TraceListToolbar({
 }) {
   return (
     <div className="sticky top-0 z-20 -mx-1 flex flex-wrap items-center gap-3 border-b border-border bg-background px-1 pb-3">
+      <h1 className="text-lg font-semibold text-foreground">Traces</h1>
       <div
         className="inline-flex rounded-md border border-border bg-surface p-0.5"
         role="group"

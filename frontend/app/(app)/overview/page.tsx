@@ -1,5 +1,15 @@
-import { EmptyState } from "@/components/empty-state";
+"use client";
+
+import { OverviewDashboard } from "@/features/overview/overview-dashboard";
+import { ProjectRequired } from "@/features/traces/project-required";
+import { useProjectId } from "@/lib/project-store";
 
 export default function OverviewPage() {
-  return <EmptyState title="Overview" description="Metrics and health will appear here." />;
+  const { projectId } = useProjectId();
+
+  if (!projectId) {
+    return <ProjectRequired />;
+  }
+
+  return <OverviewDashboard />;
 }

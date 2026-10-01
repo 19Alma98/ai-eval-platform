@@ -1,5 +1,9 @@
 # Frontend Technical Specification
 
+Detailed UI design: [`docs/superpowers/specs/2026-10-01-frontend-ui-design.md`](superpowers/specs/2026-10-01-frontend-ui-design.md).
+
+Implementation plan: [`docs/superpowers/plans/2026-10-01-frontend-ui.md`](superpowers/plans/2026-10-01-frontend-ui.md).
+
 ## Stack
 
 - Next.js

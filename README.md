@@ -10,6 +10,8 @@ Open-source, self-hosted platform for AI quality engineering.
 docker compose up --build
 ```
 
+Frontend UI: http://localhost:3000 (included when the `web` service is up).
+
 Check health:
 
 ```bash
