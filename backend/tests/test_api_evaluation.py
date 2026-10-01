@@ -1,0 +1,311 @@
+from __future__ import annotations
+
+import uuid
+from collections.abc import AsyncIterator
+from datetime import UTC, datetime
+from typing import Any
+
+import pytest
+from httpx import ASGITransport, AsyncClient
+
+from aiobs.api.deps import (
+    get_dataset_repository,
+    get_evaluation_run_repository,
+    get_evaluator_repository,
+    get_experiment_repository,
+    get_project_repository,
+    get_trace_repository,
+)
+from aiobs.domain.dataset import Dataset, DatasetItem
+from aiobs.domain.evaluation import EvaluationResultRecord, EvaluationRun
+from aiobs.domain.evaluator import Evaluator
+from aiobs.domain.experiment import Experiment
+from aiobs.domain.project import Project
+from aiobs.domain.trace import Trace
+from aiobs.main import create_app
+
+
+class InMemoryProjectRepository:
+    def __init__(self) -> None:
+        self._projects: dict[uuid.UUID, Project] = {}
+
+    async def add(self, project: Project) -> Project:
+        self._projects[project.id] = project
+        return project
+
+    async def get_by_id(self, project_id: uuid.UUID) -> Project | None:
+        return self._projects.get(project_id)
+
+    async def get_by_slug(self, slug: str) -> Project | None:
+        for project in self._projects.values():
+            if project.slug == slug:
+                return project
+        return None
+
+    async def list_all(self) -> list[Project]:
+        return list(self._projects.values())
+
+
+class InMemoryTraceRepository:
+    def __init__(self) -> None:
+        self._traces: dict[tuple[uuid.UUID, str], Trace] = {}
+
+    async def upsert(self, trace: Trace) -> Trace:
+        self._traces[(trace.project_id, trace.trace_id)] = trace
+        return trace
+
+    async def get_by_trace_id(self, project_id: uuid.UUID, trace_id: str) -> Trace | None:
+        return self._traces.get((project_id, trace_id))
+
+    async def list_by_project(self, project_id: uuid.UUID, **kwargs: Any) -> list[Trace]:
+        return [t for (pid, _), t in self._traces.items() if pid == project_id]
+
+
+class InMemoryDatasetRepository:
+    def __init__(self) -> None:
+        self._datasets: dict[uuid.UUID, Dataset] = {}
+        self._items: dict[uuid.UUID, DatasetItem] = {}
+
+    async def add(self, dataset: Dataset) -> Dataset:
+        for existing in self._datasets.values():
+            if (
+                existing.project_id == dataset.project_id
+                and existing.name == dataset.name
+                and existing.version == dataset.version
+            ):
+                raise Exception("unique constraint")
+        self._datasets[dataset.id] = dataset
+        return dataset
+
+    async def get_by_id(self, dataset_id: uuid.UUID) -> Dataset | None:
+        return self._datasets.get(dataset_id)
+
+    async def list_by_project(self, project_id: uuid.UUID) -> list[Dataset]:
+        return [d for d in self._datasets.values() if d.project_id == project_id]
+
+    async def add_item(self, item: DatasetItem) -> DatasetItem:
+        self._items[item.id] = item
+        return item
+
+    async def list_items(self, dataset_id: uuid.UUID) -> list[DatasetItem]:
+        return [i for i in self._items.values() if i.dataset_id == dataset_id]
+
+    async def get_item(self, item_id: uuid.UUID) -> DatasetItem | None:
+        return self._items.get(item_id)
+
+
+class InMemoryEvaluatorRepository:
+    def __init__(self) -> None:
+        self._items: dict[uuid.UUID, Evaluator] = {}
+
+    async def add(self, evaluator: Evaluator) -> Evaluator:
+        self._items[evaluator.id] = evaluator
+        return evaluator
+
+    async def get_by_id(self, evaluator_id: uuid.UUID) -> Evaluator | None:
+        return self._items.get(evaluator_id)
+
+    async def list_by_project(self, project_id: uuid.UUID) -> list[Evaluator]:
+        return [e for e in self._items.values() if e.project_id == project_id]
+
+    async def get_by_ids(self, evaluator_ids: list[uuid.UUID]) -> list[Evaluator]:
+        return [self._items[i] for i in evaluator_ids if i in self._items]
+
+
+class InMemoryExperimentRepository:
+    def __init__(self) -> None:
+        self._items: dict[uuid.UUID, Experiment] = {}
+
+    async def add(self, experiment: Experiment) -> Experiment:
+        self._items[experiment.id] = experiment
+        return experiment
+
+    async def get_by_id(self, experiment_id: uuid.UUID) -> Experiment | None:
+        return self._items.get(experiment_id)
+
+    async def list_by_project(self, project_id: uuid.UUID) -> list[Experiment]:
+        return [e for e in self._items.values() if e.project_id == project_id]
+
+    async def update(self, experiment: Experiment) -> Experiment:
+        self._items[experiment.id] = experiment
+        return experiment
+
+
+class InMemoryEvaluationRunRepository:
+    def __init__(self) -> None:
+        self._runs: dict[uuid.UUID, EvaluationRun] = {}
+        self._results: dict[uuid.UUID, EvaluationResultRecord] = {}
+
+    async def add_run(self, run: EvaluationRun) -> EvaluationRun:
+        self._runs[run.id] = run
+        return run
+
+    async def update_run(self, run: EvaluationRun) -> EvaluationRun:
+        self._runs[run.id] = run
+        return run
+
+    async def get_run(self, run_id: uuid.UUID) -> EvaluationRun | None:
+        return self._runs.get(run_id)
+
+    async def list_runs_by_experiment(self, experiment_id: uuid.UUID) -> list[EvaluationRun]:
+        return [r for r in self._runs.values() if r.experiment_id == experiment_id]
+
+    async def add_result(self, result: EvaluationResultRecord) -> EvaluationResultRecord:
+        self._results[result.id] = result
+        return result
+
+    async def list_results(self, run_id: uuid.UUID) -> list[EvaluationResultRecord]:
+        return [r for r in self._results.values() if r.run_id == run_id]
+
+    async def add_results(
+        self, results: list[EvaluationResultRecord]
+    ) -> list[EvaluationResultRecord]:
+        for r in results:
+            self._results[r.id] = r
+        return results
+
+
+@pytest.fixture
+async def client() -> AsyncIterator[AsyncClient]:
+    import os
+
+    from aiobs.config import get_settings
+
+    os.environ["CONTENT_CAPTURE_ENABLED"] = "true"
+    get_settings.cache_clear()
+
+    projects = InMemoryProjectRepository()
+    traces = InMemoryTraceRepository()
+    datasets = InMemoryDatasetRepository()
+    evaluators = InMemoryEvaluatorRepository()
+    experiments = InMemoryExperimentRepository()
+    runs = InMemoryEvaluationRunRepository()
+
+    app = create_app()
+    app.dependency_overrides[get_project_repository] = lambda: projects
+    app.dependency_overrides[get_trace_repository] = lambda: traces
+    app.dependency_overrides[get_dataset_repository] = lambda: datasets
+    app.dependency_overrides[get_evaluator_repository] = lambda: evaluators
+    app.dependency_overrides[get_experiment_repository] = lambda: experiments
+    app.dependency_overrides[get_evaluation_run_repository] = lambda: runs
+
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as ac:
+        yield ac
+
+    app.dependency_overrides.clear()
+    os.environ.pop("CONTENT_CAPTURE_ENABLED", None)
+    get_settings.cache_clear()
+
+
+@pytest.mark.asyncio
+async def test_dataset_item_evaluate_flow(client: AsyncClient) -> None:
+    project = await client.post("/api/v1/projects", json={"name": "Eval Demo"})
+    assert project.status_code == 201
+    project_id = project.json()["id"]
+
+    dataset = await client.post(
+        f"/api/v1/projects/{project_id}/datasets",
+        json={"name": "support-v1", "description": "demo"},
+    )
+    assert dataset.status_code == 201
+    dataset_id = dataset.json()["id"]
+
+    item = await client.post(
+        f"/api/v1/datasets/{dataset_id}/items",
+        json={
+            "input": "hi",
+            "expected_output": "hello",
+            "actual_output": "hello",
+        },
+    )
+    assert item.status_code == 201
+
+    evaluator = await client.post(
+        f"/api/v1/projects/{project_id}/evaluators",
+        json={
+            "name": "exact",
+            "type": "deterministic",
+            "config": {"kind": "exact_match"},
+        },
+    )
+    assert evaluator.status_code == 201
+    evaluator_id = evaluator.json()["id"]
+
+    experiment = await client.post(
+        f"/api/v1/projects/{project_id}/experiments",
+        json={"name": "run-1", "dataset_id": dataset_id, "model_config": {"model": "demo"}},
+    )
+    assert experiment.status_code == 201, experiment.text
+    experiment_id = experiment.json()["id"]
+    assert experiment.json()["model_config"] == {"model": "demo"}
+
+    evaluated = await client.post(
+        f"/api/v1/experiments/{experiment_id}/evaluate",
+        json={"evaluator_ids": [evaluator_id]},
+    )
+    assert evaluated.status_code == 200, evaluated.text
+    body = evaluated.json()
+    assert body["experiment"]["status"] == "completed"
+    assert len(body["runs"]) == 1
+    assert body["runs"][0]["status"] == "PASSED"
+    assert body["runs"][0]["results"][0]["score"] == 1.0
+
+    runs = await client.get(f"/api/v1/experiments/{experiment_id}/runs")
+    assert runs.status_code == 200
+    assert len(runs.json()) == 1
+
+    run_id = body["runs"][0]["id"]
+    detail = await client.get(f"/api/v1/evaluation-runs/{run_id}")
+    assert detail.status_code == 200
+    assert len(detail.json()["results"]) == 1
+
+
+@pytest.mark.asyncio
+async def test_from_trace_item(client: AsyncClient) -> None:
+    project = await client.post("/api/v1/projects", json={"name": "From Trace"})
+    project_id = project.json()["id"]
+
+    start = datetime(2024, 1, 1, tzinfo=UTC).isoformat()
+    end = datetime(2024, 1, 1, 0, 0, 2, tzinfo=UTC).isoformat()
+    create_trace = await client.post(
+        f"/api/v1/projects/{project_id}/traces",
+        json={
+            "trace_id": "ab" * 16,
+            "name": "chat",
+            "status": "ok",
+            "start_time": start,
+            "end_time": end,
+            "input": {"q": "hi"},
+            "output": {"a": "hello"},
+            "spans": [
+                {
+                    "span_id": "cd" * 8,
+                    "name": "llm",
+                    "kind": "LLM",
+                    "start_time": start,
+                    "end_time": end,
+                    "status": "ok",
+                    "attributes": {"gen_ai.usage.total_tokens": 10},
+                }
+            ],
+        },
+    )
+    assert create_trace.status_code in {200, 201}, create_trace.text
+
+    dataset = await client.post(
+        f"/api/v1/projects/{project_id}/datasets",
+        json={"name": "from-trace"},
+    )
+    dataset_id = dataset.json()["id"]
+
+    item = await client.post(
+        f"/api/v1/datasets/{dataset_id}/items/from-trace",
+        json={"trace_id": "ab" * 16, "expected_output": {"a": "hello"}},
+    )
+    assert item.status_code == 201, item.text
+    body = item.json()
+    assert body["input"] == {"q": "hi"}
+    assert body["actual_output"] == {"a": "hello"}
+    assert body["context"]["latency_ms"] == 2000.0
+    assert body["context"]["total_tokens"] == 10

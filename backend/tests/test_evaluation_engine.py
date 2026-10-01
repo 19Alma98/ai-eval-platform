@@ -1,0 +1,176 @@
+from __future__ import annotations
+
+import uuid
+from datetime import UTC, datetime
+
+import pytest
+
+from aiobs.config import get_settings
+from aiobs.domain.dataset import DatasetItem
+from aiobs.domain.evaluation import EvaluationRun
+from aiobs.domain.evaluator import Evaluator
+from aiobs.domain.trace import Span, Trace
+from aiobs.evaluation.deterministic import (
+    ContainsEvaluator,
+    CostEvaluator,
+    ExactMatchEvaluator,
+    JsonSchemaEvaluator,
+    LatencyEvaluator,
+    RegexEvaluator,
+    TokenUsageEvaluator,
+    ToolCallSuccessEvaluator,
+    register_deterministic_evaluators,
+)
+from aiobs.evaluation.llm_judges import LlmJudgeEvaluator
+from aiobs.evaluation.protocol import EvaluationSample
+from aiobs.evaluation.registry import clear_registry, create_evaluator, list_registered_kinds
+from aiobs.evaluation.runner import EvaluationRunner
+from aiobs.evaluation.trace_context import build_eval_context_from_trace
+
+
+@pytest.fixture(autouse=True)
+def _registry() -> None:
+    clear_registry()
+    register_deterministic_evaluators()
+    yield
+    clear_registry()
+
+
+def _sample(**kwargs):
+    defaults = {
+        "input": "q",
+        "expected_output": "hello",
+        "actual_output": "hello",
+        "context": None,
+        "metadata": {},
+    }
+    defaults.update(kwargs)
+    return EvaluationSample(**defaults)
+
+
+@pytest.mark.asyncio
+async def test_exact_match_pass_fail() -> None:
+    ev = ExactMatchEvaluator({})
+    ok = await ev.evaluate(_sample())
+    assert ok.score == 1.0
+    bad = await ev.evaluate(_sample(actual_output="bye"))
+    assert bad.score == 0.0
+
+
+@pytest.mark.asyncio
+async def test_contains_and_regex() -> None:
+    contains = ContainsEvaluator({"substring": "ell"})
+    assert (await contains.evaluate(_sample())).score == 1.0
+    regex = RegexEvaluator({"pattern": r"^he"})
+    assert (await regex.evaluate(_sample())).score == 1.0
+
+
+@pytest.mark.asyncio
+async def test_json_schema() -> None:
+    ev = JsonSchemaEvaluator({"schema": {"type": "object", "required": ["a"]}})
+    ok = await ev.evaluate(_sample(actual_output={"a": 1}))
+    assert ok.score == 1.0
+    bad = await ev.evaluate(_sample(actual_output={"b": 1}))
+    assert bad.score == 0.0
+
+
+@pytest.mark.asyncio
+async def test_latency_token_cost_tools() -> None:
+    latency = LatencyEvaluator({"max_ms": 100})
+    assert (
+        await latency.evaluate(_sample(actual_output=None, context={"latency_ms": 50}))
+    ).score == 1.0
+    tokens = TokenUsageEvaluator({"max_tokens": 10})
+    assert (
+        await tokens.evaluate(_sample(actual_output=None, context={"total_tokens": 5}))
+    ).score == 1.0
+    cost = CostEvaluator({"max_usd": 0.01})
+    assert (
+        await cost.evaluate(_sample(actual_output=None, context={"cost_usd": 0.005}))
+    ).score == 1.0
+    tools = ToolCallSuccessEvaluator({})
+    result = await tools.evaluate(
+        _sample(
+            actual_output=None,
+            context={"tool_calls": [{"name": "search", "success": True}]},
+        )
+    )
+    assert result.score == 1.0
+
+
+@pytest.mark.asyncio
+async def test_skipped_without_actual() -> None:
+    ev = ExactMatchEvaluator({})
+    result = await ev.evaluate(_sample(actual_output=None))
+    assert result.label == "SKIPPED"
+    assert result.score is None
+
+
+@pytest.mark.asyncio
+async def test_llm_judge_with_mock() -> None:
+    class FakeLlm:
+        async def complete_json(self, *, system: str, user: str, model: str | None = None):
+            return {"score": 0.9, "label": "PASS", "explanation": "good"}
+
+    judge = LlmJudgeEvaluator("correctness", {}, FakeLlm(), default_model=get_settings().llm_model)
+    result = await judge.evaluate(_sample())
+    assert result.score == 0.9
+    assert result.metadata["prompt_version"] == "correctness.v1"
+    assert result.metadata["model"] == get_settings().llm_model
+
+
+@pytest.mark.asyncio
+async def test_runner_maps_errors_not_to_zero() -> None:
+    class Boom:
+        name = "boom"
+
+        async def evaluate(self, sample):
+            raise RuntimeError("provider down")
+
+    entity = Evaluator.create(uuid.uuid4(), "boom", "deterministic", {"kind": "exact_match"})
+    item = DatasetItem.create(uuid.uuid4(), input="x", expected_output="y", actual_output="y")
+    runner = EvaluationRunner(resolve_evaluator=lambda _e: Boom())
+    run = EvaluationRun.create(uuid.uuid4(), entity.id)
+    finished, results = await runner.run_evaluator(run=run, evaluator_entity=entity, items=[item])
+    assert finished.status == "ERROR"
+    assert results[0].score is None
+    assert results[0].label == "ERROR"
+
+
+def test_registry_lists_kinds() -> None:
+    assert "exact_match" in list_registered_kinds()
+    create_evaluator("exact_match", {})
+
+
+def test_build_eval_context_from_trace() -> None:
+    start = datetime(2024, 1, 1, tzinfo=UTC)
+    end = datetime(2024, 1, 1, 0, 0, 1, tzinfo=UTC)
+    span = Span(
+        id=uuid.uuid4(),
+        span_id="a" * 16,
+        parent_span_id=None,
+        name="tool_search",
+        kind="TOOL",
+        start_time=start,
+        end_time=end,
+        status="ok",
+        attributes={
+            "gen_ai.usage.total_tokens": 42,
+            "gen_ai.usage.cost": 0.002,
+        },
+    )
+    trace = Trace(
+        id=uuid.uuid4(),
+        project_id=uuid.uuid4(),
+        trace_id="b" * 32,
+        name="t",
+        status="ok",
+        start_time=start,
+        end_time=end,
+        spans=(span,),
+    )
+    ctx = build_eval_context_from_trace(trace)
+    assert ctx["latency_ms"] == 1000.0
+    assert ctx["total_tokens"] == 42
+    assert ctx["cost_usd"] == 0.002
+    assert ctx["tool_calls"][0]["success"] is True

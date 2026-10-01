@@ -1,0 +1,13 @@
+{
+  "exact_match": {
+    "score_range": [0, 1],
+    "higher_is_better": true,
+    "deterministic": true
+  },
+  "correctness": {
+    "score_range": [0, 1],
+    "higher_is_better": true,
+    "deterministic": false,
+    "prompt_version": "correctness.v1"
+  }
+}
