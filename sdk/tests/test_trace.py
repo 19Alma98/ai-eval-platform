@@ -10,10 +10,21 @@ from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanE
 from opentelemetry.trace import StatusCode
 
 import aiobs
+from aiobs import _otel
 from aiobs._config import MAX_CAPTURE_BYTES
 from aiobs._trace import truncate_value
 
 _shared_exporter: InMemorySpanExporter | None = None
+
+
+@pytest.fixture(scope="module", autouse=True)
+def _reset_otel_before_trace_tests() -> None:
+    global _shared_exporter
+    _otel._reset_for_tests()
+    _shared_exporter = None
+    yield
+    _shared_exporter = None
+    _otel._reset_for_tests()
 
 
 @pytest.fixture

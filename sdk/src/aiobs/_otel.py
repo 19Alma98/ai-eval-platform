@@ -9,6 +9,7 @@ from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExport
 from opentelemetry.sdk.resources import Resource
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import BatchSpanProcessor
+from opentelemetry.util._once import Once
 
 from aiobs._config import project_headers, resolve_config
 from aiobs.instrumentation import activate_instrumentors
@@ -21,10 +22,19 @@ _INITIALIZED: bool = False
 
 def _reset_for_tests() -> None:
     global _PROVIDER, _INITIALIZED
+    shutdown_targets: set[TracerProvider] = set()
     if _PROVIDER is not None:
-        _PROVIDER.shutdown()
+        shutdown_targets.add(_PROVIDER)
+    otel_tp = trace._TRACER_PROVIDER  # type: ignore[attr-defined]
+    if isinstance(otel_tp, TracerProvider):
+        shutdown_targets.add(otel_tp)
+    for provider in shutdown_targets:
+        provider.shutdown()
+
     _PROVIDER = None
     _INITIALIZED = False
+    trace._TRACER_PROVIDER = None  # type: ignore[attr-defined]
+    trace._TRACER_PROVIDER_SET_ONCE = Once()  # type: ignore[attr-defined]
 
 
 def init(
