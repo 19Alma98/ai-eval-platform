@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { formatRelativeTime, formatTs } from "@/lib/format";
+import { cn } from "@/lib/cn";
 
 export function RelativeTime({
   date,
@@ -29,7 +30,7 @@ export function RelativeTime({
     <time
       dateTime={parsed.toISOString()}
       title={formatTs(parsed)}
-      className={className}
+      className={cn("font-mono tabular-nums", className)}
     >
       {label}
     </time>

@@ -15,6 +15,7 @@ import { ThemeToggle } from "@/components/theme-toggle";
 import { TimeRangePicker } from "@/components/time-range-picker";
 import { Separator } from "@/components/ui/separator";
 import { cn } from "@/lib/cn";
+import { projectsQueryOptions } from "@/lib/queries/projects";
 
 const NAV = [
   { href: "/overview", label: "Overview", icon: LayoutDashboard },
@@ -23,6 +24,8 @@ const NAV = [
   { href: "/experiments", label: "Experiments", icon: FlaskConical },
   { href: "/release", label: "Release", icon: ShieldCheck },
 ] as const;
+
+const projectsQuery = projectsQueryOptions();
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
@@ -64,7 +67,10 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           <Separator orientation="vertical" className="h-5" />
           <TimeRangePicker />
           <div className="flex-1" />
-          <RefreshControl />
+          <RefreshControl
+            queryKey={projectsQuery.queryKey}
+            queryFn={projectsQuery.queryFn}
+          />
           <ThemeToggle />
         </header>
         <main className="flex-1 overflow-auto p-4">{children}</main>

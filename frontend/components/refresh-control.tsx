@@ -1,6 +1,11 @@
 "use client";
 
-import { useQueryClient } from "@tanstack/react-query";
+import {
+  useQuery,
+  useQueryClient,
+  type QueryFunction,
+  type QueryKey,
+} from "@tanstack/react-query";
 import { RefreshCw } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
@@ -9,19 +14,42 @@ import { cn } from "@/lib/cn";
 
 export function RefreshControl({
   queryKey,
+  queryFn,
+  dataUpdatedAt: dataUpdatedAtProp,
+  onRefresh,
   className,
 }: {
-  queryKey?: readonly unknown[];
+  queryKey?: QueryKey;
+  queryFn?: QueryFunction<unknown>;
+  dataUpdatedAt?: number;
+  onRefresh?: () => Promise<unknown>;
   className?: string;
 }) {
   const client = useQueryClient();
-  const [updatedAt, setUpdatedAt] = useState<number | null>(null);
-  const [refreshing, setRefreshing] = useState(false);
+  const boundToQuery =
+    queryKey != null &&
+    queryFn != null &&
+    dataUpdatedAtProp === undefined &&
+    onRefresh === undefined;
+
+  const query = useQuery({
+    queryKey: queryKey ?? ["__refresh_control_inert"],
+    queryFn: queryFn ?? (async () => null),
+    enabled: boundToQuery,
+  });
+
+  const [manualRefreshing, setManualRefreshing] = useState(false);
+  const [fallbackUpdatedAt, setFallbackUpdatedAt] = useState<number | null>(
+    null,
+  );
 
   useEffect(() => {
-    if (!queryKey) return;
-    const state = client.getQueryState(queryKey);
-    if (state?.dataUpdatedAt) setUpdatedAt(state.dataUpdatedAt);
+    if (!queryKey || boundToQuery || dataUpdatedAtProp !== undefined) return;
+    const sync = () => {
+      const state = client.getQueryState(queryKey);
+      if (state?.dataUpdatedAt) setFallbackUpdatedAt(state.dataUpdatedAt);
+    };
+    sync();
     const unsub = client.getQueryCache().subscribe((event) => {
       if (
         event.type === "updated" &&
@@ -29,11 +57,11 @@ export function RefreshControl({
           (k, i) => (event.query.queryKey as unknown[])[i] === k,
         )
       ) {
-        setUpdatedAt(event.query.state.dataUpdatedAt);
+        setFallbackUpdatedAt(event.query.state.dataUpdatedAt);
       }
     });
     return unsub;
-  }, [client, queryKey]);
+  }, [boundToQuery, client, dataUpdatedAtProp, queryKey]);
 
   const [, setTick] = useState(0);
   useEffect(() => {
@@ -41,30 +69,53 @@ export function RefreshControl({
     return () => clearInterval(id);
   }, []);
 
+  const refreshing = onRefresh
+    ? manualRefreshing
+    : boundToQuery
+      ? query.isFetching
+      : manualRefreshing;
+
+  const updatedAt = dataUpdatedAtProp ?? (boundToQuery
+    ? query.dataUpdatedAt || null
+    : fallbackUpdatedAt);
+
   async function handleRefresh() {
-    setRefreshing(true);
+    if (onRefresh) {
+      setManualRefreshing(true);
+      try {
+        await onRefresh();
+      } finally {
+        setManualRefreshing(false);
+      }
+      return;
+    }
+    setManualRefreshing(true);
     try {
-      if (queryKey) {
+      if (boundToQuery) {
+        await query.refetch();
+      } else if (queryKey) {
         await client.refetchQueries({ queryKey });
         const state = client.getQueryState(queryKey);
-        setUpdatedAt(state?.dataUpdatedAt ?? Date.now());
+        setFallbackUpdatedAt(state?.dataUpdatedAt ?? Date.now());
       } else {
         await client.refetchQueries();
-        setUpdatedAt(Date.now());
+        setFallbackUpdatedAt(Date.now());
       }
     } finally {
-      setRefreshing(false);
+      setManualRefreshing(false);
     }
   }
 
   const label =
-    updatedAt != null
+    updatedAt != null && updatedAt > 0
       ? `Updated ${formatRelativeTime(new Date(updatedAt), new Date())}`
       : "Not loaded yet";
 
   return (
     <div className={cn("flex items-center gap-2", className)}>
-      <span className="text-xs text-muted-foreground">{label}</span>
+      <span className="font-mono text-xs tabular-nums text-muted-foreground">
+        {label}
+      </span>
       <Button
         variant="outline"
         size="icon-sm"

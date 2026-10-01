@@ -9,15 +9,12 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { listProjects } from "@/lib/api/projects";
+import { projectsQueryOptions } from "@/lib/queries/projects";
 import { useProjectId } from "@/lib/project-store";
 
 export function ProjectSwitcher() {
   const { projectId, setProjectId } = useProjectId();
-  const { data: projects, isLoading } = useQuery({
-    queryKey: ["projects"],
-    queryFn: listProjects,
-  });
+  const { data: projects, isLoading } = useQuery(projectsQueryOptions());
 
   const current = projects?.find((p) => p.id === projectId);
 
