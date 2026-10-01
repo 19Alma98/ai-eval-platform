@@ -29,7 +29,11 @@ def test_normalize_groups_by_trace_id() -> None:
             "start_time": start,
             "end_time": start,
             "status": "ok",
-            "attributes": {"openinference.span.kind": "CHAIN"},
+            "attributes": {
+                "openinference.span.kind": "CHAIN",
+                "input.value": "what is auth?",
+                "output.value": "trusted network, no login",
+            },
             "events": [],
         },
         {
@@ -54,6 +58,8 @@ def test_normalize_groups_by_trace_id() -> None:
     assert traces[0].name == "chain"
     assert len(traces[0].spans) == 2
     assert traces[0].metadata.get("model") == "gpt-4o-mini"
+    assert traces[0].input == "what is auth?"
+    assert traces[0].output == "trusted network, no login"
 
 
 def test_redaction_strips_content_when_disabled() -> None:

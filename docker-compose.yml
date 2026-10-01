@@ -23,6 +23,8 @@ services:
       DATABASE_URL: postgresql+asyncpg://aiobs:aiobs@postgres:5432/aiobs
       APP_HOST: 0.0.0.0
       APP_PORT: "8000"
+      # Required for OTLP → dataset from-trace (portfolio demo)
+      CONTENT_CAPTURE_ENABLED: "true"
     ports:
       - "8000:8000"
     depends_on:

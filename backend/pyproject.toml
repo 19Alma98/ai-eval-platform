@@ -26,6 +26,14 @@ dev = [
     "ruff>=0.8.0",
     "mypy>=1.13.0",
 ]
+# Client-side deps for examples/rag_faq (and similar OTLP demos).
+# Install: uv sync --extra examples   (or --all-extras)
+examples = [
+    "opentelemetry-api>=1.28.0",
+    "opentelemetry-sdk>=1.28.0",
+    "opentelemetry-exporter-otlp-proto-http>=1.28.0",
+    "httpx>=0.28.0",
+]
 
 [build-system]
 requires = ["hatchling"]

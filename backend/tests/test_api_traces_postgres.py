@@ -120,7 +120,7 @@ async def test_otlp_persist_list_get(client: AsyncClient) -> None:
     kinds = {s["kind"] for s in spans}
     assert kinds == {"CHAIN", "LLM"}
 
-    # upsert same trace_id replaces spans
+    # upsert same trace_id merges additional spans (OTLP clients often export per-span)
     payload2 = {
         "resourceSpans": [
             {
@@ -154,8 +154,10 @@ async def test_otlp_persist_list_get(client: AsyncClient) -> None:
     )
     assert again.status_code == 200
     detail2 = await client.get(f"/api/v1/projects/{project_id}/traces/{'11' * 16}")
-    assert len(detail2.json()["spans"]) == 1
-    assert detail2.json()["spans"][0]["kind"] == "TOOL"
+    spans2 = detail2.json()["spans"]
+    assert len(spans2) == 3
+    kinds2 = {s["kind"] for s in spans2}
+    assert kinds2 == {"CHAIN", "LLM", "TOOL"}
     assert detail2.json()["status"] == "error"
 
 

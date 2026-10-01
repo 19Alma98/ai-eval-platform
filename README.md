@@ -18,6 +18,17 @@ Check health:
 curl http://localhost:8000/health
 ```
 
+### Portfolio demo (RAG FAQ + Ollama)
+
+End-to-end loop: traces → dataset → experiments → compare → release gate.
+
+1. Pull a local model: `ollama pull gemma4:e2b`
+2. Sync backend (includes example client libs): `cd backend && uv sync --extra examples && cd ..`
+3. Sync CLI: `cd cli && uv sync && cd ..`
+4. Run: `python scripts/portfolio_demo.py`
+
+Details: [`examples/rag_faq/README.md`](examples/rag_faq/README.md). Design: [`docs/superpowers/specs/2026-10-01-portfolio-rag-faq-design.md`](docs/superpowers/specs/2026-10-01-portfolio-rag-faq-design.md).
+
 Create a project:
 
 ```bash

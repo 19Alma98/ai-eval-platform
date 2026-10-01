@@ -46,6 +46,17 @@ def _min_max_times(
     return start, end
 
 
+def _extract_trace_io(spans: list[Span]) -> tuple[Any | None, Any | None]:
+    """Lift OpenInference input/output from the preferred root (CHAIN) span."""
+    roots = [s for s in spans if not s.parent_span_id]
+    ordered = sorted(roots or spans, key=lambda s: 0 if s.kind == "CHAIN" else 1)
+    for span in ordered:
+        attrs = span.attributes or {}
+        if "input.value" in attrs or "output.value" in attrs:
+            return attrs.get("input.value"), attrs.get("output.value")
+    return None, None
+
+
 def normalize_raw_spans(
     project_id: uuid.UUID,
     raw_spans: list[dict[str, Any]],
@@ -94,6 +105,7 @@ def normalize_raw_spans(
         )
         user_id = first_attrs.get("user.id") or first_attrs.get("enduser.id")
         session_id = first_attrs.get("session.id")
+        input_value, output_value = _extract_trace_io(domain_spans)
 
         traces.append(
             Trace(
@@ -104,8 +116,8 @@ def normalize_raw_spans(
                 status=_aggregate_status(spans_raw),
                 start_time=start_time,
                 end_time=end_time,
-                input=None,
-                output=None,
+                input=input_value,
+                output=output_value,
                 metadata=metadata,
                 environment=str(environment) if environment is not None else None,
                 user_id=str(user_id) if user_id is not None else None,

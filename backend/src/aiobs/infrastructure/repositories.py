@@ -3,7 +3,7 @@ from __future__ import annotations
 import uuid
 from datetime import datetime
 
-from sqlalchemy import delete, func, select
+from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -119,43 +119,92 @@ class SqlAlchemyTraceRepository:
         existing = result.scalar_one_or_none()
 
         if existing is not None:
-            await self._session.execute(delete(SpanModel).where(SpanModel.trace_pk == existing.id))
-            existing.name = trace.name
-            existing.status = trace.status
-            existing.start_time = trace.start_time
-            existing.end_time = trace.end_time
-            existing.input = trace.input
-            existing.output = trace.output
-            existing.metadata_json = dict(trace.metadata)
-            existing.environment = trace.environment
-            existing.user_id = trace.user_id
-            existing.session_id = trace.session_id
-            row = existing
-            trace_pk = existing.id
-        else:
-            row = TraceModel(
-                id=trace.id,
-                project_id=trace.project_id,
-                trace_id=trace.trace_id,
-                name=trace.name,
-                status=trace.status,
-                start_time=trace.start_time,
-                end_time=trace.end_time,
-                input=trace.input,
-                output=trace.output,
-                metadata_json=dict(trace.metadata),
-                environment=trace.environment,
-                user_id=trace.user_id,
-                session_id=trace.session_id,
-            )
-            self._session.add(row)
-            trace_pk = trace.id
+            existing.name = trace.name or existing.name
+            # Prefer error if either side reported it.
+            if trace.status == "error" or existing.status == "error":
+                existing.status = "error"
+            elif trace.status == "ok" or existing.status == "ok":
+                existing.status = "ok"
+            else:
+                existing.status = trace.status or existing.status
+            if trace.start_time and (
+                existing.start_time is None or trace.start_time < existing.start_time
+            ):
+                existing.start_time = trace.start_time
+            if trace.end_time and (
+                existing.end_time is None or trace.end_time > existing.end_time
+            ):
+                existing.end_time = trace.end_time
+            if trace.input is not None:
+                existing.input = trace.input
+            if trace.output is not None:
+                existing.output = trace.output
+            merged_meta = dict(existing.metadata_json or {})
+            merged_meta.update(dict(trace.metadata))
+            existing.metadata_json = merged_meta
+            if trace.environment is not None:
+                existing.environment = trace.environment
+            if trace.user_id is not None:
+                existing.user_id = trace.user_id
+            if trace.session_id is not None:
+                existing.session_id = trace.session_id
 
+            by_span_id = {span.span_id: span for span in existing.spans}
+            for span in trace.spans:
+                current = by_span_id.get(span.span_id)
+                if current is None:
+                    self._session.add(
+                        SpanModel(
+                            id=span.id,
+                            trace_pk=existing.id,
+                            project_id=trace.project_id,
+                            span_id=span.span_id,
+                            parent_span_id=span.parent_span_id,
+                            name=span.name,
+                            kind=span.kind,
+                            start_time=span.start_time,
+                            end_time=span.end_time,
+                            status=span.status,
+                            attributes=dict(span.attributes),
+                            events=list(span.events),
+                        )
+                    )
+                else:
+                    current.parent_span_id = span.parent_span_id
+                    current.name = span.name
+                    current.kind = span.kind
+                    current.start_time = span.start_time
+                    current.end_time = span.end_time
+                    current.status = span.status
+                    current.attributes = dict(span.attributes)
+                    current.events = list(span.events)
+
+            await self._session.commit()
+            refreshed = await self.get_by_trace_id(trace.project_id, trace.trace_id)
+            assert refreshed is not None
+            return refreshed
+
+        row = TraceModel(
+            id=trace.id,
+            project_id=trace.project_id,
+            trace_id=trace.trace_id,
+            name=trace.name,
+            status=trace.status,
+            start_time=trace.start_time,
+            end_time=trace.end_time,
+            input=trace.input,
+            output=trace.output,
+            metadata_json=dict(trace.metadata),
+            environment=trace.environment,
+            user_id=trace.user_id,
+            session_id=trace.session_id,
+        )
+        self._session.add(row)
         for span in trace.spans:
             self._session.add(
                 SpanModel(
                     id=span.id,
-                    trace_pk=trace_pk,
+                    trace_pk=trace.id,
                     project_id=trace.project_id,
                     span_id=span.span_id,
                     parent_span_id=span.parent_span_id,
