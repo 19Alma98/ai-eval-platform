@@ -1,10 +1,15 @@
-import { EmptyState } from "@/components/empty-state";
+"use client";
+
+import { TraceList } from "@/features/traces/trace-list";
+import { ProjectRequired } from "@/features/traces/project-required";
+import { useProjectId } from "@/lib/project-store";
 
 export default function TracesPage() {
-  return (
-    <EmptyState
-      title="Traces"
-      description="No traces yet. Run the OTLP example against this project."
-    />
-  );
+  const { projectId } = useProjectId();
+
+  if (!projectId) {
+    return <ProjectRequired />;
+  }
+
+  return <TraceList />;
 }
