@@ -29,3 +29,5 @@ Thumbs.db
 postgres_data/
 
 .worktrees/
+.cursor/
+docs/superpowers/
