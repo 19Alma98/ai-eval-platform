@@ -4,6 +4,7 @@ import uuid
 from datetime import datetime
 from typing import Protocol
 
+from aiobs.domain.app_config import AppConfig, AppConfigAlias
 from aiobs.domain.dataset import Dataset, DatasetItem
 from aiobs.domain.evaluation import EvaluationResultRecord, EvaluationRun
 from aiobs.domain.evaluator import Evaluator
@@ -68,6 +69,28 @@ class EvaluatorRepository(Protocol):
     async def list_by_project(self, project_id: uuid.UUID) -> list[Evaluator]: ...
 
     async def get_by_ids(self, evaluator_ids: list[uuid.UUID]) -> list[Evaluator]: ...
+
+
+class AppConfigRepository(Protocol):
+    async def add(self, config: AppConfig) -> AppConfig: ...
+
+    async def get_by_id(self, app_config_id: uuid.UUID) -> AppConfig | None: ...
+
+    async def list_by_project(
+        self, project_id: uuid.UUID, *, name: str | None = None, latest_only: bool = False
+    ) -> list[AppConfig]: ...
+
+    async def list_versions(self, project_id: uuid.UUID, name: str) -> list[AppConfig]: ...
+
+    async def next_version(self, project_id: uuid.UUID, name: str) -> int: ...
+
+    async def set_alias(self, alias: AppConfigAlias) -> AppConfigAlias: ...
+
+    async def get_alias(self, project_id: uuid.UUID, name: str) -> AppConfigAlias | None: ...
+
+    async def list_aliases(self, project_id: uuid.UUID) -> list[AppConfigAlias]: ...
+
+    async def delete_alias(self, project_id: uuid.UUID, name: str) -> bool: ...
 
 
 class ExperimentRepository(Protocol):

@@ -17,6 +17,8 @@ export function createExperiment(
     name: string;
     dataset_id: string;
     model_config?: Record<string, unknown>;
+    app_config_id?: string;
+    app_config_alias?: string;
     version?: string | null;
     baseline_experiment_id?: string | null;
   },

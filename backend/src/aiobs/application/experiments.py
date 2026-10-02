@@ -4,10 +4,13 @@ import uuid
 from dataclasses import dataclass
 from typing import Any
 
+from aiobs.application.app_configs import AppConfigNotFoundError
 from aiobs.application.datasets import DatasetNotFoundError
 from aiobs.application.projects import ProjectNotFoundError
+from aiobs.domain.app_config import AppConfig
 from aiobs.domain.experiment import Experiment
 from aiobs.domain.repositories import (
+    AppConfigRepository,
     DatasetRepository,
     ExperimentRepository,
     ProjectRepository,
@@ -28,6 +31,8 @@ class CreateExperimentCommand:
     model_config: dict[str, Any] | None = None
     version: str | None = None
     baseline_experiment_id: uuid.UUID | None = None
+    app_config_id: uuid.UUID | None = None
+    app_config_alias: str | None = None
 
 
 class CreateExperiment:
@@ -36,10 +41,12 @@ class CreateExperiment:
         experiments: ExperimentRepository,
         datasets: DatasetRepository,
         projects: ProjectRepository,
+        app_configs: AppConfigRepository,
     ) -> None:
         self._experiments = experiments
         self._datasets = datasets
         self._projects = projects
+        self._app_configs = app_configs
 
     async def execute(self, command: CreateExperimentCommand) -> Experiment:
         project = await self._projects.get_by_id(command.project_id)
@@ -55,13 +62,39 @@ class CreateExperiment:
             if baseline is None or baseline.project_id != command.project_id:
                 raise ExperimentNotFoundError(command.baseline_experiment_id)
 
+        if command.app_config_id is not None and command.app_config_alias is not None:
+            raise ValueError("Provide only one of app_config_id or app_config_alias")
+
+        config: AppConfig | None = None
+        if command.app_config_alias is not None:
+            alias_name = command.app_config_alias.strip()
+            if not alias_name:
+                raise ValueError("app_config_alias must not be empty")
+            alias = await self._app_configs.get_alias(command.project_id, alias_name)
+            if alias is None:
+                raise ValueError(f"Unknown app_config_alias: {alias_name}")
+            config = await self._app_configs.get_by_id(alias.app_config_id)
+            if config is None or config.project_id != command.project_id:
+                raise AppConfigNotFoundError(alias.app_config_id)
+        elif command.app_config_id is not None:
+            config = await self._app_configs.get_by_id(command.app_config_id)
+            if config is None or config.project_id != command.project_id:
+                raise AppConfigNotFoundError(command.app_config_id)
+
+        model_config = command.model_config
+        app_config_id = None
+        if config is not None:
+            model_config = config.to_snapshot()
+            app_config_id = config.id
+
         experiment = Experiment.create(
             command.project_id,
             command.name,
             command.dataset_id,
-            model_config=command.model_config,
+            model_config=model_config,
             version=command.version,
             baseline_experiment_id=command.baseline_experiment_id,
+            app_config_id=app_config_id,
         )
         return await self._experiments.add(experiment)
 

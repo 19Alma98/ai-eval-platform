@@ -63,7 +63,16 @@ Features:
 - baseline comparison
 - regression markers
 
-### 5. Release Check
+### 5. App configs (`/app-configs`)
+
+Project-scoped registry UI (requires `projectId` query param like other console routes):
+
+- **`/app-configs`** — list config families (latest version per name), create new versions, manage aliases
+- **`/app-configs/[name]`** — version history for one family, alias pins, JSON prompt/model/retrieval editors
+
+Experiment create flow can bind `app_config_id`, a specific version, or an alias instead of free-form `model_config`.
+
+### 6. Release Check
 
 A GitHub-like result:
 - PASS/FAIL

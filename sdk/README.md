@@ -61,6 +61,27 @@ Runnable example: [`examples/sdk_hello/`](../examples/sdk_hello/README.md) (Olla
 
 App code should use these helpers instead of importing OpenTelemetry directly.
 
+## Registry (app configs)
+
+Optional HTTP client for the platform registry API (`urllib` only — no extra install). Point `base_url` at the FastAPI host (for example `http://localhost:8000`):
+
+```python
+from aiobs import AppConfigClient
+
+registry = AppConfigClient("http://localhost:8000")
+created = registry.create_app_config(
+    project_id,
+    "rag-faq",
+    prompt={"system": "You are helpful."},
+    model={"model_id": "demo"},
+)
+latest = registry.list_app_configs(project_id, latest=True)
+registry.set_alias(project_id, "baseline", created["id"])
+aliases = registry.get_aliases(project_id)
+```
+
+Methods: `create_app_config`, `list_app_configs` (`name`, `latest`), `set_alias`, `get_aliases`. Non-2xx responses raise `RuntimeError` with the response body. Import `AppConfigClient` from `aiobs.registry` if you want registry helpers without pulling tracing into the import graph via `import aiobs`.
+
 ## Tier-1 compatibility matrix
 
 | Key | Target library | OpenInference package | Notes |

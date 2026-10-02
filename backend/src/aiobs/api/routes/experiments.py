@@ -38,6 +38,7 @@ from aiobs.api.schemas import (
     UpsertExperimentOutputsRequest,
     UpsertExperimentOutputsResponse,
 )
+from aiobs.application.app_configs import AppConfigNotFoundError
 from aiobs.application.compare import (
     CompareExperiments,
     ExperimentComparison,
@@ -95,6 +96,7 @@ def _experiment_response(experiment: Experiment) -> ExperimentResponse:
             "model_config": dict(experiment.model_config),
             "version": experiment.version,
             "baseline_experiment_id": experiment.baseline_experiment_id,
+            "app_config_id": experiment.app_config_id,
             "status": experiment.status,
             "created_at": experiment.created_at,
         }
@@ -247,9 +249,16 @@ async def create_experiment(
                 model_config=body.experiment_model_config,
                 version=body.version,
                 baseline_experiment_id=body.baseline_experiment_id,
+                app_config_id=body.app_config_id,
+                app_config_alias=body.app_config_alias,
             )
         )
-    except (ProjectNotFoundError, DatasetNotFoundError, ExperimentNotFoundError) as exc:
+    except (
+        ProjectNotFoundError,
+        DatasetNotFoundError,
+        ExperimentNotFoundError,
+        AppConfigNotFoundError,
+    ) as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc

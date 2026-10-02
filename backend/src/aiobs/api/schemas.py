@@ -183,6 +183,8 @@ class CreateExperimentRequest(BaseModel):
     experiment_model_config: dict[str, Any] = Field(default_factory=dict, alias="model_config")
     version: str | None = Field(default=None, max_length=200)
     baseline_experiment_id: uuid.UUID | None = None
+    app_config_id: uuid.UUID | None = None
+    app_config_alias: str | None = None
 
 
 class ExperimentResponse(BaseModel):
@@ -195,6 +197,7 @@ class ExperimentResponse(BaseModel):
     experiment_model_config: dict[str, Any] = Field(alias="model_config")
     version: str | None
     baseline_experiment_id: uuid.UUID | None
+    app_config_id: uuid.UUID | None = None
     status: str
     created_at: datetime
 
@@ -336,3 +339,41 @@ class ExperimentItemCompareResponse(BaseModel):
     baseline_experiment_id: uuid.UUID
     evaluator_id: uuid.UUID
     items: list[ItemComparisonRowResponse]
+
+
+class CreateAppConfigRequest(BaseModel):
+    name: str = Field(min_length=1, max_length=200)
+    description: str | None = Field(default=None, max_length=2000)
+    prompt: dict[str, Any] = Field(default_factory=dict)
+    model: dict[str, Any] = Field(default_factory=dict)
+    retrieval: dict[str, Any] = Field(default_factory=dict)
+
+
+class AppConfigResponse(BaseModel):
+    id: uuid.UUID
+    project_id: uuid.UUID
+    name: str
+    version: int
+    description: str | None
+    prompt: dict[str, Any]
+    model: dict[str, Any]
+    retrieval: dict[str, Any]
+    content_hash: str
+    created_at: datetime
+
+
+class SetAppConfigAliasRequest(BaseModel):
+    app_config_id: uuid.UUID
+
+
+class AppConfigSummaryResponse(BaseModel):
+    id: uuid.UUID
+    name: str
+    version: int
+
+
+class AppConfigAliasResponse(BaseModel):
+    name: str
+    app_config_id: uuid.UUID
+    updated_at: datetime
+    app_config: AppConfigSummaryResponse

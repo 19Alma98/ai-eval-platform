@@ -53,6 +53,28 @@ POST /datasets/{dataset_id}/items
 POST /datasets/{dataset_id}/items/from-trace
 ```
 
+## App configs (registry)
+
+```http
+POST /projects/{project_id}/app-configs
+GET /projects/{project_id}/app-configs
+GET /app-configs/{app_config_id}
+GET /projects/{project_id}/app-configs/by-name/{name}/versions
+PUT /projects/{project_id}/app-config-aliases/{alias}
+GET /projects/{project_id}/app-config-aliases
+DELETE /projects/{project_id}/app-config-aliases/{alias}
+```
+
+`POST` body: `name` (required), optional `description`, `prompt`, `model`, `retrieval` (objects, default `{}`). Response includes assigned `version` and `content_hash`.
+
+`GET .../app-configs` query params:
+- `name` — filter to one config family
+- `latest` — when `true`, return only the highest version per `name`
+
+`PUT .../app-config-aliases/{alias}` body: `{ "app_config_id": "uuid" }`. The config must belong to the same project. Response includes alias metadata and a summary of the pinned config (`id`, `name`, `version`).
+
+Errors: 404 project or app config not found; 400 validation (empty name, alias/config mismatch).
+
 ## Experiments
 
 ```http
@@ -66,6 +88,15 @@ GET /evaluation-runs/{run_id}
 PUT /experiments/{experiment_id}/outputs
 GET /experiments/{experiment_id}/outputs
 ```
+
+`POST /projects/{project_id}/experiments` body (in addition to `name`, `dataset_id`):
+
+- `model_config` — optional free-form object when not binding an app config
+- `app_config_id` — optional UUID; mutually exclusive with `app_config_alias`
+- `app_config_alias` — optional alias name resolved within the project
+- `version`, `baseline_experiment_id` — optional
+
+When `app_config_id` or `app_config_alias` is set, the server snapshots the referenced app config into `model_config` and sets response `app_config_id`. Supplying both app config fields returns 400; unknown alias returns 400; missing config returns 404.
 
 `POST /experiments/{experiment_id}/evaluate` runs the selected evaluators against the experiment dataset and persists evaluation runs/results. (`POST .../run` and `POST .../cancel` remain future; evaluate is the v0.1 execution path.)
 

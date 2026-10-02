@@ -122,6 +122,36 @@ Fields:
 - metadata
 - duration_ms
 
+## AppConfig
+
+Versioned registry entry for prompt, model, and retrieval settings used when running evaluations.
+
+Fields:
+- id
+- project_id
+- name
+- version (monotonic per `name` within a project)
+- description (optional)
+- prompt (JSON object)
+- model (JSON object)
+- retrieval (JSON object)
+- content_hash (SHA-256 of canonical prompt/model/retrieval)
+- created_at
+
+Creating a config with the same `name` allocates the next `version`. Listing supports `name` filter and `latest=true` (one row per config family).
+
+## AppConfigAlias
+
+Named pointer to a specific `AppConfig` version within a project (for example `baseline`, `candidate`).
+
+Fields:
+- project_id
+- name
+- app_config_id
+- updated_at
+
+Aliases are unique per `(project_id, name)`. `PUT` creates or moves an alias; `DELETE` removes it.
+
 ## Experiment
 
 A versioned evaluation execution.
@@ -131,11 +161,14 @@ Fields:
 - project_id
 - name
 - dataset_id
-- model_config
+- model_config (free-form JSON, or snapshot from an app config when bound)
+- app_config_id (optional; set when created from `app_config_id` or resolved `app_config_alias`)
 - version
 - baseline_experiment_id
 - status
 - created_at
+
+On create, supply at most one of `app_config_id` or `app_config_alias`. When either is set, the API copies the referenced config into `model_config` (including `app_config_id`, `content_hash`, prompt/model/retrieval) and ignores a client-supplied `model_config`. Without app config fields, `model_config` remains free-form.
 
 ## ReleasePolicy
 

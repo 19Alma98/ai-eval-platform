@@ -13,9 +13,11 @@ from aiobs._trace import (
     trace,
     trace_async,
 )
+from aiobs.registry import AppConfigClient
 
 __all__ = [
     "__version__",
+    "AppConfigClient",
     "current_trace_id",
     "flush",
     "init",

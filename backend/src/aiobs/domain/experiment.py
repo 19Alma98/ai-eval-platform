@@ -19,6 +19,7 @@ class Experiment:
     baseline_experiment_id: uuid.UUID | None
     status: str
     created_at: datetime
+    app_config_id: uuid.UUID | None = None
 
     @classmethod
     def create(
@@ -30,6 +31,7 @@ class Experiment:
         model_config: dict[str, Any] | None = None,
         version: str | None = None,
         baseline_experiment_id: uuid.UUID | None = None,
+        app_config_id: uuid.UUID | None = None,
         status: str = "created",
     ) -> Experiment:
         cleaned = name.strip()
@@ -47,4 +49,5 @@ class Experiment:
             baseline_experiment_id=baseline_experiment_id,
             status=status,
             created_at=datetime.now(UTC),
+            app_config_id=app_config_id,
         )

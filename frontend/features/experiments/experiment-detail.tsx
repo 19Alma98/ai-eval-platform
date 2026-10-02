@@ -39,7 +39,11 @@ import {
   useExperiment,
   useExperimentSummary,
 } from "./use-experiments";
-import { experimentModel, experimentVersion } from "./experiment-meta";
+import {
+  experimentAppConfigChip,
+  experimentModel,
+  experimentVersion,
+} from "./experiment-meta";
 
 function formatScore(value: number | null): string {
   if (value === null || value === undefined) return "—";
@@ -202,6 +206,13 @@ export function ExperimentDetailView({
   const recommendedKinds = taskInfo?.recommended_evaluator_kinds ?? [];
   const modelLabel = experimentModel(experiment);
   const versionLabel = experimentVersion(experiment);
+  const appConfigChip = experimentAppConfigChip(experiment);
+  const appConfigHref = appConfigChip
+    ? withProjectQuery(
+        `/app-configs/${encodeURIComponent(appConfigChip.familyName)}`,
+        projectId,
+      )
+    : null;
 
   return (
     <div className="flex flex-col gap-3">
@@ -239,6 +250,16 @@ export function ExperimentDetailView({
                 <Badge variant="secondary">{taskInfo.label}</Badge>
               ) : null}
             </span>
+            {appConfigChip && appConfigHref ? (
+              <span className="inline-flex items-center gap-2">
+                App config{" "}
+                <Link href={appConfigHref} className="text-primary hover:underline">
+                  <Badge variant="secondary" className="font-mono text-xs">
+                    {appConfigChip.label}
+                  </Badge>
+                </Link>
+              </span>
+            ) : null}
             {modelLabel ? <span>Model {modelLabel}</span> : null}
             {versionLabel ? <span>Version {versionLabel}</span> : null}
             <span>

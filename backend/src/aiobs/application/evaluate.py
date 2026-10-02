@@ -84,6 +84,7 @@ class EvaluateExperiment:
             baseline_experiment_id=experiment.baseline_experiment_id,
             status="running",
             created_at=experiment.created_at,
+            app_config_id=experiment.app_config_id,
         )
         experiment = await self._experiments.update(experiment)
 
@@ -116,6 +117,7 @@ class EvaluateExperiment:
             baseline_experiment_id=experiment.baseline_experiment_id,
             status=final_status,
             created_at=experiment.created_at,
+            app_config_id=experiment.app_config_id,
         )
         experiment = await self._experiments.update(experiment)
 
