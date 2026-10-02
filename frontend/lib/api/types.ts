@@ -138,6 +138,32 @@ export type ExperimentCompareResponse = {
   unchanged: MetricComparison[];
 };
 
+export type ItemSide = {
+  actual_output: unknown | null;
+  context: unknown | null;
+  score: number | null;
+  label: string | null;
+  explanation: string | null;
+  run_id: string | null;
+};
+
+export type ItemComparisonRow = {
+  dataset_item_id: string;
+  input: unknown;
+  expected_output: unknown | null;
+  baseline: ItemSide;
+  candidate: ItemSide;
+  delta: number | null;
+  status: "regression" | "improved" | "unchanged" | "unavailable";
+};
+
+export type ItemComparisonResponse = {
+  experiment_id: string;
+  baseline_experiment_id: string;
+  evaluator_id: string;
+  items: ItemComparisonRow[];
+};
+
 export type EvaluateResponse = {
   experiment: Experiment;
   runs: {

@@ -4,6 +4,7 @@ import type {
   Experiment,
   ExperimentCompareResponse,
   ExperimentSummary,
+  ItemComparisonResponse,
 } from "./types";
 
 export function listExperiments(projectId: string) {
@@ -37,6 +38,20 @@ export function summarizeExperiment(id: string) {
 export function compareExperiments(experimentId: string, baselineId: string) {
   return apiGet<ExperimentCompareResponse>(
     `/api/v1/experiments/${experimentId}/compare/${baselineId}`,
+  );
+}
+
+export function compareExperimentItems(
+  experimentId: string,
+  baselineId: string,
+  opts?: { evaluatorId?: string; regressionsOnly?: boolean },
+) {
+  const params = new URLSearchParams();
+  if (opts?.evaluatorId) params.set("evaluator_id", opts.evaluatorId);
+  if (opts?.regressionsOnly) params.set("regressions_only", "true");
+  const qs = params.toString();
+  return apiGet<ItemComparisonResponse>(
+    `/api/v1/experiments/${experimentId}/compare/${baselineId}/items${qs ? `?${qs}` : ""}`,
   );
 }
 

@@ -2,6 +2,7 @@
 
 import { useQuery } from "@tanstack/react-query";
 import {
+  compareExperimentItems,
   compareExperiments,
   getExperiment,
   listExperiments,
@@ -91,6 +92,49 @@ export function useExperimentCompare(
   const baseKey = baselineId ?? "";
   return useQuery({
     ...experimentCompareQueryOptions(expKey, baseKey),
+    enabled: Boolean(experimentId && baselineId),
+  });
+}
+
+export type ExperimentCompareItemsOpts = {
+  evaluatorId?: string;
+  regressionsOnly?: boolean;
+};
+
+export function experimentCompareItemsQueryKey(
+  experimentId: string,
+  baselineId: string,
+  opts?: ExperimentCompareItemsOpts,
+) {
+  return [
+    "experiment-compare-items",
+    experimentId,
+    baselineId,
+    opts?.evaluatorId ?? null,
+    opts?.regressionsOnly ?? false,
+  ] as const;
+}
+
+export function experimentCompareItemsQueryOptions(
+  experimentId: string,
+  baselineId: string,
+  opts?: ExperimentCompareItemsOpts,
+) {
+  return {
+    queryKey: experimentCompareItemsQueryKey(experimentId, baselineId, opts),
+    queryFn: () => compareExperimentItems(experimentId, baselineId, opts),
+  } as const;
+}
+
+export function useExperimentCompareItems(
+  experimentId: string | null,
+  baselineId: string | null,
+  opts?: ExperimentCompareItemsOpts,
+) {
+  const expKey = experimentId ?? "";
+  const baseKey = baselineId ?? "";
+  return useQuery({
+    ...experimentCompareItemsQueryOptions(expKey, baseKey, opts),
     enabled: Boolean(experimentId && baselineId),
   });
 }
