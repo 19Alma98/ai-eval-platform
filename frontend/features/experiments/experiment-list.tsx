@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useCallback, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { DataTable, type DataTableColumn } from "@/components/data-table";
@@ -12,7 +13,10 @@ import { StatusBadge } from "@/components/status-badge";
 import { ApiError } from "@/lib/api/client";
 import type { Experiment } from "@/lib/api/types";
 import { truncateId } from "@/lib/format";
+import { withProjectQuery } from "@/lib/project-href";
 import { useProjectId } from "@/lib/project-store";
+import { useDatasets } from "@/features/datasets/use-datasets";
+import { CreateExperimentDialog } from "./create-experiment-dialog";
 import {
   experimentsQueryOptions,
   useExperiments,
@@ -22,16 +26,29 @@ export function ExperimentList() {
   const router = useRouter();
   const { projectId } = useProjectId();
   const query = useExperiments(projectId);
+  const datasetsQuery = useDatasets(projectId);
   const queryOpts = projectId ? experimentsQueryOptions(projectId) : null;
   const [selectedIndex, setSelectedIndex] = useState(0);
+  const [createOpen, setCreateOpen] = useState(false);
 
   const rows = query.data ?? [];
+
+  const datasetNameById = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const d of datasetsQuery.data ?? []) {
+      map.set(d.id, d.name);
+    }
+    return map;
+  }, [datasetsQuery.data]);
 
   const onRowActivate = useCallback(
     (experiment: Experiment) => {
       if (!projectId) return;
       router.push(
-        `/experiments/${encodeURIComponent(experiment.id)}?project=${encodeURIComponent(projectId)}`,
+        withProjectQuery(
+          `/experiments/${encodeURIComponent(experiment.id)}`,
+          projectId,
+        ),
       );
     },
     [projectId, router],
@@ -55,12 +72,31 @@ export function ExperimentList() {
       {
         id: "dataset_id",
         header: "Dataset",
-        headerClassName: "w-[140px]",
-        cell: (row) => (
-          <span className="font-mono text-xs text-muted-foreground">
-            {truncateId(row.dataset_id, 10)}
-          </span>
-        ),
+        headerClassName: "w-[160px]",
+        cell: (row) => {
+          if (!projectId) {
+            return (
+              <span className="font-mono text-xs text-muted-foreground">
+                {truncateId(row.dataset_id, 10)}
+              </span>
+            );
+          }
+          const label =
+            datasetNameById.get(row.dataset_id) ??
+            truncateId(row.dataset_id, 10);
+          return (
+            <Link
+              href={withProjectQuery(
+                `/datasets/${encodeURIComponent(row.dataset_id)}`,
+                projectId,
+              )}
+              className="text-sm text-primary hover:underline"
+              onClick={(e) => e.stopPropagation()}
+            >
+              {label}
+            </Link>
+          );
+        },
       },
       {
         id: "application_version",
@@ -78,7 +114,7 @@ export function ExperimentList() {
         cell: (row) => <RelativeTime date={row.created_at} />,
       },
     ],
-    [],
+    [datasetNameById, projectId],
   );
 
   if (query.isLoading) {
@@ -105,8 +141,14 @@ export function ExperimentList() {
   return (
     <div className="flex flex-col gap-3">
       <div className="sticky top-0 z-20 -mx-1 flex flex-wrap items-center gap-3 border-b border-border bg-background px-1 pb-3">
-        <h1 className="text-lg font-semibold text-foreground">Experiments</h1>
         <div className="flex-1" />
+        {projectId && rows.length > 0 ? (
+          <CreateExperimentDialog
+            projectId={projectId}
+            open={createOpen}
+            onOpenChange={setCreateOpen}
+          />
+        ) : null}
         {queryOpts ? (
           <RefreshControl
             queryKey={queryOpts.queryKey}
@@ -118,7 +160,16 @@ export function ExperimentList() {
       {rows.length === 0 ? (
         <EmptyState
           title="No experiments yet"
-          description="Create experiments via the API to run evaluators against datasets."
+          description="Create an experiment to run evaluators against a dataset."
+          action={
+            projectId ? (
+              <CreateExperimentDialog
+                projectId={projectId}
+                open={createOpen}
+                onOpenChange={setCreateOpen}
+              />
+            ) : null
+          }
         />
       ) : (
         <DataTable

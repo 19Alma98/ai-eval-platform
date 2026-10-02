@@ -10,6 +10,22 @@ export function listExperiments(projectId: string) {
   return apiGet<Experiment[]>(`/api/v1/projects/${projectId}/experiments`);
 }
 
+export function createExperiment(
+  projectId: string,
+  body: {
+    name: string;
+    dataset_id: string;
+    model_config?: Record<string, unknown>;
+    application_version?: string | null;
+    baseline_experiment_id?: string | null;
+  },
+) {
+  return apiPost<Experiment>(
+    `/api/v1/projects/${projectId}/experiments`,
+    body,
+  );
+}
+
 export function getExperiment(id: string) {
   return apiGet<Experiment>(`/api/v1/experiments/${id}`);
 }
