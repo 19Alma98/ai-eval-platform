@@ -159,6 +159,38 @@ async def test_create_app_config_versions_and_aliases(client: AsyncClient) -> No
     v2_id = v2_body["id"]
     assert v2_id != v1_id
 
+    listed = await client.get(f"/api/v1/projects/{project_id}/app-configs")
+    assert listed.status_code == 200, listed.text
+    all_configs = listed.json()
+    assert len(all_configs) == 2
+    assert {c["id"] for c in all_configs} == {v1_id, v2_id}
+
+    by_name = await client.get(
+        f"/api/v1/projects/{project_id}/app-configs",
+        params={"name": "rag-faq"},
+    )
+    assert by_name.status_code == 200, by_name.text
+    assert len(by_name.json()) == 2
+
+    latest = await client.get(
+        f"/api/v1/projects/{project_id}/app-configs",
+        params={"latest": "true"},
+    )
+    assert latest.status_code == 200, latest.text
+    latest_list = latest.json()
+    assert len(latest_list) == 1
+    assert latest_list[0]["version"] == 2
+    assert latest_list[0]["id"] == v2_id
+
+    versions = await client.get(
+        f"/api/v1/projects/{project_id}/app-configs/by-name/rag-faq/versions",
+    )
+    assert versions.status_code == 200, versions.text
+    version_list = versions.json()
+    assert [c["version"] for c in version_list] == [1, 2]
+    assert version_list[0]["id"] == v1_id
+    assert version_list[1]["id"] == v2_id
+
     put_alias = await client.put(
         f"/api/v1/projects/{project_id}/app-config-aliases/baseline",
         json={"app_config_id": v1_id},
