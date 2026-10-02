@@ -154,6 +154,57 @@ class DatasetItemModel(Base):
     dataset: Mapped[DatasetModel] = relationship("DatasetModel", back_populates="items")
 
 
+class AppConfigModel(Base):
+    __tablename__ = "app_configs"
+    __table_args__ = (
+        UniqueConstraint(
+            "project_id", "name", "version", name="uq_app_configs_project_name_version"
+        ),
+        Index("ix_app_configs_project_name", "project_id", "name"),
+        Index("ix_app_configs_project_created_at", "project_id", "created_at"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True)
+    project_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey("projects.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    name: Mapped[str] = mapped_column(String(200), nullable=False)
+    version: Mapped[int] = mapped_column(Integer, nullable=False)
+    description: Mapped[str | None] = mapped_column(String(2000), nullable=True)
+    prompt: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False, server_default="{}")
+    model: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False, server_default="{}")
+    retrieval: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False, server_default="{}")
+    content_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+    )
+
+
+class AppConfigAliasModel(Base):
+    __tablename__ = "app_config_aliases"
+
+    project_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey("projects.id", ondelete="CASCADE"),
+        primary_key=True,
+    )
+    name: Mapped[str] = mapped_column(String(200), primary_key=True)
+    app_config_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey("app_configs.id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+    )
+
+
 class EvaluatorModel(Base):
     __tablename__ = "evaluators"
     __table_args__ = (
@@ -198,6 +249,11 @@ class ExperimentModel(Base):
     baseline_experiment_id: Mapped[uuid.UUID | None] = mapped_column(
         Uuid(as_uuid=True),
         ForeignKey("experiments.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    app_config_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey("app_configs.id", ondelete="SET NULL"),
         nullable=True,
     )
     status: Mapped[str] = mapped_column(String(32), nullable=False, server_default="created")

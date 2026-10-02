@@ -8,6 +8,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from aiobs.domain.app_config import AppConfig, AppConfigAlias
 from aiobs.domain.dataset import Dataset, DatasetItem
 from aiobs.domain.evaluation import EvaluationResultRecord, EvaluationRun
 from aiobs.domain.evaluator import Evaluator
@@ -16,6 +17,8 @@ from aiobs.domain.experiment_output import ExperimentItemOutput
 from aiobs.domain.project import Project
 from aiobs.domain.trace import Span, Trace
 from aiobs.infrastructure.models import (
+    AppConfigAliasModel,
+    AppConfigModel,
     DatasetItemModel,
     DatasetModel,
     EvaluationResultModel,
@@ -331,6 +334,30 @@ def _evaluator_to_domain(row: EvaluatorModel) -> Evaluator:
     )
 
 
+def _app_config_to_domain(row: AppConfigModel) -> AppConfig:
+    return AppConfig(
+        id=row.id,
+        project_id=row.project_id,
+        name=row.name,
+        version=row.version,
+        description=row.description,
+        prompt=dict(row.prompt or {}),
+        model=dict(row.model or {}),
+        retrieval=dict(row.retrieval or {}),
+        content_hash=row.content_hash,
+        created_at=row.created_at,
+    )
+
+
+def _app_config_alias_to_domain(row: AppConfigAliasModel) -> AppConfigAlias:
+    return AppConfigAlias(
+        project_id=row.project_id,
+        name=row.name,
+        app_config_id=row.app_config_id,
+        updated_at=row.updated_at,
+    )
+
+
 def _experiment_to_domain(row: ExperimentModel) -> Experiment:
     return Experiment(
         id=row.id,
@@ -342,6 +369,7 @@ def _experiment_to_domain(row: ExperimentModel) -> Experiment:
         baseline_experiment_id=row.baseline_experiment_id,
         status=row.status,
         created_at=row.created_at,
+        app_config_id=row.app_config_id,
     )
 
 
@@ -461,6 +489,121 @@ class SqlAlchemyDatasetRepository:
         return _item_to_domain(row) if row is not None else None
 
 
+class SqlAlchemyAppConfigRepository:
+    def __init__(self, session: AsyncSession) -> None:
+        self._session = session
+
+    async def add(self, config: AppConfig) -> AppConfig:
+        row = AppConfigModel(
+            id=config.id,
+            project_id=config.project_id,
+            name=config.name,
+            version=config.version,
+            description=config.description,
+            prompt=dict(config.prompt),
+            model=dict(config.model),
+            retrieval=dict(config.retrieval),
+            content_hash=config.content_hash,
+            created_at=config.created_at,
+        )
+        self._session.add(row)
+        try:
+            await self._session.commit()
+        except IntegrityError:
+            await self._session.rollback()
+            raise
+        await self._session.refresh(row)
+        return _app_config_to_domain(row)
+
+    async def get_by_id(self, app_config_id: uuid.UUID) -> AppConfig | None:
+        row = await self._session.get(AppConfigModel, app_config_id)
+        return _app_config_to_domain(row) if row is not None else None
+
+    async def list_by_project(
+        self,
+        project_id: uuid.UUID,
+        *,
+        name: str | None = None,
+        latest_only: bool = False,
+    ) -> list[AppConfig]:
+        stmt = select(AppConfigModel).where(AppConfigModel.project_id == project_id)
+        if name is not None:
+            stmt = stmt.where(AppConfigModel.name == name)
+        if latest_only:
+            stmt = stmt.distinct(AppConfigModel.name).order_by(
+                AppConfigModel.name,
+                AppConfigModel.version.desc(),
+            )
+        else:
+            stmt = stmt.order_by(AppConfigModel.created_at.desc())
+        result = await self._session.execute(stmt)
+        return [_app_config_to_domain(row) for row in result.scalars().all()]
+
+    async def list_versions(self, project_id: uuid.UUID, name: str) -> list[AppConfig]:
+        result = await self._session.execute(
+            select(AppConfigModel)
+            .where(
+                AppConfigModel.project_id == project_id,
+                AppConfigModel.name == name,
+            )
+            .order_by(AppConfigModel.version.asc())
+        )
+        return [_app_config_to_domain(row) for row in result.scalars().all()]
+
+    async def next_version(self, project_id: uuid.UUID, name: str) -> int:
+        result = await self._session.execute(
+            select(func.coalesce(func.max(AppConfigModel.version), 0) + 1).where(
+                AppConfigModel.project_id == project_id,
+                AppConfigModel.name == name,
+            )
+        )
+        return int(result.scalar_one())
+
+    async def set_alias(self, alias: AppConfigAlias) -> AppConfigAlias:
+        row = await self._session.get(
+            AppConfigAliasModel,
+            (alias.project_id, alias.name),
+        )
+        if row is None:
+            row = AppConfigAliasModel(
+                project_id=alias.project_id,
+                name=alias.name,
+                app_config_id=alias.app_config_id,
+                updated_at=alias.updated_at,
+            )
+            self._session.add(row)
+        else:
+            row.app_config_id = alias.app_config_id
+            row.updated_at = alias.updated_at
+        try:
+            await self._session.commit()
+        except IntegrityError:
+            await self._session.rollback()
+            raise
+        await self._session.refresh(row)
+        return _app_config_alias_to_domain(row)
+
+    async def get_alias(self, project_id: uuid.UUID, name: str) -> AppConfigAlias | None:
+        row = await self._session.get(AppConfigAliasModel, (project_id, name))
+        return _app_config_alias_to_domain(row) if row is not None else None
+
+    async def list_aliases(self, project_id: uuid.UUID) -> list[AppConfigAlias]:
+        result = await self._session.execute(
+            select(AppConfigAliasModel)
+            .where(AppConfigAliasModel.project_id == project_id)
+            .order_by(AppConfigAliasModel.name.asc())
+        )
+        return [_app_config_alias_to_domain(row) for row in result.scalars().all()]
+
+    async def delete_alias(self, project_id: uuid.UUID, name: str) -> bool:
+        row = await self._session.get(AppConfigAliasModel, (project_id, name))
+        if row is None:
+            return False
+        await self._session.delete(row)
+        await self._session.commit()
+        return True
+
+
 class SqlAlchemyEvaluatorRepository:
     def __init__(self, session: AsyncSession) -> None:
         self._session = session
@@ -515,6 +658,7 @@ class SqlAlchemyExperimentRepository:
             model_config_json=dict(experiment.model_config),
             version=experiment.version,
             baseline_experiment_id=experiment.baseline_experiment_id,
+            app_config_id=experiment.app_config_id,
             status=experiment.status,
             created_at=experiment.created_at,
         )
@@ -544,6 +688,7 @@ class SqlAlchemyExperimentRepository:
         row.model_config_json = dict(experiment.model_config)
         row.version = experiment.version
         row.baseline_experiment_id = experiment.baseline_experiment_id
+        row.app_config_id = experiment.app_config_id
         row.status = experiment.status
         await self._session.commit()
         await self._session.refresh(row)
