@@ -8,6 +8,7 @@ from aiobs.domain.dataset import Dataset, DatasetItem
 from aiobs.domain.evaluation import EvaluationResultRecord, EvaluationRun
 from aiobs.domain.evaluator import Evaluator
 from aiobs.domain.experiment import Experiment
+from aiobs.domain.experiment_output import ExperimentItemOutput
 from aiobs.domain.project import Project
 from aiobs.domain.trace import Trace
 
@@ -95,3 +96,19 @@ class EvaluationRunRepository(Protocol):
     async def add_results(
         self, results: list[EvaluationResultRecord]
     ) -> list[EvaluationResultRecord]: ...
+
+
+class ExperimentItemOutputRepository(Protocol):
+    async def upsert(self, output: ExperimentItemOutput) -> ExperimentItemOutput: ...
+
+    async def upsert_many(
+        self, outputs: list[ExperimentItemOutput]
+    ) -> list[ExperimentItemOutput]: ...
+
+    async def list_by_experiment(
+        self, experiment_id: uuid.UUID
+    ) -> list[ExperimentItemOutput]: ...
+
+    async def get(
+        self, experiment_id: uuid.UUID, dataset_item_id: uuid.UUID
+    ) -> ExperimentItemOutput | None: ...
