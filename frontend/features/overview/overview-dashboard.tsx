@@ -9,12 +9,14 @@ import { DataTable, type DataTableColumn } from "@/components/data-table";
 import { EmptyState } from "@/components/empty-state";
 import { ErrorState } from "@/components/error-state";
 import { LoadingBlock } from "@/components/loading-block";
+import { PageIntro } from "@/components/page-intro";
 import { RefreshControl } from "@/components/refresh-control";
 import { RelativeTime } from "@/components/relative-time";
 import { StatusBadge } from "@/components/status-badge";
 import { ApiError } from "@/lib/api/client";
 import type { Experiment, TraceSummary } from "@/lib/api/types";
 import { formatDurationMs } from "@/lib/format";
+import { withProjectQuery } from "@/lib/project-href";
 import { useProjectId } from "@/lib/project-store";
 import { useTimeRange } from "@/lib/time-range-context";
 import { cn } from "@/lib/cn";
@@ -24,10 +26,16 @@ import {
   useExperiments,
 } from "@/features/experiments/use-experiments";
 import {
+  datasetsQueryKey,
+  datasetsQueryOptions,
+  useDatasets,
+} from "@/features/datasets/use-datasets";
+import {
   tracesQueryKey,
   tracesQueryOptions,
   useTraces,
 } from "@/features/traces/use-traces";
+import { LoopProgress } from "@/features/overview/loop-progress";
 
 function traceDurationMs(trace: TraceSummary): number | null {
   if (!trace.end_time) return null;
@@ -149,14 +157,17 @@ export function OverviewDashboard() {
   const [experimentSelectedIndex, setExperimentSelectedIndex] = useState(0);
 
   const tracesQuery = useTraces(projectId, traceFilters);
+  const datasetsQuery = useDatasets(projectId);
   const experimentsQuery = useExperiments(projectId);
 
   const traceOpts = projectId
     ? tracesQueryOptions(projectId, traceFilters)
     : null;
+  const datasetsOpts = projectId ? datasetsQueryOptions(projectId) : null;
   const expOpts = projectId ? experimentsQueryOptions(projectId) : null;
 
   const traces = tracesQuery.data?.items ?? [];
+  const datasets = datasetsQuery.data ?? [];
   const experiments = experimentsQuery.data ?? [];
 
   const projectQuery = projectId ? `?project=${encodeURIComponent(projectId)}` : "";
@@ -217,8 +228,82 @@ export function OverviewDashboard() {
     [experiments],
   );
 
+  const hasCompletedExperiment = useMemo(
+    () => experiments.some((e) => e.status === "completed"),
+    [experiments],
+  );
+
+  const latestExperiment = useMemo(() => {
+    if (experiments.length === 0) return null;
+    return [...experiments].sort(
+      (a, b) =>
+        new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
+    )[0];
+  }, [experiments]);
+
+  const loopCards = useMemo(() => {
+    const traceCount = traces.length;
+    const datasetCount = datasets.length;
+    const experimentCount = experiments.length;
+
+    return [
+      {
+        title: "Traces",
+        measure: "Telemetry: latency, errors, I/O — not quality scores.",
+        status: traceCount === 0 ? ("empty" as const) : ("ready" as const),
+        summary:
+          traceCount === 0
+            ? "No traces in this time window. Send OTLP or run the demo."
+            : `${traceCount} trace${traceCount === 1 ? "" : "s"} in time window`,
+        href: "/traces",
+        cta: "Open traces",
+      },
+      {
+        title: "Datasets",
+        measure: "Reusable test cases (input + expected/actual).",
+        status: datasetCount === 0 ? ("empty" as const) : ("ready" as const),
+        summary:
+          datasetCount === 0
+            ? "No datasets yet."
+            : `${datasetCount} dataset${datasetCount === 1 ? "" : "s"}`,
+        href: "/datasets",
+        cta: datasetCount === 0 ? "Create dataset" : "Open datasets",
+      },
+      {
+        title: "Experiments",
+        measure: "Evaluation runs — scores per evaluator.",
+        status: experimentCount === 0 ? ("empty" as const) : ("ready" as const),
+        summary:
+          experimentCount === 0
+            ? "No experiments yet."
+            : latestExperiment
+              ? `${experimentCount} experiment${experimentCount === 1 ? "" : "s"}. Latest: ${latestExperiment.status}`
+              : `${experimentCount} experiment${experimentCount === 1 ? "" : "s"}`,
+        href: "/experiments",
+        cta: experimentCount === 0 ? "Create experiment" : "Open experiments",
+      },
+      {
+        title: "Release",
+        measure: "PASS/FAIL against YAML thresholds.",
+        status: hasCompletedExperiment ? ("ready" as const) : ("empty" as const),
+        summary: hasCompletedExperiment
+          ? "At least one completed experiment — ready to run release check."
+          : "Complete an experiment before running release check.",
+        href: "/release",
+        cta: "Open release",
+      },
+    ];
+  }, [
+    traces.length,
+    datasets.length,
+    experiments.length,
+    latestExperiment,
+    hasCompletedExperiment,
+  ]);
+
   const dataUpdatedAt = Math.max(
     tracesQuery.dataUpdatedAt ?? 0,
+    datasetsQuery.dataUpdatedAt ?? 0,
     experimentsQuery.dataUpdatedAt ?? 0,
   );
 
@@ -227,6 +312,9 @@ export function OverviewDashboard() {
     await Promise.all([
       queryClient.refetchQueries({
         queryKey: tracesQueryKey(projectId, traceFilters),
+      }),
+      queryClient.refetchQueries({
+        queryKey: datasetsQueryKey(projectId),
       }),
       queryClient.refetchQueries({
         queryKey: experimentsQueryKey(projectId),
@@ -314,12 +402,21 @@ export function OverviewDashboard() {
     [projectId, projectQuery, router],
   );
 
-  if (tracesQuery.isLoading || experimentsQuery.isLoading) {
+  if (
+    tracesQuery.isLoading ||
+    datasetsQuery.isLoading ||
+    experimentsQuery.isLoading
+  ) {
     return <LoadingBlock className="min-h-[320px]" />;
   }
 
-  if (tracesQuery.isError || experimentsQuery.isError) {
-    const err = tracesQuery.error ?? experimentsQuery.error;
+  if (
+    tracesQuery.isError ||
+    datasetsQuery.isError ||
+    experimentsQuery.isError
+  ) {
+    const err =
+      tracesQuery.error ?? datasetsQuery.error ?? experimentsQuery.error;
     const message =
       err instanceof ApiError
         ? `${err.status}: ${err.message}`
@@ -332,6 +429,7 @@ export function OverviewDashboard() {
         message={message}
         onRetry={() => {
           void tracesQuery.refetch();
+          void datasetsQuery.refetch();
           void experimentsQuery.refetch();
         }}
       />
@@ -348,12 +446,14 @@ export function OverviewDashboard() {
       ? formatDurationMs(metrics.latencyP95)
       : "—";
 
+  const errorTracesHref = projectId
+    ? withProjectQuery("/traces?status=error", projectId)
+    : "/traces?status=error";
+
   return (
     <div className="flex flex-col gap-6">
-      <div className="sticky top-0 z-20 -mx-1 flex flex-wrap items-center gap-3 border-b border-border bg-background px-1 pb-3">
-        <h1 className="text-lg font-semibold text-foreground">Overview</h1>
-        <div className="flex-1" />
-        {traceOpts && expOpts ? (
+      <div className="sticky top-0 z-20 -mx-1 flex flex-wrap items-center justify-end gap-3 border-b border-border bg-background px-1 pb-3">
+        {traceOpts && datasetsOpts && expOpts ? (
           <RefreshControl
             dataUpdatedAt={dataUpdatedAt}
             onRefresh={onRefresh}
@@ -361,59 +461,59 @@ export function OverviewDashboard() {
         ) : null}
       </div>
 
-      <div
-        className="grid gap-2 sm:grid-cols-2 lg:grid-cols-5"
-        style={{ gap: "var(--grid-gap, 8px)" }}
-      >
-        <KpiStrip
-          label="Quality"
-          value="—"
-          subLink={{
-            label: "View experiments",
-            href: `/experiments${projectQuery}`,
-          }}
-        />
-        <KpiStrip
-          label="Latency (p95)"
-          value={latencyDisplay}
-          href={`/traces${projectQuery}`}
-          sparkline={
-            <MiniSparkline
-              data={metrics.latencySpark}
-              colorVar="--chart-1"
-              ariaLabel="Latency trend from recent traces"
-            />
-          }
-        />
-        <KpiStrip
-          label="Cost"
-          value="—"
-          subLink={{
-            label: "View experiments",
-            href: `/experiments${projectQuery}`,
-          }}
-        />
-        <KpiStrip
-          label="Error rate"
-          value={errorRateDisplay}
-          href={`/traces${projectQuery}${projectQuery ? "&" : "?"}status=error`}
-          sparkline={
-            <MiniSparkline
-              data={metrics.errorSpark}
-              colorVar="--chart-3"
-              ariaLabel="Error rate trend from recent traces"
-            />
-          }
-        />
-        <KpiStrip
-          label="Recent regressions"
-          value="—"
-          subLink={{
-            label: "Open release check",
-            href: `/release${projectQuery}`,
-          }}
-        />
-      </div>
+      <PageIntro
+        title="Overview"
+        glossary="Where you are in the quality loop — what you already have vs what is missing."
+      />
+
+      {projectId ? <LoopProgress projectId={projectId} cards={loopCards} /> : null}
+
+      {!hasCompletedExperiment ? (
+        <p className="text-sm text-muted-foreground">
+          Quality scores appear after you evaluate an experiment.{" "}
+          <Link
+            href={withProjectQuery("/experiments", projectId)}
+            className="text-primary hover:underline"
+          >
+            Open experiments
+          </Link>
+        </p>
+      ) : null}
+
+      <section className="flex flex-col gap-2">
+        <h2 className="text-sm font-semibold text-foreground">
+          From traces (telemetry)
+        </h2>
+        <div
+          className="grid gap-2 sm:grid-cols-2"
+          style={{ gap: "var(--grid-gap, 8px)" }}
+        >
+          <KpiStrip
+            label="Error rate"
+            value={errorRateDisplay}
+            href={errorTracesHref}
+            sparkline={
+              <MiniSparkline
+                data={metrics.errorSpark}
+                colorVar="--chart-3"
+                ariaLabel="Error rate trend from recent traces"
+              />
+            }
+          />
+          <KpiStrip
+            label="Latency (p95)"
+            value={latencyDisplay}
+            href={withProjectQuery("/traces", projectId)}
+            sparkline={
+              <MiniSparkline
+                data={metrics.latencySpark}
+                colorVar="--chart-1"
+                ariaLabel="Latency trend from recent traces"
+              />
+            }
+          />
+        </div>
+      </section>
 
       {metrics.total === 0 ? (
         <EmptyState
