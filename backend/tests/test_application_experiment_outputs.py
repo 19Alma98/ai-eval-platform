@@ -1,0 +1,218 @@
+from __future__ import annotations
+
+import uuid
+from dataclasses import dataclass, field
+
+import pytest
+
+from aiobs.application.experiment_outputs import (
+    ExperimentItemNotInDatasetError,
+    ListExperimentOutputs,
+    UpsertExperimentOutputs,
+    UpsertOutputItem,
+    merge_dataset_item,
+    resolve_item_fields,
+)
+from aiobs.application.experiments import ExperimentNotFoundError
+from aiobs.domain.dataset import DatasetItem
+from aiobs.domain.experiment import Experiment
+from aiobs.domain.experiment_output import ExperimentItemOutput
+
+
+def test_resolve_prefers_experiment_then_legacy() -> None:
+    item = DatasetItem.create(
+        uuid.uuid4(), input="q", actual_output="legacy", context={"c": 1}
+    )
+    out = ExperimentItemOutput.create(
+        uuid.uuid4(), item.id, actual_output="new", context=None
+    )
+    actual, ctx = resolve_item_fields(item, out)
+    assert actual == "new"
+    assert ctx == {"c": 1}
+
+
+def test_resolve_no_output_row_uses_legacy() -> None:
+    item = DatasetItem.create(uuid.uuid4(), input="q", actual_output="legacy")
+    assert resolve_item_fields(item, None) == ("legacy", None)
+
+
+def test_merge_dataset_item_keeps_id_and_resolves_fields() -> None:
+    dataset_id = uuid.uuid4()
+    item = DatasetItem.create(
+        dataset_id, input="q", actual_output="legacy", context={"k": 1}
+    )
+    out = ExperimentItemOutput.create(
+        uuid.uuid4(), item.id, actual_output="exp", context=None
+    )
+    merged = merge_dataset_item(item, out)
+    assert merged.id == item.id
+    assert merged.dataset_id == dataset_id
+    assert merged.input == "q"
+    assert merged.actual_output == "exp"
+    assert merged.context == {"k": 1}
+
+
+@dataclass
+class FakeExperimentRepository:
+    experiments: dict[uuid.UUID, Experiment] = field(default_factory=dict)
+
+    async def get_by_id(self, experiment_id: uuid.UUID) -> Experiment | None:
+        return self.experiments.get(experiment_id)
+
+
+@dataclass
+class FakeDatasetRepository:
+    items: dict[uuid.UUID, DatasetItem] = field(default_factory=dict)
+
+    async def get_item(self, item_id: uuid.UUID) -> DatasetItem | None:
+        return self.items.get(item_id)
+
+
+@dataclass
+class FakeExperimentItemOutputRepository:
+    outputs: dict[tuple[uuid.UUID, uuid.UUID], ExperimentItemOutput] = field(
+        default_factory=dict
+    )
+
+    async def get(
+        self, experiment_id: uuid.UUID, dataset_item_id: uuid.UUID
+    ) -> ExperimentItemOutput | None:
+        return self.outputs.get((experiment_id, dataset_item_id))
+
+    async def upsert_many(
+        self, outputs: list[ExperimentItemOutput]
+    ) -> list[ExperimentItemOutput]:
+        for output in outputs:
+            self.outputs[(output.experiment_id, output.dataset_item_id)] = output
+        return outputs
+
+    async def list_by_experiment(
+        self, experiment_id: uuid.UUID
+    ) -> list[ExperimentItemOutput]:
+        return sorted(
+            (o for (eid, _), o in self.outputs.items() if eid == experiment_id),
+            key=lambda o: o.dataset_item_id,
+        )
+
+
+@pytest.mark.asyncio
+async def test_upsert_rejects_item_from_another_dataset() -> None:
+    experiment_dataset = uuid.uuid4()
+    other_dataset = uuid.uuid4()
+    experiment = Experiment.create(
+        uuid.uuid4(), "exp", experiment_dataset, model_config={}
+    )
+    foreign_item = DatasetItem.create(other_dataset, input="x")
+    experiments = FakeExperimentRepository({experiment.id: experiment})
+    datasets = FakeDatasetRepository({foreign_item.id: foreign_item})
+    outputs = FakeExperimentItemOutputRepository()
+    use_case = UpsertExperimentOutputs(experiments, datasets, outputs)
+
+    with pytest.raises(ExperimentItemNotInDatasetError):
+        await use_case.execute(
+            experiment.id,
+            [UpsertOutputItem(dataset_item_id=foreign_item.id, actual_output="y")],
+        )
+
+
+@pytest.mark.asyncio
+async def test_upsert_missing_experiment_raises() -> None:
+    missing_id = uuid.uuid4()
+    use_case = UpsertExperimentOutputs(
+        FakeExperimentRepository(),
+        FakeDatasetRepository(),
+        FakeExperimentItemOutputRepository(),
+    )
+    with pytest.raises(ExperimentNotFoundError):
+        await use_case.execute(
+            missing_id,
+            [UpsertOutputItem(dataset_item_id=uuid.uuid4(), actual_output="x")],
+        )
+
+
+@pytest.mark.asyncio
+async def test_upsert_creates_and_patches_outputs() -> None:
+    dataset_id = uuid.uuid4()
+    experiment = Experiment.create(uuid.uuid4(), "exp", dataset_id, model_config={})
+    item = DatasetItem.create(dataset_id, input="q")
+    experiments = FakeExperimentRepository({experiment.id: experiment})
+    datasets = FakeDatasetRepository({item.id: item})
+    output_repo = FakeExperimentItemOutputRepository()
+    use_case = UpsertExperimentOutputs(experiments, datasets, output_repo)
+
+    created = await use_case.execute(
+        experiment.id,
+        [
+            UpsertOutputItem(
+                dataset_item_id=item.id,
+                actual_output="a1",
+                context={"c": 1},
+                metadata={"m": 1},
+            )
+        ],
+    )
+    assert len(created) == 1
+    assert created[0].actual_output == "a1"
+    assert created[0].context == {"c": 1}
+    assert created[0].metadata == {"m": 1}
+
+    updated = await use_case.execute(
+        experiment.id,
+        [UpsertOutputItem(dataset_item_id=item.id, actual_output="a2")],
+    )
+    assert len(updated) == 1
+    assert updated[0].id == created[0].id
+    assert updated[0].actual_output == "a2"
+    assert updated[0].context == {"c": 1}
+    assert updated[0].metadata == {"m": 1}
+
+
+@pytest.mark.asyncio
+async def test_upsert_unset_preserves_existing_fields() -> None:
+    dataset_id = uuid.uuid4()
+    experiment = Experiment.create(uuid.uuid4(), "exp", dataset_id, model_config={})
+    item = DatasetItem.create(dataset_id, input="q")
+    experiments = FakeExperimentRepository({experiment.id: experiment})
+    datasets = FakeDatasetRepository({item.id: item})
+    output_repo = FakeExperimentItemOutputRepository()
+    use_case = UpsertExperimentOutputs(experiments, datasets, output_repo)
+    await use_case.execute(
+        experiment.id,
+        [UpsertOutputItem(dataset_item_id=item.id, actual_output="keep", context={"x": 1})],
+    )
+    patched = await use_case.execute(
+        experiment.id,
+        [UpsertOutputItem(dataset_item_id=item.id, context=None)],
+    )
+    assert patched[0].actual_output == "keep"
+    assert patched[0].context is None
+
+
+@pytest.mark.asyncio
+async def test_list_outputs_requires_experiment() -> None:
+    missing_id = uuid.uuid4()
+    use_case = ListExperimentOutputs(
+        FakeExperimentRepository(),
+        FakeExperimentItemOutputRepository(),
+    )
+    with pytest.raises(ExperimentNotFoundError):
+        await use_case.execute(missing_id)
+
+
+@pytest.mark.asyncio
+async def test_list_outputs_returns_repository_rows() -> None:
+    dataset_id = uuid.uuid4()
+    experiment = Experiment.create(uuid.uuid4(), "exp", dataset_id, model_config={})
+    item = DatasetItem.create(dataset_id, input="q")
+    out = ExperimentItemOutput.create(
+        experiment.id, item.id, actual_output="v", context=None
+    )
+    output_repo = FakeExperimentItemOutputRepository(
+        {(experiment.id, item.id): out}
+    )
+    use_case = ListExperimentOutputs(
+        FakeExperimentRepository({experiment.id: experiment}),
+        output_repo,
+    )
+    listed = await use_case.execute(experiment.id)
+    assert listed == [out]
