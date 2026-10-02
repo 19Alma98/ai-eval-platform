@@ -143,6 +143,22 @@ Response includes:
 - `regressions`, `improved`, `unchanged` subsets
 
 Classification uses higher-is-better with `|delta| < 0.01` treated as unchanged.
+
+### Item-level compare
+
+```http
+GET /experiments/{experiment_id}/compare/{baseline_id}/items
+```
+
+Query params:
+
+- `evaluator_id` — required when both experiments have results from more than one evaluator; otherwise defaults to the sole shared evaluator
+- `regressions_only` — default `false`; when `true`, only rows with `status == regression`
+
+Preconditions: both experiments exist (404); same `dataset_id` (400 on mismatch); ambiguous evaluator without `evaluator_id` (400).
+
+Each item row includes `input`, `expected_output`, `baseline` / `candidate` sides (`actual_output`, `context`, `score`, `label`, `explanation`, `run_id`), per-item `delta`, and `status` (`regression` | `improved` | `unchanged` | `unavailable`). Outputs resolve from experiment item outputs with fallback to legacy dataset item fields.
+
 ## Release gate
 
 ```http

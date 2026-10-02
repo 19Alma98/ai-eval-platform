@@ -5,6 +5,7 @@ import uuid
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 
 from aiobs.api.deps import (
+    get_compare_experiment_items,
     get_compare_experiments,
     get_create_experiment,
     get_evaluate_experiment,
@@ -26,7 +27,10 @@ from aiobs.api.schemas import (
     EvaluationRunResponse,
     EvaluatorSummaryResponse,
     ExperimentCompareResponse,
+    ExperimentItemCompareResponse,
     ExperimentItemOutputResponse,
+    ItemComparisonRowResponse,
+    ItemSideResponse,
     ExperimentResponse,
     ExperimentSummaryResponse,
     MetricComparisonResponse,
@@ -40,6 +44,14 @@ from aiobs.application.compare import (
     ExperimentSummary,
     InvalidCompareSelectionError,
     SummarizeExperiment,
+)
+from aiobs.application.compare_items import (
+    AmbiguousEvaluatorError,
+    CompareExperimentItems,
+    DatasetMismatchError,
+    ItemComparisonResult,
+    ItemComparisonRow,
+    ItemSide,
 )
 from aiobs.application.datasets import DatasetNotFoundError
 from aiobs.application.evaluate import (
@@ -179,6 +191,40 @@ def _compare_response(comparison: ExperimentComparison) -> ExperimentCompareResp
         regressions=[_metric_response(m) for m in comparison.regressions],
         improved=[_metric_response(m) for m in comparison.improved],
         unchanged=[_metric_response(m) for m in comparison.unchanged],
+    )
+
+
+def _item_side_response(side: ItemSide) -> ItemSideResponse:
+    return ItemSideResponse(
+        actual_output=side.actual_output,
+        context=side.context,
+        score=side.score,
+        label=side.label,
+        explanation=side.explanation,
+        run_id=side.run_id,
+    )
+
+
+def _item_row_response(row: ItemComparisonRow) -> ItemComparisonRowResponse:
+    return ItemComparisonRowResponse(
+        dataset_item_id=row.dataset_item_id,
+        input=row.input,
+        expected_output=row.expected_output,
+        baseline=_item_side_response(row.baseline),
+        candidate=_item_side_response(row.candidate),
+        delta=row.delta,
+        status=row.status,
+    )
+
+
+def _compare_items_response(
+    comparison: ItemComparisonResult,
+) -> ExperimentItemCompareResponse:
+    return ExperimentItemCompareResponse(
+        experiment_id=comparison.experiment_id,
+        baseline_experiment_id=comparison.baseline_experiment_id,
+        evaluator_id=comparison.evaluator_id,
+        items=[_item_row_response(row) for row in comparison.items],
     )
 
 
@@ -350,6 +396,31 @@ async def compare_experiments(
     except InvalidCompareSelectionError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
     return _compare_response(comparison)
+
+
+@router.get(
+    "/api/v1/experiments/{experiment_id}/compare/{baseline_id}/items",
+    response_model=ExperimentItemCompareResponse,
+)
+async def compare_experiment_items(
+    experiment_id: uuid.UUID,
+    baseline_id: uuid.UUID,
+    evaluator_id: uuid.UUID | None = Query(default=None),
+    regressions_only: bool = Query(default=False),
+    use_case: CompareExperimentItems = Depends(get_compare_experiment_items),
+) -> ExperimentItemCompareResponse:
+    try:
+        comparison = await use_case.execute(
+            experiment_id,
+            baseline_id,
+            evaluator_id=evaluator_id,
+            regressions_only=regressions_only,
+        )
+    except ExperimentNotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    except (DatasetMismatchError, AmbiguousEvaluatorError) as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+    return _compare_items_response(comparison)
 
 
 @router.get(

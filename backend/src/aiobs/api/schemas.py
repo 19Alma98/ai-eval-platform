@@ -310,3 +310,29 @@ class ExperimentItemOutputResponse(BaseModel):
 class UpsertExperimentOutputsResponse(BaseModel):
     upserted: int
     items: list[ExperimentItemOutputResponse]
+
+
+class ItemSideResponse(BaseModel):
+    actual_output: Any | None = None
+    context: Any | None = None
+    score: float | None = None
+    label: str | None = None
+    explanation: str | None = None
+    run_id: uuid.UUID | None = None
+
+
+class ItemComparisonRowResponse(BaseModel):
+    dataset_item_id: uuid.UUID
+    input: Any
+    expected_output: Any | None = None
+    baseline: ItemSideResponse
+    candidate: ItemSideResponse
+    delta: float | None = None
+    status: str
+
+
+class ExperimentItemCompareResponse(BaseModel):
+    experiment_id: uuid.UUID
+    baseline_experiment_id: uuid.UUID
+    evaluator_id: uuid.UUID
+    items: list[ItemComparisonRowResponse]
