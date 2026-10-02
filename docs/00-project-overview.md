@@ -22,6 +22,41 @@ The primary differentiator is not generic observability. The core workflow is:
 
 Production trace → failure/example → dataset → experiment → evaluation → regression policy → CI gate.
 
+This is a **CI quality gate for AI apps**, not a general-purpose agent oracle.
+MLflow-style metrics work when outputs are scorable against a curated dataset.
+The same assumption applies here: the platform measures regressions and improvements
+when “good” can be defined with ground truth, schemas, or stable judge criteria.
+
+## What this is good for
+
+Primary fit — applications where outputs are **narrow and checkable**:
+
+- **RAG / FAQ** with known answers or citation constraints
+- **Classification** and labeling into a fixed label set
+- **Extraction** into structured fields (JSON, entities, forms)
+- **Tool calling with a fixed schema** (correct tool, valid args, success/failure)
+- **Latency, cost, and error-rate** regressions across app versions
+- Promoting real production failures into a golden dataset and blocking releases that regress on it
+
+Secondary fit (use carefully):
+
+- LLM-as-judge metrics (relevance, groundedness, correctness) as **noisy signals**,
+  versioned and thresholded — not as sole release truth without human review
+
+## What this is not for (v0.1)
+
+Out of product fit — not merely “not built yet”:
+
+- Open-ended agents (coding agents, free-form multi-turn assistants) where success
+  is subjective and hard to score reproducibly
+- Claiming absolute quality scores or “the agent got smarter” without a curated dataset
+- Replacing online production monitoring / APM for live traffic incidents
+- Automatic discovery of all failure modes without human curation of examples
+- Enterprise multi-tenant SaaS with built-in SSO/RBAC (see Non-goals and Security)
+
+If your agent’s definition of success cannot be expressed as dataset examples +
+evaluators + thresholds, this platform will not invent that definition for you.
+
 ## Goals
 
 1. Accept AI application telemetry through an open standard.
@@ -38,6 +73,8 @@ Production trace → failure/example → dataset → experiment → evaluation �
 
 ## Non-goals for v0.1
 
+Product / engineering non-goals (complement the fit section above):
+
 - Building a model provider.
 - Training foundation models.
 - Replacing a general-purpose APM.
@@ -48,6 +85,7 @@ Production trace → failure/example → dataset → experiment → evaluation �
 - Multi-tenant SaaS tenancy or billing.
 - A hosted cloud offering.
 - A second MCP-focused product.
+- Guaranteeing eval quality for open-ended or highly subjective agent tasks.
 
 ## Deployment model
 

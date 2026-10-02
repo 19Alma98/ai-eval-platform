@@ -1,6 +1,9 @@
 # AI Evaluation & Observability Platform
 
-Open-source, self-hosted platform for AI quality engineering.
+Open-source, self-hosted platform for AI quality engineering: turn production traces into datasets, run experiments, compare against a baseline, and fail CI on regressions.
+
+**Best fit:** RAG/FAQ, classification, structured extraction, tool calling with fixed schemas, plus latency/cost/error gates.  
+**Not a fit:** open-ended agents where “good” is subjective, or as a substitute for live APM. The platform measures what you define; it does not invent a quality oracle. Details: [`docs/00-project-overview.md`](docs/00-project-overview.md).
 
 **Deployment model (v0.1):** trusted network only (localhost / private Docker network). There is **no built-in authentication**. Do not expose the stack on a public network without an external auth layer (reverse proxy, VPN, or cluster network policy).
 
