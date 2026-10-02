@@ -1,6 +1,7 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -29,6 +30,7 @@ import {
 } from "@/lib/api/datasets";
 import { LoadingBlock } from "@/components/loading-block";
 import { datasetQueryKey } from "@/features/datasets/use-datasets";
+import { withProjectQuery } from "@/lib/project-href";
 
 type AddToDatasetDialogProps = {
   projectId: string;
@@ -47,6 +49,7 @@ export function AddToDatasetDialog({
   const [mode, setMode] = useState<"existing" | "new">("existing");
   const [datasetId, setDatasetId] = useState<string>("");
   const [newName, setNewName] = useState("");
+  const router = useRouter();
   const queryClient = useQueryClient();
 
   const datasetsQuery = useQuery({
@@ -73,7 +76,15 @@ export function AddToDatasetDialog({
     onSuccess: (item) => {
       queryClient.invalidateQueries({ queryKey: ["datasets", projectId] });
       queryClient.invalidateQueries({ queryKey: datasetQueryKey(item.dataset_id) });
-      toast.success("Added trace to dataset");
+      toast.success("Added trace to dataset", {
+        action: {
+          label: "Open dataset",
+          onClick: () =>
+            router.push(
+              withProjectQuery(`/datasets/${item.dataset_id}`, projectId),
+            ),
+        },
+      });
       setOpen(false);
       setNewName("");
     },

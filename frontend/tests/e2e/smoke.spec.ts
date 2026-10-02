@@ -13,9 +13,7 @@ test("trace list and release page render", async ({ page, request }) => {
   await expect(page.getByRole("heading", { name: "Traces" })).toBeVisible();
 
   const main = page.locator("main");
-  const emptyTraces = main.getByText(
-    "No traces yet. Run the OTLP example against this project.",
-  );
+  const emptyTraces = main.getByText("No traces yet");
   const tracesTable = main.getByRole("region", { name: "Traces" });
   await expect(emptyTraces.or(tracesTable)).toBeVisible();
 

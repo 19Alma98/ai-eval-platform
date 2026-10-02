@@ -1,7 +1,8 @@
 "use client";
 
-import { useRouter } from "next/navigation";
-import { useCallback, useMemo, useState } from "react";
+import Link from "next/link";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Copy } from "lucide-react";
 import { toast } from "sonner";
 import { DataTable, type DataTableColumn } from "@/components/data-table";
@@ -15,6 +16,7 @@ import { Button } from "@/components/ui/button";
 import { ApiError } from "@/lib/api/client";
 import type { TraceSummary } from "@/lib/api/types";
 import { formatDurationMs, truncateId } from "@/lib/format";
+import { withProjectQuery } from "@/lib/project-href";
 import { useProjectId } from "@/lib/project-store";
 import { useTimeRange } from "@/lib/time-range-context";
 import { cn } from "@/lib/cn";
@@ -50,10 +52,29 @@ async function copyTraceId(id: string, e: React.MouseEvent) {
 
 export function TraceList() {
   const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
   const { projectId } = useProjectId();
   const { start, end } = useTimeRange();
-  const [statusFilter, setStatusFilter] = useState("");
+  const statusFromUrl = searchParams.get("status") ?? "";
+  const [statusFilter, setStatusFilter] = useState(statusFromUrl);
   const [selectedIndex, setSelectedIndex] = useState(0);
+
+  useEffect(() => {
+    setStatusFilter(statusFromUrl);
+  }, [statusFromUrl]);
+
+  const onStatusChange = useCallback(
+    (value: string) => {
+      setStatusFilter(value);
+      setSelectedIndex(0);
+      const params = new URLSearchParams(searchParams.toString());
+      if (value) params.set("status", value);
+      else params.delete("status");
+      router.replace(`${pathname}?${params.toString()}`);
+    },
+    [pathname, router, searchParams],
+  );
 
   const filters: TracesFilters = useMemo(
     () => ({
@@ -172,18 +193,31 @@ export function TraceList() {
       <div className="flex flex-col gap-4">
         <TraceListToolbar
           statusFilter={statusFilter}
-          onStatusFilterChange={setStatusFilter}
+          onStatusFilterChange={onStatusChange}
           queryOpts={queryOpts}
           dataUpdatedAt={query.dataUpdatedAt}
         />
-        <EmptyState
-          title="Traces"
-          description={
-            statusFilter
-              ? "No traces match this filter."
-              : "No traces in this time range."
-          }
-        />
+        {statusFilter ? (
+          <EmptyState
+            title="No traces match this filter"
+            description="Try another status or widen the time range."
+          />
+        ) : (
+          <EmptyState
+            title="No traces yet"
+            description="Send OTLP to this project (docker compose + examples/otlp_hello), then refresh."
+            action={
+              projectId ? (
+                <Link
+                  href={withProjectQuery("/overview", projectId)}
+                  className="text-sm font-medium text-foreground underline-offset-4 hover:underline"
+                >
+                  Back to Overview
+                </Link>
+              ) : null
+            }
+          />
+        )}
       </div>
     );
   }
@@ -192,10 +226,7 @@ export function TraceList() {
     <div className="flex flex-col gap-3">
       <TraceListToolbar
         statusFilter={statusFilter}
-        onStatusFilterChange={(v) => {
-          setStatusFilter(v);
-          setSelectedIndex(0);
-        }}
+        onStatusFilterChange={onStatusChange}
         queryOpts={queryOpts}
         dataUpdatedAt={query.dataUpdatedAt}
       />
@@ -225,7 +256,6 @@ function TraceListToolbar({
 }) {
   return (
     <div className="sticky top-0 z-20 -mx-1 flex flex-wrap items-center gap-3 border-b border-border bg-background px-1 pb-3">
-      <h1 className="text-lg font-semibold text-foreground">Traces</h1>
       <div
         className="inline-flex rounded-md border border-border bg-surface p-0.5"
         role="group"
@@ -236,6 +266,7 @@ function TraceListToolbar({
             key={value || "all"}
             type="button"
             onClick={() => onStatusFilterChange(value)}
+            aria-pressed={statusFilter === value}
             className={cn(
               "rounded px-2.5 py-1 text-xs font-medium transition-colors",
               statusFilter === value
