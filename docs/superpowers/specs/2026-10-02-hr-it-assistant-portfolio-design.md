@@ -172,12 +172,12 @@ examples/hr_it_assistant/
 
 ## Success criteria
 
-- [ ] Clone → compose → pull two Ollama models → set `OLLAMA_MODEL1`/`OLLAMA_MODEL2` → `portfolio_demo.py` completes the loop and prints compare + gate result.
-- [ ] Single-question CLI works with `--model` / `OLLAMA_MODEL`.
-- [ ] Retrieval and prompt are identical across the two legs; only the model changes.
-- [ ] No answer cheating (`must_contain` append / forced stub answers).
-- [ ] `examples/rag_faq` gone; docs/README point at `hr_it_assistant`.
-- [ ] English-only corpus; product reads as Acme People Ops, not “docs about this repo”.
+- [x] Clone → compose → pull two Ollama models → set `OLLAMA_MODEL1`/`OLLAMA_MODEL2` → `portfolio_demo.py` completes the loop and prints compare + gate result.
+- [x] Single-question CLI works with `--model` / `OLLAMA_MODEL`.
+- [x] Retrieval and prompt are identical across the two legs; only the model changes.
+- [x] No answer cheating (`must_contain` append / forced stub answers).
+- [x] `examples/rag_faq` gone; docs/README point at `hr_it_assistant`.
+- [x] English-only corpus; product reads as Acme People Ops, not “docs about this repo”.
 
 ## Out of scope (follow-ups)
 

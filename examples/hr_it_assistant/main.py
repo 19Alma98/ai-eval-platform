@@ -5,7 +5,6 @@ from __future__ import annotations
 import argparse
 import json
 import os
-import sys
 from typing import Any
 
 import aiobs
@@ -133,7 +132,6 @@ def main(argv: list[str] | None = None) -> int:
         questions = [args.question]
     else:
         parser.error("provide a question or --all")
-        return 2
 
     try:
         for question in questions:
