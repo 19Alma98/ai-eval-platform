@@ -12,6 +12,7 @@ from aiobs.api.deps import (
     get_dataset_repository,
     get_evaluation_run_repository,
     get_evaluator_repository,
+    get_experiment_item_output_repository,
     get_experiment_repository,
     get_project_repository,
     get_trace_repository,
@@ -20,6 +21,7 @@ from aiobs.domain.dataset import Dataset, DatasetItem
 from aiobs.domain.evaluation import EvaluationResultRecord, EvaluationRun
 from aiobs.domain.evaluator import Evaluator
 from aiobs.domain.experiment import Experiment
+from aiobs.domain.experiment_output import ExperimentItemOutput
 from aiobs.domain.project import Project
 from aiobs.domain.trace import Trace
 from aiobs.main import create_app
@@ -168,6 +170,35 @@ class InMemoryEvaluationRunRepository:
         return results
 
 
+class InMemoryExperimentItemOutputRepository:
+    def __init__(self) -> None:
+        self._outputs: dict[tuple[uuid.UUID, uuid.UUID], ExperimentItemOutput] = {}
+
+    async def get(
+        self, experiment_id: uuid.UUID, dataset_item_id: uuid.UUID
+    ) -> ExperimentItemOutput | None:
+        return self._outputs.get((experiment_id, dataset_item_id))
+
+    async def upsert(self, output: ExperimentItemOutput) -> ExperimentItemOutput:
+        self._outputs[(output.experiment_id, output.dataset_item_id)] = output
+        return output
+
+    async def upsert_many(
+        self, outputs: list[ExperimentItemOutput]
+    ) -> list[ExperimentItemOutput]:
+        for output in outputs:
+            self._outputs[(output.experiment_id, output.dataset_item_id)] = output
+        return outputs
+
+    async def list_by_experiment(
+        self, experiment_id: uuid.UUID
+    ) -> list[ExperimentItemOutput]:
+        return sorted(
+            (o for (eid, _), o in self._outputs.items() if eid == experiment_id),
+            key=lambda o: o.dataset_item_id,
+        )
+
+
 @pytest.fixture
 async def release_env() -> AsyncIterator[tuple[AsyncClient, InMemoryEvaluationRunRepository]]:
     import os
@@ -183,6 +214,7 @@ async def release_env() -> AsyncIterator[tuple[AsyncClient, InMemoryEvaluationRu
     evaluators = InMemoryEvaluatorRepository()
     experiments = InMemoryExperimentRepository()
     runs = InMemoryEvaluationRunRepository()
+    outputs = InMemoryExperimentItemOutputRepository()
 
     app = create_app()
     app.dependency_overrides[get_project_repository] = lambda: projects
@@ -191,6 +223,7 @@ async def release_env() -> AsyncIterator[tuple[AsyncClient, InMemoryEvaluationRu
     app.dependency_overrides[get_evaluator_repository] = lambda: evaluators
     app.dependency_overrides[get_experiment_repository] = lambda: experiments
     app.dependency_overrides[get_evaluation_run_repository] = lambda: runs
+    app.dependency_overrides[get_experiment_item_output_repository] = lambda: outputs
 
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as ac:
