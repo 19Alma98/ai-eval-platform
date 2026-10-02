@@ -87,6 +87,7 @@ export type Experiment = {
   name: string;
   dataset_id: string;
   model_config: Record<string, unknown>;
+  app_config_id: string | null;
   version: string | null;
   baseline_experiment_id: string | null;
   status: string;
