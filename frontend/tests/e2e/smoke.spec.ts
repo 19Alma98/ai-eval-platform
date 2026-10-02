@@ -19,8 +19,8 @@ test("trace list and release page render", async ({ page, request }) => {
 
   await page.goto(`/release?project=${id}`);
   await expect(page.getByRole("heading", { name: "Release" })).toBeVisible();
-  await expect(page.getByLabel("Policy (YAML)")).toBeVisible();
-  await expect(page.locator("#release-policy")).toBeVisible();
+  await expect(page.getByRole("link", { name: "Go to Experiments" })).toBeVisible();
+  await expect(page.getByLabel("Policy (YAML)")).toHaveCount(0);
 });
 
 test("quality loop strip and glossaries render", async ({ page, request }) => {

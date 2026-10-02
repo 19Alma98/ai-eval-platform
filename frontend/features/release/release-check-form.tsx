@@ -95,23 +95,25 @@ export function ReleaseCheckForm({
     );
   }
 
+  if (experiments.length === 0) {
+    return (
+      <EmptyState
+        title="No experiments yet"
+        description="Create and evaluate an experiment before running a release check."
+        action={
+          <Link
+            href={withProjectQuery("/experiments", projectId)}
+            className={cn(buttonVariants({ variant: "default", size: "sm" }))}
+          >
+            Go to Experiments
+          </Link>
+        }
+      />
+    );
+  }
+
   return (
     <div className="flex max-w-2xl flex-col gap-6">
-      {experiments.length === 0 ? (
-        <EmptyState
-          title="No experiments yet"
-          description="Create and evaluate an experiment before running a release check."
-          action={
-            <Link
-              href={withProjectQuery("/experiments", projectId)}
-              className={cn(buttonVariants({ variant: "default", size: "sm" }))}
-            >
-              Go to Experiments
-            </Link>
-          }
-        />
-      ) : null}
-
       <form onSubmit={handleSubmit} className="flex flex-col gap-4">
         <div className="flex flex-col gap-1.5">
           <label htmlFor="release-experiment" className="text-sm font-medium">

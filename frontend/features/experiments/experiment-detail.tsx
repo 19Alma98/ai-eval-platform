@@ -62,6 +62,7 @@ export function ExperimentDetailView({
   const datasetsQuery = useDatasets(projectId);
   const summaryOpts = experimentSummaryQueryOptions(experimentId);
   const [evaluateOpen, setEvaluateOpen] = useState(false);
+  const [createEvaluatorOpen, setCreateEvaluatorOpen] = useState(false);
   const [selectedIndex, setSelectedIndex] = useState(0);
 
   const experiment = experimentQuery.data;
@@ -234,6 +235,10 @@ export function ExperimentDetailView({
             experimentId={experimentId}
             open={evaluateOpen}
             onOpenChange={setEvaluateOpen}
+            onCreateEvaluator={() => {
+              setEvaluateOpen(false);
+              setCreateEvaluatorOpen(true);
+            }}
           />
           <Button
             variant="outline"
@@ -278,6 +283,11 @@ export function ExperimentDetailView({
           aria-label="Experiment evaluator summary"
         />
       )}
+      <CreateEvaluatorDialog
+        projectId={projectId}
+        open={createEvaluatorOpen}
+        onOpenChange={setCreateEvaluatorOpen}
+      />
     </div>
   );
 }
@@ -287,16 +297,17 @@ function EvaluateDialog({
   experimentId,
   open,
   onOpenChange,
+  onCreateEvaluator,
 }: {
   projectId: string;
   experimentId: string;
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  onCreateEvaluator: () => void;
 }) {
   const queryClient = useQueryClient();
   const evaluatorsQuery = useEvaluators(projectId);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
-  const [createEvaluatorOpen, setCreateEvaluatorOpen] = useState(false);
 
   const evaluate = useMutation({
     mutationFn: () =>
@@ -372,7 +383,7 @@ function EvaluateDialog({
                   variant="outline"
                   size="sm"
                   className="self-start"
-                  onClick={() => setCreateEvaluatorOpen(true)}
+                  onClick={onCreateEvaluator}
                 >
                   Create evaluator
                 </Button>
@@ -418,11 +429,6 @@ function EvaluateDialog({
           </DialogFooter>
         </form>
       </DialogContent>
-      <CreateEvaluatorDialog
-        projectId={projectId}
-        open={createEvaluatorOpen}
-        onOpenChange={setCreateEvaluatorOpen}
-      />
     </Dialog>
   );
 }
