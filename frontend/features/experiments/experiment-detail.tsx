@@ -3,6 +3,9 @@
 import Link from "next/link";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useMemo, useState, type FormEvent } from "react";
+import { useDatasets } from "@/features/datasets/use-datasets";
+import { CreateEvaluatorDialog } from "./create-evaluator-dialog";
+import { withProjectQuery } from "@/lib/project-href";
 import { ArrowLeft, GitCompare, ShieldCheck } from "lucide-react";
 import { toast } from "sonner";
 import { DataTable, type DataTableColumn } from "@/components/data-table";
@@ -56,6 +59,7 @@ export function ExperimentDetailView({
 }: ExperimentDetailViewProps) {
   const experimentQuery = useExperiment(experimentId);
   const summaryQuery = useExperimentSummary(experimentId);
+  const datasetsQuery = useDatasets(projectId);
   const summaryOpts = experimentSummaryQueryOptions(experimentId);
   const [evaluateOpen, setEvaluateOpen] = useState(false);
   const [selectedIndex, setSelectedIndex] = useState(0);
@@ -63,16 +67,26 @@ export function ExperimentDetailView({
   const experiment = experimentQuery.data;
   const evaluators = summaryQuery.data?.evaluators ?? [];
 
-  const compareHref = useMemo(() => {
-    const base = `/experiments/${encodeURIComponent(experimentId)}/compare`;
-    const params = new URLSearchParams({ project: projectId });
-    if (experiment?.baseline_experiment_id) {
-      params.set("baseline", experiment.baseline_experiment_id);
+  const datasetNameById = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const d of datasetsQuery.data ?? []) {
+      map.set(d.id, d.name);
     }
-    return `${base}?${params.toString()}`;
+    return map;
+  }, [datasetsQuery.data]);
+
+  const compareHref = useMemo(() => {
+    let href = `/experiments/${encodeURIComponent(experimentId)}/compare`;
+    if (experiment?.baseline_experiment_id) {
+      href += `?baseline=${encodeURIComponent(experiment.baseline_experiment_id)}`;
+    }
+    return withProjectQuery(href, projectId);
   }, [experiment?.baseline_experiment_id, experimentId, projectId]);
 
-  const releaseHref = `/release?project=${encodeURIComponent(projectId)}&experiment=${encodeURIComponent(experimentId)}`;
+  const releaseHref = withProjectQuery(
+    `/release?experiment=${encodeURIComponent(experimentId)}`,
+    projectId,
+  );
 
   const columns: DataTableColumn<EvaluatorSummary>[] = useMemo(
     () => [
@@ -163,7 +177,15 @@ export function ExperimentDetailView({
     return null;
   }
 
-  const backHref = `/experiments?project=${encodeURIComponent(projectId)}`;
+  const backHref = withProjectQuery("/experiments", projectId);
+
+  const datasetLabel =
+    datasetNameById.get(experiment.dataset_id) ??
+    truncateId(experiment.dataset_id, 10);
+  const datasetHref = withProjectQuery(
+    `/datasets/${encodeURIComponent(experiment.dataset_id)}`,
+    projectId,
+  );
 
   return (
     <div className="flex flex-col gap-3">
@@ -184,12 +206,19 @@ export function ExperimentDetailView({
             </h1>
             <StatusBadge status={experiment.status} />
           </div>
+          <p className="text-sm text-muted-foreground">
+            Flow: Evaluate (scores) → Compare (delta vs baseline) → Release
+            (gate).
+          </p>
           <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-muted-foreground">
             <span>
               Dataset{" "}
-              <span className="font-mono text-xs text-foreground">
-                {truncateId(experiment.dataset_id, 12)}
-              </span>
+              <Link
+                href={datasetHref}
+                className="text-primary hover:underline"
+              >
+                {datasetLabel}
+              </Link>
             </span>
             {experiment.application_version ? (
               <span>Version {experiment.application_version}</span>
@@ -267,6 +296,7 @@ function EvaluateDialog({
   const queryClient = useQueryClient();
   const evaluatorsQuery = useEvaluators(projectId);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [createEvaluatorOpen, setCreateEvaluatorOpen] = useState(false);
 
   const evaluate = useMutation({
     mutationFn: () =>
@@ -333,9 +363,20 @@ function EvaluateDialog({
             {evaluatorsQuery.isLoading ? (
               <p className="text-sm text-muted-foreground">Loading evaluators…</p>
             ) : evaluators.length === 0 ? (
-              <p className="text-sm text-muted-foreground">
-                No evaluators in this project. Create evaluators via the API first.
-              </p>
+              <div className="flex flex-col gap-3">
+                <p className="text-sm text-muted-foreground">
+                  No evaluators in this project yet.
+                </p>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="self-start"
+                  onClick={() => setCreateEvaluatorOpen(true)}
+                >
+                  Create evaluator
+                </Button>
+              </div>
             ) : (
               evaluators.map((ev) => (
                 <label
@@ -377,6 +418,11 @@ function EvaluateDialog({
           </DialogFooter>
         </form>
       </DialogContent>
+      <CreateEvaluatorDialog
+        projectId={projectId}
+        open={createEvaluatorOpen}
+        onOpenChange={setCreateEvaluatorOpen}
+      />
     </Dialog>
   );
 }

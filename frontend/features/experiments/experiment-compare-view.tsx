@@ -2,7 +2,8 @@
 
 import type { ReactNode } from "react";
 import Link from "next/link";
-import { useSearchParams } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { useMemo } from "react";
 import { ArrowLeft } from "lucide-react";
 import { CompareTable } from "@/features/experiments/compare-table";
 import { EmptyState } from "@/components/empty-state";
@@ -10,12 +11,22 @@ import { ErrorState } from "@/components/error-state";
 import { LoadingBlock } from "@/components/loading-block";
 import { RefreshControl } from "@/components/refresh-control";
 import { Button } from "@/components/ui/button";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { ApiError } from "@/lib/api/client";
+import type { Experiment } from "@/lib/api/types";
 import { truncateId } from "@/lib/format";
+import { withProjectQuery } from "@/lib/project-href";
 import {
   experimentCompareQueryOptions,
   useExperiment,
   useExperimentCompare,
+  useExperiments,
 } from "./use-experiments";
 
 type ExperimentCompareViewProps = {
@@ -27,22 +38,47 @@ export function ExperimentCompareView({
   projectId,
   experimentId,
 }: ExperimentCompareViewProps) {
+  const router = useRouter();
+  const pathname = usePathname();
   const searchParams = useSearchParams();
   const baselineFromQuery = searchParams.get("baseline");
 
   const experimentQuery = useExperiment(experimentId);
+  const experimentsQuery = useExperiments(projectId);
   const experiment = experimentQuery.data;
+
+  const baselineCandidates = useMemo(() => {
+    return (experimentsQuery.data ?? []).filter(
+      (exp) => exp.id !== experimentId,
+    );
+  }, [experimentsQuery.data, experimentId]);
 
   const baselineId =
     baselineFromQuery?.trim() ||
     experiment?.baseline_experiment_id ||
     null;
 
+  const baselineExperiment = useMemo(() => {
+    if (!baselineId) return null;
+    return (
+      baselineCandidates.find((e) => e.id === baselineId) ??
+      (experimentsQuery.data ?? []).find((e) => e.id === baselineId) ??
+      null
+    );
+  }, [baselineCandidates, baselineId, experimentsQuery.data]);
+
   const compareQuery = useExperimentCompare(experimentId, baselineId);
   const compareOpts =
     baselineId != null
       ? experimentCompareQueryOptions(experimentId, baselineId)
       : null;
+
+  function setBaselineId(id: string) {
+    const params = new URLSearchParams(searchParams.toString());
+    params.set("baseline", id);
+    params.set("project", projectId);
+    router.replace(`${pathname}?${params.toString()}`);
+  }
 
   if (experimentQuery.isLoading) {
     return <LoadingBlock className="min-h-[240px]" />;
@@ -69,7 +105,19 @@ export function ExperimentCompareView({
     return null;
   }
 
-  const detailHref = `/experiments/${encodeURIComponent(experimentId)}?project=${encodeURIComponent(projectId)}`;
+  const detailHref = withProjectQuery(
+    `/experiments/${encodeURIComponent(experimentId)}`,
+    projectId,
+  );
+
+  const baselinePicker = (
+    <BaselineSelect
+      candidates={baselineCandidates}
+      value={baselineId}
+      onValueChange={setBaselineId}
+      loading={experimentsQuery.isLoading}
+    />
+  );
 
   if (!baselineId) {
     return (
@@ -77,11 +125,12 @@ export function ExperimentCompareView({
         <CompareHeader
           experimentName={experiment.name}
           detailHref={detailHref}
-          baselineLabel={null}
+          baselineExperiment={null}
+          baselinePicker={baselinePicker}
         />
         <EmptyState
-          title="Baseline required"
-          description="Set baseline_experiment_id on the experiment or open this page with ?baseline=."
+          title="Choose a baseline"
+          description="Pick another experiment to compare against. You'll see deltas on metrics both runs share."
         />
       </div>
     );
@@ -93,7 +142,8 @@ export function ExperimentCompareView({
         <CompareHeader
           experimentName={experiment.name}
           detailHref={detailHref}
-          baselineLabel={truncateId(baselineId, 12)}
+          baselineExperiment={baselineExperiment}
+          baselinePicker={baselinePicker}
         />
         <LoadingBlock className="min-h-[200px]" />
       </div>
@@ -113,7 +163,8 @@ export function ExperimentCompareView({
         <CompareHeader
           experimentName={experiment.name}
           detailHref={detailHref}
-          baselineLabel={truncateId(baselineId, 12)}
+          baselineExperiment={baselineExperiment}
+          baselinePicker={baselinePicker}
         />
         <ErrorState
           title="Could not compare experiments"
@@ -133,7 +184,8 @@ export function ExperimentCompareView({
       <CompareHeader
         experimentName={experiment.name}
         detailHref={detailHref}
-        baselineLabel={truncateId(baselineId, 12)}
+        baselineExperiment={baselineExperiment}
+        baselinePicker={baselinePicker}
         refresh={
           compareOpts ? (
             <RefreshControl
@@ -178,20 +230,73 @@ export function ExperimentCompareView({
   );
 }
 
+function BaselineSelect({
+  candidates,
+  value,
+  onValueChange,
+  loading,
+}: {
+  candidates: Experiment[];
+  value: string | null;
+  onValueChange: (id: string) => void;
+  loading: boolean;
+}) {
+  return (
+    <div className="flex flex-col gap-1 sm:min-w-[220px]">
+      <label htmlFor="compare-baseline" className="text-xs font-medium text-muted-foreground">
+        Baseline
+      </label>
+      <Select
+        value={value ?? ""}
+        onValueChange={(v) => {
+          if (v) onValueChange(v);
+        }}
+        disabled={loading || candidates.length === 0}
+      >
+        <SelectTrigger id="compare-baseline" className="w-full sm:w-[260px]">
+          <SelectValue
+            placeholder={
+              loading
+                ? "Loading experiments…"
+                : candidates.length === 0
+                  ? "No other experiments"
+                  : "Select baseline"
+            }
+          />
+        </SelectTrigger>
+        <SelectContent>
+          {candidates.map((exp) => (
+            <SelectItem key={exp.id} value={exp.id}>
+              <span className="flex flex-col items-start gap-0.5">
+                <span>{exp.name}</span>
+                <span className="font-mono text-xs text-muted-foreground">
+                  {truncateId(exp.id, 12)}
+                </span>
+              </span>
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+    </div>
+  );
+}
+
 function CompareHeader({
   experimentName,
   detailHref,
-  baselineLabel,
+  baselineExperiment,
+  baselinePicker,
   refresh,
 }: {
   experimentName: string;
   detailHref: string;
-  baselineLabel: string | null;
+  baselineExperiment: Experiment | null;
+  baselinePicker: ReactNode;
   refresh?: ReactNode;
 }) {
   return (
     <div className="flex flex-wrap items-start justify-between gap-3">
-      <div className="flex min-w-0 flex-col gap-1">
+      <div className="flex min-w-0 flex-col gap-2">
         <div className="flex flex-wrap items-center gap-2">
           <Button
             variant="ghost"
@@ -206,14 +311,20 @@ function CompareHeader({
             Compare · {experimentName}
           </h1>
         </div>
-        {baselineLabel ? (
-          <p className="text-sm text-muted-foreground">
-            Baseline{" "}
-            <span className="font-mono text-xs text-foreground">
-              {baselineLabel}
-            </span>
-          </p>
-        ) : null}
+        <div className="flex flex-wrap items-end gap-4">
+          {baselinePicker}
+          {baselineExperiment ? (
+            <p className="text-sm text-muted-foreground">
+              Comparing to{" "}
+              <span className="font-medium text-foreground">
+                {baselineExperiment.name}
+              </span>{" "}
+              <span className="font-mono text-xs">
+                {truncateId(baselineExperiment.id, 12)}
+              </span>
+            </p>
+          ) : null}
+        </div>
       </div>
       {refresh}
     </div>
