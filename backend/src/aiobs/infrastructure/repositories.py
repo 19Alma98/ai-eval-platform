@@ -335,7 +335,7 @@ def _experiment_to_domain(row: ExperimentModel) -> Experiment:
         name=row.name,
         dataset_id=row.dataset_id,
         model_config=dict(row.model_config_json or {}),
-        application_version=row.application_version,
+        version=row.version,
         baseline_experiment_id=row.baseline_experiment_id,
         status=row.status,
         created_at=row.created_at,
@@ -481,7 +481,7 @@ class SqlAlchemyExperimentRepository:
             name=experiment.name,
             dataset_id=experiment.dataset_id,
             model_config_json=dict(experiment.model_config),
-            application_version=experiment.application_version,
+            version=experiment.version,
             baseline_experiment_id=experiment.baseline_experiment_id,
             status=experiment.status,
             created_at=experiment.created_at,
@@ -510,7 +510,7 @@ class SqlAlchemyExperimentRepository:
         row.name = experiment.name
         row.dataset_id = experiment.dataset_id
         row.model_config_json = dict(experiment.model_config)
-        row.application_version = experiment.application_version
+        row.version = experiment.version
         row.baseline_experiment_id = experiment.baseline_experiment_id
         row.status = experiment.status
         await self._session.commit()

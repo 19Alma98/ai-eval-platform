@@ -100,7 +100,7 @@ def upgrade() -> None:
             server_default=sa.text("'{}'::jsonb"),
             nullable=False,
         ),
-        sa.Column("application_version", sa.String(length=200), nullable=True),
+        sa.Column("version", sa.String(length=200), nullable=True),
         sa.Column("baseline_experiment_id", sa.Uuid(), nullable=True),
         sa.Column("status", sa.String(length=32), server_default="created", nullable=False),
         sa.Column(

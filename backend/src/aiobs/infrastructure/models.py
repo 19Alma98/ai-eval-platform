@@ -192,7 +192,7 @@ class ExperimentModel(Base):
     model_config_json: Mapped[dict[str, Any]] = mapped_column(
         "model_config", JSONB, nullable=False, server_default="{}"
     )
-    application_version: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    version: Mapped[str | None] = mapped_column(String(200), nullable=True)
     baseline_experiment_id: Mapped[uuid.UUID | None] = mapped_column(
         Uuid(as_uuid=True),
         ForeignKey("experiments.id", ondelete="SET NULL"),

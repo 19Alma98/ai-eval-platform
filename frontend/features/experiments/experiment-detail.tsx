@@ -37,6 +37,7 @@ import {
   useExperiment,
   useExperimentSummary,
 } from "./use-experiments";
+import { experimentModel, experimentVersion } from "./experiment-meta";
 
 function formatScore(value: number | null): string {
   if (value === null || value === undefined) return "—";
@@ -187,6 +188,8 @@ export function ExperimentDetailView({
     `/datasets/${encodeURIComponent(experiment.dataset_id)}`,
     projectId,
   );
+  const modelLabel = experimentModel(experiment);
+  const versionLabel = experimentVersion(experiment);
 
   return (
     <div className="flex flex-col gap-3">
@@ -221,9 +224,8 @@ export function ExperimentDetailView({
                 {datasetLabel}
               </Link>
             </span>
-            {experiment.application_version ? (
-              <span>Version {experiment.application_version}</span>
-            ) : null}
+            {modelLabel ? <span>Model {modelLabel}</span> : null}
+            {versionLabel ? <span>Version {versionLabel}</span> : null}
             <span>
               Created <RelativeTime date={experiment.created_at} />
             </span>

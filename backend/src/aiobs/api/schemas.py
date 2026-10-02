@@ -171,7 +171,7 @@ class CreateExperimentRequest(BaseModel):
     name: str = Field(min_length=1, max_length=200)
     dataset_id: uuid.UUID
     experiment_model_config: dict[str, Any] = Field(default_factory=dict, alias="model_config")
-    application_version: str | None = Field(default=None, max_length=200)
+    version: str | None = Field(default=None, max_length=200)
     baseline_experiment_id: uuid.UUID | None = None
 
 
@@ -183,7 +183,7 @@ class ExperimentResponse(BaseModel):
     name: str
     dataset_id: uuid.UUID
     experiment_model_config: dict[str, Any] = Field(alias="model_config")
-    application_version: str | None
+    version: str | None
     baseline_experiment_id: uuid.UUID | None
     status: str
     created_at: datetime

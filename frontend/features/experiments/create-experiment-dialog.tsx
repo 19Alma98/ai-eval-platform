@@ -49,13 +49,20 @@ export function CreateExperimentDialog({
 
   const [name, setName] = useState("");
   const [datasetId, setDatasetId] = useState("");
+  const [model, setModel] = useState("");
+  const [version, setVersion] = useState("");
 
   const create = useMutation({
-    mutationFn: () =>
-      createExperiment(projectId, {
+    mutationFn: () => {
+      const modelTrimmed = model.trim();
+      const versionTrimmed = version.trim();
+      return createExperiment(projectId, {
         name: name.trim(),
         dataset_id: datasetId,
-      }),
+        ...(modelTrimmed ? { model_config: { model: modelTrimmed } } : {}),
+        ...(versionTrimmed ? { version: versionTrimmed } : {}),
+      });
+    },
     onSuccess: async (experiment) => {
       await queryClient.invalidateQueries({
         queryKey: experimentsQueryKey(projectId),
@@ -63,6 +70,8 @@ export function CreateExperimentDialog({
       toast.success("Experiment created");
       setName("");
       setDatasetId("");
+      setModel("");
+      setVersion("");
       onOpenChange(false);
       router.push(
         withProjectQuery(`/experiments/${encodeURIComponent(experiment.id)}`, projectId),
@@ -150,6 +159,30 @@ export function CreateExperimentDialog({
                   first.
                 </p>
               ) : null}
+            </div>
+            <div className="flex flex-col gap-2">
+              <label htmlFor="experiment-create-model" className="text-sm font-medium">
+                Model{" "}
+                <span className="font-normal text-muted-foreground">(optional)</span>
+              </label>
+              <Input
+                id="experiment-create-model"
+                value={model}
+                onChange={(e) => setModel(e.target.value)}
+                placeholder="gpt-4o, ollama/gemma4:e2b, …"
+              />
+            </div>
+            <div className="flex flex-col gap-2">
+              <label htmlFor="experiment-create-version" className="text-sm font-medium">
+                Version{" "}
+                <span className="font-normal text-muted-foreground">(optional)</span>
+              </label>
+              <Input
+                id="experiment-create-version"
+                value={version}
+                onChange={(e) => setVersion(e.target.value)}
+                placeholder="v1.2, prompt-rev-3, git sha…"
+              />
             </div>
           </div>
           <DialogFooter>

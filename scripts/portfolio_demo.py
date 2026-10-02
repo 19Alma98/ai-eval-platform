@@ -227,7 +227,7 @@ def create_and_evaluate(
         "name": name,
         "dataset_id": dataset_id,
         "model_config": model_config or {},
-        "application_version": name,
+        "version": name,
     }
     if baseline_experiment_id:
         body["baseline_experiment_id"] = baseline_experiment_id

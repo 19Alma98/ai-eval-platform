@@ -26,7 +26,7 @@ class CreateExperimentCommand:
     name: str
     dataset_id: uuid.UUID
     model_config: dict[str, Any] | None = None
-    application_version: str | None = None
+    version: str | None = None
     baseline_experiment_id: uuid.UUID | None = None
 
 
@@ -60,7 +60,7 @@ class CreateExperiment:
             command.name,
             command.dataset_id,
             model_config=command.model_config,
-            application_version=command.application_version,
+            version=command.version,
             baseline_experiment_id=command.baseline_experiment_id,
         )
         return await self._experiments.add(experiment)

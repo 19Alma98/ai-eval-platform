@@ -68,7 +68,7 @@ def _experiment_response(experiment: Experiment) -> ExperimentResponse:
             "name": experiment.name,
             "dataset_id": experiment.dataset_id,
             "model_config": dict(experiment.model_config),
-            "application_version": experiment.application_version,
+            "version": experiment.version,
             "baseline_experiment_id": experiment.baseline_experiment_id,
             "status": experiment.status,
             "created_at": experiment.created_at,
@@ -164,7 +164,7 @@ async def create_experiment(
                 name=body.name,
                 dataset_id=body.dataset_id,
                 model_config=body.experiment_model_config,
-                application_version=body.application_version,
+                version=body.version,
                 baseline_experiment_id=body.baseline_experiment_id,
             )
         )

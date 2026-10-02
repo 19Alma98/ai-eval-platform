@@ -17,6 +17,7 @@ import { withProjectQuery } from "@/lib/project-href";
 import { useProjectId } from "@/lib/project-store";
 import { useDatasets } from "@/features/datasets/use-datasets";
 import { CreateExperimentDialog } from "./create-experiment-dialog";
+import { experimentModel, experimentVersion } from "./experiment-meta";
 import {
   experimentsQueryOptions,
   useExperiments,
@@ -99,11 +100,20 @@ export function ExperimentList() {
         },
       },
       {
-        id: "application_version",
-        header: "App version",
+        id: "model",
+        header: "Model",
         cell: (row) => (
           <span className="text-sm text-muted-foreground">
-            {row.application_version?.trim() || "—"}
+            {experimentModel(row) ?? "—"}
+          </span>
+        ),
+      },
+      {
+        id: "version",
+        header: "Version",
+        cell: (row) => (
+          <span className="text-sm text-muted-foreground">
+            {experimentVersion(row) ?? "—"}
           </span>
         ),
       },

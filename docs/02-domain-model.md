@@ -129,7 +129,7 @@ Fields:
 - name
 - dataset_id
 - model_config
-- application_version
+- version
 - baseline_experiment_id
 - status
 - created_at

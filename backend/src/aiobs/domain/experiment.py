@@ -15,7 +15,7 @@ class Experiment:
     name: str
     dataset_id: uuid.UUID
     model_config: dict[str, Any]
-    application_version: str | None
+    version: str | None
     baseline_experiment_id: uuid.UUID | None
     status: str
     created_at: datetime
@@ -28,7 +28,7 @@ class Experiment:
         dataset_id: uuid.UUID,
         *,
         model_config: dict[str, Any] | None = None,
-        application_version: str | None = None,
+        version: str | None = None,
         baseline_experiment_id: uuid.UUID | None = None,
         status: str = "created",
     ) -> Experiment:
@@ -43,7 +43,7 @@ class Experiment:
             name=cleaned,
             dataset_id=dataset_id,
             model_config=dict(model_config or {}),
-            application_version=application_version,
+            version=version,
             baseline_experiment_id=baseline_experiment_id,
             status=status,
             created_at=datetime.now(UTC),

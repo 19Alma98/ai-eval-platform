@@ -28,6 +28,7 @@ import {
   useExperimentCompare,
   useExperiments,
 } from "./use-experiments";
+import { experimentModel, experimentVersion } from "./experiment-meta";
 
 type ExperimentCompareViewProps = {
   projectId: string;
@@ -123,7 +124,7 @@ export function ExperimentCompareView({
     return (
       <div className="flex flex-col gap-3">
         <CompareHeader
-          experimentName={experiment.name}
+          experiment={experiment}
           detailHref={detailHref}
           baselineExperiment={null}
           baselinePicker={baselinePicker}
@@ -140,7 +141,7 @@ export function ExperimentCompareView({
     return (
       <div className="flex flex-col gap-3">
         <CompareHeader
-          experimentName={experiment.name}
+          experiment={experiment}
           detailHref={detailHref}
           baselineExperiment={baselineExperiment}
           baselinePicker={baselinePicker}
@@ -161,7 +162,7 @@ export function ExperimentCompareView({
     return (
       <div className="flex flex-col gap-3">
         <CompareHeader
-          experimentName={experiment.name}
+          experiment={experiment}
           detailHref={detailHref}
           baselineExperiment={baselineExperiment}
           baselinePicker={baselinePicker}
@@ -182,7 +183,7 @@ export function ExperimentCompareView({
   return (
     <div className="flex flex-col gap-3">
       <CompareHeader
-        experimentName={experiment.name}
+        experiment={experiment}
         detailHref={detailHref}
         baselineExperiment={baselineExperiment}
         baselinePicker={baselinePicker}
@@ -281,14 +282,25 @@ function BaselineSelect({
   );
 }
 
+function ExperimentMetaLine({ experiment }: { experiment: Experiment }) {
+  const model = experimentModel(experiment);
+  const version = experimentVersion(experiment);
+  const parts = [
+    model ? `Model ${model}` : null,
+    version ? `Version ${version}` : null,
+  ].filter(Boolean);
+  if (parts.length === 0) return null;
+  return <span className="text-muted-foreground">{parts.join(" · ")}</span>;
+}
+
 function CompareHeader({
-  experimentName,
+  experiment,
   detailHref,
   baselineExperiment,
   baselinePicker,
   refresh,
 }: {
-  experimentName: string;
+  experiment: Experiment;
   detailHref: string;
   baselineExperiment: Experiment | null;
   baselinePicker: ReactNode;
@@ -308,9 +320,17 @@ function CompareHeader({
             Back
           </Button>
           <h1 className="text-lg font-semibold text-foreground">
-            Compare · {experimentName}
+            Compare · {experiment.name}
           </h1>
         </div>
+        <p className="text-sm text-muted-foreground">
+          Candidate{" "}
+          <span className="font-medium text-foreground">{experiment.name}</span>
+          {experimentModel(experiment) || experimentVersion(experiment)
+            ? " · "
+            : null}
+          <ExperimentMetaLine experiment={experiment} />
+        </p>
         <div className="flex flex-wrap items-end gap-4">
           {baselinePicker}
           {baselineExperiment ? (
@@ -318,7 +338,12 @@ function CompareHeader({
               Comparing to{" "}
               <span className="font-medium text-foreground">
                 {baselineExperiment.name}
-              </span>{" "}
+              </span>
+              {experimentModel(baselineExperiment) ||
+              experimentVersion(baselineExperiment)
+                ? " · "
+                : null}
+              <ExperimentMetaLine experiment={baselineExperiment} />{" "}
               <span className="font-mono text-xs">
                 {truncateId(baselineExperiment.id, 12)}
               </span>
