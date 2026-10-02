@@ -5,6 +5,7 @@ import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useMemo } from "react";
 import { ArrowLeft } from "lucide-react";
+import { CompareItemsTable } from "@/features/experiments/compare-items-table";
 import { CompareTable } from "@/features/experiments/compare-table";
 import { EmptyState } from "@/components/empty-state";
 import { ErrorState } from "@/components/error-state";
@@ -225,6 +226,14 @@ export function ExperimentCompareView({
             </span>
           </div>
           <CompareTable metrics={comparison.metrics} />
+          <CompareItemsTable
+            projectId={projectId}
+            experimentId={experimentId}
+            baselineId={baselineId}
+            metrics={comparison.metrics}
+            candidateName={experiment.name}
+            baselineName={baselineExperiment?.name}
+          />
         </>
       ) : null}
     </div>

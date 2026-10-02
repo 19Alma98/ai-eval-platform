@@ -7,7 +7,7 @@ import type { MetricComparison } from "@/lib/api/types";
 import { truncateId } from "@/lib/format";
 import { sortMetricsForDisplay } from "./sort-metrics";
 
-const METRIC_STATUS_STYLES: Record<string, string> = {
+export const METRIC_STATUS_STYLES: Record<string, string> = {
   regression: "bg-status-fail-bg text-status-fail",
   improved: "bg-status-ok-bg text-status-ok",
   unchanged: "bg-status-unset-bg text-status-unset",
@@ -28,7 +28,7 @@ function formatDelta(value: number | null): string {
   return `${sign}${value.toFixed(4)}`;
 }
 
-function MetricStatusCell({ status }: { status: string }) {
+export function CompareStatusCell({ status }: { status: string }) {
   const style =
     METRIC_STATUS_STYLES[status] ??
     "bg-status-unset-bg text-status-unset";
@@ -97,7 +97,7 @@ export function CompareTable({ metrics }: CompareTableProps) {
         id: "status",
         header: "Status",
         headerClassName: "w-[120px]",
-        cell: (row) => <MetricStatusCell status={row.status} />,
+        cell: (row) => <CompareStatusCell status={row.status} />,
       },
     ],
     [],
