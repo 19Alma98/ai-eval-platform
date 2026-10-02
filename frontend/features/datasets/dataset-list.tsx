@@ -112,9 +112,8 @@ export function DatasetList() {
   return (
     <div className="flex flex-col gap-3">
       <div className="sticky top-0 z-20 -mx-1 flex flex-wrap items-center gap-3 border-b border-border bg-background px-1 pb-3">
-        <h1 className="text-lg font-semibold text-foreground">Datasets</h1>
         <div className="flex-1" />
-        {projectId ? (
+        {projectId && rows.length > 0 ? (
           <CreateDatasetDialog
             projectId={projectId}
             open={createOpen}
@@ -133,6 +132,15 @@ export function DatasetList() {
         <EmptyState
           title="No datasets yet"
           description="Create a dataset to collect trace examples for evaluation."
+          action={
+            projectId ? (
+              <CreateDatasetDialog
+                projectId={projectId}
+                open={createOpen}
+                onOpenChange={setCreateOpen}
+              />
+            ) : null
+          }
         />
       ) : (
         <DataTable

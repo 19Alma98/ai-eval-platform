@@ -14,6 +14,7 @@ import { Input } from "@/components/ui/input";
 import { ApiError } from "@/lib/api/client";
 import type { DatasetItem } from "@/lib/api/types";
 import { truncateId } from "@/lib/format";
+import { withProjectQuery } from "@/lib/project-href";
 import { datasetQueryOptions, useDataset } from "./use-datasets";
 
 const PREVIEW_MAX = 96;
@@ -105,7 +106,10 @@ export function DatasetDetailView({
         cell: (row) =>
           row.source_trace_id ? (
             <Link
-              href={`/traces/${encodeURIComponent(row.source_trace_id)}?project=${encodeURIComponent(projectId)}`}
+              href={withProjectQuery(
+                `/traces/${encodeURIComponent(row.source_trace_id)}`,
+                projectId,
+              )}
               className="font-mono text-xs text-primary hover:underline"
               onClick={(e) => e.stopPropagation()}
             >
@@ -151,7 +155,7 @@ export function DatasetDetailView({
     return null;
   }
 
-  const backHref = `/datasets?project=${encodeURIComponent(projectId)}`;
+  const backHref = withProjectQuery("/datasets", projectId);
 
   return (
     <div className="flex flex-col gap-3">
@@ -214,8 +218,16 @@ export function DatasetDetailView({
 
       {items.length === 0 ? (
         <EmptyState
-          title="No items"
-          description="Add items from a trace detail page with “Add to dataset”."
+          title="No items in this dataset"
+          description="Promote a production or demo trace into an evaluation example."
+          action={
+            <Link
+              href={withProjectQuery("/traces", projectId)}
+              className="text-sm font-medium text-foreground underline-offset-4 hover:underline"
+            >
+              Open traces
+            </Link>
+          }
         />
       ) : filteredItems.length === 0 ? (
         <EmptyState
