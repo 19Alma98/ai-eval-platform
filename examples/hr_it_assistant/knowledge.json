@@ -1,0 +1,98 @@
+[
+  {
+    "id": "pto",
+    "title": "Paid Time Off",
+    "body": "Full-time Acme employees receive 20 days of paid time off (PTO) per calendar year. PTO accrues monthly. Unused PTO may roll over up to 5 days into the next year. Requests require manager approval in Workday at least 2 weeks in advance for absences longer than 3 days.",
+    "keywords": ["pto", "vacation", "leave", "time off", "days", "roll over"],
+    "gold": [
+      {
+        "question": "How many PTO days do full-time employees get per year?",
+        "must_contain": "20 days"
+      }
+    ]
+  },
+  {
+    "id": "remote",
+    "title": "Hybrid and Remote Work",
+    "body": "Acme default schedule is hybrid: at least 3 office days per week. Fully remote roles must be approved by HRBP and the department VP. Core collaboration hours are 10:00–16:00 in the employee's local timezone.",
+    "keywords": ["remote", "hybrid", "office", "wfh", "work from home"],
+    "gold": [
+      {
+        "question": "How many office days per week does the hybrid policy require?",
+        "must_contain": "3 office days"
+      }
+    ]
+  },
+  {
+    "id": "vpn",
+    "title": "VPN and Remote Access",
+    "body": "Employees must use the Acme GlobalProtect VPN when accessing internal systems from outside the corporate network. MFA is required for every VPN login. Personal devices are not permitted on VPN; use a company-managed laptop only.",
+    "keywords": ["vpn", "globalprotect", "remote access", "mfa", "network"],
+    "gold": [
+      {
+        "question": "Which VPN client should I use for remote access?",
+        "must_contain": "GlobalProtect"
+      }
+    ]
+  },
+  {
+    "id": "expenses",
+    "title": "Expense Reports",
+    "body": "Submit expense reports in Concur within 30 days of the purchase date. Meal limit for individual dinners is $75 USD without VP approval. Alcohol is not reimbursable. Keep itemized receipts for any expense above $25.",
+    "keywords": ["expense", "concur", "reimburse", "receipt", "meal"],
+    "gold": [
+      {
+        "question": "Where do I submit expense reports?",
+        "must_contain": "Concur"
+      }
+    ]
+  },
+  {
+    "id": "laptop",
+    "title": "Laptop and Device Requests",
+    "body": "New hire laptops are ordered automatically by IT. Replacement or upgrade requests go through the ServiceNow catalog item Hardware Request. Standard issue is a 14-inch MacBook Pro unless a Windows machine is required for the role.",
+    "keywords": ["laptop", "hardware", "macbook", "servicenow", "device"],
+    "gold": [
+      {
+        "question": "How do I request a laptop replacement?",
+        "must_contain": "ServiceNow"
+      }
+    ]
+  },
+  {
+    "id": "password",
+    "title": "Password Reset and MFA",
+    "body": "Password resets are self-service at https://aka.ms/sspr. If locked out of MFA, contact the IT Service Desk at it-help@acme.example or extension 4357. Hardware security keys are mandatory for engineering and finance staff.",
+    "keywords": ["password", "reset", "mfa", "sspr", "lockout"],
+    "gold": [
+      {
+        "question": "Where can I reset my password?",
+        "must_contain": "aka.ms/sspr"
+      }
+    ]
+  },
+  {
+    "id": "badge",
+    "title": "Badge and Building Access",
+    "body": "New employees collect their badge from Building Security on day one after completing onboarding in Workday. Lost badges must be reported within 24 hours to security@acme.example. Guest badges are valid for a single business day.",
+    "keywords": ["badge", "building", "security", "access", "guest"],
+    "gold": [
+      {
+        "question": "Who do I contact if I lose my badge?",
+        "must_contain": "security@acme.example"
+      }
+    ]
+  },
+  {
+    "id": "benefits",
+    "title": "Health Insurance Benefits",
+    "body": "Acme offers medical, dental, and vision coverage through Northwind Health. Open enrollment runs each November. New hires must elect benefits within 30 days of their start date or wait until the next open enrollment.",
+    "keywords": ["benefits", "health", "insurance", "enrollment", "dental"],
+    "gold": [
+      {
+        "question": "Through which provider is Acme health insurance offered?",
+        "must_contain": "Northwind Health"
+      }
+    ]
+  }
+]
