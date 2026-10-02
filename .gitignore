@@ -30,8 +30,4 @@ postgres_data/
 
 .worktrees/
 .cursor/
-docs/superpowers/*
-!docs/superpowers/plans/
-!docs/superpowers/specs/
-!docs/superpowers/plans/**
-!docs/superpowers/specs/**
+docs/superpowers/
