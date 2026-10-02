@@ -254,8 +254,9 @@ def get_create_experiment(
     experiments: SqlAlchemyExperimentRepository = Depends(get_experiment_repository),
     datasets: SqlAlchemyDatasetRepository = Depends(get_dataset_repository),
     projects: SqlAlchemyProjectRepository = Depends(get_project_repository),
+    app_configs: SqlAlchemyAppConfigRepository = Depends(get_app_config_repository),
 ) -> CreateExperiment:
-    return CreateExperiment(experiments, datasets, projects)
+    return CreateExperiment(experiments, datasets, projects, app_configs)
 
 
 def get_list_experiments(
