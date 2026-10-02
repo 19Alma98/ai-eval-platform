@@ -3,6 +3,15 @@ from collections.abc import AsyncGenerator
 from fastapi import Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from aiobs.application.app_configs import (
+    CreateAppConfig,
+    DeleteAppConfigAlias,
+    GetAppConfig,
+    ListAppConfigAliases,
+    ListAppConfigVersions,
+    ListAppConfigs,
+    SetAppConfigAlias,
+)
 from aiobs.application.compare import CompareExperiments, SummarizeExperiment
 from aiobs.application.compare_items import CompareExperimentItems
 from aiobs.application.datasets import (
@@ -40,6 +49,7 @@ from aiobs.config import Settings, get_settings
 from aiobs.evaluation.runner import EvaluationRunner
 from aiobs.infrastructure.db import get_session
 from aiobs.infrastructure.repositories import (
+    SqlAlchemyAppConfigRepository,
     SqlAlchemyDatasetRepository,
     SqlAlchemyEvaluationRunRepository,
     SqlAlchemyEvaluatorRepository,
@@ -65,6 +75,12 @@ def get_trace_repository(
     session: AsyncSession = Depends(get_db_session),
 ) -> SqlAlchemyTraceRepository:
     return SqlAlchemyTraceRepository(session)
+
+
+def get_app_config_repository(
+    session: AsyncSession = Depends(get_db_session),
+) -> SqlAlchemyAppConfigRepository:
+    return SqlAlchemyAppConfigRepository(session)
 
 
 def get_dataset_repository(
@@ -144,6 +160,49 @@ def get_resolve_project(
     projects: SqlAlchemyProjectRepository = Depends(get_project_repository),
 ) -> ResolveProject:
     return ResolveProject(projects)
+
+
+def get_create_app_config(
+    app_configs: SqlAlchemyAppConfigRepository = Depends(get_app_config_repository),
+    projects: SqlAlchemyProjectRepository = Depends(get_project_repository),
+) -> CreateAppConfig:
+    return CreateAppConfig(app_configs, projects)
+
+
+def get_list_app_configs(
+    app_configs: SqlAlchemyAppConfigRepository = Depends(get_app_config_repository),
+) -> ListAppConfigs:
+    return ListAppConfigs(app_configs)
+
+
+def get_get_app_config(
+    app_configs: SqlAlchemyAppConfigRepository = Depends(get_app_config_repository),
+) -> GetAppConfig:
+    return GetAppConfig(app_configs)
+
+
+def get_list_app_config_versions(
+    app_configs: SqlAlchemyAppConfigRepository = Depends(get_app_config_repository),
+) -> ListAppConfigVersions:
+    return ListAppConfigVersions(app_configs)
+
+
+def get_set_app_config_alias(
+    app_configs: SqlAlchemyAppConfigRepository = Depends(get_app_config_repository),
+) -> SetAppConfigAlias:
+    return SetAppConfigAlias(app_configs)
+
+
+def get_list_app_config_aliases(
+    app_configs: SqlAlchemyAppConfigRepository = Depends(get_app_config_repository),
+) -> ListAppConfigAliases:
+    return ListAppConfigAliases(app_configs)
+
+
+def get_delete_app_config_alias(
+    app_configs: SqlAlchemyAppConfigRepository = Depends(get_app_config_repository),
+) -> DeleteAppConfigAlias:
+    return DeleteAppConfigAlias(app_configs)
 
 
 def get_create_dataset(
