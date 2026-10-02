@@ -54,8 +54,7 @@ class InMemoryDatasetRepository:
         return [
             d
             for d in self._datasets.values()
-            if d.project_id == project_id
-            and (task_type is None or d.task_type == task_type)
+            if d.project_id == project_id and (task_type is None or d.task_type == task_type)
         ]
 
     async def add_item(self, item: DatasetItem) -> DatasetItem:

@@ -664,14 +664,10 @@ class SqlAlchemyExperimentItemOutputRepository:
         await self._session.refresh(existing)
         return _experiment_item_output_to_domain(existing)
 
-    async def upsert_many(
-        self, outputs: list[ExperimentItemOutput]
-    ) -> list[ExperimentItemOutput]:
+    async def upsert_many(self, outputs: list[ExperimentItemOutput]) -> list[ExperimentItemOutput]:
         return [await self.upsert(output) for output in outputs]
 
-    async def list_by_experiment(
-        self, experiment_id: uuid.UUID
-    ) -> list[ExperimentItemOutput]:
+    async def list_by_experiment(self, experiment_id: uuid.UUID) -> list[ExperimentItemOutput]:
         result = await self._session.execute(
             select(ExperimentItemOutputModel)
             .where(ExperimentItemOutputModel.experiment_id == experiment_id)

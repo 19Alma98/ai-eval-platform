@@ -25,12 +25,8 @@ from aiobs.domain.experiment_output import ExperimentItemOutput
 
 
 def test_resolve_prefers_experiment_then_legacy() -> None:
-    item = DatasetItem.create(
-        uuid.uuid4(), input="q", actual_output="legacy", context={"c": 1}
-    )
-    out = ExperimentItemOutput.create(
-        uuid.uuid4(), item.id, actual_output="new", context=None
-    )
+    item = DatasetItem.create(uuid.uuid4(), input="q", actual_output="legacy", context={"c": 1})
+    out = ExperimentItemOutput.create(uuid.uuid4(), item.id, actual_output="new", context=None)
     actual, ctx = resolve_item_fields(item, out)
     assert actual == "new"
     assert ctx == {"c": 1}
@@ -43,12 +39,8 @@ def test_resolve_no_output_row_uses_legacy() -> None:
 
 def test_merge_dataset_item_keeps_id_and_resolves_fields() -> None:
     dataset_id = uuid.uuid4()
-    item = DatasetItem.create(
-        dataset_id, input="q", actual_output="legacy", context={"k": 1}
-    )
-    out = ExperimentItemOutput.create(
-        uuid.uuid4(), item.id, actual_output="exp", context=None
-    )
+    item = DatasetItem.create(dataset_id, input="q", actual_output="legacy", context={"k": 1})
+    out = ExperimentItemOutput.create(uuid.uuid4(), item.id, actual_output="exp", context=None)
     merged = merge_dataset_item(item, out)
     assert merged.id == item.id
     assert merged.dataset_id == dataset_id
@@ -82,25 +74,19 @@ class FakeDatasetRepository:
 
 @dataclass
 class FakeExperimentItemOutputRepository:
-    outputs: dict[tuple[uuid.UUID, uuid.UUID], ExperimentItemOutput] = field(
-        default_factory=dict
-    )
+    outputs: dict[tuple[uuid.UUID, uuid.UUID], ExperimentItemOutput] = field(default_factory=dict)
 
     async def get(
         self, experiment_id: uuid.UUID, dataset_item_id: uuid.UUID
     ) -> ExperimentItemOutput | None:
         return self.outputs.get((experiment_id, dataset_item_id))
 
-    async def upsert_many(
-        self, outputs: list[ExperimentItemOutput]
-    ) -> list[ExperimentItemOutput]:
+    async def upsert_many(self, outputs: list[ExperimentItemOutput]) -> list[ExperimentItemOutput]:
         for output in outputs:
             self.outputs[(output.experiment_id, output.dataset_item_id)] = output
         return outputs
 
-    async def list_by_experiment(
-        self, experiment_id: uuid.UUID
-    ) -> list[ExperimentItemOutput]:
+    async def list_by_experiment(self, experiment_id: uuid.UUID) -> list[ExperimentItemOutput]:
         return sorted(
             (o for (eid, _), o in self.outputs.items() if eid == experiment_id),
             key=lambda o: o.dataset_item_id,
@@ -111,9 +97,7 @@ class FakeExperimentItemOutputRepository:
 async def test_upsert_rejects_item_from_another_dataset() -> None:
     experiment_dataset = uuid.uuid4()
     other_dataset = uuid.uuid4()
-    experiment = Experiment.create(
-        uuid.uuid4(), "exp", experiment_dataset, model_config={}
-    )
+    experiment = Experiment.create(uuid.uuid4(), "exp", experiment_dataset, model_config={})
     foreign_item = DatasetItem.create(other_dataset, input="x")
     experiments = FakeExperimentRepository({experiment.id: experiment})
     datasets = FakeDatasetRepository({foreign_item.id: foreign_item})
@@ -216,12 +200,8 @@ async def test_list_outputs_returns_repository_rows() -> None:
     dataset_id = uuid.uuid4()
     experiment = Experiment.create(uuid.uuid4(), "exp", dataset_id, model_config={})
     item = DatasetItem.create(dataset_id, input="q")
-    out = ExperimentItemOutput.create(
-        experiment.id, item.id, actual_output="v", context=None
-    )
-    output_repo = FakeExperimentItemOutputRepository(
-        {(experiment.id, item.id): out}
-    )
+    out = ExperimentItemOutput.create(experiment.id, item.id, actual_output="v", context=None)
+    output_repo = FakeExperimentItemOutputRepository({(experiment.id, item.id): out})
     use_case = ListExperimentOutputs(
         FakeExperimentRepository({experiment.id: experiment}),
         output_repo,
@@ -284,9 +264,7 @@ async def test_evaluate_prefers_experiment_output_over_legacy() -> None:
     out = ExperimentItemOutput.create(
         experiment.id, item.id, actual_output="candidate", context=None
     )
-    output_repo = FakeExperimentItemOutputRepository(
-        {(experiment.id, item.id): out}
-    )
+    output_repo = FakeExperimentItemOutputRepository({(experiment.id, item.id): out})
     use_case = EvaluateExperiment(
         FakeExperimentRepository({experiment.id: experiment}),
         FakeDatasetRepository({item.id: item}),
@@ -295,9 +273,7 @@ async def test_evaluate_prefers_experiment_output_over_legacy() -> None:
         EvaluationRunner(max_concurrency=1),
         output_repo,
     )
-    result = await use_case.execute(
-        EvaluateExperimentCommand(experiment.id, [evaluator.id])
-    )
+    result = await use_case.execute(EvaluateExperimentCommand(experiment.id, [evaluator.id]))
     scores = [r.score for r in result.results_by_run[next(iter(result.results_by_run))]]
     assert scores == [1.0]
 
@@ -327,8 +303,6 @@ async def test_evaluate_without_experiment_output_uses_legacy() -> None:
         EvaluationRunner(max_concurrency=1),
         FakeExperimentItemOutputRepository(),
     )
-    result = await use_case.execute(
-        EvaluateExperimentCommand(experiment.id, [evaluator.id])
-    )
+    result = await use_case.execute(EvaluateExperimentCommand(experiment.id, [evaluator.id]))
     scores = [r.score for r in result.results_by_run[next(iter(result.results_by_run))]]
     assert scores == [1.0]

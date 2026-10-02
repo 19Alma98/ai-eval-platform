@@ -97,6 +97,16 @@ Exit codes: `0` pass, `1` gate failed, `2` config error, `3` infra error. Exampl
 
 Technical specification lives in [`docs/`](docs/). Phase 1 design: [`docs/superpowers/specs/2026-09-30-phase1-otlp-traces-design.md`](docs/superpowers/specs/2026-09-30-phase1-otlp-traces-design.md).
 
+## Local CI checks
+
+Same checks as [`.github/workflows/ci.yml`](.github/workflows/ci.yml) (ruff / mypy / pytest for backend+sdk+cli, frontend typecheck). Backend pytest needs Postgres up (`docker compose up -d postgres`).
+
+```bash
+./scripts/ci-local.sh              # all jobs
+./scripts/ci-local.sh backend      # one job
+./scripts/ci-local.sh sdk cli      # subset
+```
+
 ## Development (backend)
 
 ```bash

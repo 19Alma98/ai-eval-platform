@@ -91,8 +91,7 @@ class InMemoryDatasetRepository:
         return [
             d
             for d in self._datasets.values()
-            if d.project_id == project_id
-            and (task_type is None or d.task_type == task_type)
+            if d.project_id == project_id and (task_type is None or d.task_type == task_type)
         ]
 
     async def add_item(self, item: DatasetItem) -> DatasetItem:
@@ -186,16 +185,12 @@ class InMemoryExperimentItemOutputRepository:
     ) -> ExperimentItemOutput | None:
         return self._outputs.get((experiment_id, dataset_item_id))
 
-    async def upsert_many(
-        self, outputs: list[ExperimentItemOutput]
-    ) -> list[ExperimentItemOutput]:
+    async def upsert_many(self, outputs: list[ExperimentItemOutput]) -> list[ExperimentItemOutput]:
         for output in outputs:
             self._outputs[(output.experiment_id, output.dataset_item_id)] = output
         return outputs
 
-    async def list_by_experiment(
-        self, experiment_id: uuid.UUID
-    ) -> list[ExperimentItemOutput]:
+    async def list_by_experiment(self, experiment_id: uuid.UUID) -> list[ExperimentItemOutput]:
         return sorted(
             (o for (eid, _), o in self._outputs.items() if eid == experiment_id),
             key=lambda o: o.dataset_item_id,

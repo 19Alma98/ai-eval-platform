@@ -64,9 +64,7 @@ class EvaluateExperiment:
         items = await self._datasets.list_items(experiment.dataset_id)
         output_rows = await self._outputs.list_by_experiment(experiment.id)
         by_item = {o.dataset_item_id: o for o in output_rows}
-        merged_items = [
-            merge_dataset_item(item, by_item.get(item.id)) for item in items
-        ]
+        merged_items = [merge_dataset_item(item, by_item.get(item.id)) for item in items]
         evaluator_entities = await self._evaluators.get_by_ids(command.evaluator_ids)
         by_id = {e.id: e for e in evaluator_entities}
         missing = [eid for eid in command.evaluator_ids if eid not in by_id]

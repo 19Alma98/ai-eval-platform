@@ -105,9 +105,7 @@ class ExperimentItemOutputRepository(Protocol):
         self, outputs: list[ExperimentItemOutput]
     ) -> list[ExperimentItemOutput]: ...
 
-    async def list_by_experiment(
-        self, experiment_id: uuid.UUID
-    ) -> list[ExperimentItemOutput]: ...
+    async def list_by_experiment(self, experiment_id: uuid.UUID) -> list[ExperimentItemOutput]: ...
 
     async def get(
         self, experiment_id: uuid.UUID, dataset_item_id: uuid.UUID

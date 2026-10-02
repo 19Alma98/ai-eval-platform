@@ -36,16 +36,12 @@ def resolve_item_fields(
 ) -> tuple[Any | None, Any | None]:
     if output is None:
         return item.actual_output, item.context
-    actual = (
-        item.actual_output if output.actual_output is None else output.actual_output
-    )
+    actual = item.actual_output if output.actual_output is None else output.actual_output
     context = item.context if output.context is None else output.context
     return actual, context
 
 
-def merge_dataset_item(
-    item: DatasetItem, output: ExperimentItemOutput | None
-) -> DatasetItem:
+def merge_dataset_item(item: DatasetItem, output: ExperimentItemOutput | None) -> DatasetItem:
     actual_output, context = resolve_item_fields(item, output)
     return DatasetItem(
         id=item.id,

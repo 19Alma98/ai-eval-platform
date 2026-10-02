@@ -24,16 +24,12 @@ class DatasetMismatchError(Exception):
     ) -> None:
         self.experiment_id = experiment_id
         self.baseline_id = baseline_id
-        super().__init__(
-            f"Experiments {experiment_id} and {baseline_id} use different datasets"
-        )
+        super().__init__(f"Experiments {experiment_id} and {baseline_id} use different datasets")
 
 
 class AmbiguousEvaluatorError(Exception):
     def __init__(self) -> None:
-        super().__init__(
-            "Multiple evaluators have runs; specify evaluator_id query parameter"
-        )
+        super().__init__("Multiple evaluators have runs; specify evaluator_id query parameter")
 
 
 @dataclass(frozen=True, slots=True)
@@ -153,9 +149,7 @@ class CompareExperimentItems:
         candidate_latest = select_latest_runs(
             await self._runs.list_runs_by_experiment(experiment_id)
         )
-        baseline_latest = select_latest_runs(
-            await self._runs.list_runs_by_experiment(baseline_id)
-        )
+        baseline_latest = select_latest_runs(await self._runs.list_runs_by_experiment(baseline_id))
         selected_evaluator = _resolve_evaluator_id(
             evaluator_id=evaluator_id,
             candidate_latest=candidate_latest,
@@ -172,23 +166,17 @@ class CompareExperimentItems:
         )
 
         cand_outputs = {
-            o.dataset_item_id: o
-            for o in await self._outputs.list_by_experiment(experiment_id)
+            o.dataset_item_id: o for o in await self._outputs.list_by_experiment(experiment_id)
         }
         base_outputs = {
-            o.dataset_item_id: o
-            for o in await self._outputs.list_by_experiment(baseline_id)
+            o.dataset_item_id: o for o in await self._outputs.list_by_experiment(baseline_id)
         }
 
         dataset_items = await self._datasets.list_items(experiment.dataset_id)
         rows: list[ItemComparisonRow] = []
         for item in sorted(dataset_items, key=lambda i: str(i.id)):
-            cand_actual, cand_context = resolve_item_fields(
-                item, cand_outputs.get(item.id)
-            )
-            base_actual, base_context = resolve_item_fields(
-                item, base_outputs.get(item.id)
-            )
+            cand_actual, cand_context = resolve_item_fields(item, cand_outputs.get(item.id))
+            base_actual, base_context = resolve_item_fields(item, base_outputs.get(item.id))
             cand_result = cand_results.get(item.id)
             base_result = base_results.get(item.id)
             cand_side = _build_side(

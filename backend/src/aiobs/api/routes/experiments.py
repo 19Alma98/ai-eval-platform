@@ -29,10 +29,10 @@ from aiobs.api.schemas import (
     ExperimentCompareResponse,
     ExperimentItemCompareResponse,
     ExperimentItemOutputResponse,
-    ItemComparisonRowResponse,
-    ItemSideResponse,
     ExperimentResponse,
     ExperimentSummaryResponse,
+    ItemComparisonRowResponse,
+    ItemSideResponse,
     MetricComparisonResponse,
     UpsertExperimentOutputItemRequest,
     UpsertExperimentOutputsRequest,
@@ -76,10 +76,10 @@ from aiobs.application.experiments import (
     GetExperiment,
     ListExperiments,
 )
-from aiobs.domain.experiment_output import UNSET, ExperimentItemOutput
 from aiobs.application.projects import ProjectNotFoundError
 from aiobs.domain.evaluation import EvaluationResultRecord, EvaluationRun
 from aiobs.domain.experiment import Experiment
+from aiobs.domain.experiment_output import UNSET, ExperimentItemOutput
 from aiobs.regression.aggregate import MetricComparison
 
 router = APIRouter(tags=["experiments"])
