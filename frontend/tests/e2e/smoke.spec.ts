@@ -22,3 +22,26 @@ test("trace list and release page render", async ({ page, request }) => {
   await expect(page.getByLabel("Policy (YAML)")).toBeVisible();
   await expect(page.locator("#release-policy")).toBeVisible();
 });
+
+test("quality loop strip and glossaries render", async ({ page, request }) => {
+  const proj = await request.post(`${API}/api/v1/projects`, {
+    data: { name: "E2E UX", slug: `e2e-ux-${Date.now()}` },
+  });
+  expect(proj.ok()).toBeTruthy();
+  const { id } = await proj.json();
+
+  await page.goto(`/overview?project=${id}`);
+  await expect(page.getByRole("navigation", { name: "Quality loop" })).toBeVisible();
+  await expect(page.getByText(/quality loop/i).first()).toBeVisible();
+
+  await page.goto(`/traces?project=${id}&status=error`);
+  await expect(page.getByRole("button", { name: "Error" })).toHaveAttribute(
+    "aria-pressed",
+    "true",
+  );
+
+  await page.goto(`/experiments?project=${id}`);
+  await expect(page.getByRole("heading", { name: "Experiments" })).toBeVisible();
+  await expect(page.getByText(/evaluation run on a dataset/i)).toBeVisible();
+  await expect(page.getByRole("button", { name: /new experiment/i })).toBeVisible();
+});

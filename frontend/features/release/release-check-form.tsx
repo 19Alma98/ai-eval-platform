@@ -1,11 +1,15 @@
 "use client";
 
+import Link from "next/link";
 import { useMemo, useState, type FormEvent } from "react";
+import { EmptyState } from "@/components/empty-state";
 import { ErrorState } from "@/components/error-state";
 import { LoadingBlock } from "@/components/loading-block";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { ApiError } from "@/lib/api/client";
+import { cn } from "@/lib/cn";
+import { withProjectQuery } from "@/lib/project-href";
 import { useExperiments } from "@/features/experiments/use-experiments";
 import { parsePolicyYaml } from "./parse-policy";
 import { ReleaseResult } from "./release-result";
@@ -93,13 +97,20 @@ export function ReleaseCheckForm({
 
   return (
     <div className="flex max-w-2xl flex-col gap-6">
-      <div>
-        <h1 className="text-lg font-semibold text-foreground">Release</h1>
-        <p className="mt-1 text-sm text-muted-foreground">
-          Evaluate release policy against experiment metrics and regression
-          limits.
-        </p>
-      </div>
+      {experiments.length === 0 ? (
+        <EmptyState
+          title="No experiments yet"
+          description="Create and evaluate an experiment before running a release check."
+          action={
+            <Link
+              href={withProjectQuery("/experiments", projectId)}
+              className={cn(buttonVariants({ variant: "default", size: "sm" }))}
+            >
+              Go to Experiments
+            </Link>
+          }
+        />
+      ) : null}
 
       <form onSubmit={handleSubmit} className="flex flex-col gap-4">
         <div className="flex flex-col gap-1.5">

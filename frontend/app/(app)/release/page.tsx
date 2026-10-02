@@ -2,9 +2,10 @@
 
 import { Suspense } from "react";
 import { useSearchParams } from "next/navigation";
+import { PageIntro } from "@/components/page-intro";
+import { LoadingBlock } from "@/components/loading-block";
 import { ReleaseCheckForm } from "@/features/release/release-check-form";
 import { ProjectRequired } from "@/features/traces/project-required";
-import { LoadingBlock } from "@/components/loading-block";
 import { useProjectId } from "@/lib/project-store";
 
 function ReleasePageContent() {
@@ -17,10 +18,16 @@ function ReleasePageContent() {
   }
 
   return (
-    <ReleaseCheckForm
-      projectId={projectId}
-      initialExperimentId={experimentFromQuery}
-    />
+    <>
+      <PageIntro
+        title="Release"
+        glossary="PASS/FAIL against YAML thresholds — whether to ship."
+      />
+      <ReleaseCheckForm
+        projectId={projectId}
+        initialExperimentId={experimentFromQuery}
+      />
+    </>
   );
 }
 
