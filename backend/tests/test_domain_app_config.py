@@ -48,3 +48,19 @@ def test_to_snapshot_includes_identity_and_sections() -> None:
     assert snap["model"] == {"model_id": "gpt"}
     assert snap["retrieval"] == {"top_k": 4}
     assert "content_hash" in snap
+
+
+def test_experiment_create_accepts_app_config_id() -> None:
+    from aiobs.domain.experiment import Experiment
+
+    project_id = uuid.uuid4()
+    dataset_id = uuid.uuid4()
+    config_id = uuid.uuid4()
+    exp = Experiment.create(
+        project_id,
+        "exp-1",
+        dataset_id,
+        app_config_id=config_id,
+        model_config={"name": "rag-faq"},
+    )
+    assert exp.app_config_id == config_id
