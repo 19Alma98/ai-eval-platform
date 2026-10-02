@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Run the portfolio demo loop: RAG FAQ → datasets → experiments → compare → aiobs check."""
+"""Run the portfolio demo loop: People Ops assistant (MODEL1 vs MODEL2) → datasets → experiments → compare → aiobs check."""
 
 from __future__ import annotations
 
@@ -16,9 +16,8 @@ from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
 SDK_DIR = ROOT / "sdk"
-RAG_DIR = ROOT / "examples" / "rag_faq"
-FAQ_PATH = RAG_DIR / "faq.json"
-POLICY_PATH = RAG_DIR / "aiobs.yaml"
+APP_DIR = ROOT / "examples" / "hr_it_assistant"
+POLICY_PATH = APP_DIR / "aiobs.yaml"
 CLI_DIR = ROOT / "cli"
 
 
@@ -71,10 +70,9 @@ def warn_content_capture(base: str) -> None:
     _ = base
 
 
-def run_rag(
-    mode: str, *, project_slug: str, env_extra: dict[str, str]
+def run_assistant(
+    model: str, *, project_slug: str, env_extra: dict[str, str]
 ) -> list[dict[str, Any]]:
-    # Use the SDK uv env (not backend — both packages are named `aiobs`).
     cmd = [
         "uv",
         "run",
@@ -83,17 +81,17 @@ def run_rag(
         "--with",
         "openai",
         "python",
-        str(RAG_DIR / "main.py"),
-        "--mode",
-        mode,
-        "--all-faq",
+        str(APP_DIR / "main.py"),
+        "--model",
+        model,
+        "--all",
         "--json",
     ]
     env = os.environ.copy()
     env.update(env_extra)
     env["AIOBS_PROJECT_SLUG"] = project_slug
-    env["RAG_MODE"] = mode
-    print(f"running rag_faq mode={mode} ...")
+    env["OLLAMA_MODEL"] = model
+    print(f"running hr_it_assistant model={model} ...")
     proc = subprocess.run(
         cmd,
         cwd=str(SDK_DIR),
@@ -111,8 +109,7 @@ def run_rag(
             continue
         results.append(json.loads(line))
     if not results:
-        raise RuntimeError(f"rag_faq produced no results (mode={mode})")
-    # Allow ingestion / UI listing to catch up.
+        raise RuntimeError(f"hr_it_assistant produced no results (model={model})")
     time.sleep(1.0)
     return results
 
@@ -165,7 +162,7 @@ def create_dataset_from_runs(
                     "trace_id": run["trace_id"],
                     "expected_output": expected,
                     "metadata": {
-                        "mode": run.get("mode"),
+                        "model": run.get("model"),
                         "doc_ids": run.get("doc_ids"),
                     },
                 },
@@ -181,7 +178,7 @@ def create_dataset_from_runs(
                     "actual_output": run["answer"],
                     "source_trace_id": run["trace_id"],
                     "metadata": {
-                        "mode": run.get("mode"),
+                        "model": run.get("model"),
                         "doc_ids": run.get("doc_ids"),
                         "backfilled": True,
                     },
@@ -299,7 +296,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--base-url", default=os.getenv("AIOBS_BASE_URL", "http://localhost:8000")
     )
-    parser.add_argument("--project-slug", default="rag-faq")
+    parser.add_argument("--project-slug", default="hr-it-assistant")
     parser.add_argument(
         "--skip-check", action="store_true", help="Skip aiobs check subprocess"
     )
@@ -311,24 +308,28 @@ def main(argv: list[str] | None = None) -> int:
         raise SystemExit(f"API unhealthy at {base}/health: {health}")
 
     warn_content_capture(base)
-    project = ensure_project(base, args.project_slug, "RAG FAQ")
+    project = ensure_project(base, args.project_slug, "Acme People Ops")
     project_id = project["id"]
 
     stamp = time.strftime("%Y%m%d-%H%M%S")
+    model1 = os.getenv("OLLAMA_MODEL1", os.getenv("OLLAMA_MODEL", "gemma4:e2b"))
+    model2 = os.getenv("OLLAMA_MODEL2", "tinyllama")
+    print(f"MODEL1 (baseline)={model1}")
+    print(f"MODEL2 (candidate)={model2}")
+
     env_extra = {
         "AIOBS_OTLP_ENDPOINT": f"{base}/v1/traces",
         "OLLAMA_HOST": os.getenv("OLLAMA_HOST", "http://localhost:11434"),
-        "OLLAMA_MODEL": os.getenv("OLLAMA_MODEL", "gemma4:e2b"),
     }
 
-    good_runs = run_rag("good", project_slug=args.project_slug, env_extra=env_extra)
-    broken_runs = run_rag("broken", project_slug=args.project_slug, env_extra=env_extra)
+    runs1 = run_assistant(model1, project_slug=args.project_slug, env_extra=env_extra)
+    runs2 = run_assistant(model2, project_slug=args.project_slug, env_extra=env_extra)
 
     baseline_ds = create_dataset_from_runs(
-        base, project_id, name=f"faq-baseline-{stamp}", runs=good_runs
+        base, project_id, name=f"people-ops-m1-{stamp}", runs=runs1
     )
     candidate_ds = create_dataset_from_runs(
-        base, project_id, name=f"faq-candidate-{stamp}", runs=broken_runs
+        base, project_id, name=f"people-ops-m2-{stamp}", runs=runs2
     )
 
     evaluator_id = ensure_quality_evaluator(base, project_id)
@@ -338,7 +339,7 @@ def main(argv: list[str] | None = None) -> int:
         name=f"baseline-{stamp}",
         dataset_id=baseline_ds,
         evaluator_id=evaluator_id,
-        model_config={"mode": "good", "model": env_extra["OLLAMA_MODEL"]},
+        model_config={"model": model1},
     )
     candidate_id = create_and_evaluate(
         base,
@@ -347,7 +348,7 @@ def main(argv: list[str] | None = None) -> int:
         dataset_id=candidate_ds,
         evaluator_id=evaluator_id,
         baseline_experiment_id=baseline_id,
-        model_config={"mode": "broken", "model": env_extra["OLLAMA_MODEL"]},
+        model_config={"model": model2},
     )
 
     compare = http_json(
@@ -372,16 +373,12 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     code = run_aiobs_check(policy, base)
-    if code == 1:
-        print("aiobs check exit 1 (gate failed) — expected for broken candidate")
-        return 0
     if code == 0:
-        print(
-            "aiobs check passed unexpectedly; inspect compare/policy. "
-            "Broken mode may have still contained gold phrases.",
-            file=sys.stderr,
-        )
-        return 1
+        print("gate passed")
+        return 0
+    if code == 1:
+        print("gate failed (regression or quality threshold)")
+        return 0
     print(f"aiobs check failed with unexpected exit {code}", file=sys.stderr)
     return code
 
