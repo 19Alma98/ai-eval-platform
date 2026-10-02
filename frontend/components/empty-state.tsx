@@ -1,12 +1,16 @@
+import type React from "react";
+
 import { cn } from "@/lib/cn";
 
 export function EmptyState({
   title,
   description,
+  action,
   className,
 }: {
   title: string;
   description?: string;
+  action?: React.ReactNode;
   className?: string;
 }) {
   return (
@@ -18,10 +22,9 @@ export function EmptyState({
     >
       <p className="text-sm font-medium text-foreground">{title}</p>
       {description ? (
-        <p className="mt-2 max-w-md text-sm text-muted-foreground">
-          {description}
-        </p>
+        <p className="mt-2 max-w-md text-sm text-muted-foreground">{description}</p>
       ) : null}
+      {action ? <div className="mt-4 flex flex-wrap items-center justify-center gap-2">{action}</div> : null}
     </div>
   );
 }
