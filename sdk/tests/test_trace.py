@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+from collections.abc import Iterator
 
 import pytest
 from opentelemetry import trace
@@ -18,7 +19,7 @@ _shared_exporter: InMemorySpanExporter | None = None
 
 
 @pytest.fixture(scope="module", autouse=True)
-def _reset_otel_before_trace_tests() -> None:
+def _reset_otel_before_trace_tests() -> Iterator[None]:
     global _shared_exporter
     _otel._reset_for_tests()
     _shared_exporter = None

@@ -87,6 +87,7 @@ def test_create_app_config_post_body_and_path(
     req = captured_requests[0]
     assert req.get_method() == "POST"
     assert req.full_url == "http://localhost:8000/api/v1/projects/proj-1/app-configs"
+    assert isinstance(req.data, bytes)
     body: dict[str, Any] = json.loads(req.data.decode())
     assert body == {
         "name": "rag-faq",
@@ -110,6 +111,7 @@ def test_set_alias_put_body_and_path(
         req.full_url
         == "http://api.example/api/v1/projects/proj-2/app-config-aliases/baseline"
     )
+    assert isinstance(req.data, bytes)
     body = json.loads(req.data.decode())
     assert body == {"app_config_id": config_id}
 

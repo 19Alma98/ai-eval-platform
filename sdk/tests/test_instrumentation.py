@@ -24,7 +24,7 @@ def test_skips_missing_packages(monkeypatch: pytest.MonkeyPatch) -> None:
         "llama_index",
         "boto3",
     ):
-        monkeypatch.setitem(sys.modules, mod, None)  # type: ignore[arg-type]
+        monkeypatch.setitem(sys.modules, mod, None)
         # Better: remove if present
         sys.modules.pop(mod, None)
 
@@ -40,7 +40,7 @@ def test_activates_when_both_present(monkeypatch: pytest.MonkeyPatch) -> None:
     fake_mod = types.ModuleType("openinference.instrumentation.openai")
     instrumentor_instance = MagicMock()
     fake_cls = MagicMock(return_value=instrumentor_instance)
-    fake_mod.OpenAIInstrumentor = fake_cls
+    setattr(fake_mod, "OpenAIInstrumentor", fake_cls)
 
     # Ensure parent packages exist for import machinery
     oi = types.ModuleType("openinference")

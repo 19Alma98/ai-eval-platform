@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+from collections.abc import Iterator
 
 import pytest
 from opentelemetry import trace
@@ -11,7 +12,7 @@ from aiobs import _otel
 
 
 @pytest.fixture(autouse=True)
-def reset_otel_state(monkeypatch: pytest.MonkeyPatch) -> None:
+def reset_otel_state(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
     monkeypatch.delenv("AIOBS_PROJECT_ID", raising=False)
     monkeypatch.delenv("AIOBS_PROJECT_SLUG", raising=False)
     _otel._reset_for_tests()
