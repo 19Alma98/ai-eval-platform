@@ -54,7 +54,7 @@ OpenInference span kinds should be supported where available, including LLM, EMB
 
 Reusable evaluation collection.
 
-Prefer one dataset per evaluation task (for example RAG FAQ vs classification). Optional soft typing guides the UI with field hints and recommended evaluators; it does not validate item schemas.
+Prefer one dataset per evaluation task (for example People Ops RAG vs classification). Optional soft typing guides the UI with field hints and recommended evaluators; it does not validate item schemas.
 
 Fields:
 - id

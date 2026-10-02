@@ -21,16 +21,17 @@ Check health:
 curl http://localhost:8000/health
 ```
 
-### Portfolio demo (RAG FAQ + Ollama)
+### Portfolio demo (People Ops assistant + Ollama)
 
-End-to-end loop: traces → dataset → experiments → compare → release gate.
+End-to-end loop: traces → dataset → experiments → compare → release gate. Compares two local models (`OLLAMA_MODEL1` vs `OLLAMA_MODEL2`) on the same retrieval and prompt pipeline.
 
-1. Pull a local model: `ollama pull gemma4:e2b`
-2. Sync SDK (RAG client): `cd sdk && uv sync --extra openai --extra dev && cd ..`
-3. Sync CLI: `cd cli && uv sync && cd ..`
-4. Run: `python scripts/portfolio_demo.py`
+1. `docker compose up --build` (API needs `CONTENT_CAPTURE_ENABLED=true`; Compose sets this)
+2. Pull two chat models, e.g. `ollama pull gemma4:e2b` and `ollama pull tinyllama`
+3. Sync SDK: `cd sdk && uv sync --extra openai --extra dev && cd ..`
+4. Sync CLI: `cd cli && uv sync && cd ..`
+5. Run: `python scripts/portfolio_demo.py`
 
-Details: [`examples/rag_faq/README.md`](examples/rag_faq/README.md). Design: [`docs/superpowers/specs/2026-10-01-portfolio-rag-faq-design.md`](docs/superpowers/specs/2026-10-01-portfolio-rag-faq-design.md).
+Details: [`examples/hr_it_assistant/README.md`](examples/hr_it_assistant/README.md). Design: [`docs/superpowers/specs/2026-10-02-hr-it-assistant-portfolio-design.md`](docs/superpowers/specs/2026-10-02-hr-it-assistant-portfolio-design.md).
 
 Create a project:
 
