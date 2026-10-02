@@ -9,9 +9,11 @@ from aiobs.api.deps import (
     get_create_experiment,
     get_evaluate_experiment,
     get_get_experiment,
+    get_list_experiment_outputs,
     get_list_experiment_runs,
     get_list_experiments,
     get_summarize_experiment,
+    get_upsert_experiment_outputs,
 )
 from aiobs.api.deps import (
     get_evaluation_run as get_evaluation_run_use_case,
@@ -24,9 +26,13 @@ from aiobs.api.schemas import (
     EvaluationRunResponse,
     EvaluatorSummaryResponse,
     ExperimentCompareResponse,
+    ExperimentItemOutputResponse,
     ExperimentResponse,
     ExperimentSummaryResponse,
     MetricComparisonResponse,
+    UpsertExperimentOutputItemRequest,
+    UpsertExperimentOutputsRequest,
+    UpsertExperimentOutputsResponse,
 )
 from aiobs.application.compare import (
     CompareExperiments,
@@ -45,6 +51,12 @@ from aiobs.application.evaluate import (
     ListExperimentRuns,
 )
 from aiobs.application.evaluators import EvaluatorNotFoundError
+from aiobs.application.experiment_outputs import (
+    ExperimentItemNotInDatasetError,
+    ListExperimentOutputs,
+    UpsertExperimentOutputs,
+    UpsertOutputItem,
+)
 from aiobs.application.experiments import (
     CreateExperiment,
     CreateExperimentCommand,
@@ -52,6 +64,7 @@ from aiobs.application.experiments import (
     GetExperiment,
     ListExperiments,
 )
+from aiobs.domain.experiment_output import UNSET, ExperimentItemOutput
 from aiobs.application.projects import ProjectNotFoundError
 from aiobs.domain.evaluation import EvaluationResultRecord, EvaluationRun
 from aiobs.domain.experiment import Experiment
@@ -136,6 +149,28 @@ def _metric_response(metric: MetricComparison) -> MetricComparisonResponse:
     )
 
 
+def _output_response(output: ExperimentItemOutput) -> ExperimentItemOutputResponse:
+    return ExperimentItemOutputResponse(
+        id=output.id,
+        experiment_id=output.experiment_id,
+        dataset_item_id=output.dataset_item_id,
+        actual_output=output.actual_output,
+        context=output.context,
+        metadata=dict(output.metadata),
+        updated_at=output.updated_at,
+    )
+
+
+def _upsert_output_item(entry: UpsertExperimentOutputItemRequest) -> UpsertOutputItem:
+    fields_set = entry.model_fields_set
+    return UpsertOutputItem(
+        dataset_item_id=entry.dataset_item_id,
+        actual_output=entry.actual_output if "actual_output" in fields_set else UNSET,
+        context=entry.context if "context" in fields_set else UNSET,
+        metadata=entry.metadata if "metadata" in fields_set else UNSET,
+    )
+
+
 def _compare_response(comparison: ExperimentComparison) -> ExperimentCompareResponse:
     return ExperimentCompareResponse(
         experiment_id=comparison.experiment_id,
@@ -197,6 +232,45 @@ async def get_experiment(
     except ExperimentNotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
     return _experiment_response(experiment)
+
+
+@router.put(
+    "/api/v1/experiments/{experiment_id}/outputs",
+    response_model=UpsertExperimentOutputsResponse,
+)
+async def upsert_experiment_outputs(
+    experiment_id: uuid.UUID,
+    body: UpsertExperimentOutputsRequest,
+    use_case: UpsertExperimentOutputs = Depends(get_upsert_experiment_outputs),
+) -> UpsertExperimentOutputsResponse:
+    try:
+        items = await use_case.execute(
+            experiment_id,
+            [_upsert_output_item(entry) for entry in body.items],
+        )
+    except ExperimentNotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    except ExperimentItemNotInDatasetError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+    return UpsertExperimentOutputsResponse(
+        upserted=len(items),
+        items=[_output_response(item) for item in items],
+    )
+
+
+@router.get(
+    "/api/v1/experiments/{experiment_id}/outputs",
+    response_model=list[ExperimentItemOutputResponse],
+)
+async def list_experiment_outputs(
+    experiment_id: uuid.UUID,
+    use_case: ListExperimentOutputs = Depends(get_list_experiment_outputs),
+) -> list[ExperimentItemOutputResponse]:
+    try:
+        items = await use_case.execute(experiment_id)
+    except ExperimentNotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    return [_output_response(item) for item in items]
 
 
 @router.post(

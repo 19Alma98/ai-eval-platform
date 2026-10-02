@@ -284,3 +284,29 @@ class ReleaseCheckResponse(BaseModel):
     experiment_id: uuid.UUID
     baseline_experiment_id: uuid.UUID | None
     checks: list[ReleaseCheckItemResponse]
+
+
+class UpsertExperimentOutputItemRequest(BaseModel):
+    dataset_item_id: uuid.UUID
+    actual_output: Any | None = None
+    context: Any | None = None
+    metadata: dict[str, Any] | None = None
+
+
+class UpsertExperimentOutputsRequest(BaseModel):
+    items: list[UpsertExperimentOutputItemRequest] = Field(min_length=1)
+
+
+class ExperimentItemOutputResponse(BaseModel):
+    id: uuid.UUID
+    experiment_id: uuid.UUID
+    dataset_item_id: uuid.UUID
+    actual_output: Any | None
+    context: Any | None
+    metadata: dict[str, Any]
+    updated_at: datetime
+
+
+class UpsertExperimentOutputsResponse(BaseModel):
+    upserted: int
+    items: list[ExperimentItemOutputResponse]

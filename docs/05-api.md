@@ -63,9 +63,44 @@ POST /experiments/{experiment_id}/evaluate
 GET /experiments/{experiment_id}/runs
 GET /experiments/{experiment_id}/summary
 GET /evaluation-runs/{run_id}
+PUT /experiments/{experiment_id}/outputs
+GET /experiments/{experiment_id}/outputs
 ```
 
 `POST /experiments/{experiment_id}/evaluate` runs the selected evaluators against the experiment dataset and persists evaluation runs/results. (`POST .../run` and `POST .../cancel` remain future; evaluate is the v0.1 execution path.)
+
+### Experiment item outputs
+
+Bulk upsert per-dataset-item outputs for an experiment (overrides used at evaluation time):
+
+```http
+PUT /experiments/{experiment_id}/outputs
+```
+
+Request body:
+
+```json
+{
+  "items": [
+    {
+      "dataset_item_id": "uuid",
+      "actual_output": "optional",
+      "context": {},
+      "metadata": {}
+    }
+  ]
+}
+```
+
+Omitted fields in each item are left unchanged on update; `"context": null` clears context.
+
+Response: `{ "upserted": N, "items": [ ExperimentItemOutput ] }`.
+
+```http
+GET /experiments/{experiment_id}/outputs
+```
+
+Returns all stored output rows for the experiment. Errors: 404 experiment not found; 400 dataset item not in experiment dataset (PUT).
 
 ### Summary
 

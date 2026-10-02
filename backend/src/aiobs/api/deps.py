@@ -17,6 +17,10 @@ from aiobs.application.evaluate import (
     ListExperimentRuns,
 )
 from aiobs.application.evaluators import CreateEvaluator, ListEvaluators
+from aiobs.application.experiment_outputs import (
+    ListExperimentOutputs,
+    UpsertExperimentOutputs,
+)
 from aiobs.application.experiments import (
     CreateExperiment,
     GetExperiment,
@@ -38,6 +42,7 @@ from aiobs.infrastructure.repositories import (
     SqlAlchemyDatasetRepository,
     SqlAlchemyEvaluationRunRepository,
     SqlAlchemyEvaluatorRepository,
+    SqlAlchemyExperimentItemOutputRepository,
     SqlAlchemyExperimentRepository,
     SqlAlchemyProjectRepository,
     SqlAlchemyTraceRepository,
@@ -83,6 +88,12 @@ def get_evaluation_run_repository(
     session: AsyncSession = Depends(get_db_session),
 ) -> SqlAlchemyEvaluationRunRepository:
     return SqlAlchemyEvaluationRunRepository(session)
+
+
+def get_experiment_item_output_repository(
+    session: AsyncSession = Depends(get_db_session),
+) -> SqlAlchemyExperimentItemOutputRepository:
+    return SqlAlchemyExperimentItemOutputRepository(session)
 
 
 def get_create_project(
@@ -244,6 +255,25 @@ def get_compare_experiments(
     runs: SqlAlchemyEvaluationRunRepository = Depends(get_evaluation_run_repository),
 ) -> CompareExperiments:
     return CompareExperiments(experiments, runs)
+
+
+def get_upsert_experiment_outputs(
+    experiments: SqlAlchemyExperimentRepository = Depends(get_experiment_repository),
+    datasets: SqlAlchemyDatasetRepository = Depends(get_dataset_repository),
+    outputs: SqlAlchemyExperimentItemOutputRepository = Depends(
+        get_experiment_item_output_repository
+    ),
+) -> UpsertExperimentOutputs:
+    return UpsertExperimentOutputs(experiments, datasets, outputs)
+
+
+def get_list_experiment_outputs(
+    experiments: SqlAlchemyExperimentRepository = Depends(get_experiment_repository),
+    outputs: SqlAlchemyExperimentItemOutputRepository = Depends(
+        get_experiment_item_output_repository
+    ),
+) -> ListExperimentOutputs:
+    return ListExperimentOutputs(experiments, outputs)
 
 
 def get_release_check(
