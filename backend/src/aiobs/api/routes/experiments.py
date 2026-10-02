@@ -38,6 +38,7 @@ from aiobs.api.schemas import (
     UpsertExperimentOutputsRequest,
     UpsertExperimentOutputsResponse,
 )
+from aiobs.application.app_configs import AppConfigNotFoundError
 from aiobs.application.compare import (
     CompareExperiments,
     ExperimentComparison,
@@ -69,7 +70,6 @@ from aiobs.application.experiment_outputs import (
     UpsertExperimentOutputs,
     UpsertOutputItem,
 )
-from aiobs.application.app_configs import AppConfigNotFoundError
 from aiobs.application.experiments import (
     CreateExperiment,
     CreateExperimentCommand,

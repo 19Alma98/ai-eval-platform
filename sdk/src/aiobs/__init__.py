@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from aiobs._otel import flush, init
-from aiobs.registry import AppConfigClient
 from aiobs._trace import (
     current_trace_id,
     set_attribute,
@@ -14,6 +13,7 @@ from aiobs._trace import (
     trace,
     trace_async,
 )
+from aiobs.registry import AppConfigClient
 
 __all__ = [
     "__version__",

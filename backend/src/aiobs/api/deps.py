@@ -8,8 +8,8 @@ from aiobs.application.app_configs import (
     DeleteAppConfigAlias,
     GetAppConfig,
     ListAppConfigAliases,
-    ListAppConfigVersions,
     ListAppConfigs,
+    ListAppConfigVersions,
     SetAppConfigAlias,
 )
 from aiobs.application.compare import CompareExperiments, SummarizeExperiment

@@ -14,14 +14,14 @@ from aiobs.application.experiment_outputs import (
     merge_dataset_item,
     resolve_item_fields,
 )
+from aiobs.application.experiments import ExperimentNotFoundError
+from aiobs.domain.dataset import DatasetItem
 from aiobs.domain.evaluator import Evaluator
+from aiobs.domain.experiment import Experiment
+from aiobs.domain.experiment_output import ExperimentItemOutput
 from aiobs.evaluation.deterministic import register_deterministic_evaluators
 from aiobs.evaluation.registry import clear_registry
 from aiobs.evaluation.runner import EvaluationRunner
-from aiobs.application.experiments import ExperimentNotFoundError
-from aiobs.domain.dataset import DatasetItem
-from aiobs.domain.experiment import Experiment
-from aiobs.domain.experiment_output import ExperimentItemOutput
 
 
 def test_resolve_prefers_experiment_then_legacy() -> None:

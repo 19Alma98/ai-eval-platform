@@ -29,8 +29,8 @@ from aiobs.application.app_configs import (
     DeleteAppConfigAlias,
     GetAppConfig,
     ListAppConfigAliases,
-    ListAppConfigVersions,
     ListAppConfigs,
+    ListAppConfigVersions,
     SetAppConfigAlias,
     SetAppConfigAliasCommand,
 )

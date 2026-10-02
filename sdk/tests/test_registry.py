@@ -2,9 +2,9 @@ from __future__ import annotations
 
 import json
 from typing import Any
+from urllib.request import Request
 
 import pytest
-from urllib.request import Request
 
 from aiobs.registry import AppConfigClient
 

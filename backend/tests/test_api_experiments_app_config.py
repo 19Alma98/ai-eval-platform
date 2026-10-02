@@ -6,6 +6,7 @@ from typing import Any
 
 import pytest
 from httpx import ASGITransport, AsyncClient
+from tests.test_api_app_configs import InMemoryAppConfigRepository, InMemoryProjectRepository
 
 from aiobs.api.deps import (
     get_app_config_repository,
@@ -16,7 +17,6 @@ from aiobs.api.deps import (
 from aiobs.domain.dataset import Dataset
 from aiobs.domain.experiment import Experiment
 from aiobs.main import create_app
-from tests.test_api_app_configs import InMemoryAppConfigRepository, InMemoryProjectRepository
 
 
 class InMemoryDatasetRepository:
