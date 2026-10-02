@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
   Database,
+  FileCode,
   FlaskConical,
   GitBranch,
   LayoutDashboard,
@@ -25,6 +26,7 @@ const NAV = [
   { href: "/traces", label: "Traces", icon: GitBranch },
   { href: "/datasets", label: "Datasets", icon: Database },
   { href: "/experiments", label: "Experiments", icon: FlaskConical },
+  { href: "/app-configs", label: "App configs", icon: FileCode },
   { href: "/release", label: "Release", icon: ShieldCheck },
 ] as const;
 

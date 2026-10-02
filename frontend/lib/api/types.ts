@@ -191,3 +191,29 @@ export type ReleaseCheckResponse = {
   baseline_experiment_id: string | null;
   checks: ReleaseCheckItemResponse[];
 };
+
+export type AppConfig = {
+  id: string;
+  project_id: string;
+  name: string;
+  version: number;
+  description: string | null;
+  prompt: Record<string, unknown>;
+  model: Record<string, unknown>;
+  retrieval: Record<string, unknown>;
+  content_hash: string;
+  created_at: string;
+};
+
+export type AppConfigSummary = {
+  id: string;
+  name: string;
+  version: number;
+};
+
+export type AppConfigAlias = {
+  name: string;
+  app_config_id: string;
+  updated_at: string;
+  app_config: AppConfigSummary;
+};
