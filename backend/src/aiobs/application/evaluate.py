@@ -4,6 +4,7 @@ import uuid
 from dataclasses import dataclass
 
 from aiobs.application.evaluators import EvaluatorNotFoundError
+from aiobs.application.experiment_outputs import merge_dataset_item
 from aiobs.application.experiments import ExperimentNotFoundError
 from aiobs.domain.evaluation import EvaluationResultRecord, EvaluationRun
 from aiobs.domain.experiment import Experiment
@@ -11,6 +12,7 @@ from aiobs.domain.repositories import (
     DatasetRepository,
     EvaluationRunRepository,
     EvaluatorRepository,
+    ExperimentItemOutputRepository,
     ExperimentRepository,
 )
 from aiobs.evaluation.runner import EvaluationRunner
@@ -42,12 +44,14 @@ class EvaluateExperiment:
         evaluators: EvaluatorRepository,
         runs: EvaluationRunRepository,
         runner: EvaluationRunner,
+        outputs: ExperimentItemOutputRepository,
     ) -> None:
         self._experiments = experiments
         self._datasets = datasets
         self._evaluators = evaluators
         self._runs = runs
         self._runner = runner
+        self._outputs = outputs
 
     async def execute(self, command: EvaluateExperimentCommand) -> EvaluateExperimentResult:
         if not command.evaluator_ids:
@@ -58,6 +62,11 @@ class EvaluateExperiment:
             raise ExperimentNotFoundError(command.experiment_id)
 
         items = await self._datasets.list_items(experiment.dataset_id)
+        output_rows = await self._outputs.list_by_experiment(experiment.id)
+        by_item = {o.dataset_item_id: o for o in output_rows}
+        merged_items = [
+            merge_dataset_item(item, by_item.get(item.id)) for item in items
+        ]
         evaluator_entities = await self._evaluators.get_by_ids(command.evaluator_ids)
         by_id = {e.id: e for e in evaluator_entities}
         missing = [eid for eid in command.evaluator_ids if eid not in by_id]
@@ -88,7 +97,7 @@ class EvaluateExperiment:
             run = EvaluationRun.create(experiment.id, entity.id, status="PENDING")
             run = await self._runs.add_run(run)
             run, results = await self._runner.run_evaluator(
-                run=run, evaluator_entity=entity, items=items
+                run=run, evaluator_entity=entity, items=merged_items
             )
             run = await self._runs.update_run(run)
             if results:

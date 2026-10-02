@@ -12,6 +12,7 @@ from aiobs.api.deps import (
     get_dataset_repository,
     get_evaluation_run_repository,
     get_evaluator_repository,
+    get_experiment_item_output_repository,
     get_experiment_repository,
     get_project_repository,
     get_trace_repository,
@@ -20,6 +21,7 @@ from aiobs.domain.dataset import Dataset, DatasetItem
 from aiobs.domain.evaluation import EvaluationResultRecord, EvaluationRun
 from aiobs.domain.evaluator import Evaluator
 from aiobs.domain.experiment import Experiment
+from aiobs.domain.experiment_output import ExperimentItemOutput
 from aiobs.domain.project import Project
 from aiobs.domain.trace import Trace
 from aiobs.main import create_app
@@ -175,6 +177,31 @@ class InMemoryEvaluationRunRepository:
         return results
 
 
+class InMemoryExperimentItemOutputRepository:
+    def __init__(self) -> None:
+        self._outputs: dict[tuple[uuid.UUID, uuid.UUID], ExperimentItemOutput] = {}
+
+    async def get(
+        self, experiment_id: uuid.UUID, dataset_item_id: uuid.UUID
+    ) -> ExperimentItemOutput | None:
+        return self._outputs.get((experiment_id, dataset_item_id))
+
+    async def upsert_many(
+        self, outputs: list[ExperimentItemOutput]
+    ) -> list[ExperimentItemOutput]:
+        for output in outputs:
+            self._outputs[(output.experiment_id, output.dataset_item_id)] = output
+        return outputs
+
+    async def list_by_experiment(
+        self, experiment_id: uuid.UUID
+    ) -> list[ExperimentItemOutput]:
+        return sorted(
+            (o for (eid, _), o in self._outputs.items() if eid == experiment_id),
+            key=lambda o: o.dataset_item_id,
+        )
+
+
 @pytest.fixture
 async def client() -> AsyncIterator[AsyncClient]:
     import os
@@ -190,6 +217,7 @@ async def client() -> AsyncIterator[AsyncClient]:
     evaluators = InMemoryEvaluatorRepository()
     experiments = InMemoryExperimentRepository()
     runs = InMemoryEvaluationRunRepository()
+    outputs = InMemoryExperimentItemOutputRepository()
 
     app = create_app()
     app.dependency_overrides[get_project_repository] = lambda: projects
@@ -198,6 +226,7 @@ async def client() -> AsyncIterator[AsyncClient]:
     app.dependency_overrides[get_evaluator_repository] = lambda: evaluators
     app.dependency_overrides[get_experiment_repository] = lambda: experiments
     app.dependency_overrides[get_evaluation_run_repository] = lambda: runs
+    app.dependency_overrides[get_experiment_item_output_repository] = lambda: outputs
 
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as ac:
@@ -269,6 +298,64 @@ async def test_dataset_item_evaluate_flow(client: AsyncClient) -> None:
     detail = await client.get(f"/api/v1/evaluation-runs/{run_id}")
     assert detail.status_code == 200
     assert len(detail.json()["results"]) == 1
+
+
+@pytest.mark.asyncio
+async def test_evaluate_uses_experiment_output_not_legacy_actual(
+    client: AsyncClient,
+) -> None:
+    project = await client.post("/api/v1/projects", json={"name": "Exp Output Eval"})
+    project_id = project.json()["id"]
+
+    dataset = await client.post(
+        f"/api/v1/projects/{project_id}/datasets",
+        json={"name": "merged-outputs"},
+    )
+    dataset_id = dataset.json()["id"]
+
+    item = await client.post(
+        f"/api/v1/datasets/{dataset_id}/items",
+        json={
+            "input": "q",
+            "expected_output": "candidate",
+            "actual_output": "legacy",
+        },
+    )
+    assert item.status_code == 201
+    item_id = item.json()["id"]
+
+    evaluator = await client.post(
+        f"/api/v1/projects/{project_id}/evaluators",
+        json={
+            "name": "exact",
+            "type": "deterministic",
+            "config": {"kind": "exact_match"},
+        },
+    )
+    evaluator_id = evaluator.json()["id"]
+
+    experiment = await client.post(
+        f"/api/v1/projects/{project_id}/experiments",
+        json={"name": "with-outputs", "dataset_id": dataset_id},
+    )
+    experiment_id = experiment.json()["id"]
+
+    put = await client.put(
+        f"/api/v1/experiments/{experiment_id}/outputs",
+        json={
+            "items": [
+                {"dataset_item_id": item_id, "actual_output": "candidate"},
+            ]
+        },
+    )
+    assert put.status_code == 200, put.text
+
+    evaluated = await client.post(
+        f"/api/v1/experiments/{experiment_id}/evaluate",
+        json={"evaluator_ids": [evaluator_id]},
+    )
+    assert evaluated.status_code == 200, evaluated.text
+    assert evaluated.json()["runs"][0]["results"][0]["score"] == 1.0
 
 
 @pytest.mark.asyncio

@@ -226,8 +226,11 @@ def get_evaluate_experiment(
     evaluators: SqlAlchemyEvaluatorRepository = Depends(get_evaluator_repository),
     runs: SqlAlchemyEvaluationRunRepository = Depends(get_evaluation_run_repository),
     runner: EvaluationRunner = Depends(get_evaluation_runner),
+    outputs: SqlAlchemyExperimentItemOutputRepository = Depends(
+        get_experiment_item_output_repository
+    ),
 ) -> EvaluateExperiment:
-    return EvaluateExperiment(experiments, datasets, evaluators, runs, runner)
+    return EvaluateExperiment(experiments, datasets, evaluators, runs, runner, outputs)
 
 
 def get_list_experiment_runs(

@@ -5,6 +5,7 @@ from dataclasses import dataclass, field
 
 import pytest
 
+from aiobs.application.evaluate import EvaluateExperiment, EvaluateExperimentCommand
 from aiobs.application.experiment_outputs import (
     ExperimentItemNotInDatasetError,
     ListExperimentOutputs,
@@ -13,6 +14,10 @@ from aiobs.application.experiment_outputs import (
     merge_dataset_item,
     resolve_item_fields,
 )
+from aiobs.domain.evaluator import Evaluator
+from aiobs.evaluation.deterministic import register_deterministic_evaluators
+from aiobs.evaluation.registry import clear_registry
+from aiobs.evaluation.runner import EvaluationRunner
 from aiobs.application.experiments import ExperimentNotFoundError
 from aiobs.domain.dataset import DatasetItem
 from aiobs.domain.experiment import Experiment
@@ -59,6 +64,10 @@ class FakeExperimentRepository:
     async def get_by_id(self, experiment_id: uuid.UUID) -> Experiment | None:
         return self.experiments.get(experiment_id)
 
+    async def update(self, experiment: Experiment) -> Experiment:
+        self.experiments[experiment.id] = experiment
+        return experiment
+
 
 @dataclass
 class FakeDatasetRepository:
@@ -66,6 +75,9 @@ class FakeDatasetRepository:
 
     async def get_item(self, item_id: uuid.UUID) -> DatasetItem | None:
         return self.items.get(item_id)
+
+    async def list_items(self, dataset_id: uuid.UUID) -> list[DatasetItem]:
+        return [i for i in self.items.values() if i.dataset_id == dataset_id]
 
 
 @dataclass
@@ -216,3 +228,107 @@ async def test_list_outputs_returns_repository_rows() -> None:
     )
     listed = await use_case.execute(experiment.id)
     assert listed == [out]
+
+
+@dataclass
+class FakeEvaluatorRepository:
+    evaluators: dict[uuid.UUID, Evaluator] = field(default_factory=dict)
+
+    async def get_by_ids(self, evaluator_ids: list[uuid.UUID]) -> list[Evaluator]:
+        return [self.evaluators[i] for i in evaluator_ids if i in self.evaluators]
+
+
+@dataclass
+class FakeEvaluationRunRepository:
+    runs: dict[uuid.UUID, object] = field(default_factory=dict)
+    results: list[object] = field(default_factory=list)
+
+    async def add_run(self, run):
+        self.runs[run.id] = run
+        return run
+
+    async def update_run(self, run):
+        self.runs[run.id] = run
+        return run
+
+    async def add_results(self, results):
+        self.results.extend(results)
+        return results
+
+
+@pytest.fixture(autouse=True)
+def _evaluator_registry() -> None:
+    clear_registry()
+    register_deterministic_evaluators()
+    yield
+    clear_registry()
+
+
+@pytest.mark.asyncio
+async def test_evaluate_prefers_experiment_output_over_legacy() -> None:
+    project_id = uuid.uuid4()
+    dataset_id = uuid.uuid4()
+    experiment = Experiment.create(project_id, "exp", dataset_id, model_config={})
+    item = DatasetItem.create(
+        dataset_id,
+        input="q",
+        expected_output="candidate",
+        actual_output="legacy",
+    )
+    evaluator = Evaluator.create(
+        project_id,
+        "exact",
+        "deterministic",
+        {"kind": "exact_match"},
+    )
+    out = ExperimentItemOutput.create(
+        experiment.id, item.id, actual_output="candidate", context=None
+    )
+    output_repo = FakeExperimentItemOutputRepository(
+        {(experiment.id, item.id): out}
+    )
+    use_case = EvaluateExperiment(
+        FakeExperimentRepository({experiment.id: experiment}),
+        FakeDatasetRepository({item.id: item}),
+        FakeEvaluatorRepository({evaluator.id: evaluator}),
+        FakeEvaluationRunRepository(),
+        EvaluationRunner(max_concurrency=1),
+        output_repo,
+    )
+    result = await use_case.execute(
+        EvaluateExperimentCommand(experiment.id, [evaluator.id])
+    )
+    scores = [r.score for r in result.results_by_run[next(iter(result.results_by_run))]]
+    assert scores == [1.0]
+
+
+@pytest.mark.asyncio
+async def test_evaluate_without_experiment_output_uses_legacy() -> None:
+    project_id = uuid.uuid4()
+    dataset_id = uuid.uuid4()
+    experiment = Experiment.create(project_id, "exp", dataset_id, model_config={})
+    item = DatasetItem.create(
+        dataset_id,
+        input="q",
+        expected_output="legacy",
+        actual_output="legacy",
+    )
+    evaluator = Evaluator.create(
+        project_id,
+        "exact",
+        "deterministic",
+        {"kind": "exact_match"},
+    )
+    use_case = EvaluateExperiment(
+        FakeExperimentRepository({experiment.id: experiment}),
+        FakeDatasetRepository({item.id: item}),
+        FakeEvaluatorRepository({evaluator.id: evaluator}),
+        FakeEvaluationRunRepository(),
+        EvaluationRunner(max_concurrency=1),
+        FakeExperimentItemOutputRepository(),
+    )
+    result = await use_case.execute(
+        EvaluateExperimentCommand(experiment.id, [evaluator.id])
+    )
+    scores = [r.score for r in result.results_by_run[next(iter(result.results_by_run))]]
+    assert scores == [1.0]
