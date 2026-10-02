@@ -28,6 +28,7 @@ import { ApiError } from "@/lib/api/client";
 import { createExperiment } from "@/lib/api/experiments";
 import { withProjectQuery } from "@/lib/project-href";
 import { useDatasets } from "@/features/datasets/use-datasets";
+import { taskTypeLabel, useTaskTypes } from "@/features/datasets/use-task-types";
 import {
   experimentsQueryKey,
 } from "./use-experiments";
@@ -44,6 +45,7 @@ export function CreateExperimentDialog({
   const router = useRouter();
   const queryClient = useQueryClient();
   const datasetsQuery = useDatasets(projectId);
+  const taskTypesQuery = useTaskTypes();
   const datasets = datasetsQuery.data ?? [];
   const hasDatasets = datasets.length > 0;
 
@@ -140,11 +142,18 @@ export function CreateExperimentDialog({
                   <SelectValue placeholder="Select dataset" />
                 </SelectTrigger>
                 <SelectContent>
-                  {datasets.map((d) => (
-                    <SelectItem key={d.id} value={d.id}>
-                      {d.name} (v{d.version})
-                    </SelectItem>
-                  ))}
+                  {datasets.map((d) => {
+                    const label = taskTypeLabel(
+                      taskTypesQuery.data,
+                      d.task_type,
+                    );
+                    return (
+                      <SelectItem key={d.id} value={d.id}>
+                        {d.name} (v{d.version})
+                        {label ? ` · ${label}` : ""}
+                      </SelectItem>
+                    );
+                  })}
                 </SelectContent>
               </Select>
               {!hasDatasets ? (

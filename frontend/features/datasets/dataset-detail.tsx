@@ -10,12 +10,14 @@ import { LoadingBlock } from "@/components/loading-block";
 import { RefreshControl } from "@/components/refresh-control";
 import { RelativeTime } from "@/components/relative-time";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { ApiError } from "@/lib/api/client";
 import type { DatasetItem } from "@/lib/api/types";
 import { truncateId } from "@/lib/format";
 import { withProjectQuery } from "@/lib/project-href";
 import { datasetQueryOptions, useDataset } from "./use-datasets";
+import { taskTypeLabel, useTaskTypes } from "./use-task-types";
 
 const PREVIEW_MAX = 96;
 
@@ -45,6 +47,7 @@ export function DatasetDetailView({
   datasetId,
 }: DatasetDetailViewProps) {
   const query = useDataset(datasetId);
+  const taskTypesQuery = useTaskTypes();
   const queryOpts = datasetQueryOptions(datasetId);
   const [inputFilter, setInputFilter] = useState("");
   const [selectedIndex, setSelectedIndex] = useState(0);
@@ -156,6 +159,10 @@ export function DatasetDetailView({
   }
 
   const backHref = withProjectQuery("/datasets", projectId);
+  const taskInfo = (taskTypesQuery.data ?? []).find(
+    (t) => t.id === dataset.task_type,
+  );
+  const taskLabel = taskTypeLabel(taskTypesQuery.data, dataset.task_type);
 
   return (
     <div className="flex flex-col gap-3">
@@ -177,6 +184,7 @@ export function DatasetDetailView({
             <span className="rounded-md border border-border bg-surface px-2 py-0.5 font-mono text-xs text-muted-foreground">
               v{dataset.version}
             </span>
+            {taskLabel ? <Badge variant="secondary">{taskLabel}</Badge> : null}
           </div>
           <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-muted-foreground">
             {dataset.description ? (
@@ -192,6 +200,24 @@ export function DatasetDetailView({
               Created <RelativeTime date={dataset.created_at} />
             </span>
           </div>
+          {taskInfo ? (
+            <div className="mt-1 max-w-2xl rounded-md border border-border bg-surface px-3 py-2 text-xs text-muted-foreground">
+              <p className="mb-1 font-medium text-foreground">
+                Suggested item fields (guidance only)
+              </p>
+              <ul className="list-inside list-disc">
+                {taskInfo.field_hints.map((hint) => (
+                  <li key={hint}>{hint}</li>
+                ))}
+              </ul>
+              <p className="mt-2">
+                Recommended evaluators:{" "}
+                <span className="font-mono text-foreground">
+                  {taskInfo.recommended_evaluator_kinds.join(", ")}
+                </span>
+              </p>
+            </div>
+          ) : null}
         </div>
         <RefreshControl
           queryKey={queryOpts.queryKey}

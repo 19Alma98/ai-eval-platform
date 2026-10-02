@@ -1,8 +1,16 @@
 import { apiGet, apiPost } from "./client";
-import type { Dataset, DatasetDetail, DatasetItem } from "./types";
+import type { Dataset, DatasetDetail, DatasetItem, TaskType } from "./types";
 
-export function listDatasets(projectId: string) {
-  return apiGet<Dataset[]>(`/api/v1/projects/${projectId}/datasets`);
+export function listTaskTypes() {
+  return apiGet<TaskType[]>("/api/v1/task-types");
+}
+
+export function listDatasets(projectId: string, taskType?: string | null) {
+  const qs =
+    taskType != null && taskType !== ""
+      ? `?task_type=${encodeURIComponent(taskType)}`
+      : "";
+  return apiGet<Dataset[]>(`/api/v1/projects/${projectId}/datasets${qs}`);
 }
 
 export function getDataset(datasetId: string) {
@@ -11,7 +19,12 @@ export function getDataset(datasetId: string) {
 
 export function createDataset(
   projectId: string,
-  body: { name: string; description?: string; version?: number },
+  body: {
+    name: string;
+    description?: string;
+    version?: number;
+    task_type?: string | null;
+  },
 ) {
   return apiPost<Dataset>(`/api/v1/projects/${projectId}/datasets`, body);
 }

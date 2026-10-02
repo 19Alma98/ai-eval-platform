@@ -104,6 +104,7 @@ class DatasetModel(Base):
     __table_args__ = (
         UniqueConstraint("project_id", "name", "version", name="uq_datasets_project_name_version"),
         Index("ix_datasets_project_created_at", "project_id", "created_at"),
+        Index("ix_datasets_project_task_type", "project_id", "task_type"),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True)
@@ -115,6 +116,7 @@ class DatasetModel(Base):
     name: Mapped[str] = mapped_column(String(200), nullable=False)
     version: Mapped[int] = mapped_column(Integer, nullable=False, server_default="1")
     description: Mapped[str | None] = mapped_column(String(2000), nullable=True)
+    task_type: Mapped[str | None] = mapped_column(String(64), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         nullable=False,

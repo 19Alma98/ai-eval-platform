@@ -54,7 +54,15 @@ export type Dataset = {
   name: string;
   version: number;
   description: string | null;
+  task_type: string | null;
   created_at: string;
+};
+
+export type TaskType = {
+  id: string;
+  label: string;
+  field_hints: string[];
+  recommended_evaluator_kinds: string[];
 };
 
 export type DatasetItem = {

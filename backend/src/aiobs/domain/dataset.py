@@ -5,6 +5,8 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import Any
 
+from aiobs.domain.task_types import normalize_task_type
+
 
 @dataclass(frozen=True, slots=True)
 class Dataset:
@@ -13,6 +15,7 @@ class Dataset:
     name: str
     version: int
     description: str | None
+    task_type: str | None
     created_at: datetime
 
     @classmethod
@@ -23,6 +26,7 @@ class Dataset:
         *,
         version: int = 1,
         description: str | None = None,
+        task_type: str | None = None,
     ) -> Dataset:
         cleaned = name.strip()
         if not cleaned:
@@ -35,6 +39,7 @@ class Dataset:
             name=cleaned,
             version=version,
             description=description.strip() if description else None,
+            task_type=normalize_task_type(task_type),
             created_at=datetime.now(UTC),
         )
 

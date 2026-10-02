@@ -45,7 +45,12 @@ class DatasetRepository(Protocol):
 
     async def get_by_id(self, dataset_id: uuid.UUID) -> Dataset | None: ...
 
-    async def list_by_project(self, project_id: uuid.UUID) -> list[Dataset]: ...
+    async def list_by_project(
+        self,
+        project_id: uuid.UUID,
+        *,
+        task_type: str | None = None,
+    ) -> list[Dataset]: ...
 
     async def add_item(self, item: DatasetItem) -> DatasetItem: ...
 

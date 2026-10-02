@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.exc import IntegrityError
 
 from aiobs.api.deps import (
@@ -19,6 +19,7 @@ from aiobs.api.schemas import (
     DatasetDetailResponse,
     DatasetItemResponse,
     DatasetResponse,
+    TaskTypeResponse,
 )
 from aiobs.application.datasets import (
     AddDatasetItem,
@@ -34,7 +35,8 @@ from aiobs.application.datasets import (
     TraceNotFoundForDatasetError,
 )
 from aiobs.application.projects import ProjectNotFoundError
-from aiobs.domain.dataset import DatasetItem
+from aiobs.domain.dataset import Dataset, DatasetItem
+from aiobs.domain.task_types import TASK_TYPE_CATALOG, normalize_task_type
 
 router = APIRouter(tags=["datasets"])
 
@@ -51,6 +53,31 @@ def _item_response(item: DatasetItem) -> DatasetItemResponse:
         source_trace_id=item.source_trace_id,
         source_span_id=item.source_span_id,
     )
+
+
+def _dataset_response(dataset: Dataset) -> DatasetResponse:
+    return DatasetResponse(
+        id=dataset.id,
+        project_id=dataset.project_id,
+        name=dataset.name,
+        version=dataset.version,
+        description=dataset.description,
+        task_type=dataset.task_type,
+        created_at=dataset.created_at,
+    )
+
+
+@router.get("/api/v1/task-types", response_model=list[TaskTypeResponse])
+async def list_task_types() -> list[TaskTypeResponse]:
+    return [
+        TaskTypeResponse(
+            id=info.id,
+            label=info.label,
+            field_hints=list(info.field_hints),
+            recommended_evaluator_kinds=list(info.recommended_evaluator_kinds),
+        )
+        for info in TASK_TYPE_CATALOG
+    ]
 
 
 @router.post(
@@ -70,6 +97,7 @@ async def create_dataset(
                 name=body.name,
                 version=body.version,
                 description=body.description,
+                task_type=body.task_type,
             )
         )
     except ProjectNotFoundError as exc:
@@ -78,14 +106,7 @@ async def create_dataset(
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
-    return DatasetResponse(
-        id=dataset.id,
-        project_id=dataset.project_id,
-        name=dataset.name,
-        version=dataset.version,
-        description=dataset.description,
-        created_at=dataset.created_at,
-    )
+    return _dataset_response(dataset)
 
 
 @router.get(
@@ -94,20 +115,15 @@ async def create_dataset(
 )
 async def list_datasets(
     project_id: uuid.UUID,
+    task_type: str | None = Query(default=None),
     use_case: ListDatasets = Depends(get_list_datasets),
 ) -> list[DatasetResponse]:
-    datasets = await use_case.execute(project_id)
-    return [
-        DatasetResponse(
-            id=d.id,
-            project_id=d.project_id,
-            name=d.name,
-            version=d.version,
-            description=d.description,
-            created_at=d.created_at,
-        )
-        for d in datasets
-    ]
+    try:
+        normalized = normalize_task_type(task_type)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+    datasets = await use_case.execute(project_id, task_type=normalized)
+    return [_dataset_response(d) for d in datasets]
 
 
 @router.get("/api/v1/datasets/{dataset_id}", response_model=DatasetDetailResponse)
@@ -125,6 +141,7 @@ async def get_dataset(
         name=dataset.name,
         version=dataset.version,
         description=dataset.description,
+        task_type=dataset.task_type,
         created_at=dataset.created_at,
         items=[_item_response(i) for i in items],
     )

@@ -72,8 +72,18 @@ class InMemoryDatasetRepository:
     async def get_by_id(self, dataset_id: uuid.UUID) -> Dataset | None:
         return self._datasets.get(dataset_id)
 
-    async def list_by_project(self, project_id: uuid.UUID) -> list[Dataset]:
-        return [d for d in self._datasets.values() if d.project_id == project_id]
+    async def list_by_project(
+        self,
+        project_id: uuid.UUID,
+        *,
+        task_type: str | None = None,
+    ) -> list[Dataset]:
+        return [
+            d
+            for d in self._datasets.values()
+            if d.project_id == project_id
+            and (task_type is None or d.task_type == task_type)
+        ]
 
     async def add_item(self, item: DatasetItem) -> DatasetItem:
         self._items[item.id] = item

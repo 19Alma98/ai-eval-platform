@@ -99,6 +99,7 @@ class CreateDatasetRequest(BaseModel):
     name: str = Field(min_length=1, max_length=200)
     version: int = Field(default=1, ge=1)
     description: str | None = Field(default=None, max_length=2000)
+    task_type: str | None = Field(default=None, max_length=64)
 
 
 class DatasetResponse(BaseModel):
@@ -107,6 +108,7 @@ class DatasetResponse(BaseModel):
     name: str
     version: int
     description: str | None
+    task_type: str | None = None
     created_at: datetime
 
 
@@ -128,8 +130,16 @@ class DatasetDetailResponse(BaseModel):
     name: str
     version: int
     description: str | None
+    task_type: str | None = None
     created_at: datetime
     items: list[DatasetItemResponse]
+
+
+class TaskTypeResponse(BaseModel):
+    id: str
+    label: str
+    field_hints: list[str]
+    recommended_evaluator_kinds: list[str]
 
 
 class CreateDatasetItemRequest(BaseModel):

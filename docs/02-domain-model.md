@@ -54,12 +54,15 @@ OpenInference span kinds should be supported where available, including LLM, EMB
 
 Reusable evaluation collection.
 
+Prefer one dataset per evaluation task (for example RAG FAQ vs classification). Optional soft typing guides the UI with field hints and recommended evaluators; it does not validate item schemas.
+
 Fields:
 - id
 - project_id
 - name
 - version
 - description
+- task_type (optional; allowlist: `rag_qa`, `classification`, `agent_tools`)
 - created_at
 
 ## DatasetItem

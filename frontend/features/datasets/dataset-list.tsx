@@ -27,21 +27,39 @@ import { ApiError } from "@/lib/api/client";
 import { createDataset } from "@/lib/api/datasets";
 import type { Dataset } from "@/lib/api/types";
 import { useProjectId } from "@/lib/project-store";
+import { Badge } from "@/components/ui/badge";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import {
   datasetsQueryKey,
   datasetsQueryOptions,
   useDatasets,
 } from "./use-datasets";
+import { taskTypeLabel, useTaskTypes } from "./use-task-types";
 
 export function DatasetList() {
   const router = useRouter();
   const { projectId } = useProjectId();
   const query = useDatasets(projectId);
+  const taskTypesQuery = useTaskTypes();
   const queryOpts = projectId ? datasetsQueryOptions(projectId) : null;
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [createOpen, setCreateOpen] = useState(false);
+  const [taskFilter, setTaskFilter] = useState<string>("all");
 
-  const rows = query.data ?? [];
+  const allRows = query.data ?? [];
+  const rows = useMemo(() => {
+    if (taskFilter === "all") return allRows;
+    if (taskFilter === "none") {
+      return allRows.filter((d) => !d.task_type);
+    }
+    return allRows.filter((d) => d.task_type === taskFilter);
+  }, [allRows, taskFilter]);
 
   const onRowActivate = useCallback(
     (dataset: Dataset) => {
@@ -61,6 +79,19 @@ export function DatasetList() {
         cell: (row) => (
           <span className="font-medium text-foreground">{row.name}</span>
         ),
+      },
+      {
+        id: "task_type",
+        header: "Task",
+        headerClassName: "w-[140px]",
+        cell: (row) => {
+          const label = taskTypeLabel(taskTypesQuery.data, row.task_type);
+          return label ? (
+            <Badge variant="secondary">{label}</Badge>
+          ) : (
+            <span className="text-muted-foreground">—</span>
+          );
+        },
       },
       {
         id: "version",
@@ -85,7 +116,7 @@ export function DatasetList() {
         cell: (row) => <RelativeTime date={row.created_at} />,
       },
     ],
-    [],
+    [taskTypesQuery.data],
   );
 
   if (query.isLoading) {
@@ -112,8 +143,30 @@ export function DatasetList() {
   return (
     <div className="flex flex-col gap-3">
       <div className="sticky top-0 z-20 -mx-1 flex flex-wrap items-center gap-3 border-b border-border bg-background px-1 pb-3">
+        <div className="w-[200px]">
+          <Select
+            value={taskFilter}
+            onValueChange={(v) => {
+              setTaskFilter(v ?? "all");
+              setSelectedIndex(0);
+            }}
+          >
+            <SelectTrigger aria-label="Filter by task type">
+              <SelectValue placeholder="All tasks" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All tasks</SelectItem>
+              <SelectItem value="none">Untyped</SelectItem>
+              {(taskTypesQuery.data ?? []).map((t) => (
+                <SelectItem key={t.id} value={t.id}>
+                  {t.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
         <div className="flex-1" />
-        {projectId && rows.length > 0 ? (
+        {projectId && allRows.length > 0 ? (
           <CreateDatasetDialog
             projectId={projectId}
             open={createOpen}
@@ -128,10 +181,10 @@ export function DatasetList() {
         ) : null}
       </div>
 
-      {rows.length === 0 ? (
+      {allRows.length === 0 ? (
         <EmptyState
           title="No datasets yet"
-          description="Create a dataset to collect trace examples for evaluation."
+          description="Create a dataset to collect trace examples for evaluation. Optionally set a task type for focused hints."
           action={
             projectId ? (
               <CreateDatasetDialog
@@ -141,6 +194,11 @@ export function DatasetList() {
               />
             ) : null
           }
+        />
+      ) : rows.length === 0 ? (
+        <EmptyState
+          title="No matches"
+          description="No datasets match this task filter."
         />
       ) : (
         <DataTable
@@ -167,9 +225,16 @@ function CreateDatasetDialog({
   onOpenChange: (open: boolean) => void;
 }) {
   const queryClient = useQueryClient();
+  const taskTypesQuery = useTaskTypes();
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [version, setVersion] = useState("1");
+  const [taskType, setTaskType] = useState<string>("none");
+
+  const selectedTask =
+    taskType === "none"
+      ? null
+      : (taskTypesQuery.data ?? []).find((t) => t.id === taskType) ?? null;
 
   const create = useMutation({
     mutationFn: () =>
@@ -177,6 +242,7 @@ function CreateDatasetDialog({
         name: name.trim(),
         description: description.trim() || undefined,
         version: Number.parseInt(version, 10) || 1,
+        ...(taskType !== "none" ? { task_type: taskType } : {}),
       }),
     onSuccess: async () => {
       await queryClient.invalidateQueries({
@@ -186,6 +252,7 @@ function CreateDatasetDialog({
       setName("");
       setDescription("");
       setVersion("1");
+      setTaskType("none");
       onOpenChange(false);
     },
     onError: (err) => {
@@ -221,6 +288,7 @@ function CreateDatasetDialog({
             <DialogTitle>Create dataset</DialogTitle>
             <DialogDescription>
               Versioned collections of inputs and expected outputs for eval runs.
+              Task type is optional guidance only.
             </DialogDescription>
           </DialogHeader>
           <div className="flex flex-col gap-3 py-4">
@@ -235,6 +303,29 @@ function CreateDatasetDialog({
                 placeholder="My eval set"
                 required
               />
+            </div>
+            <div className="flex flex-col gap-2">
+              <label className="text-sm font-medium">Task type</label>
+              <Select value={taskType} onValueChange={(v) => setTaskType(v ?? "none")}>
+                <SelectTrigger aria-label="Task type">
+                  <SelectValue placeholder="Generic" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">Generic (no type)</SelectItem>
+                  {(taskTypesQuery.data ?? []).map((t) => (
+                    <SelectItem key={t.id} value={t.id}>
+                      {t.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {selectedTask ? (
+                <ul className="list-inside list-disc text-xs text-muted-foreground">
+                  {selectedTask.field_hints.map((hint) => (
+                    <li key={hint}>{hint}</li>
+                  ))}
+                </ul>
+              ) : null}
             </div>
             <div className="flex flex-col gap-2">
               <label

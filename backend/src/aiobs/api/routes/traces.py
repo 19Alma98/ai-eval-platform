@@ -6,6 +6,7 @@ from datetime import datetime
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 
 from aiobs.api.deps import (
+    get_app_settings,
     get_create_trace,
     get_get_trace,
     get_list_traces,
@@ -26,7 +27,7 @@ from aiobs.application.traces import (
     ProjectMissingError,
     TraceNotFoundError,
 )
-from aiobs.config import get_settings
+from aiobs.config import Settings
 from aiobs.domain.trace import Span, Trace
 from aiobs.infrastructure.repositories import SqlAlchemyProjectRepository
 from aiobs.tracing.redaction import redact_trace
@@ -128,12 +129,12 @@ async def create_trace(
     body: CreateTraceRequest,
     use_case: CreateTrace = Depends(get_create_trace),
     projects: SqlAlchemyProjectRepository = Depends(get_project_repository),
+    settings: Settings = Depends(get_app_settings),
 ) -> TraceDetailResponse:
     project = await projects.get_by_id(project_id)
     if project is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found")
 
-    settings = get_settings()
     spans = tuple(
         Span(
             id=uuid.uuid4(),

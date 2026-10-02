@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useMemo, useState, type FormEvent } from "react";
 import { useDatasets } from "@/features/datasets/use-datasets";
+import { useTaskTypes } from "@/features/datasets/use-task-types";
 import { CreateEvaluatorDialog } from "./create-evaluator-dialog";
 import { withProjectQuery } from "@/lib/project-href";
 import { ArrowLeft, GitCompare, ShieldCheck } from "lucide-react";
@@ -15,6 +16,7 @@ import { LoadingBlock } from "@/components/loading-block";
 import { RefreshControl } from "@/components/refresh-control";
 import { RelativeTime } from "@/components/relative-time";
 import { StatusBadge } from "@/components/status-badge";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -27,7 +29,7 @@ import {
 } from "@/components/ui/dialog";
 import { ApiError } from "@/lib/api/client";
 import { evaluateExperiment } from "@/lib/api/experiments";
-import type { EvaluatorSummary } from "@/lib/api/types";
+import type { Dataset, EvaluatorSummary } from "@/lib/api/types";
 import { truncateId } from "@/lib/format";
 import {
   experimentQueryOptions,
@@ -49,6 +51,11 @@ function formatPassRate(value: number | null): string {
   return `${(value * 100).toFixed(1)}%`;
 }
 
+function evaluatorKind(ev: { config: Record<string, unknown> }): string | null {
+  const kind = ev.config?.kind;
+  return typeof kind === "string" && kind.trim() ? kind.trim() : null;
+}
+
 type ExperimentDetailViewProps = {
   projectId: string;
   experimentId: string;
@@ -61,6 +68,7 @@ export function ExperimentDetailView({
   const experimentQuery = useExperiment(experimentId);
   const summaryQuery = useExperimentSummary(experimentId);
   const datasetsQuery = useDatasets(projectId);
+  const taskTypesQuery = useTaskTypes();
   const summaryOpts = experimentSummaryQueryOptions(experimentId);
   const [evaluateOpen, setEvaluateOpen] = useState(false);
   const [createEvaluatorOpen, setCreateEvaluatorOpen] = useState(false);
@@ -69,10 +77,10 @@ export function ExperimentDetailView({
   const experiment = experimentQuery.data;
   const evaluators = summaryQuery.data?.evaluators ?? [];
 
-  const datasetNameById = useMemo(() => {
-    const map = new Map<string, string>();
+  const datasetById = useMemo(() => {
+    const map = new Map<string, Dataset>();
     for (const d of datasetsQuery.data ?? []) {
-      map.set(d.id, d.name);
+      map.set(d.id, d);
     }
     return map;
   }, [datasetsQuery.data]);
@@ -181,13 +189,17 @@ export function ExperimentDetailView({
 
   const backHref = withProjectQuery("/experiments", projectId);
 
+  const dataset = datasetById.get(experiment.dataset_id);
   const datasetLabel =
-    datasetNameById.get(experiment.dataset_id) ??
-    truncateId(experiment.dataset_id, 10);
+    dataset?.name ?? truncateId(experiment.dataset_id, 10);
   const datasetHref = withProjectQuery(
     `/datasets/${encodeURIComponent(experiment.dataset_id)}`,
     projectId,
   );
+  const taskInfo = (taskTypesQuery.data ?? []).find(
+    (t) => t.id === dataset?.task_type,
+  );
+  const recommendedKinds = taskInfo?.recommended_evaluator_kinds ?? [];
   const modelLabel = experimentModel(experiment);
   const versionLabel = experimentVersion(experiment);
 
@@ -215,7 +227,7 @@ export function ExperimentDetailView({
             (gate).
           </p>
           <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-muted-foreground">
-            <span>
+            <span className="inline-flex items-center gap-2">
               Dataset{" "}
               <Link
                 href={datasetHref}
@@ -223,6 +235,9 @@ export function ExperimentDetailView({
               >
                 {datasetLabel}
               </Link>
+              {taskInfo ? (
+                <Badge variant="secondary">{taskInfo.label}</Badge>
+              ) : null}
             </span>
             {modelLabel ? <span>Model {modelLabel}</span> : null}
             {versionLabel ? <span>Version {versionLabel}</span> : null}
@@ -235,6 +250,7 @@ export function ExperimentDetailView({
           <EvaluateDialog
             projectId={projectId}
             experimentId={experimentId}
+            recommendedKinds={recommendedKinds}
             open={evaluateOpen}
             onOpenChange={setEvaluateOpen}
             onCreateEvaluator={() => {
@@ -297,12 +313,14 @@ export function ExperimentDetailView({
 function EvaluateDialog({
   projectId,
   experimentId,
+  recommendedKinds,
   open,
   onOpenChange,
   onCreateEvaluator,
 }: {
   projectId: string;
   experimentId: string;
+  recommendedKinds: string[];
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onCreateEvaluator: () => void;
@@ -310,6 +328,10 @@ function EvaluateDialog({
   const queryClient = useQueryClient();
   const evaluatorsQuery = useEvaluators(projectId);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const recommendedSet = useMemo(
+    () => new Set(recommendedKinds),
+    [recommendedKinds],
+  );
 
   const evaluate = useMutation({
     mutationFn: () =>
@@ -347,6 +369,18 @@ function EvaluateDialog({
     });
   }
 
+  function selectRecommended() {
+    const evaluators = evaluatorsQuery.data ?? [];
+    const next = new Set<string>();
+    for (const ev of evaluators) {
+      const kind = evaluatorKind(ev);
+      if (kind && recommendedSet.has(kind)) {
+        next.add(ev.id);
+      }
+    }
+    setSelectedIds(next);
+  }
+
   function handleSubmit(e: FormEvent) {
     e.preventDefault();
     if (selectedIds.size === 0) return;
@@ -354,6 +388,17 @@ function EvaluateDialog({
   }
 
   const evaluators = evaluatorsQuery.data ?? [];
+  const sortedEvaluators = useMemo(() => {
+    return [...evaluators].sort((a, b) => {
+      const aRec = recommendedSet.has(evaluatorKind(a) ?? "") ? 0 : 1;
+      const bRec = recommendedSet.has(evaluatorKind(b) ?? "") ? 0 : 1;
+      if (aRec !== bRec) return aRec - bRec;
+      return a.name.localeCompare(b.name);
+    });
+  }, [evaluators, recommendedSet]);
+  const hasRecommendedPresent = sortedEvaluators.some((ev) =>
+    recommendedSet.has(evaluatorKind(ev) ?? ""),
+  );
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -370,6 +415,9 @@ function EvaluateDialog({
             <DialogTitle>Run evaluators</DialogTitle>
             <DialogDescription>
               Select one or more evaluators to run against this experiment.
+              {recommendedKinds.length > 0
+                ? ` Recommended for this dataset task: ${recommendedKinds.join(", ")}.`
+                : ""}
             </DialogDescription>
           </DialogHeader>
           <div className="flex max-h-[280px] flex-col gap-2 overflow-y-auto py-4">
@@ -391,27 +439,53 @@ function EvaluateDialog({
                 </Button>
               </div>
             ) : (
-              evaluators.map((ev) => (
-                <label
-                  key={ev.id}
-                  className="flex cursor-pointer items-center gap-3 rounded-md border border-border px-3 py-2 hover:bg-surface"
-                >
-                  <input
-                    type="checkbox"
-                    className="size-4 rounded border-border"
-                    checked={selectedIds.has(ev.id)}
-                    onChange={() => toggleId(ev.id)}
-                  />
-                  <span className="flex min-w-0 flex-col">
-                    <span className="text-sm font-medium text-foreground">
-                      {ev.name}
-                    </span>
-                    <span className="font-mono text-xs text-muted-foreground">
-                      {ev.type} · v{ev.version}
-                    </span>
-                  </span>
-                </label>
-              ))
+              <>
+                {hasRecommendedPresent ? (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="self-start"
+                    onClick={selectRecommended}
+                  >
+                    Select recommended
+                  </Button>
+                ) : recommendedKinds.length > 0 ? (
+                  <p className="text-xs text-muted-foreground">
+                    No project evaluators match recommended kinds yet. Create
+                    ones with config.kind in: {recommendedKinds.join(", ")}.
+                  </p>
+                ) : null}
+                {sortedEvaluators.map((ev) => {
+                  const kind = evaluatorKind(ev);
+                  const isRecommended = kind != null && recommendedSet.has(kind);
+                  return (
+                    <label
+                      key={ev.id}
+                      className="flex cursor-pointer items-center gap-3 rounded-md border border-border px-3 py-2 hover:bg-surface"
+                    >
+                      <input
+                        type="checkbox"
+                        className="size-4 rounded border-border"
+                        checked={selectedIds.has(ev.id)}
+                        onChange={() => toggleId(ev.id)}
+                      />
+                      <span className="flex min-w-0 flex-1 flex-col">
+                        <span className="flex items-center gap-2 text-sm font-medium text-foreground">
+                          {ev.name}
+                          {isRecommended ? (
+                            <Badge variant="secondary">recommended</Badge>
+                          ) : null}
+                        </span>
+                        <span className="font-mono text-xs text-muted-foreground">
+                          {ev.type}
+                          {kind ? ` · ${kind}` : ""} · v{ev.version}
+                        </span>
+                      </span>
+                    </label>
+                  );
+                })}
+              </>
             )}
           </div>
           <DialogFooter>

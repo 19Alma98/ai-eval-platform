@@ -36,6 +36,7 @@ class CreateDatasetCommand:
     name: str
     version: int = 1
     description: str | None = None
+    task_type: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -77,6 +78,7 @@ class CreateDataset:
             command.name,
             version=command.version,
             description=command.description,
+            task_type=command.task_type,
         )
         try:
             return await self._datasets.add(dataset)
@@ -94,8 +96,13 @@ class ListDatasets:
     def __init__(self, datasets: DatasetRepository) -> None:
         self._datasets = datasets
 
-    async def execute(self, project_id: uuid.UUID) -> list[Dataset]:
-        return await self._datasets.list_by_project(project_id)
+    async def execute(
+        self,
+        project_id: uuid.UUID,
+        *,
+        task_type: str | None = None,
+    ) -> list[Dataset]:
+        return await self._datasets.list_by_project(project_id, task_type=task_type)
 
 
 class GetDataset:

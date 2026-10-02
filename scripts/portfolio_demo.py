@@ -150,7 +150,7 @@ def create_dataset_from_runs(
     dataset = http_json(
         "POST",
         f"{base}/api/v1/projects/{project_id}/datasets",
-        body={"name": name, "description": f"portfolio demo {name}"},
+        body={"name": name, "description": f"portfolio demo {name}", "task_type": "rag_qa"},
     )
     dataset_id = dataset["id"]
     for run in runs:

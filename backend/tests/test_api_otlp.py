@@ -98,6 +98,14 @@ class InMemoryTraceRepository:
 
 @pytest.fixture
 async def client() -> AsyncIterator[AsyncClient]:
+    import os
+
+    from aiobs.config import get_settings
+
+    # Assert redaction path; ignore local .env CONTENT_CAPTURE_ENABLED=true.
+    os.environ["CONTENT_CAPTURE_ENABLED"] = "false"
+    get_settings.cache_clear()
+
     projects = InMemoryProjectRepository()
     traces = InMemoryTraceRepository()
     app = create_app()
@@ -109,6 +117,8 @@ async def client() -> AsyncIterator[AsyncClient]:
         yield ac
 
     app.dependency_overrides.clear()
+    os.environ.pop("CONTENT_CAPTURE_ENABLED", None)
+    get_settings.cache_clear()
 
 
 async def _create_project(client: AsyncClient) -> dict:

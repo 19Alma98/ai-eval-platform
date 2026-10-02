@@ -299,6 +299,7 @@ def _dataset_to_domain(row: DatasetModel) -> Dataset:
         name=row.name,
         version=row.version,
         description=row.description,
+        task_type=row.task_type,
         created_at=row.created_at,
     )
 
@@ -378,6 +379,7 @@ class SqlAlchemyDatasetRepository:
             name=dataset.name,
             version=dataset.version,
             description=dataset.description,
+            task_type=dataset.task_type,
             created_at=dataset.created_at,
         )
         self._session.add(row)
@@ -393,12 +395,16 @@ class SqlAlchemyDatasetRepository:
         row = await self._session.get(DatasetModel, dataset_id)
         return _dataset_to_domain(row) if row is not None else None
 
-    async def list_by_project(self, project_id: uuid.UUID) -> list[Dataset]:
-        result = await self._session.execute(
-            select(DatasetModel)
-            .where(DatasetModel.project_id == project_id)
-            .order_by(DatasetModel.created_at.desc())
-        )
+    async def list_by_project(
+        self,
+        project_id: uuid.UUID,
+        *,
+        task_type: str | None = None,
+    ) -> list[Dataset]:
+        stmt = select(DatasetModel).where(DatasetModel.project_id == project_id)
+        if task_type is not None:
+            stmt = stmt.where(DatasetModel.task_type == task_type)
+        result = await self._session.execute(stmt.order_by(DatasetModel.created_at.desc()))
         return [_dataset_to_domain(row) for row in result.scalars().all()]
 
     async def add_item(self, item: DatasetItem) -> DatasetItem:
