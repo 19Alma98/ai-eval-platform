@@ -12,6 +12,7 @@ from aiobs.domain.dataset import Dataset, DatasetItem
 from aiobs.domain.evaluation import EvaluationResultRecord, EvaluationRun
 from aiobs.domain.evaluator import Evaluator
 from aiobs.domain.experiment import Experiment
+from aiobs.domain.experiment_output import ExperimentItemOutput
 from aiobs.domain.project import Project
 from aiobs.domain.trace import Span, Trace
 from aiobs.infrastructure.models import (
@@ -20,6 +21,7 @@ from aiobs.infrastructure.models import (
     EvaluationResultModel,
     EvaluationRunModel,
     EvaluatorModel,
+    ExperimentItemOutputModel,
     ExperimentModel,
     ProjectModel,
     SpanModel,
@@ -368,6 +370,30 @@ def _result_to_domain(row: EvaluationResultModel) -> EvaluationResultRecord:
     )
 
 
+def _experiment_item_output_to_domain(row: ExperimentItemOutputModel) -> ExperimentItemOutput:
+    return ExperimentItemOutput(
+        id=row.id,
+        experiment_id=row.experiment_id,
+        dataset_item_id=row.dataset_item_id,
+        actual_output=row.actual_output,
+        context=row.context,
+        metadata=dict(row.metadata_json or {}),
+        updated_at=row.updated_at,
+    )
+
+
+def _experiment_item_output_to_model(output: ExperimentItemOutput) -> ExperimentItemOutputModel:
+    return ExperimentItemOutputModel(
+        id=output.id,
+        experiment_id=output.experiment_id,
+        dataset_item_id=output.dataset_item_id,
+        actual_output=output.actual_output,
+        context=output.context,
+        metadata_json=dict(output.metadata),
+        updated_at=output.updated_at,
+    )
+
+
 class SqlAlchemyDatasetRepository:
     def __init__(self, session: AsyncSession) -> None:
         self._session = session
@@ -608,3 +634,59 @@ class SqlAlchemyEvaluationRunRepository:
         self._session.add_all(rows)
         await self._session.commit()
         return [_result_to_domain(row) for row in rows]
+
+
+class SqlAlchemyExperimentItemOutputRepository:
+    def __init__(self, session: AsyncSession) -> None:
+        self._session = session
+
+    async def upsert(self, output: ExperimentItemOutput) -> ExperimentItemOutput:
+        result = await self._session.execute(
+            select(ExperimentItemOutputModel).where(
+                ExperimentItemOutputModel.experiment_id == output.experiment_id,
+                ExperimentItemOutputModel.dataset_item_id == output.dataset_item_id,
+            )
+        )
+        existing = result.scalar_one_or_none()
+
+        if existing is None:
+            row = _experiment_item_output_to_model(output)
+            self._session.add(row)
+            await self._session.commit()
+            await self._session.refresh(row)
+            return _experiment_item_output_to_domain(row)
+
+        existing.actual_output = output.actual_output
+        existing.context = output.context
+        existing.metadata_json = dict(output.metadata)
+        existing.updated_at = output.updated_at
+        await self._session.commit()
+        await self._session.refresh(existing)
+        return _experiment_item_output_to_domain(existing)
+
+    async def upsert_many(
+        self, outputs: list[ExperimentItemOutput]
+    ) -> list[ExperimentItemOutput]:
+        return [await self.upsert(output) for output in outputs]
+
+    async def list_by_experiment(
+        self, experiment_id: uuid.UUID
+    ) -> list[ExperimentItemOutput]:
+        result = await self._session.execute(
+            select(ExperimentItemOutputModel)
+            .where(ExperimentItemOutputModel.experiment_id == experiment_id)
+            .order_by(ExperimentItemOutputModel.dataset_item_id)
+        )
+        return [_experiment_item_output_to_domain(row) for row in result.scalars().all()]
+
+    async def get(
+        self, experiment_id: uuid.UUID, dataset_item_id: uuid.UUID
+    ) -> ExperimentItemOutput | None:
+        result = await self._session.execute(
+            select(ExperimentItemOutputModel).where(
+                ExperimentItemOutputModel.experiment_id == experiment_id,
+                ExperimentItemOutputModel.dataset_item_id == dataset_item_id,
+            )
+        )
+        row = result.scalar_one_or_none()
+        return _experiment_item_output_to_domain(row) if row is not None else None

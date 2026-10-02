@@ -262,3 +262,37 @@ class EvaluationResultModel(Base):
     duration_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
     run: Mapped[EvaluationRunModel] = relationship("EvaluationRunModel", back_populates="results")
+
+
+class ExperimentItemOutputModel(Base):
+    __tablename__ = "experiment_item_outputs"
+    __table_args__ = (
+        UniqueConstraint(
+            "experiment_id",
+            "dataset_item_id",
+            name="uq_experiment_item_outputs_exp_item",
+        ),
+        Index("ix_experiment_item_outputs_experiment_id", "experiment_id"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True)
+    experiment_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey("experiments.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    dataset_item_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey("dataset_items.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    actual_output: Mapped[Any | None] = mapped_column(JSONB, nullable=True)
+    context: Mapped[Any | None] = mapped_column(JSONB, nullable=True)
+    metadata_json: Mapped[dict[str, Any]] = mapped_column(
+        "metadata", JSONB, nullable=False, server_default="{}"
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+    )
