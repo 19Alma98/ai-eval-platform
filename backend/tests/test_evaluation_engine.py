@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import uuid
 from datetime import UTC, datetime
 
@@ -174,3 +175,80 @@ def test_build_eval_context_from_trace() -> None:
     assert ctx["total_tokens"] == 42
     assert ctx["cost_usd"] == 0.002
     assert ctx["tool_calls"][0]["success"] is True
+
+
+def test_build_eval_context_includes_retrieval_documents() -> None:
+    start = datetime(2024, 1, 1, tzinfo=UTC)
+    end = datetime(2024, 1, 1, 0, 0, 1, tzinfo=UTC)
+    retriever = Span(
+        id=uuid.uuid4(),
+        span_id="c" * 16,
+        parent_span_id=None,
+        name="retrieve",
+        kind="RETRIEVER",
+        start_time=start,
+        end_time=end,
+        status="ok",
+        attributes={
+            "retrieval.documents": [
+                {"id": "doc-1", "title": "PTO", "text": "20 days paid time off."},
+                {"id": "doc-2", "title": "Holidays"},
+            ],
+        },
+    )
+    json_span = Span(
+        id=uuid.uuid4(),
+        span_id="d" * 16,
+        parent_span_id=None,
+        name="retrieve_json",
+        kind="RETRIEVER",
+        start_time=start,
+        end_time=end,
+        status="ok",
+        attributes={
+            "retrieval.documents": json.dumps(
+                [{"id": "doc-3", "text": "Remote work policy."}]
+            ),
+        },
+    )
+    trace = Trace(
+        id=uuid.uuid4(),
+        project_id=uuid.uuid4(),
+        trace_id="e" * 32,
+        name="rag",
+        status="ok",
+        start_time=start,
+        end_time=end,
+        spans=(retriever, json_span),
+    )
+    ctx = build_eval_context_from_trace(trace)
+    assert ctx["documents"] == [
+        {"id": "doc-1", "title": "PTO", "text": "20 days paid time off."},
+        {"id": "doc-2", "title": "Holidays"},
+        {"id": "doc-3", "text": "Remote work policy."},
+    ]
+
+
+@pytest.mark.asyncio
+async def test_groundedness_judge_payload_includes_document_texts() -> None:
+    captured: dict[str, str] = {}
+
+    class FakeLlm:
+        async def complete_json(self, *, system: str, user: str, model: str | None = None):
+            captured["user"] = user
+            return {"score": 1.0, "label": "PASS", "explanation": "grounded"}
+
+    judge = LlmJudgeEvaluator(
+        "groundedness", {}, FakeLlm(), default_model=get_settings().llm_model
+    )
+    await judge.evaluate(
+        _sample(
+            context={
+                "documents": [
+                    {"id": "doc-1", "text": "Policy excerpt for the judge."},
+                ],
+            },
+        )
+    )
+    payload = json.loads(captured["user"])
+    assert payload["context"]["documents"][0]["text"] == "Policy excerpt for the judge."

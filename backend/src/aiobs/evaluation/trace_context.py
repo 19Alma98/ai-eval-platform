@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import json
 from typing import Any
 
+from aiobs.domain.retrieval import normalize_documents
 from aiobs.domain.trace import Span, Trace
 
 
@@ -84,6 +86,27 @@ def build_eval_context_from_trace(
         context["cost_usd"] = cost_usd
     if tool_calls:
         context["tool_calls"] = tool_calls
+
+    docs: list[dict[str, Any]] = []
+    for span in spans:
+        if span.kind.upper() != "RETRIEVER":
+            continue
+        attrs = span.attributes or {}
+        raw = attrs.get("retrieval.documents")
+        if raw is None:
+            raw = attrs.get("documents")
+        if isinstance(raw, list):
+            docs.extend(normalize_documents(raw))
+        elif isinstance(raw, str):
+            try:
+                parsed = json.loads(raw)
+            except json.JSONDecodeError:
+                continue
+            if isinstance(parsed, list):
+                docs.extend(normalize_documents(parsed))
+    if docs:
+        context["documents"] = docs
+
     return context
 
 
