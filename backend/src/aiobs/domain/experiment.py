@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import uuid
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import UTC, datetime
 from typing import Any
 
@@ -20,6 +20,7 @@ class Experiment:
     status: str
     created_at: datetime
     app_config_id: uuid.UUID | None = None
+    metrics_set_id: uuid.UUID | None = None
 
     @classmethod
     def create(
@@ -32,6 +33,7 @@ class Experiment:
         version: str | None = None,
         baseline_experiment_id: uuid.UUID | None = None,
         app_config_id: uuid.UUID | None = None,
+        metrics_set_id: uuid.UUID | None = None,
         status: str = "created",
     ) -> Experiment:
         cleaned = name.strip()
@@ -50,4 +52,8 @@ class Experiment:
             status=status,
             created_at=datetime.now(UTC),
             app_config_id=app_config_id,
+            metrics_set_id=metrics_set_id,
         )
+
+    def with_metrics_set_id(self, metrics_set_id: uuid.UUID | None) -> Experiment:
+        return replace(self, metrics_set_id=metrics_set_id)
