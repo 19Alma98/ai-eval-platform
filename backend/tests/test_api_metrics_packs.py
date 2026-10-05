@@ -143,6 +143,49 @@ async def test_put_can_disable_hit_at_k(client: AsyncClient) -> None:
 
 
 @pytest.mark.asyncio
+async def test_put_rejects_foreign_or_unknown_evaluator_id(client: AsyncClient) -> None:
+    proj_a = (await client.post("/api/v1/projects", json={"name": "PA", "slug": "p-mp-a"})).json()
+    proj_b = (await client.post("/api/v1/projects", json={"name": "PB", "slug": "p-mp-b"})).json()
+    ensured = (
+        await client.post(f"/api/v1/projects/{proj_a['id']}/metrics-pack/ensure")
+    ).json()
+    entries = [_entry_payload(ensured, k) for k in ("hit_at_k", "groundedness", "correctness", "latency")]
+
+    foreign_resp = await client.post(
+        f"/api/v1/projects/{proj_b['id']}/evaluators",
+        json={
+            "name": "exact",
+            "type": "deterministic",
+            "config": {"kind": "exact_match"},
+        },
+    )
+    assert foreign_resp.status_code == 201
+    foreign = foreign_resp.json()
+    entries.append(
+        {
+            "kind": "custom_metric",
+            "enabled": True,
+            "threshold": None,
+            "config": {},
+            "evaluator_id": foreign["id"],
+            "removable": True,
+        }
+    )
+    bad_foreign = await client.put(
+        f"/api/v1/projects/{proj_a['id']}/metrics-pack",
+        json={"entries": entries},
+    )
+    assert bad_foreign.status_code == 400
+
+    entries[-1]["evaluator_id"] = str(uuid.uuid4())
+    bad_unknown = await client.put(
+        f"/api/v1/projects/{proj_a['id']}/metrics-pack",
+        json={"entries": entries},
+    )
+    assert bad_unknown.status_code == 400
+
+
+@pytest.mark.asyncio
 async def test_rag_qa_dataset_create_auto_ensures_metrics_pack(client: AsyncClient) -> None:
     proj = (await client.post("/api/v1/projects", json={"name": "P4", "slug": "p-mp4"})).json()
     missing = await client.get(f"/api/v1/projects/{proj['id']}/metrics-pack")

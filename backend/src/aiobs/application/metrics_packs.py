@@ -52,6 +52,18 @@ def _evaluator_config_for_entry(entry: MetricsPackEntry) -> dict[str, Any]:
     return config
 
 
+async def _require_evaluator_in_project(
+    evaluators: EvaluatorRepository,
+    project_id: uuid.UUID,
+    evaluator_id: uuid.UUID,
+) -> None:
+    evaluator = await evaluators.get_by_id(evaluator_id)
+    if evaluator is None:
+        raise ValueError(f"Unknown evaluator_id: {evaluator_id}")
+    if evaluator.project_id != project_id:
+        raise ValueError(f"evaluator_id does not belong to project: {evaluator_id}")
+
+
 async def _find_evaluator_by_kind(
     evaluators: EvaluatorRepository,
     project_id: uuid.UUID,
@@ -154,8 +166,13 @@ class GetMetricsPack:
 
 
 class ReplaceMetricsPack:
-    def __init__(self, packs: MetricsPackRepository) -> None:
+    def __init__(
+        self,
+        packs: MetricsPackRepository,
+        evaluators: EvaluatorRepository,
+    ) -> None:
         self._packs = packs
+        self._evaluators = evaluators
 
     async def execute(
         self,
@@ -165,6 +182,12 @@ class ReplaceMetricsPack:
         pack = await self._packs.get_by_project_id(project_id)
         if pack is None:
             raise MetricsPackNotFoundError(project_id)
+
+        for patch in entries:
+            if patch.evaluator_id is not None:
+                await _require_evaluator_in_project(
+                    self._evaluators, project_id, patch.evaluator_id
+                )
 
         incoming_by_kind = {e.kind.strip(): e for e in entries}
         if len(incoming_by_kind) != len(entries):

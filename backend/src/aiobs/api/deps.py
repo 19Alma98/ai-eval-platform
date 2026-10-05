@@ -279,8 +279,9 @@ def get_get_metrics_pack(
 
 def get_replace_metrics_pack(
     packs: SqlAlchemyMetricsPackRepository = Depends(get_metrics_pack_repository),
+    evaluators: SqlAlchemyEvaluatorRepository = Depends(get_evaluator_repository),
 ) -> ReplaceMetricsPack:
-    return ReplaceMetricsPack(packs)
+    return ReplaceMetricsPack(packs, evaluators)
 
 
 def get_create_dataset(
