@@ -185,6 +185,35 @@ class EvaluatorResponse(BaseModel):
     version: int
 
 
+class MetricsPackEntryRequest(BaseModel):
+    kind: str = Field(min_length=1, max_length=64)
+    enabled: bool
+    threshold: float | None = None
+    config: dict[str, Any] = Field(default_factory=dict)
+    evaluator_id: uuid.UUID | None = None
+    removable: bool | None = None
+
+
+class ReplaceMetricsPackRequest(BaseModel):
+    entries: list[MetricsPackEntryRequest] = Field(min_length=1)
+
+
+class MetricsPackEntryResponse(BaseModel):
+    kind: str
+    enabled: bool
+    threshold: float | None
+    config: dict[str, Any]
+    evaluator_id: uuid.UUID | None
+    removable: bool
+
+
+class MetricsPackResponse(BaseModel):
+    id: uuid.UUID
+    project_id: uuid.UUID
+    entries: list[MetricsPackEntryResponse]
+    updated_at: datetime
+
+
 class CreateExperimentRequest(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
 

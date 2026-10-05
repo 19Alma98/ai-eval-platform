@@ -10,6 +10,7 @@ from aiobs.api.deps import get_dataset_repository, get_project_repository
 from aiobs.domain.dataset import Dataset, DatasetItem
 from aiobs.domain.project import Project
 from aiobs.main import create_app
+from tests.support.repositories import wire_metrics_pack_repos
 
 
 class InMemoryProjectRepository:
@@ -75,6 +76,7 @@ async def client() -> AsyncIterator[AsyncClient]:
     app = create_app()
     app.dependency_overrides[get_project_repository] = lambda: projects
     app.dependency_overrides[get_dataset_repository] = lambda: datasets
+    wire_metrics_pack_repos(app)
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as ac:
         yield ac

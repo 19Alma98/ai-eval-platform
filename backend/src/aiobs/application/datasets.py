@@ -8,6 +8,7 @@ from aiobs.application.projects import ProjectNotFoundError
 from aiobs.domain.dataset import Dataset, DatasetItem
 from aiobs.application.dataset_import import parse_import_payload, row_to_item_fields
 from aiobs.domain.rag_qa import validate_rag_qa_item
+from aiobs.application.metrics_packs import EnsureMetricsPack
 from aiobs.domain.repositories import DatasetRepository, ProjectRepository, TraceRepository
 from aiobs.evaluation.trace_context import build_eval_context_from_trace
 
@@ -93,9 +94,11 @@ class CreateDataset:
         self,
         datasets: DatasetRepository,
         projects: ProjectRepository,
+        ensure_metrics_pack: EnsureMetricsPack | None = None,
     ) -> None:
         self._datasets = datasets
         self._projects = projects
+        self._ensure_metrics_pack = ensure_metrics_pack
 
     async def execute(self, command: CreateDatasetCommand) -> Dataset:
         project = await self._projects.get_by_id(command.project_id)
@@ -109,7 +112,7 @@ class CreateDataset:
             task_type=command.task_type,
         )
         try:
-            return await self._datasets.add(dataset)
+            created = await self._datasets.add(dataset)
         except Exception as exc:
             # Repository may raise IntegrityError; map in infra or re-raise as conflict
             if (
@@ -118,6 +121,9 @@ class CreateDataset:
             ):
                 raise DatasetConflictError(dataset.name, dataset.version) from exc
             raise
+        if created.task_type == "rag_qa" and self._ensure_metrics_pack is not None:
+            await self._ensure_metrics_pack.execute(command.project_id)
+        return created
 
 
 class ListDatasets:
