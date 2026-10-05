@@ -19,11 +19,13 @@ TASK_TYPE_CATALOG: tuple[TaskTypeInfo, ...] = (
         label="RAG Q&A",
         field_hints=(
             "input: user question",
-            "context.documents / retrieval snippets",
             "expected_output: reference answer",
+            "metadata.expected_doc_ids: gold document ids (list or pipe-separated)",
+            "context.documents / retrieval snippets",
             "actual_output: model answer",
         ),
         recommended_evaluator_kinds=(
+            "hit_at_k",
             "groundedness",
             "answer_relevance",
             "correctness",
