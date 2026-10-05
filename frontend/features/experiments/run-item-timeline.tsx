@@ -27,6 +27,10 @@ export function RunItemTimeline({ projectId, traceId }: RunItemTimelineProps) {
   const [selectedSpanId, setSelectedSpanId] = useState<string | null>(null);
   const trace = query.data;
 
+  useEffect(() => {
+    setSelectedSpanId(null);
+  }, [projectId, traceId]);
+
   const selectedSpan = useMemo(() => {
     if (!trace || !selectedSpanId) return null;
     return trace.spans.find((s) => s.span_id === selectedSpanId) ?? null;
