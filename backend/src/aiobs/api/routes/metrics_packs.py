@@ -17,10 +17,10 @@ from aiobs.api.schemas import (
 from aiobs.application.metrics_packs import (
     EnsureMetricsPack,
     GetMetricsPack,
+    MetricsPackEntryPatch,
     MetricsPackNotFoundError,
     MetricsPackValidationError,
     ReplaceMetricsPack,
-    MetricsPackEntryPatch,
 )
 from aiobs.application.projects import ProjectNotFoundError
 from aiobs.domain.metrics_pack import MetricsPack

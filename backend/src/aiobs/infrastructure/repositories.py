@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime
+from typing import Any
 
 from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
@@ -783,7 +784,7 @@ class SqlAlchemyEvaluationRunRepository:
         return [_result_to_domain(row) for row in rows]
 
 
-def _metrics_pack_entry_to_json(entry: MetricsPackEntry) -> dict:
+def _metrics_pack_entry_to_json(entry: MetricsPackEntry) -> dict[str, Any]:
     return {
         "kind": entry.kind,
         "enabled": entry.enabled,
@@ -794,7 +795,7 @@ def _metrics_pack_entry_to_json(entry: MetricsPackEntry) -> dict:
     }
 
 
-def _metrics_pack_entry_from_json(raw: dict) -> MetricsPackEntry:
+def _metrics_pack_entry_from_json(raw: dict[str, Any]) -> MetricsPackEntry:
     evaluator_raw = raw.get("evaluator_id")
     evaluator_id = uuid.UUID(evaluator_raw) if evaluator_raw else None
     config_raw = raw.get("config") or {}

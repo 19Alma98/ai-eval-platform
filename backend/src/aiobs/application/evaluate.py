@@ -6,6 +6,11 @@ from dataclasses import dataclass
 from aiobs.application.evaluators import EvaluatorNotFoundError
 from aiobs.application.experiment_outputs import merge_dataset_item
 from aiobs.application.experiments import ExperimentNotFoundError
+from aiobs.application.metrics_packs import (
+    EnsureMetricsPack,
+    GetMetricsPack,
+    MetricsPackNotFoundError,
+)
 from aiobs.domain.evaluation import EvaluationResultRecord, EvaluationRun
 from aiobs.domain.experiment import Experiment
 from aiobs.domain.repositories import (
@@ -15,7 +20,6 @@ from aiobs.domain.repositories import (
     ExperimentItemOutputRepository,
     ExperimentRepository,
 )
-from aiobs.application.metrics_packs import EnsureMetricsPack, GetMetricsPack, MetricsPackNotFoundError
 from aiobs.evaluation.runner import EvaluationRunner
 
 
@@ -147,9 +151,7 @@ class ScoreExperimentFromPack:
         self._ensure_metrics_pack = ensure_metrics_pack
         self._evaluate_experiment = evaluate_experiment
 
-    async def execute(
-        self, command: ScoreExperimentFromPackCommand
-    ) -> EvaluateExperimentResult:
+    async def execute(self, command: ScoreExperimentFromPackCommand) -> EvaluateExperimentResult:
         experiment = await self._experiments.get_by_id(command.experiment_id)
         if experiment is None:
             raise ExperimentNotFoundError(command.experiment_id)

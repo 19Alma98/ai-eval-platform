@@ -7,6 +7,7 @@ from typing import Any
 
 from aiobs.application.evaluators import CreateEvaluator, CreateEvaluatorCommand
 from aiobs.application.projects import ProjectNotFoundError
+from aiobs.domain.evaluator import Evaluator
 from aiobs.domain.metrics_pack import (
     DEFAULT_RAG_ENTRIES,
     MetricsPack,
@@ -69,7 +70,7 @@ async def _find_evaluator_by_kind(
     evaluators: EvaluatorRepository,
     project_id: uuid.UUID,
     kind: str,
-):
+) -> Evaluator | None:
     for evaluator in await evaluators.list_by_project(project_id):
         if evaluator.name == kind and str(evaluator.config.get("kind", "")).strip() == kind:
             return evaluator
@@ -139,9 +140,7 @@ class EnsureMetricsPack:
         for entry in pack.entries:
             if entry.evaluator_id is not None:
                 continue
-            evaluator = await _find_evaluator_by_kind(
-                self._evaluators, pack.project_id, entry.kind
-            )
+            evaluator = await _find_evaluator_by_kind(self._evaluators, pack.project_id, entry.kind)
             if evaluator is None:
                 evaluator = await self._create_evaluator.execute(
                     CreateEvaluatorCommand(
@@ -153,9 +152,7 @@ class EnsureMetricsPack:
                 )
             idx = next(i for i, e in enumerate(current.entries) if e.kind == entry.kind)
             current_entry = current.entries[idx]
-            current = _replace_entry_at(
-                current, replace(current_entry, evaluator_id=evaluator.id)
-            )
+            current = _replace_entry_at(current, replace(current_entry, evaluator_id=evaluator.id))
         return current
 
 
@@ -223,14 +220,7 @@ class ReplaceMetricsPack:
         updated = pack
         original_kinds = {e.kind for e in pack.entries}
         for existing in pack.entries:
-            patch = incoming_by_kind.get(existing.kind)
-            if patch is None:
-                if not existing.removable:
-                    raise MetricsPackValidationError(
-                        f"cannot remove required metrics pack entry: {existing.kind}"
-                    )
-                updated = updated.remove_entry(existing.kind)
-                continue
+            patch = incoming_by_kind[existing.kind]
             updated = _apply_patch(updated, existing, patch)
 
         for patch in entries:

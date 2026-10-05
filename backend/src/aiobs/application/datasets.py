@@ -4,11 +4,11 @@ import uuid
 from dataclasses import dataclass
 from typing import Any
 
+from aiobs.application.dataset_import import parse_import_payload, row_to_item_fields
+from aiobs.application.metrics_packs import EnsureMetricsPack
 from aiobs.application.projects import ProjectNotFoundError
 from aiobs.domain.dataset import Dataset, DatasetItem
-from aiobs.application.dataset_import import parse_import_payload, row_to_item_fields
 from aiobs.domain.rag_qa import validate_rag_qa_item
-from aiobs.application.metrics_packs import EnsureMetricsPack
 from aiobs.domain.repositories import DatasetRepository, ProjectRepository, TraceRepository
 from aiobs.evaluation.trace_context import build_eval_context_from_trace
 

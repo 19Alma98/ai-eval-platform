@@ -14,11 +14,11 @@ from aiobs.api.deps import (
     get_ingest_traces,
     get_resolve_project,
 )
-from aiobs.tracing.run_binding import BindOtlpTracesToExperimentOutputs
 from aiobs.application.traces import IngestNormalizedTraces, ProjectMissingError, ResolveProject
 from aiobs.config import Settings
 from aiobs.tracing.ingestion import ingest_otlp_payload
 from aiobs.tracing.otel import OtlpDecodeError
+from aiobs.tracing.run_binding import BindOtlpTracesToExperimentOutputs
 
 logger = logging.getLogger(__name__)
 

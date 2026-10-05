@@ -304,8 +304,14 @@ class HitAtKEvaluator:
         return EvaluationResult(
             score=1.0 if hit else 0.0,
             label="PASS" if hit else "FAIL",
-            explanation="expected doc in top-k retrieved" if hit else "no expected doc in top-k retrieved",
-            metadata={"k": self._k, "expected_doc_ids": list(expected), "retrieved_top_k": retrieved[: self._k]},
+            explanation="expected doc in top-k retrieved"
+            if hit
+            else "no expected doc in top-k retrieved",
+            metadata={
+                "k": self._k,
+                "expected_doc_ids": list(expected),
+                "retrieved_top_k": retrieved[: self._k],
+            },
         )
 
 
@@ -391,9 +397,7 @@ class MustContainEvaluator:
         return EvaluationResult(
             score=1.0 if ok else 0.0,
             label="PASS" if ok else "FAIL",
-            explanation=(
-                "all required phrases found" if ok else f"missing: {', '.join(missing)}"
-            ),
+            explanation=("all required phrases found" if ok else f"missing: {', '.join(missing)}"),
             metadata={
                 "must_contain": keywords,
                 "missing": missing,
