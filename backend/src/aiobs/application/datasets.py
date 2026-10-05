@@ -6,6 +6,7 @@ from typing import Any
 
 from aiobs.application.projects import ProjectNotFoundError
 from aiobs.domain.dataset import Dataset, DatasetItem
+from aiobs.domain.rag_qa import validate_rag_qa_item
 from aiobs.domain.repositories import DatasetRepository, ProjectRepository, TraceRepository
 from aiobs.evaluation.trace_context import build_eval_context_from_trace
 
@@ -125,13 +126,20 @@ class AddDatasetItem:
         dataset = await self._datasets.get_by_id(command.dataset_id)
         if dataset is None:
             raise DatasetNotFoundError(command.dataset_id)
+        metadata = command.metadata
+        if dataset.task_type == "rag_qa":
+            metadata = validate_rag_qa_item(
+                input=command.input,
+                expected_output=command.expected_output,
+                metadata=dict(command.metadata or {}),
+            )
         item = DatasetItem.create(
             command.dataset_id,
             command.input,
             expected_output=command.expected_output,
             actual_output=command.actual_output,
             context=command.context,
-            metadata=command.metadata,
+            metadata=metadata,
             source_trace_id=command.source_trace_id,
             source_span_id=command.source_span_id,
         )
