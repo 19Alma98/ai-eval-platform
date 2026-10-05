@@ -419,25 +419,6 @@ class MetricsSetEntryModel(Base):
     )
 
 
-class MetricsPackModel(Base):
-    __tablename__ = "metrics_packs"
-    __table_args__ = (UniqueConstraint("project_id", name="uq_metrics_packs_project_id"),)
-
-    id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True)
-    project_id: Mapped[uuid.UUID] = mapped_column(
-        Uuid(as_uuid=True),
-        ForeignKey("projects.id", ondelete="CASCADE"),
-        nullable=False,
-        unique=True,
-    )
-    entries: Mapped[list[Any]] = mapped_column(JSONB, nullable=False)
-    updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True),
-        nullable=False,
-        server_default=func.now(),
-    )
-
-
 class ExperimentItemOutputModel(Base):
     __tablename__ = "experiment_item_outputs"
     __table_args__ = (

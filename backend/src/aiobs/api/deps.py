@@ -43,6 +43,10 @@ from aiobs.application.metrics_packs import (
     GetMetricsPack,
     ReplaceMetricsPack,
 )
+from aiobs.application.metrics_sets import (
+    EnsureProjectDefaultMetricsSet,
+    PatchMetricsSet,
+)
 from aiobs.application.projects import CreateProject, GetProject, ListProjects
 from aiobs.application.release_check import ReleaseCheck
 from aiobs.application.traces import (
@@ -62,7 +66,7 @@ from aiobs.infrastructure.repositories import (
     SqlAlchemyEvaluatorRepository,
     SqlAlchemyExperimentItemOutputRepository,
     SqlAlchemyExperimentRepository,
-    SqlAlchemyMetricsPackRepository,
+    SqlAlchemyMetricsSetRepository,
     SqlAlchemyProjectRepository,
     SqlAlchemyTraceRepository,
 )
@@ -104,10 +108,10 @@ def get_evaluator_repository(
     return SqlAlchemyEvaluatorRepository(session)
 
 
-def get_metrics_pack_repository(
+def get_metrics_set_repository(
     session: AsyncSession = Depends(get_db_session),
-) -> SqlAlchemyMetricsPackRepository:
-    return SqlAlchemyMetricsPackRepository(session)
+) -> SqlAlchemyMetricsSetRepository:
+    return SqlAlchemyMetricsSetRepository(session)
 
 
 def get_experiment_repository(
@@ -274,26 +278,44 @@ def get_list_evaluators(
     return ListEvaluators(evaluators)
 
 
-def get_ensure_metrics_pack(
-    packs: SqlAlchemyMetricsPackRepository = Depends(get_metrics_pack_repository),
+def get_ensure_project_default_metrics_set(
+    metrics_sets: SqlAlchemyMetricsSetRepository = Depends(get_metrics_set_repository),
     evaluators: SqlAlchemyEvaluatorRepository = Depends(get_evaluator_repository),
     projects: SqlAlchemyProjectRepository = Depends(get_project_repository),
     create_evaluator: CreateEvaluator = Depends(get_create_evaluator),
+) -> EnsureProjectDefaultMetricsSet:
+    return EnsureProjectDefaultMetricsSet(
+        metrics_sets, evaluators, projects, create_evaluator
+    )
+
+
+def get_patch_metrics_set(
+    metrics_sets: SqlAlchemyMetricsSetRepository = Depends(get_metrics_set_repository),
+    evaluators: SqlAlchemyEvaluatorRepository = Depends(get_evaluator_repository),
+    experiments: SqlAlchemyExperimentRepository = Depends(get_experiment_repository),
+) -> PatchMetricsSet:
+    return PatchMetricsSet(metrics_sets, evaluators, experiments)
+
+
+def get_ensure_metrics_pack(
+    ensure_default: EnsureProjectDefaultMetricsSet = Depends(
+        get_ensure_project_default_metrics_set
+    ),
 ) -> EnsureMetricsPack:
-    return EnsureMetricsPack(packs, evaluators, projects, create_evaluator)
+    return EnsureMetricsPack(ensure_default)
 
 
 def get_get_metrics_pack(
-    packs: SqlAlchemyMetricsPackRepository = Depends(get_metrics_pack_repository),
+    metrics_sets: SqlAlchemyMetricsSetRepository = Depends(get_metrics_set_repository),
 ) -> GetMetricsPack:
-    return GetMetricsPack(packs)
+    return GetMetricsPack(metrics_sets)
 
 
 def get_replace_metrics_pack(
-    packs: SqlAlchemyMetricsPackRepository = Depends(get_metrics_pack_repository),
-    evaluators: SqlAlchemyEvaluatorRepository = Depends(get_evaluator_repository),
+    metrics_sets: SqlAlchemyMetricsSetRepository = Depends(get_metrics_set_repository),
+    patch_metrics_set: PatchMetricsSet = Depends(get_patch_metrics_set),
 ) -> ReplaceMetricsPack:
-    return ReplaceMetricsPack(packs, evaluators)
+    return ReplaceMetricsPack(metrics_sets, patch_metrics_set)
 
 
 def get_create_dataset(

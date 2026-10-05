@@ -10,7 +10,6 @@ from aiobs.domain.evaluation import EvaluationResultRecord, EvaluationRun
 from aiobs.domain.evaluator import Evaluator
 from aiobs.domain.experiment import Experiment
 from aiobs.domain.experiment_output import ExperimentItemOutput
-from aiobs.domain.metrics_pack import MetricsPack
 from aiobs.domain.metrics_set import MetricsSet
 from aiobs.domain.project import Project
 from aiobs.domain.trace import Trace
@@ -139,14 +138,6 @@ class EvaluationRunRepository(Protocol):
     async def add_results(
         self, results: list[EvaluationResultRecord]
     ) -> list[EvaluationResultRecord]: ...
-
-
-class MetricsPackRepository(Protocol):
-    async def add(self, pack: MetricsPack) -> MetricsPack: ...
-
-    async def get_by_project_id(self, project_id: uuid.UUID) -> MetricsPack | None: ...
-
-    async def update(self, pack: MetricsPack) -> MetricsPack: ...
 
 
 class ExperimentItemOutputRepository(Protocol):

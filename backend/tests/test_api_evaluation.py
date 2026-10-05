@@ -14,11 +14,11 @@ from aiobs.api.deps import (
     get_evaluator_repository,
     get_experiment_item_output_repository,
     get_experiment_repository,
-    get_metrics_pack_repository,
+    get_metrics_set_repository,
     get_project_repository,
     get_trace_repository,
 )
-from support.repositories import InMemoryMetricsPackRepository
+from support.repositories import InMemoryMetricsSetRepository
 from aiobs.domain.dataset import Dataset, DatasetItem
 from aiobs.domain.evaluation import EvaluationResultRecord, EvaluationRun
 from aiobs.domain.evaluator import Evaluator
@@ -218,11 +218,11 @@ async def client() -> AsyncIterator[AsyncClient]:
     experiments = InMemoryExperimentRepository()
     runs = InMemoryEvaluationRunRepository()
     outputs = InMemoryExperimentItemOutputRepository()
-    metrics_packs = InMemoryMetricsPackRepository()
+    metrics_sets = InMemoryMetricsSetRepository()
 
     app = create_app()
     app.dependency_overrides[get_project_repository] = lambda: projects
-    app.dependency_overrides[get_metrics_pack_repository] = lambda: metrics_packs
+    app.dependency_overrides[get_metrics_set_repository] = lambda: metrics_sets
     app.dependency_overrides[get_trace_repository] = lambda: traces
     app.dependency_overrides[get_dataset_repository] = lambda: datasets
     app.dependency_overrides[get_evaluator_repository] = lambda: evaluators

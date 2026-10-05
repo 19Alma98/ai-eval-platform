@@ -2,24 +2,19 @@ from __future__ import annotations
 
 import uuid
 from dataclasses import dataclass, replace
-from datetime import UTC, datetime
 from typing import Any
 
-from aiobs.application.evaluators import CreateEvaluator, CreateEvaluatorCommand
-from aiobs.application.projects import ProjectNotFoundError
-from aiobs.domain.evaluator import Evaluator
-from aiobs.domain.metrics_pack import (
-    DEFAULT_RAG_ENTRIES,
-    MetricsPack,
-    MetricsPackEntry,
+from aiobs.application.metrics_sets import (
+    EnsureProjectDefaultMetricsSet,
+    MetricsSetEntryInput,
+    MetricsSetProtectedError,
+    MetricsSetValidationError,
+    PatchMetricsSet,
+    PatchMetricsSetCommand,
 )
-from aiobs.domain.repositories import (
-    EvaluatorRepository,
-    MetricsPackRepository,
-    ProjectRepository,
-)
-
-_LLM_JUDGE_KINDS = frozenset({"groundedness", "correctness", "answer_relevance"})
+from aiobs.domain.metrics_pack import MetricsPack, MetricsPackEntry
+from aiobs.domain.metrics_set import MetricsSet
+from aiobs.domain.repositories import MetricsSetRepository
 
 
 class MetricsPackNotFoundError(Exception):
@@ -42,45 +37,34 @@ class MetricsPackEntryPatch:
     removable: bool | None = None
 
 
-def _evaluator_type_for_kind(kind: str) -> str:
-    if kind in _LLM_JUDGE_KINDS:
-        return "llm_judge"
-    return "deterministic"
+def metrics_set_to_pack(metrics_set: MetricsSet) -> MetricsPack:
+    entries = tuple(
+        MetricsPackEntry(
+            kind=e.kind,
+            enabled=e.enabled,
+            threshold=e.threshold,
+            config=dict(e.config),
+            evaluator_id=e.evaluator_id,
+            removable=not e.is_default,
+        )
+        for e in metrics_set.entries
+    )
+    return MetricsPack(
+        id=metrics_set.id,
+        project_id=metrics_set.project_id,
+        entries=entries,
+        updated_at=metrics_set.updated_at,
+    )
 
 
-def _evaluator_config_for_entry(entry: MetricsPackEntry) -> dict[str, Any]:
-    config = dict(entry.config)
-    config["kind"] = entry.kind
-    return config
-
-
-async def _require_evaluator_in_project(
-    evaluators: EvaluatorRepository,
-    project_id: uuid.UUID,
-    evaluator_id: uuid.UUID,
-) -> None:
-    evaluator = await evaluators.get_by_id(evaluator_id)
-    if evaluator is None:
-        raise ValueError(f"Unknown evaluator_id: {evaluator_id}")
-    if evaluator.project_id != project_id:
-        raise ValueError(f"evaluator_id does not belong to project: {evaluator_id}")
-
-
-async def _find_evaluator_by_kind(
-    evaluators: EvaluatorRepository,
-    project_id: uuid.UUID,
-    kind: str,
-) -> Evaluator | None:
-    for evaluator in await evaluators.list_by_project(project_id):
-        if evaluator.name == kind and str(evaluator.config.get("kind", "")).strip() == kind:
-            return evaluator
-    return None
-
-
-def _replace_entry_at(pack: MetricsPack, entry: MetricsPackEntry) -> MetricsPack:
-    idx = next(i for i, e in enumerate(pack.entries) if e.kind == entry.kind)
-    new_entries = pack.entries[:idx] + (entry,) + pack.entries[idx + 1 :]
-    return replace(pack, entries=new_entries, updated_at=pack.updated_at)
+def _pack_patch_to_set_input(patch: MetricsPackEntryPatch) -> MetricsSetEntryInput:
+    return MetricsSetEntryInput(
+        kind=patch.kind,
+        enabled=patch.enabled,
+        threshold=patch.threshold,
+        config=dict(patch.config),
+        evaluator_id=patch.evaluator_id,
+    )
 
 
 def _apply_patch(
@@ -100,166 +84,112 @@ def _apply_patch(
     if patch.evaluator_id is not None:
         idx = next(i for i, e in enumerate(updated.entries) if e.kind == existing.kind)
         entry = updated.entries[idx]
-        updated = _replace_entry_at(updated, replace(entry, evaluator_id=patch.evaluator_id))
+        updated = replace(
+            updated,
+            entries=updated.entries[:idx]
+            + (replace(entry, evaluator_id=patch.evaluator_id),)
+            + updated.entries[idx + 1 :],
+        )
     return updated
 
 
 class EnsureMetricsPack:
-    def __init__(
-        self,
-        packs: MetricsPackRepository,
-        evaluators: EvaluatorRepository,
-        projects: ProjectRepository,
-        create_evaluator: CreateEvaluator,
-    ) -> None:
-        self._packs = packs
-        self._evaluators = evaluators
-        self._projects = projects
-        self._create_evaluator = create_evaluator
+    def __init__(self, ensure_default: EnsureProjectDefaultMetricsSet) -> None:
+        self._ensure_default = ensure_default
 
     async def execute(self, project_id: uuid.UUID) -> MetricsPack:
-        project = await self._projects.get_by_id(project_id)
-        if project is None:
-            raise ProjectNotFoundError(project_id)
-
-        pack = await self._packs.get_by_project_id(project_id)
-        if pack is None:
-            pack = await self._packs.add(MetricsPack.create(project_id))
-        else:
-            backfilled = _with_missing_default_entries(pack)
-            if backfilled.entries != pack.entries:
-                pack = await self._packs.update(backfilled)
-
-        updated = await self._ensure_evaluator_ids(pack)
-        if updated.entries != pack.entries:
-            return await self._packs.update(updated)
-        return pack
-
-    async def _ensure_evaluator_ids(self, pack: MetricsPack) -> MetricsPack:
-        current = pack
-        for entry in pack.entries:
-            if entry.evaluator_id is not None:
-                continue
-            evaluator = await _find_evaluator_by_kind(self._evaluators, pack.project_id, entry.kind)
-            if evaluator is None:
-                evaluator = await self._create_evaluator.execute(
-                    CreateEvaluatorCommand(
-                        project_id=pack.project_id,
-                        name=entry.kind,
-                        type=_evaluator_type_for_kind(entry.kind),
-                        config=_evaluator_config_for_entry(entry),
-                    )
-                )
-            idx = next(i for i, e in enumerate(current.entries) if e.kind == entry.kind)
-            current_entry = current.entries[idx]
-            current = _replace_entry_at(current, replace(current_entry, evaluator_id=evaluator.id))
-        return current
-
-
-def _with_missing_default_entries(pack: MetricsPack) -> MetricsPack:
-    existing = {e.kind for e in pack.entries}
-    extras = [
-        replace(default, config=dict(default.config))
-        for default in DEFAULT_RAG_ENTRIES
-        if default.kind not in existing
-    ]
-    if not extras:
-        return pack
-    return replace(
-        pack,
-        entries=(*pack.entries, *extras),
-        updated_at=datetime.now(UTC),
-    )
+        metrics_set = await self._ensure_default.execute(project_id)
+        return metrics_set_to_pack(metrics_set)
 
 
 class GetMetricsPack:
-    def __init__(self, packs: MetricsPackRepository) -> None:
-        self._packs = packs
+    def __init__(self, metrics_sets: MetricsSetRepository) -> None:
+        self._metrics_sets = metrics_sets
 
     async def execute(self, project_id: uuid.UUID) -> MetricsPack:
-        pack = await self._packs.get_by_project_id(project_id)
-        if pack is None:
+        metrics_set = await self._metrics_sets.get_project_default(project_id)
+        if metrics_set is None:
             raise MetricsPackNotFoundError(project_id)
-        return pack
+        return metrics_set_to_pack(metrics_set)
 
 
 class ReplaceMetricsPack:
     def __init__(
         self,
-        packs: MetricsPackRepository,
-        evaluators: EvaluatorRepository,
+        metrics_sets: MetricsSetRepository,
+        patch_metrics_set: PatchMetricsSet,
     ) -> None:
-        self._packs = packs
-        self._evaluators = evaluators
+        self._metrics_sets = metrics_sets
+        self._patch_metrics_set = patch_metrics_set
 
     async def execute(
         self,
         project_id: uuid.UUID,
         entries: list[MetricsPackEntryPatch],
     ) -> MetricsPack:
-        pack = await self._packs.get_by_project_id(project_id)
-        if pack is None:
+        metrics_set = await self._metrics_sets.get_project_default(project_id)
+        if metrics_set is None:
             raise MetricsPackNotFoundError(project_id)
-
-        for patch in entries:
-            if patch.evaluator_id is not None:
-                await _require_evaluator_in_project(
-                    self._evaluators, project_id, patch.evaluator_id
-                )
 
         incoming_by_kind = {e.kind.strip(): e for e in entries}
         if len(incoming_by_kind) != len(entries):
             raise MetricsPackValidationError("duplicate metrics pack entry kinds")
 
-        for default in DEFAULT_RAG_ENTRIES:
-            if default.kind not in incoming_by_kind:
+        for existing in metrics_set.entries:
+            if existing.is_default and existing.kind not in incoming_by_kind:
                 raise MetricsPackValidationError(
-                    f"cannot remove required metrics pack entry: {default.kind}"
+                    f"cannot remove required metrics pack entry: {existing.kind}"
                 )
 
-        updated = pack
-        original_kinds = {e.kind for e in pack.entries}
-        for existing in pack.entries:
-            patch = incoming_by_kind[existing.kind]
-            updated = _apply_patch(updated, existing, patch)
-
+        original_kinds = {e.kind for e in metrics_set.entries}
         for patch in entries:
-            if patch.kind.strip() in original_kinds:
+            cleaned = patch.kind.strip()
+            if cleaned in original_kinds:
                 continue
             if patch.removable is not True:
                 raise MetricsPackValidationError(
-                    f"new metrics pack entry must have removable=True: {patch.kind}"
+                    f"new metrics pack entry must have removable=True: {cleaned}"
                 )
             if patch.evaluator_id is None:
                 raise MetricsPackValidationError(
-                    f"custom metrics pack entry requires evaluator_id: {patch.kind}"
+                    f"custom metrics pack entry requires evaluator_id: {cleaned}"
                 )
-            new_entry = MetricsPackEntry(
-                kind=patch.kind.strip(),
-                enabled=patch.enabled,
-                threshold=patch.threshold,
-                config=dict(patch.config),
-                evaluator_id=patch.evaluator_id,
-                removable=True,
-            )
-            updated = updated.append_entry(new_entry)
 
-        return await self._packs.update(updated)
+        set_inputs = [_pack_patch_to_set_input(p) for p in entries]
+        try:
+            updated = await self._patch_metrics_set.execute(
+                PatchMetricsSetCommand(
+                    metrics_set_id=metrics_set.id,
+                    entries=set_inputs,
+                )
+            )
+        except MetricsSetProtectedError as exc:
+            raise MetricsPackValidationError(str(exc)) from exc
+        except MetricsSetValidationError as exc:
+            raise MetricsPackValidationError(str(exc)) from exc
+
+        return metrics_set_to_pack(updated)
 
 
 class PatchMetricsPack:
-    def __init__(self, packs: MetricsPackRepository) -> None:
-        self._packs = packs
+    def __init__(
+        self,
+        metrics_sets: MetricsSetRepository,
+        patch_metrics_set: PatchMetricsSet,
+    ) -> None:
+        self._metrics_sets = metrics_sets
+        self._patch_metrics_set = patch_metrics_set
 
     async def execute(
         self,
         project_id: uuid.UUID,
         patches: list[MetricsPackEntryPatch],
     ) -> MetricsPack:
-        pack = await self._packs.get_by_project_id(project_id)
-        if pack is None:
+        metrics_set = await self._metrics_sets.get_project_default(project_id)
+        if metrics_set is None:
             raise MetricsPackNotFoundError(project_id)
 
+        pack = metrics_set_to_pack(metrics_set)
         updated = pack
         known_kinds = {e.kind for e in pack.entries}
         for patch in patches:
@@ -287,4 +217,26 @@ class PatchMetricsPack:
             updated = updated.append_entry(new_entry)
             known_kinds.add(cleaned)
 
-        return await self._packs.update(updated)
+        set_inputs = [
+            MetricsSetEntryInput(
+                kind=e.kind,
+                enabled=e.enabled,
+                threshold=e.threshold,
+                config=dict(e.config),
+                evaluator_id=e.evaluator_id,
+            )
+            for e in updated.entries
+        ]
+        try:
+            result = await self._patch_metrics_set.execute(
+                PatchMetricsSetCommand(
+                    metrics_set_id=metrics_set.id,
+                    entries=set_inputs,
+                )
+            )
+        except MetricsSetProtectedError as exc:
+            raise MetricsPackValidationError(str(exc)) from exc
+        except MetricsSetValidationError as exc:
+            raise MetricsPackValidationError(str(exc)) from exc
+
+        return metrics_set_to_pack(result)

@@ -2,9 +2,13 @@ from __future__ import annotations
 
 import uuid
 
-from aiobs.api.deps import get_evaluator_repository, get_metrics_pack_repository
+from aiobs.api.deps import (
+    get_evaluator_repository,
+    get_experiment_repository,
+    get_metrics_set_repository,
+)
 from aiobs.domain.evaluator import Evaluator
-from aiobs.domain.metrics_pack import MetricsPack
+from aiobs.domain.experiment import Experiment
 from aiobs.domain.metrics_set import MetricsSet
 
 
@@ -65,25 +69,33 @@ class InMemoryMetricsSetRepository:
         return (max(versions) if versions else 0) + 1
 
 
-class InMemoryMetricsPackRepository:
+class InMemoryExperimentRepository:
     def __init__(self) -> None:
-        self._by_project: dict[uuid.UUID, MetricsPack] = {}
+        self._items: dict[uuid.UUID, Experiment] = {}
 
-    async def add(self, pack: MetricsPack) -> MetricsPack:
-        self._by_project[pack.project_id] = pack
-        return pack
+    async def add(self, experiment: Experiment) -> Experiment:
+        self._items[experiment.id] = experiment
+        return experiment
 
-    async def get_by_project_id(self, project_id: uuid.UUID) -> MetricsPack | None:
-        return self._by_project.get(project_id)
+    async def get_by_id(self, experiment_id: uuid.UUID) -> Experiment | None:
+        return self._items.get(experiment_id)
 
-    async def update(self, pack: MetricsPack) -> MetricsPack:
-        self._by_project[pack.project_id] = pack
-        return pack
+    async def list_by_project(self, project_id: uuid.UUID) -> list[Experiment]:
+        return [e for e in self._items.values() if e.project_id == project_id]
+
+    async def update(self, experiment: Experiment) -> Experiment:
+        self._items[experiment.id] = experiment
+        return experiment
+
+    async def count_by_metrics_set_id(self, metrics_set_id: uuid.UUID) -> int:
+        return sum(1 for e in self._items.values() if e.metrics_set_id == metrics_set_id)
 
 
-def wire_metrics_pack_repos(app) -> tuple[InMemoryEvaluatorRepository, InMemoryMetricsPackRepository]:  # noqa: ANN001
+def wire_metrics_pack_repos(app) -> tuple[InMemoryEvaluatorRepository, InMemoryMetricsSetRepository]:  # noqa: ANN001
     evaluators = InMemoryEvaluatorRepository()
-    metrics_packs = InMemoryMetricsPackRepository()
+    metrics_sets = InMemoryMetricsSetRepository()
+    experiments = InMemoryExperimentRepository()
     app.dependency_overrides[get_evaluator_repository] = lambda: evaluators
-    app.dependency_overrides[get_metrics_pack_repository] = lambda: metrics_packs
-    return evaluators, metrics_packs
+    app.dependency_overrides[get_metrics_set_repository] = lambda: metrics_sets
+    app.dependency_overrides[get_experiment_repository] = lambda: experiments
+    return evaluators, metrics_sets
