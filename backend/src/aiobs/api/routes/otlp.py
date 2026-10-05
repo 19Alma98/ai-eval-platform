@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import logging
+
 from fastapi import APIRouter, Depends, Header, Request, Response, status
 from fastapi.responses import JSONResponse
 from opentelemetry.proto.collector.trace.v1.trace_service_pb2 import (
@@ -17,6 +19,8 @@ from aiobs.application.traces import IngestNormalizedTraces, ProjectMissingError
 from aiobs.config import Settings
 from aiobs.tracing.ingestion import ingest_otlp_payload
 from aiobs.tracing.otel import OtlpDecodeError
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["otlp"])
 
@@ -71,7 +75,7 @@ async def export_traces(
     try:
         await bind_outputs.execute(saved)
     except Exception:
-        pass
+        logger.warning("OTLP experiment output binding failed", exc_info=True)
 
     # OTLP success: empty ExportTraceServiceResponse (protobuf bytes)
     response = ExportTraceServiceResponse()

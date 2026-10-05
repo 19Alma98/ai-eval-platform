@@ -183,6 +183,17 @@ async def test_import_all_rows_invalid_still_200(client: AsyncClient) -> None:
 
 
 @pytest.mark.asyncio
+async def test_import_invalid_utf8_returns_422(client: AsyncClient) -> None:
+    ds_id = await _rag_qa_dataset(client)
+    resp = await client.post(
+        f"/api/v1/datasets/{ds_id}/items/import",
+        files={"file": ("items.csv", b"\xff\xfe", "text/csv")},
+    )
+    assert resp.status_code == 422
+    assert "utf-8" in resp.json()["detail"].lower()
+
+
+@pytest.mark.asyncio
 async def test_import_non_rag_qa_dataset_returns_400(client: AsyncClient) -> None:
     proj = (await client.post("/api/v1/projects", json={"name": "P2", "slug": "p2-import"})).json()
     ds = (

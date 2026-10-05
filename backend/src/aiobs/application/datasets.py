@@ -242,13 +242,21 @@ class AddDatasetItemFromTrace:
             raise TraceNotFoundForDatasetError(dataset.project_id, command.trace_id)
 
         context = build_eval_context_from_trace(trace, source_span_id=command.source_span_id)
+        trace_input = trace.input if trace.input is not None else {}
+        metadata = command.metadata
+        if dataset.task_type == "rag_qa":
+            metadata = validate_rag_qa_item(
+                input=trace_input,
+                expected_output=command.expected_output,
+                metadata=dict(command.metadata or {}),
+            )
         item = DatasetItem.create(
             command.dataset_id,
-            input=trace.input if trace.input is not None else {},
+            trace_input,
             expected_output=command.expected_output,
             actual_output=trace.output,
             context=context or None,
-            metadata=command.metadata,
+            metadata=metadata,
             source_trace_id=trace.trace_id,
             source_span_id=command.source_span_id,
         )

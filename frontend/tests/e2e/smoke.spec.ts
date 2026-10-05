@@ -41,7 +41,7 @@ test("quality loop strip and glossaries render", async ({ page, request }) => {
   );
 
   await page.goto(`/experiments?project=${id}`);
-  await expect(page.getByRole("heading", { name: "Experiments" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Runs" })).toBeVisible();
   await expect(page.getByText(/evaluation run on a dataset/i)).toBeVisible();
   await expect(page.getByRole("button", { name: /new experiment/i })).toBeVisible();
 });

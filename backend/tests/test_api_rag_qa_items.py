@@ -6,9 +6,12 @@ from collections.abc import AsyncIterator
 import pytest
 from httpx import ASGITransport, AsyncClient
 
-from aiobs.api.deps import get_dataset_repository, get_project_repository
+from datetime import UTC, datetime
+
+from aiobs.api.deps import get_dataset_repository, get_project_repository, get_trace_repository
 from aiobs.domain.dataset import Dataset, DatasetItem
 from aiobs.domain.project import Project
+from aiobs.domain.trace import Trace
 from aiobs.main import create_app
 from tests.support.repositories import wire_metrics_pack_repos
 
@@ -69,13 +72,30 @@ class InMemoryDatasetRepository:
         return self._items.get(item_id)
 
 
+class InMemoryTraceRepository:
+    def __init__(self) -> None:
+        self._traces: dict[tuple[uuid.UUID, str], Trace] = {}
+
+    async def upsert(self, trace: Trace) -> Trace:
+        self._traces[(trace.project_id, trace.trace_id)] = trace
+        return trace
+
+    async def get_by_trace_id(self, project_id: uuid.UUID, trace_id: str) -> Trace | None:
+        return self._traces.get((project_id, trace_id))
+
+    async def list_by_project(self, project_id: uuid.UUID, **kwargs: object) -> list[Trace]:
+        return [t for (pid, _), t in self._traces.items() if pid == project_id]
+
+
 @pytest.fixture
 async def client() -> AsyncIterator[AsyncClient]:
     projects = InMemoryProjectRepository()
     datasets = InMemoryDatasetRepository()
+    traces = InMemoryTraceRepository()
     app = create_app()
     app.dependency_overrides[get_project_repository] = lambda: projects
     app.dependency_overrides[get_dataset_repository] = lambda: datasets
+    app.dependency_overrides[get_trace_repository] = lambda: traces
     wire_metrics_pack_repos(app)
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as ac:
@@ -108,3 +128,59 @@ async def test_rag_qa_item_requires_expected_doc_ids(client: AsyncClient) -> Non
     )
     assert ok.status_code == 201
     assert ok.json()["metadata"]["expected_doc_ids"] == ["doc-1"]
+
+
+@pytest.mark.asyncio
+async def test_rag_qa_from_trace_requires_expected_doc_ids(client: AsyncClient) -> None:
+    import os
+
+    from aiobs.config import get_settings
+
+    os.environ["CONTENT_CAPTURE_ENABLED"] = "true"
+    get_settings.cache_clear()
+
+    proj = (await client.post("/api/v1/projects", json={"name": "P", "slug": "p-rag-trace"})).json()
+    project_id = proj["id"]
+    start = datetime(2024, 1, 1, tzinfo=UTC).isoformat()
+    end = datetime(2024, 1, 1, 0, 0, 1, tzinfo=UTC).isoformat()
+    trace_id = "ab" * 16
+    create_trace = await client.post(
+        f"/api/v1/projects/{project_id}/traces",
+        json={
+            "trace_id": trace_id,
+            "name": "rag",
+            "status": "ok",
+            "start_time": start,
+            "end_time": end,
+            "input": "What is the policy?",
+            "output": "Remote work is allowed.",
+        },
+    )
+    assert create_trace.status_code in {200, 201}, create_trace.text
+
+    ds = (
+        await client.post(
+            f"/api/v1/projects/{project_id}/datasets",
+            json={"name": "faq-trace", "task_type": "rag_qa"},
+        )
+    ).json()
+
+    bad = await client.post(
+        f"/api/v1/datasets/{ds['id']}/items/from-trace",
+        json={"trace_id": trace_id, "expected_output": "Remote work is allowed."},
+    )
+    assert bad.status_code == 422
+
+    ok = await client.post(
+        f"/api/v1/datasets/{ds['id']}/items/from-trace",
+        json={
+            "trace_id": trace_id,
+            "expected_output": "Remote work is allowed.",
+            "metadata": {"expected_doc_ids": ["doc-hr-1"]},
+        },
+    )
+    assert ok.status_code == 201
+    assert ok.json()["metadata"]["expected_doc_ids"] == ["doc-hr-1"]
+
+    os.environ.pop("CONTENT_CAPTURE_ENABLED", None)
+    get_settings.cache_clear()

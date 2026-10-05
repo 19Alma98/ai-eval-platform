@@ -27,7 +27,10 @@ def parse_import_payload(
 ) -> ParsedImportRows:
     fmt = (format or "").lower().strip()
     name = (filename or "").lower()
-    text = raw.decode("utf-8-sig")
+    try:
+        text = raw.decode("utf-8-sig")
+    except UnicodeDecodeError as exc:
+        raise ValueError("import file must be UTF-8") from exc
     is_json = fmt == "json" or name.endswith(".json") or text.lstrip().startswith("[")
     if is_json:
         data = json.loads(text)

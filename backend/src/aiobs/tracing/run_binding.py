@@ -84,9 +84,11 @@ class BindOtlpTracesToExperimentOutputs:
         existing = await self.outputs.get(experiment_id, dataset_item_id)
         if existing is None:
             existing = ExperimentItemOutput.create(experiment_id, dataset_item_id)
+        merged_metadata = dict(existing.metadata)
+        merged_metadata.update(payload["metadata"])
         patched = existing.with_patch(
             actual_output=payload["actual_output"],
             context=payload["context"],
-            metadata=payload["metadata"],
+            metadata=merged_metadata,
         )
         await self.outputs.upsert_many([patched])

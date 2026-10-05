@@ -233,6 +233,42 @@ async def test_otlp_bind_failure_still_stores_trace(client: AsyncClient) -> None
 
 
 @pytest.mark.asyncio
+async def test_otlp_bind_preserves_existing_output_metadata(client: AsyncClient) -> None:
+    project_id, experiment_id, item_id = await _seed_rag_experiment(client)
+    seed = await client.put(
+        f"/api/v1/experiments/{experiment_id}/outputs",
+        json={
+            "items": [
+                {
+                    "dataset_item_id": item_id,
+                    "actual_output": "seed answer",
+                    "metadata": {"model": "gpt-test", "prompt_rev": "3"},
+                }
+            ]
+        },
+    )
+    assert seed.status_code == 200, seed.text
+
+    payload = _otlp_payload(experiment_id=experiment_id, dataset_item_id=item_id)
+    otlp = await client.post(
+        "/v1/traces",
+        content=json.dumps(payload),
+        headers={
+            "content-type": "application/json",
+            "X-Project-Id": project_id,
+        },
+    )
+    assert otlp.status_code == 200
+
+    listed = await client.get(f"/api/v1/experiments/{experiment_id}/outputs")
+    assert listed.status_code == 200
+    row = listed.json()[0]
+    assert row["metadata"]["model"] == "gpt-test"
+    assert row["metadata"]["prompt_rev"] == "3"
+    assert row["metadata"]["source_trace_id"] == "aa" * 16
+
+
+@pytest.mark.asyncio
 async def test_otlp_foreign_dataset_item_still_stores_trace(client: AsyncClient) -> None:
     project_id, experiment_id, _item_id = await _seed_rag_experiment(client)
     foreign_item = str(uuid.uuid4())

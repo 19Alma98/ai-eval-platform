@@ -292,6 +292,13 @@ class HitAtKEvaluator:
                 explanation="context.documents or context.retrieved_doc_ids is missing",
             )
 
+        if not retrieved:
+            return EvaluationResult(
+                score=None,
+                label="SKIPPED",
+                explanation="retrieved documents are empty or have no document ids",
+            )
+
         top_k = set(retrieved[: self._k])
         hit = bool(expected_ids & top_k)
         return EvaluationResult(
