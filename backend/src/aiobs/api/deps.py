@@ -19,6 +19,7 @@ from aiobs.application.datasets import (
     AddDatasetItemFromTrace,
     CreateDataset,
     GetDataset,
+    ImportDatasetItems,
     ListDatasets,
 )
 from aiobs.application.evaluate import (
@@ -228,6 +229,12 @@ def get_add_dataset_item(
     datasets: SqlAlchemyDatasetRepository = Depends(get_dataset_repository),
 ) -> AddDatasetItem:
     return AddDatasetItem(datasets)
+
+
+def get_import_dataset_items(
+    datasets: SqlAlchemyDatasetRepository = Depends(get_dataset_repository),
+) -> ImportDatasetItems:
+    return ImportDatasetItems(datasets)
 
 
 def get_add_dataset_item_from_trace(

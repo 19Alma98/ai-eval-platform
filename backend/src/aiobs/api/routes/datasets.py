@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
 from sqlalchemy.exc import IntegrityError
 
 from aiobs.api.deps import (
@@ -10,6 +10,7 @@ from aiobs.api.deps import (
     get_add_dataset_item_from_trace,
     get_create_dataset,
     get_get_dataset,
+    get_import_dataset_items,
     get_list_datasets,
 )
 from aiobs.api.schemas import (
@@ -19,6 +20,8 @@ from aiobs.api.schemas import (
     DatasetDetailResponse,
     DatasetItemResponse,
     DatasetResponse,
+    ImportDatasetItemErrorResponse,
+    ImportDatasetItemsResponse,
     TaskTypeResponse,
 )
 from aiobs.application.datasets import (
@@ -31,6 +34,9 @@ from aiobs.application.datasets import (
     DatasetConflictError,
     DatasetNotFoundError,
     GetDataset,
+    ImportDatasetItems,
+    ImportDatasetItemsCommand,
+    ImportDatasetTaskTypeError,
     ListDatasets,
     TraceNotFoundForDatasetError,
 )
@@ -175,6 +181,40 @@ async def add_dataset_item(
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
     return _item_response(item)
+
+
+@router.post(
+    "/api/v1/datasets/{dataset_id}/items/import",
+    response_model=ImportDatasetItemsResponse,
+)
+async def import_dataset_items(
+    dataset_id: uuid.UUID,
+    file: UploadFile = File(...),
+    format: str | None = Query(default=None),
+    use_case: ImportDatasetItems = Depends(get_import_dataset_items),
+) -> ImportDatasetItemsResponse:
+    try:
+        raw = await file.read()
+        result = await use_case.execute(
+            ImportDatasetItemsCommand(
+                dataset_id=dataset_id,
+                raw=raw,
+                filename=file.filename,
+                format=format,
+            )
+        )
+    except DatasetNotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    except ImportDatasetTaskTypeError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
+    return ImportDatasetItemsResponse(
+        created=result.created,
+        errors=[
+            ImportDatasetItemErrorResponse(row=e.row, message=e.message) for e in result.errors
+        ],
+    )
 
 
 @router.post(

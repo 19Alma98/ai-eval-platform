@@ -159,6 +159,16 @@ class CreateDatasetItemFromTraceRequest(BaseModel):
     metadata: dict[str, Any] = Field(default_factory=dict)
 
 
+class ImportDatasetItemErrorResponse(BaseModel):
+    row: int
+    message: str
+
+
+class ImportDatasetItemsResponse(BaseModel):
+    created: int
+    errors: list[ImportDatasetItemErrorResponse]
+
+
 class CreateEvaluatorRequest(BaseModel):
     name: str = Field(min_length=1, max_length=200)
     type: str = Field(min_length=1, max_length=32)

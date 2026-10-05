@@ -6,6 +6,7 @@ from typing import Any
 
 from aiobs.application.projects import ProjectNotFoundError
 from aiobs.domain.dataset import Dataset, DatasetItem
+from aiobs.application.dataset_import import parse_import_payload, row_to_item_fields
 from aiobs.domain.rag_qa import validate_rag_qa_item
 from aiobs.domain.repositories import DatasetRepository, ProjectRepository, TraceRepository
 from aiobs.evaluation.trace_context import build_eval_context_from_trace
@@ -50,6 +51,32 @@ class AddDatasetItemCommand:
     metadata: dict[str, Any] | None = None
     source_trace_id: str | None = None
     source_span_id: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class ImportDatasetItemError:
+    row: int
+    message: str
+
+
+@dataclass(frozen=True, slots=True)
+class ImportDatasetItemsResult:
+    created: int
+    errors: list[ImportDatasetItemError]
+
+
+@dataclass(frozen=True, slots=True)
+class ImportDatasetItemsCommand:
+    dataset_id: uuid.UUID
+    raw: bytes
+    filename: str | None = None
+    format: str | None = None
+
+
+class ImportDatasetTaskTypeError(Exception):
+    def __init__(self, task_type: str | None) -> None:
+        self.task_type = task_type
+        super().__init__(f"Import is only supported for rag_qa datasets (got {task_type!r})")
 
 
 @dataclass(frozen=True, slots=True)
@@ -144,6 +171,51 @@ class AddDatasetItem:
             source_span_id=command.source_span_id,
         )
         return await self._datasets.add_item(item)
+
+
+class ImportDatasetItems:
+    def __init__(self, datasets: DatasetRepository) -> None:
+        self._datasets = datasets
+        self._add_item = AddDatasetItem(datasets)
+
+    async def execute(self, command: ImportDatasetItemsCommand) -> ImportDatasetItemsResult:
+        dataset = await self._datasets.get_by_id(command.dataset_id)
+        if dataset is None:
+            raise DatasetNotFoundError(command.dataset_id)
+        if dataset.task_type != "rag_qa":
+            raise ImportDatasetTaskTypeError(dataset.task_type)
+
+        parsed = parse_import_payload(
+            filename=command.filename,
+            raw=command.raw,
+            format=command.format,
+        )
+        created = 0
+        errors: list[ImportDatasetItemError] = []
+        for index, row in enumerate(parsed.rows):
+            row_num = parsed.first_row_number + index
+            if not isinstance(row, dict):
+                errors.append(
+                    ImportDatasetItemError(
+                        row=row_num,
+                        message="Each JSON import row must be an object",
+                    )
+                )
+                continue
+            try:
+                question, answer, meta = row_to_item_fields(row)
+                await self._add_item.execute(
+                    AddDatasetItemCommand(
+                        dataset_id=command.dataset_id,
+                        input=question,
+                        expected_output=answer,
+                        metadata=meta,
+                    )
+                )
+                created += 1
+            except ValueError as exc:
+                errors.append(ImportDatasetItemError(row=row_num, message=str(exc)))
+        return ImportDatasetItemsResult(created=created, errors=errors)
 
 
 class AddDatasetItemFromTrace:
