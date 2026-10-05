@@ -22,6 +22,17 @@ def test_create_uses_default_rag_entries() -> None:
     assert pack.entries[0].removable is False
 
 
+def test_create_copies_default_entry_configs() -> None:
+    pack_a = MetricsPack.create(uuid.uuid4())
+    pack_a.entries[0].config["k"] = 99
+
+    assert DEFAULT_RAG_ENTRIES[0].config == {"k": 5}
+    pack_b = MetricsPack.create(uuid.uuid4())
+    assert pack_b.entries[0].config == {"k": 5}
+    assert pack_b.entries[0] is not DEFAULT_RAG_ENTRIES[0]
+    assert pack_b.entries[0].config is not DEFAULT_RAG_ENTRIES[0].config
+
+
 def test_patch_entry_can_disable_non_removable() -> None:
     pack = MetricsPack.create(uuid.uuid4())
     updated = pack.patch_entry("hit_at_k", enabled=False)

@@ -63,10 +63,11 @@ class MetricsPack:
 
     @classmethod
     def create(cls, project_id: uuid.UUID) -> MetricsPack:
+        entries = tuple(replace(e, config=dict(e.config)) for e in DEFAULT_RAG_ENTRIES)
         return cls(
             id=uuid.uuid4(),
             project_id=project_id,
-            entries=DEFAULT_RAG_ENTRIES,
+            entries=entries,
             updated_at=datetime.now(UTC),
         )
 
