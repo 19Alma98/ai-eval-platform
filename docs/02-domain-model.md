@@ -79,6 +79,31 @@ Fields:
 - source_trace_id (optional)
 - source_span_id (optional)
 
+### `rag_qa` test set contract
+
+When `task_type=rag_qa`, each item used in the RAG vertical must include:
+
+- **question** — stored as `input` (string or structured JSON; portfolio/import use plain string)
+- **expected_answer** — stored as `expected_output`
+- **expected_doc_ids** — non-empty list in `metadata.expected_doc_ids` (CSV import uses pipe-separated ids)
+
+`actual_output` and retrieved document text belong to a **run** (experiment item output or bound OTLP trace), not the test set.
+
+## Metrics pack (project-scoped)
+
+Grading rules for RAG runs on a project. Persisted per project; created via `POST .../metrics-pack/ensure`.
+
+Default entries (not removable; thresholds/config editable):
+
+| kind | role |
+|------|------|
+| `hit_at_k` | expected doc id in top-k retrieved ids |
+| `groundedness` | LLM judge on answer vs retrieved chunks |
+| `correctness` | LLM judge vs expected answer |
+| `latency` | per-item latency vs `config.max_ms` |
+
+Custom evaluators may be appended when `removable=true` and linked by `evaluator_id`. Scoring a run uses `POST /experiments/{id}/evaluate-pack` (enabled pack entries only).
+
 ## Evaluator
 
 A named implementation/configuration.
@@ -181,20 +206,22 @@ Semantics:
 - `regression.max_delta` — for each shared evaluator, pass if `mean_score` delta (candidate − baseline) `>= max_delta`
 - Missing run/metadata/score → check `unavailable` → overall failed
 
-Example:
+Example (RAG portfolio uses pack metric names):
 
 ```yaml
-quality:
-  min: 0.85
+hit_at_k:
+  min: 0.8
 groundedness:
-  min: 0.90
+  min: 0.7
+correctness:
+  min: 0.7
 latency:
-  p95_max_ms: 2000
-cost:
-  max_per_request_usd: 0.03
+  p95_max_ms: 30000
 regression:
-  max_delta: -0.03
+  max_delta: -0.05
 ```
+
+Legacy/custom evaluator names (for example `quality` with a `contains` evaluator) remain valid when those evaluators exist on the project.
 
 ## Review
 

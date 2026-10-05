@@ -40,6 +40,7 @@ class Evaluator(Protocol):
 - contains
 - regex
 - json_schema
+- hit_at_k (config `k`; uses `metadata.expected_doc_ids` and run context documents / `retrieved_doc_ids`)
 - latency
 - token_usage
 - cost
@@ -52,13 +53,19 @@ class Evaluator(Protocol):
 
 LLM judges must return structured output and be versioned by evaluator configuration.
 
+## RAG metrics pack
+
+Project-scoped pack (`hit_at_k`, `groundedness`, `correctness`, `latency` by default). `POST /experiments/{experiment_id}/evaluate-pack` runs all **enabled** pack evaluators against experiment item outputs (including OTLP-bound runs).
+
+Groundedness reads retrieved chunk text from run `context.documents` (populated from SDK `set_retrieval_documents` or ingestion normalization).
+
 ## Evaluator execution
 
 ```text
 Dataset
    │
    ▼
-Scheduler
+Scheduler (or evaluate-pack)
    │
    ├── evaluator A ──► results
    ├── evaluator B ──► results
@@ -68,7 +75,7 @@ Scheduler
               Aggregation
                      │
                      ▼
-                Experiment
+                Experiment / Run
 ```
 
 ## Scoring

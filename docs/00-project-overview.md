@@ -18,9 +18,15 @@ The platform combines:
 - regression policies
 - CI/CD integration
 
-The primary differentiator is not generic observability. The core workflow is:
+The primary differentiator is not generic observability. For **RAG / FAQ** evaluations, the primary workflow is **dataset-first**:
 
-Production trace → failure/example → dataset → experiment → evaluation → regression policy → CI gate.
+Project → test set (`rag_qa` gold) → project metrics pack → SDK-bound runs → score with pack → compare / release gate.
+
+Trace-first promotion (production trace → dataset item) remains supported for other task types and debugging, but the RAG vertical product narrative starts from a fixed exam and grading rules.
+
+Generic loop (still valid for classification, tool schemas, and trace curation):
+
+Trace or example → dataset → experiment/run → evaluation → regression policy → CI gate.
 
 This is a **CI quality gate for AI apps**, not a general-purpose agent oracle.
 MLflow-style metrics work when outputs are scorable against a curated dataset.

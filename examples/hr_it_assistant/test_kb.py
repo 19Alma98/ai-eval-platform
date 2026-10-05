@@ -32,5 +32,6 @@ def test_iter_gold_and_expected() -> None:
     docs = load_knowledge(HERE / "knowledge.json")
     gold = iter_gold(docs)
     assert len(gold) >= 8
-    q, must = gold[0]
+    q, must, doc_id = gold[0]
+    assert doc_id
     assert expected_for_question(docs, q) == must

@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+from pathlib import Path
 from typing import Any
 
 import aiobs
@@ -30,14 +31,19 @@ def retrieve_traced(
 ) -> list[dict[str, Any]]:
     aiobs.set_input(question)
     hits = retrieve(docs, question, top_k=top_k)
-    aiobs.set_attributes(
-        {
-            "retrieval.document_count": len(hits),
-            "retrieval.documents": [
-                {"id": d["id"], "title": d.get("title")} for d in hits
-            ],
-        }
-    )
+    if hits:
+        aiobs.set_retrieval_documents(
+            [
+                {
+                    "id": d["id"],
+                    "title": d.get("title"),
+                    "text": d.get("body") or "",
+                }
+                for d in hits
+            ]
+        )
+    else:
+        aiobs.set_attributes({"retrieval.document_count": 0})
     if not hits:
         aiobs.set_error("no documents")
     return hits
@@ -63,7 +69,13 @@ def answer_question(
     docs: list[dict[str, Any]],
     client: OpenAI,
     model: str,
+    experiment_id: str | None = None,
+    dataset_item_id: str | None = None,
 ) -> dict[str, Any]:
+    if experiment_id and dataset_item_id:
+        aiobs.bind_evaluation(
+            experiment_id=experiment_id, dataset_item_id=dataset_item_id
+        )
     aiobs.set_input(question)
     aiobs.set_attribute("llm.model", model)
 
@@ -103,7 +115,24 @@ def main(argv: list[str] | None = None) -> int:
         help="Ask every gold question (used by portfolio_demo)",
     )
     parser.add_argument("--json", action="store_true", help="Print JSON result lines")
+    parser.add_argument(
+        "--experiment-id",
+        default=os.getenv("AIOBS_EXPERIMENT_ID"),
+        help="Run id to bind traces to (SDK bind_evaluation)",
+    )
+    parser.add_argument(
+        "--item-map",
+        type=Path,
+        default=None,
+        help="JSON map question text -> dataset_item_id for --all runs",
+    )
     args = parser.parse_args(argv)
+
+    item_map: dict[str, str] = {}
+    if args.item_map is not None:
+        item_map = json.loads(args.item_map.read_text(encoding="utf-8"))
+        if not isinstance(item_map, dict):
+            raise SystemExit("--item-map must be a JSON object")
 
     project_id = os.getenv("AIOBS_PROJECT_ID")
     project_slug = os.getenv("AIOBS_PROJECT_SLUG", "hr-it-assistant")
@@ -127,7 +156,7 @@ def main(argv: list[str] | None = None) -> int:
     )
 
     if args.all:
-        questions = [q for q, _ in iter_gold(docs)]
+        questions = [q for q, _, _ in iter_gold(docs)]
     elif args.question:
         questions = [args.question]
     else:
@@ -135,8 +164,14 @@ def main(argv: list[str] | None = None) -> int:
 
     try:
         for question in questions:
+            item_id = item_map.get(question) if item_map else None
             result = answer_question(
-                question, docs=docs, client=client, model=args.model
+                question,
+                docs=docs,
+                client=client,
+                model=args.model,
+                experiment_id=args.experiment_id,
+                dataset_item_id=item_id,
             )
             aiobs.flush()
             result["expected_output"] = expected_for_question(docs, question)

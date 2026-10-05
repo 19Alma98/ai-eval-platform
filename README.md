@@ -23,7 +23,7 @@ curl http://localhost:8000/health
 
 ### Portfolio demo (People Ops assistant + Ollama)
 
-End-to-end loop: traces → dataset → experiments → compare → release gate. Compares two local models (`OLLAMA_MODEL1` vs `OLLAMA_MODEL2`) on the same retrieval and prompt pipeline.
+Dataset-first RAG loop: gold test set → metrics pack → SDK-bound runs (`bind_evaluation`, `set_retrieval_documents`) → `evaluate-pack` → compare → release gate. Compares two local models (`OLLAMA_MODEL1` vs `OLLAMA_MODEL2`) on the same test set and pipeline.
 
 1. `docker compose up --build` (API needs `CONTENT_CAPTURE_ENABLED=true`; Compose sets this)
 2. Pull two chat models, e.g. `ollama pull gemma4:e2b` and `ollama pull tinyllama`
@@ -31,7 +31,9 @@ End-to-end loop: traces → dataset → experiments → compare → release gate
 4. Sync CLI: `cd cli && uv sync && cd ..`
 5. Run: `python scripts/portfolio_demo.py`
 
-Details: [`examples/hr_it_assistant/README.md`](examples/hr_it_assistant/README.md). Design: [`docs/superpowers/specs/2026-10-02-hr-it-assistant-portfolio-design.md`](docs/superpowers/specs/2026-10-02-hr-it-assistant-portfolio-design.md).
+In the UI: **Test set → Metriche → Runs**. Release policy uses pack names: `hit_at_k`, `groundedness`, `correctness`, `latency`.
+
+Details: [`examples/hr_it_assistant/README.md`](examples/hr_it_assistant/README.md). RAG vertical: [`docs/superpowers/specs/2026-10-05-rag-eval-dataset-first-design.md`](docs/superpowers/specs/2026-10-05-rag-eval-dataset-first-design.md).
 
 Create a project:
 

@@ -24,16 +24,22 @@ The UI should feel like a developer platform console, not an admin template or m
 
 No login/signup screens are required for v0.1. The UI assumes a trusted local or privately deployed instance.
 
-## Primary screens
+## Primary screens (RAG vertical)
+
+Navigation strip for RAG projects:
+
+`Test set → Metriche → Runs → Confronta → Release`
+
+- **Test set** — create/import `rag_qa` items (`question`, expected answer, `expected_doc_ids`); versioned datasets.
+- **Metriche** — project metrics pack defaults and thresholds; optional custom evaluators.
+- **Runs** — experiments pinned to a dataset version; per-item scores and execution detail (retrieve/generate timeline from bound traces).
+- **Confronta** / **Release** — compare runs on the same dataset+version; CI gate uses pack metric names.
+
+Traces remain available for debugging but are not the primary loop step.
 
 ### 1. Overview
 
-Metrics:
-- quality
-- latency
-- cost
-- error rate
-- recent regressions
+Setup checklist: test set present, metrics pack configured, at least one scored run. Aggregate metrics reflect pack evaluators where available.
 
 ### 2. Trace Explorer
 
@@ -45,22 +51,19 @@ Features:
 - token/cost metrics
 - evaluation results
 
-### 3. Dataset
+### 3. Test set (datasets)
 
 Features:
-- examples
-- filters
-- labels
-- human review
-- add-from-trace
+- `rag_qa` gold fields and import (CSV/JSON)
+- item list with expected doc ids
+- add-from-trace (secondary; not the RAG primary path)
 
-### 4. Experiments
+### 4. Runs (experiments)
 
 Features:
-- run status
-- evaluator results
-- metric distributions
-- baseline comparison
+- run status and pack scoring (`evaluate-pack`)
+- per-item results and bound trace timeline
+- baseline comparison on the same test set version
 - regression markers
 
 ### 5. App configs (`/app-configs`)

@@ -38,17 +38,19 @@ def retrieve(
     return [item for _, item in scored[:top_k]]
 
 
-def iter_gold(docs: list[dict[str, Any]]) -> list[tuple[str, str]]:
-    out: list[tuple[str, str]] = []
+def iter_gold(docs: list[dict[str, Any]]) -> list[tuple[str, str, str]]:
+    """Return (question, expected_answer, doc_id) for each gold row."""
+    out: list[tuple[str, str, str]] = []
     for doc in docs:
+        doc_id = str(doc["id"])
         for g in doc.get("gold") or []:
-            out.append((str(g["question"]), str(g["must_contain"])))
+            out.append((str(g["question"]), str(g["must_contain"]), doc_id))
     return out
 
 
 def expected_for_question(docs: list[dict[str, Any]], question: str) -> str | None:
     q = question.lower().strip()
-    for gq, must in iter_gold(docs):
+    for gq, must, _doc_id in iter_gold(docs):
         if gq.lower().strip() == q:
             return must
     hits = retrieve(docs, question, top_k=1)

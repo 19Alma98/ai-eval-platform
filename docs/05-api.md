@@ -50,8 +50,11 @@ GET /projects/{project_id}/datasets
 POST /projects/{project_id}/datasets
 GET /datasets/{dataset_id}
 POST /datasets/{dataset_id}/items
+POST /datasets/{dataset_id}/items/import
 POST /datasets/{dataset_id}/items/from-trace
 ```
+
+`rag_qa` items require non-empty `metadata.expected_doc_ids` on create/import. CSV columns: `question`, `expected_answer`, `expected_doc_ids` (pipe-separated ids).
 
 ## App configs (registry)
 
@@ -82,12 +85,15 @@ GET /projects/{project_id}/experiments
 POST /projects/{project_id}/experiments
 GET /experiments/{experiment_id}
 POST /experiments/{experiment_id}/evaluate
+POST /experiments/{experiment_id}/evaluate-pack
 GET /experiments/{experiment_id}/runs
 GET /experiments/{experiment_id}/summary
 GET /evaluation-runs/{run_id}
 PUT /experiments/{experiment_id}/outputs
 GET /experiments/{experiment_id}/outputs
 ```
+
+`POST .../evaluate-pack` scores using the project metrics pack (creates/uses pack evaluators as needed). OTLP traces with `aiobs.experiment_id` and `aiobs.dataset_item_id` on root/CHAIN spans upsert experiment item outputs on ingest.
 
 `POST /projects/{project_id}/experiments` body (in addition to `name`, `dataset_id`):
 
@@ -153,6 +159,16 @@ GET /projects/{project_id}/evaluators
 POST /projects/{project_id}/evaluators
 ```
 
+## Metrics pack
+
+```http
+GET /projects/{project_id}/metrics-pack
+PUT /projects/{project_id}/metrics-pack
+POST /projects/{project_id}/metrics-pack/ensure
+```
+
+`ensure` creates the default RAG pack and links built-in evaluator entities (`hit_at_k`, `groundedness`, `correctness`, `latency`).
+
 ## Comparison
 
 ```http
@@ -204,11 +220,11 @@ Input:
   "experiment_id": "exp_123",
   "baseline_experiment_id": "exp_baseline",
   "policy": {
-    "quality": {"min": 0.85},
-    "groundedness": {"min": 0.90},
-    "latency": {"p95_max_ms": 2000},
-    "cost": {"max_per_request_usd": 0.03},
-    "regression": {"max_delta": -0.03}
+    "hit_at_k": {"min": 0.8},
+    "groundedness": {"min": 0.7},
+    "correctness": {"min": 0.7},
+    "latency": {"p95_max_ms": 30000},
+    "regression": {"max_delta": -0.05}
   }
 }
 ```
