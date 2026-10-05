@@ -19,7 +19,6 @@ import type { Layout } from "react-resizable-panels";
 import { ApiError } from "@/lib/api/client";
 import { getTrace } from "@/lib/api/traces";
 import { formatDurationMs } from "@/lib/format";
-import { AddToDatasetDialog } from "./add-to-dataset-dialog";
 import { SpanSidebar } from "./span-sidebar";
 import { TraceWaterfall } from "./trace-waterfall";
 
@@ -177,11 +176,6 @@ export function TraceDetailView({ projectId, traceId }: TraceDetailViewProps) {
             </span>
           </div>
         </div>
-        <AddToDatasetDialog
-          projectId={projectId}
-          traceId={trace.trace_id}
-          sourceSpanId={selectedSpanId}
-        />
       </div>
 
       {defaultLayout ? (

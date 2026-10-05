@@ -1,5 +1,11 @@
-import { apiGet, apiPost } from "./client";
-import type { Dataset, DatasetDetail, DatasetItem, TaskType } from "./types";
+import { ApiError, apiGet, apiPost } from "./client";
+import type {
+  Dataset,
+  DatasetDetail,
+  DatasetItem,
+  ImportDatasetItemsResult,
+  TaskType,
+} from "./types";
 
 export function listTaskTypes() {
   return apiGet<TaskType[]>("/api/v1/task-types");
@@ -42,4 +48,26 @@ export function addItemFromTrace(
     `/api/v1/datasets/${datasetId}/items/from-trace`,
     body,
   );
+}
+
+export async function importDatasetItems(
+  datasetId: string,
+  file: File,
+  format?: string | null,
+): Promise<ImportDatasetItemsResult> {
+  const form = new FormData();
+  form.append("file", file);
+  const qs =
+    format != null && format !== ""
+      ? `?format=${encodeURIComponent(format)}`
+      : "";
+  const res = await fetch(
+    `/api/v1/datasets/${encodeURIComponent(datasetId)}/items/import${qs}`,
+    {
+      method: "POST",
+      body: form,
+    },
+  );
+  if (!res.ok) throw new ApiError(res.status, await res.text());
+  return res.json() as Promise<ImportDatasetItemsResult>;
 }

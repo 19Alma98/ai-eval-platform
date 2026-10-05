@@ -81,6 +81,36 @@ export type DatasetDetail = Dataset & {
   items: DatasetItem[];
 };
 
+export type ImportDatasetItemError = {
+  row: number;
+  message: string;
+};
+
+export type ImportDatasetItemsResult = {
+  created: number;
+  errors: ImportDatasetItemError[];
+};
+
+export type MetricsPackEntry = {
+  kind: string;
+  enabled: boolean;
+  threshold: number | null;
+  config: Record<string, unknown>;
+  evaluator_id: string | null;
+  removable: boolean;
+};
+
+export type MetricsPack = {
+  id: string;
+  project_id: string;
+  entries: MetricsPackEntry[];
+  updated_at: string;
+};
+
+export type ReplaceMetricsPackBody = {
+  entries: MetricsPackEntry[];
+};
+
 export type Experiment = {
   id: string;
   project_id: string;

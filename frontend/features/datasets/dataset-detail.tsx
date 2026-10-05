@@ -16,6 +16,7 @@ import { ApiError } from "@/lib/api/client";
 import type { DatasetItem } from "@/lib/api/types";
 import { truncateId } from "@/lib/format";
 import { withProjectQuery } from "@/lib/project-href";
+import { ImportDatasetDialog } from "./import-dataset-dialog";
 import { datasetQueryOptions, useDataset } from "./use-datasets";
 import { taskTypeLabel, useTaskTypes } from "./use-task-types";
 
@@ -37,6 +38,16 @@ function truncatePreview(text: string, max = PREVIEW_MAX): string {
   return `${text.slice(0, max)}…`;
 }
 
+function formatExpectedDocIds(metadata: Record<string, unknown>): string {
+  const raw = metadata.expected_doc_ids;
+  if (Array.isArray(raw)) {
+    const ids = raw.filter((id): id is string => typeof id === "string");
+    return ids.length > 0 ? ids.join(", ") : "—";
+  }
+  if (typeof raw === "string" && raw.trim()) return raw.trim();
+  return "—";
+}
+
 type DatasetDetailViewProps = {
   projectId: string;
   datasetId: string;
@@ -51,6 +62,7 @@ export function DatasetDetailView({
   const queryOpts = datasetQueryOptions(datasetId);
   const [inputFilter, setInputFilter] = useState("");
   const [selectedIndex, setSelectedIndex] = useState(0);
+  const [importOpen, setImportOpen] = useState(false);
 
   const dataset = query.data;
   const items = dataset?.items ?? [];
@@ -63,8 +75,10 @@ export function DatasetDetailView({
     );
   }, [items, inputFilter]);
 
-  const columns: DataTableColumn<DatasetItem>[] = useMemo(
-    () => [
+  const showExpectedDocIds = dataset?.task_type === "rag_qa";
+
+  const columns: DataTableColumn<DatasetItem>[] = useMemo(() => {
+    const base: DataTableColumn<DatasetItem>[] = [
       {
         id: "id",
         header: "Item ID",
@@ -93,6 +107,20 @@ export function DatasetDetailView({
           </span>
         ),
       },
+    ];
+    if (showExpectedDocIds) {
+      base.push({
+        id: "expected_doc_ids",
+        header: "Expected doc IDs",
+        headerClassName: "w-[160px]",
+        cell: (row) => (
+          <span className="line-clamp-2 font-mono text-xs text-muted-foreground">
+            {truncatePreview(formatExpectedDocIds(row.metadata ?? {}))}
+          </span>
+        ),
+      });
+    }
+    base.push(
       {
         id: "actual",
         header: "Actual",
@@ -129,9 +157,9 @@ export function DatasetDetailView({
         className: "text-right font-mono tabular-nums text-muted-foreground",
         cell: (row) => Object.keys(row.metadata ?? {}).length,
       },
-    ],
-    [projectId],
-  );
+    );
+    return base;
+  }, [projectId, showExpectedDocIds]);
 
   if (query.isLoading) {
     return <LoadingBlock className="min-h-[240px]" />;
@@ -219,10 +247,20 @@ export function DatasetDetailView({
             </div>
           ) : null}
         </div>
-        <RefreshControl
-          queryKey={queryOpts.queryKey}
-          dataUpdatedAt={query.dataUpdatedAt}
-        />
+        <div className="flex flex-wrap items-center gap-2">
+          <ImportDatasetDialog
+            projectId={projectId}
+            datasetId={datasetId}
+            datasetName={dataset.name}
+            taskType={dataset.task_type}
+            open={importOpen}
+            onOpenChange={setImportOpen}
+          />
+          <RefreshControl
+            queryKey={queryOpts.queryKey}
+            dataUpdatedAt={query.dataUpdatedAt}
+          />
+        </div>
       </div>
 
       <div className="sticky top-0 z-20 -mx-1 border-b border-border bg-background px-1 pb-3">

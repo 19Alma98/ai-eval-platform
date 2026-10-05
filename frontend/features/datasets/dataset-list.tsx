@@ -35,6 +35,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { ImportDatasetDialog } from "./import-dataset-dialog";
 import {
   datasetsQueryKey,
   datasetsQueryOptions,
@@ -50,6 +51,7 @@ export function DatasetList() {
   const queryOpts = projectId ? datasetsQueryOptions(projectId) : null;
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [createOpen, setCreateOpen] = useState(false);
+  const [importOpen, setImportOpen] = useState(false);
   const [taskFilter, setTaskFilter] = useState<string>("all");
 
   const allRows = query.data ?? [];
@@ -70,6 +72,8 @@ export function DatasetList() {
     },
     [projectId, router],
   );
+
+  const selectedDataset = rows[selectedIndex] ?? null;
 
   const columns: DataTableColumn<Dataset>[] = useMemo(
     () => [
@@ -166,6 +170,16 @@ export function DatasetList() {
           </Select>
         </div>
         <div className="flex-1" />
+        {projectId && selectedDataset ? (
+          <ImportDatasetDialog
+            projectId={projectId}
+            datasetId={selectedDataset.id}
+            datasetName={selectedDataset.name}
+            taskType={selectedDataset.task_type}
+            open={importOpen}
+            onOpenChange={setImportOpen}
+          />
+        ) : null}
         {projectId && allRows.length > 0 ? (
           <CreateDatasetDialog
             projectId={projectId}
