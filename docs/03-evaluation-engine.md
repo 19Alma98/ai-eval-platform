@@ -53,9 +53,11 @@ class Evaluator(Protocol):
 
 LLM judges must return structured output and be versioned by evaluator configuration.
 
-## RAG metrics pack
+## RAG metrics sets and pack scoring
 
-Project-scoped pack (`hit_at_k`, `groundedness`, `correctness`, `latency` by default). `POST /experiments/{experiment_id}/evaluate-pack` runs all **enabled** pack evaluators against experiment item outputs (including OTLP-bound runs).
+Projects hold versioned **metrics sets**; the default set seeds RAG kinds (`hit_at_k`, `must_contain`, `groundedness`, `correctness`, `latency`). `POST /experiments/{experiment_id}/evaluate-pack` resolves a set (body override → experiment pin → project default), then runs all **enabled** entries with linked `evaluator_id` values against experiment item outputs (including OTLP-bound runs). Optional `save_as_default` persists the request set on the experiment.
+
+Explicit `POST .../evaluate` with `evaluator_ids` bypasses set resolution.
 
 Groundedness reads retrieved chunk text from run `context.documents` (populated from SDK `set_retrieval_documents` or ingestion normalization).
 
@@ -65,7 +67,7 @@ Groundedness reads retrieved chunk text from run `context.documents` (populated 
 Dataset
    │
    ▼
-Scheduler (or evaluate-pack)
+Scheduler (or evaluate-pack / metrics set)
    │
    ├── evaluator A ──► results
    ├── evaluator B ──► results

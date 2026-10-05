@@ -9,10 +9,12 @@ from aiobs.application.datasets import DatasetNotFoundError
 from aiobs.application.projects import ProjectNotFoundError
 from aiobs.domain.app_config import AppConfig
 from aiobs.domain.experiment import Experiment
+from aiobs.application.metrics_sets import MetricsSetNotFoundError
 from aiobs.domain.repositories import (
     AppConfigRepository,
     DatasetRepository,
     ExperimentRepository,
+    MetricsSetRepository,
     ProjectRepository,
 )
 
@@ -33,6 +35,7 @@ class CreateExperimentCommand:
     baseline_experiment_id: uuid.UUID | None = None
     app_config_id: uuid.UUID | None = None
     app_config_alias: str | None = None
+    metrics_set_id: uuid.UUID | None = None
 
 
 class CreateExperiment:
@@ -42,11 +45,13 @@ class CreateExperiment:
         datasets: DatasetRepository,
         projects: ProjectRepository,
         app_configs: AppConfigRepository,
+        metrics_sets: MetricsSetRepository,
     ) -> None:
         self._experiments = experiments
         self._datasets = datasets
         self._projects = projects
         self._app_configs = app_configs
+        self._metrics_sets = metrics_sets
 
     async def execute(self, command: CreateExperimentCommand) -> Experiment:
         project = await self._projects.get_by_id(command.project_id)
@@ -87,6 +92,12 @@ class CreateExperiment:
             model_config = config.to_snapshot()
             app_config_id = config.id
 
+        metrics_set_id = command.metrics_set_id
+        if metrics_set_id is not None:
+            metrics_set = await self._metrics_sets.get_by_id(metrics_set_id)
+            if metrics_set is None or metrics_set.project_id != command.project_id:
+                raise MetricsSetNotFoundError(metrics_set_id)
+
         experiment = Experiment.create(
             command.project_id,
             command.name,
@@ -95,6 +106,7 @@ class CreateExperiment:
             version=command.version,
             baseline_experiment_id=command.baseline_experiment_id,
             app_config_id=app_config_id,
+            metrics_set_id=metrics_set_id,
         )
         return await self._experiments.add(experiment)
 

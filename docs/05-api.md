@@ -93,14 +93,28 @@ PUT /experiments/{experiment_id}/outputs
 GET /experiments/{experiment_id}/outputs
 ```
 
-`POST .../evaluate-pack` scores using the project metrics pack (creates/uses pack evaluators as needed). OTLP traces with `aiobs.experiment_id` and `aiobs.dataset_item_id` on root/CHAIN spans upsert experiment item outputs on ingest.
+`POST .../evaluate-pack` scores using a resolved **metrics set** (see below). Optional JSON body:
+
+```json
+{
+  "metrics_set_id": "uuid-or-null",
+  "save_as_default": false
+}
+```
+
+An empty body (or omitted body) is valid and equivalent to defaults. Resolution order: request `metrics_set_id` → experiment `metrics_set_id` → project default metrics set (created on demand). When `save_as_default` is true and the request supplies `metrics_set_id`, the experiment pin is persisted after resolve. Foreign or missing set IDs return 404. Ad-hoc `POST .../evaluate` with explicit `evaluator_ids` is unchanged and ignores metrics sets.
+
+OTLP traces with `aiobs.experiment_id` and `aiobs.dataset_item_id` on root/CHAIN spans upsert experiment item outputs on ingest.
 
 `POST /projects/{project_id}/experiments` body (in addition to `name`, `dataset_id`):
 
 - `model_config` — optional free-form object when not binding an app config
 - `app_config_id` — optional UUID; mutually exclusive with `app_config_alias`
 - `app_config_alias` — optional alias name resolved within the project
+- `metrics_set_id` — optional UUID; must belong to the same project (404 otherwise)
 - `version`, `baseline_experiment_id` — optional
+
+Experiment responses include `metrics_set_id` when pinned.
 
 When `app_config_id` or `app_config_alias` is set, the server snapshots the referenced app config into `model_config` and sets response `app_config_id`. Supplying both app config fields returns 400; unknown alias returns 400; missing config returns 404.
 
@@ -159,7 +173,21 @@ GET /projects/{project_id}/evaluators
 POST /projects/{project_id}/evaluators
 ```
 
-## Metrics pack
+## Metrics sets
+
+```http
+GET /projects/{project_id}/metrics-sets
+POST /projects/{project_id}/metrics-sets
+GET /metrics-sets/{metrics_set_id}
+PATCH /metrics-sets/{metrics_set_id}
+POST /metrics-sets/{metrics_set_id}/version
+DELETE /metrics-sets/{metrics_set_id}
+DELETE /metrics-sets/{metrics_set_id}/entries/{entry_id}
+```
+
+Each set has versioned `name`, optional `description`, `is_project_default`, and ordered **entries** (`kind`, `enabled`, `threshold`, `config`, `evaluator_id`, `is_default`). Seed entries on the project default set have `is_default=true` and cannot be removed while referenced.
+
+## Metrics pack (alias)
 
 ```http
 GET /projects/{project_id}/metrics-pack
@@ -167,7 +195,7 @@ PUT /projects/{project_id}/metrics-pack
 POST /projects/{project_id}/metrics-pack/ensure
 ```
 
-`ensure` creates the default RAG pack and links built-in evaluator entities (`hit_at_k`, `groundedness`, `correctness`, `latency`).
+These routes are aliases over the project **default metrics set** (same UUID as `GET .../metrics-pack`). `ensure` creates the default RAG set and links built-in evaluator entities (`hit_at_k`, `must_contain`, `groundedness`, `correctness`, `latency`). `PUT` returns 409 when an experiment pins that default set.
 
 ## Comparison
 

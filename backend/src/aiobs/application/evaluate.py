@@ -6,11 +6,7 @@ from dataclasses import dataclass
 from aiobs.application.evaluators import EvaluatorNotFoundError
 from aiobs.application.experiment_outputs import merge_dataset_item
 from aiobs.application.experiments import ExperimentNotFoundError
-from aiobs.application.metrics_packs import (
-    EnsureMetricsPack,
-    GetMetricsPack,
-    MetricsPackNotFoundError,
-)
+from aiobs.application.metrics_sets import ResolveMetricsSetForScore
 from aiobs.domain.evaluation import EvaluationResultRecord, EvaluationRun
 from aiobs.domain.experiment import Experiment
 from aiobs.domain.repositories import (
@@ -90,6 +86,7 @@ class EvaluateExperiment:
             status="running",
             created_at=experiment.created_at,
             app_config_id=experiment.app_config_id,
+            metrics_set_id=experiment.metrics_set_id,
         )
         experiment = await self._experiments.update(experiment)
 
@@ -123,6 +120,7 @@ class EvaluateExperiment:
             status=final_status,
             created_at=experiment.created_at,
             app_config_id=experiment.app_config_id,
+            metrics_set_id=experiment.metrics_set_id,
         )
         experiment = await self._experiments.update(experiment)
 
@@ -136,19 +134,19 @@ class EvaluateExperiment:
 @dataclass(frozen=True, slots=True)
 class ScoreExperimentFromPackCommand:
     experiment_id: uuid.UUID
+    metrics_set_id: uuid.UUID | None = None
+    save_as_default: bool = False
 
 
 class ScoreExperimentFromPack:
     def __init__(
         self,
         experiments: ExperimentRepository,
-        get_metrics_pack: GetMetricsPack,
-        ensure_metrics_pack: EnsureMetricsPack,
+        resolve_metrics_set: ResolveMetricsSetForScore,
         evaluate_experiment: EvaluateExperiment,
     ) -> None:
         self._experiments = experiments
-        self._get_metrics_pack = get_metrics_pack
-        self._ensure_metrics_pack = ensure_metrics_pack
+        self._resolve = resolve_metrics_set
         self._evaluate_experiment = evaluate_experiment
 
     async def execute(self, command: ScoreExperimentFromPackCommand) -> EvaluateExperimentResult:
@@ -156,14 +154,15 @@ class ScoreExperimentFromPack:
         if experiment is None:
             raise ExperimentNotFoundError(command.experiment_id)
 
-        try:
-            pack = await self._get_metrics_pack.execute(experiment.project_id)
-        except MetricsPackNotFoundError:
-            pack = await self._ensure_metrics_pack.execute(experiment.project_id)
+        resolved = await self._resolve.execute(
+            experiment=experiment,
+            metrics_set_id=command.metrics_set_id,
+            save_as_default=command.save_as_default,
+        )
 
         evaluator_ids = [
             entry.evaluator_id
-            for entry in pack.entries
+            for entry in resolved.entries
             if entry.enabled and entry.evaluator_id is not None
         ]
         return await self._evaluate_experiment.execute(

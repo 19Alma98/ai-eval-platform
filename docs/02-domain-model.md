@@ -89,20 +89,33 @@ When `task_type=rag_qa`, each item used in the RAG vertical must include:
 
 `actual_output` and retrieved document text belong to a **run** (experiment item output or bound OTLP trace), not the test set.
 
-## Metrics pack (project-scoped)
+## Metrics set (project-scoped)
 
-Grading rules for RAG runs on a project. Persisted per project; created via `POST .../metrics-pack/ensure`.
+Versioned grading configuration for RAG (and custom) evaluators on a project. One set per project may be marked `is_project_default` (seed name `Default` v1).
 
-Default entries (not removable; thresholds/config editable):
+Fields:
+- id, project_id, name, version, description
+- is_project_default
+- entries (ordered)
+- created_at, updated_at
+
+Each **MetricsSetEntry** has: `kind`, `enabled`, `threshold`, `config`, `evaluator_id`, `is_default` (seed rows on the default set), `created_at`.
+
+Default seed entries (`is_default=true`, not deletable on the default set while referenced):
 
 | kind | role |
 |------|------|
 | `hit_at_k` | expected doc id in top-k retrieved ids |
+| `must_contain` | required phrases in the answer |
 | `groundedness` | LLM judge on answer vs retrieved chunks |
 | `correctness` | LLM judge vs expected answer |
 | `latency` | per-item latency vs `config.max_ms` |
 
-Custom evaluators may be appended when `removable=true` and linked by `evaluator_id`. Scoring a run uses `POST /experiments/{id}/evaluate-pack` (enabled pack entries only).
+Custom sets are created with `POST .../metrics-sets`; versioning copies entries with `is_default=false`. Experiments may pin a set via `metrics_set_id`.
+
+## Metrics pack (API alias)
+
+HTTP `/metrics-pack` reads and writes the project default metrics set. Prefer `/metrics-sets` for named/custom sets.
 
 ## Evaluator
 
@@ -188,6 +201,7 @@ Fields:
 - dataset_id
 - model_config (free-form JSON, or snapshot from an app config when bound)
 - app_config_id (optional; set when created from `app_config_id` or resolved `app_config_alias`)
+- metrics_set_id (optional pin for pack scoring; overridable per evaluate-pack request)
 - version
 - baseline_experiment_id
 - status

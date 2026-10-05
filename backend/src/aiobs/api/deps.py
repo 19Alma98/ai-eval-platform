@@ -51,6 +51,7 @@ from aiobs.application.metrics_sets import (
     GetMetricsSet,
     ListMetricsSets,
     PatchMetricsSet,
+    ResolveMetricsSetForScore,
     VersionMetricsSet,
 )
 from aiobs.application.projects import CreateProject, GetProject, ListProjects
@@ -372,13 +373,32 @@ def get_create_dataset(
     return CreateDataset(datasets, projects, ensure_metrics_pack)
 
 
+def get_resolve_metrics_set_for_score(
+    metrics_sets: SqlAlchemyMetricsSetRepository = Depends(get_metrics_set_repository),
+    experiments: SqlAlchemyExperimentRepository = Depends(get_experiment_repository),
+    evaluators: SqlAlchemyEvaluatorRepository = Depends(get_evaluator_repository),
+    create_evaluator: CreateEvaluator = Depends(get_create_evaluator),
+    ensure_default: EnsureProjectDefaultMetricsSet = Depends(
+        get_ensure_project_default_metrics_set
+    ),
+) -> ResolveMetricsSetForScore:
+    return ResolveMetricsSetForScore(
+        metrics_sets,
+        experiments,
+        evaluators,
+        create_evaluator,
+        ensure_default,
+    )
+
+
 def get_create_experiment(
     experiments: SqlAlchemyExperimentRepository = Depends(get_experiment_repository),
     datasets: SqlAlchemyDatasetRepository = Depends(get_dataset_repository),
     projects: SqlAlchemyProjectRepository = Depends(get_project_repository),
     app_configs: SqlAlchemyAppConfigRepository = Depends(get_app_config_repository),
+    metrics_sets: SqlAlchemyMetricsSetRepository = Depends(get_metrics_set_repository),
 ) -> CreateExperiment:
-    return CreateExperiment(experiments, datasets, projects, app_configs)
+    return CreateExperiment(experiments, datasets, projects, app_configs, metrics_sets)
 
 
 def get_list_experiments(
@@ -418,14 +438,12 @@ def get_evaluate_experiment(
 
 def get_score_experiment_from_pack(
     experiments: SqlAlchemyExperimentRepository = Depends(get_experiment_repository),
-    get_metrics_pack: GetMetricsPack = Depends(get_get_metrics_pack),
-    ensure_metrics_pack: EnsureMetricsPack = Depends(get_ensure_metrics_pack),
+    resolve_metrics_set: ResolveMetricsSetForScore = Depends(get_resolve_metrics_set_for_score),
     evaluate_experiment: EvaluateExperiment = Depends(get_evaluate_experiment),
 ) -> ScoreExperimentFromPack:
     return ScoreExperimentFromPack(
         experiments,
-        get_metrics_pack,
-        ensure_metrics_pack,
+        resolve_metrics_set,
         evaluate_experiment,
     )
 

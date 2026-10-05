@@ -22,6 +22,7 @@ from aiobs.api.deps import (
 )
 from aiobs.api.schemas import (
     CreateExperimentRequest,
+    EvaluatePackRequest,
     EvaluateRequest,
     EvaluateResponse,
     EvaluationResultResponse,
@@ -80,6 +81,7 @@ from aiobs.application.experiments import (
     GetExperiment,
     ListExperiments,
 )
+from aiobs.application.metrics_sets import MetricsSetNotFoundError
 from aiobs.application.projects import ProjectNotFoundError
 from aiobs.domain.evaluation import EvaluationResultRecord, EvaluationRun
 from aiobs.domain.experiment import Experiment
@@ -100,6 +102,7 @@ def _experiment_response(experiment: Experiment) -> ExperimentResponse:
             "version": experiment.version,
             "baseline_experiment_id": experiment.baseline_experiment_id,
             "app_config_id": experiment.app_config_id,
+            "metrics_set_id": experiment.metrics_set_id,
             "status": experiment.status,
             "created_at": experiment.created_at,
         }
@@ -254,6 +257,7 @@ async def create_experiment(
                 baseline_experiment_id=body.baseline_experiment_id,
                 app_config_id=body.app_config_id,
                 app_config_alias=body.app_config_alias,
+                metrics_set_id=body.metrics_set_id,
             )
         )
     except (
@@ -261,6 +265,7 @@ async def create_experiment(
         DatasetNotFoundError,
         ExperimentNotFoundError,
         AppConfigNotFoundError,
+        MetricsSetNotFoundError,
     ) as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
     except ValueError as exc:
@@ -366,16 +371,23 @@ async def evaluate_experiment(
 )
 async def evaluate_experiment_from_pack(
     experiment_id: uuid.UUID,
+    body: EvaluatePackRequest | None = None,
     use_case: ScoreExperimentFromPack = Depends(get_score_experiment_from_pack),
 ) -> EvaluateResponse:
+    payload = body or EvaluatePackRequest()
     try:
         outcome = await use_case.execute(
-            ScoreExperimentFromPackCommand(experiment_id=experiment_id)
+            ScoreExperimentFromPackCommand(
+                experiment_id=experiment_id,
+                metrics_set_id=payload.metrics_set_id,
+                save_as_default=payload.save_as_default,
+            )
         )
     except (
         ExperimentNotFoundError,
         EvaluatorNotFoundError,
         ProjectNotFoundError,
+        MetricsSetNotFoundError,
     ) as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
     except EmptyEvaluatorListError as exc:

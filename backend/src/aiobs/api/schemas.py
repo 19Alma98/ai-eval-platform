@@ -277,6 +277,7 @@ class CreateExperimentRequest(BaseModel):
     baseline_experiment_id: uuid.UUID | None = None
     app_config_id: uuid.UUID | None = None
     app_config_alias: str | None = None
+    metrics_set_id: uuid.UUID | None = None
 
 
 class ExperimentResponse(BaseModel):
@@ -290,12 +291,18 @@ class ExperimentResponse(BaseModel):
     version: str | None
     baseline_experiment_id: uuid.UUID | None
     app_config_id: uuid.UUID | None = None
+    metrics_set_id: uuid.UUID | None = None
     status: str
     created_at: datetime
 
 
 class EvaluateRequest(BaseModel):
     evaluator_ids: list[uuid.UUID] = Field(min_length=1)
+
+
+class EvaluatePackRequest(BaseModel):
+    metrics_set_id: uuid.UUID | None = None
+    save_as_default: bool = False
 
 
 class EvaluationResultResponse(BaseModel):

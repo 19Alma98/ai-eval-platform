@@ -247,7 +247,7 @@ async def test_dataset_item_evaluate_flow(client: AsyncClient) -> None:
 
     dataset = await client.post(
         f"/api/v1/projects/{project_id}/datasets",
-        json={"name": "support-v1", "description": "demo"},
+        json={"name": "support-v1", "description": "demo", "task_type": "classification"},
     )
     assert dataset.status_code == 201
     dataset_id = dataset.json()["id"]
@@ -311,7 +311,7 @@ async def test_evaluate_uses_experiment_output_not_legacy_actual(
 
     dataset = await client.post(
         f"/api/v1/projects/{project_id}/datasets",
-        json={"name": "merged-outputs"},
+        json={"name": "merged-outputs", "task_type": "classification"},
     )
     dataset_id = dataset.json()["id"]
 
@@ -394,7 +394,7 @@ async def test_from_trace_item(client: AsyncClient) -> None:
 
     dataset = await client.post(
         f"/api/v1/projects/{project_id}/datasets",
-        json={"name": "from-trace"},
+        json={"name": "from-trace", "task_type": "classification"},
     )
     dataset_id = dataset.json()["id"]
 
@@ -480,3 +480,316 @@ async def test_evaluate_pack_uses_enabled_metrics_pack_evaluators(
     assert len(body["runs"]) == 1
     assert body["runs"][0]["status"] == "PASSED"
     assert body["runs"][0]["results"][0]["score"] == 1.0
+
+
+def _metrics_set_entry_from_pack(pack: dict, kind: str) -> dict:
+    for entry in pack["entries"]:
+        if entry["kind"] == kind:
+            return {
+                "kind": entry["kind"],
+                "enabled": entry["enabled"],
+                "threshold": entry["threshold"],
+                "config": entry["config"],
+                "evaluator_id": entry.get("evaluator_id"),
+            }
+    raise KeyError(kind)
+
+
+async def _rag_dataset_with_item(client: AsyncClient, project_id: str, name: str) -> str:
+    dataset = await client.post(
+        f"/api/v1/projects/{project_id}/datasets",
+        json={"name": name, "task_type": "rag_qa"},
+    )
+    assert dataset.status_code == 201, dataset.text
+    dataset_id = dataset.json()["id"]
+    item = await client.post(
+        f"/api/v1/datasets/{dataset_id}/items",
+        json={
+            "input": "q",
+            "expected_output": "a",
+            "actual_output": "ans",
+            "context": {"retrieved_doc_ids": ["target"]},
+            "metadata": {"expected_doc_ids": ["target"]},
+        },
+    )
+    assert item.status_code == 201, item.text
+    return dataset_id
+
+
+async def _evaluator_kinds_for_runs(
+    client: AsyncClient, project_id: str, runs: list[dict]
+) -> set[str]:
+    listed = await client.get(f"/api/v1/projects/{project_id}/evaluators")
+    assert listed.status_code == 200
+    by_id = {e["id"]: e for e in listed.json()}
+    kinds: set[str] = set()
+    for run in runs:
+        ev = by_id[str(run["evaluator_id"])]
+        kinds.add(str(ev["config"].get("kind", "")))
+    return kinds
+
+
+@pytest.mark.asyncio
+async def test_evaluate_pack_body_overrides_experiment_and_project_default(
+    client: AsyncClient,
+) -> None:
+    project = await client.post("/api/v1/projects", json={"name": "Pack Override"})
+    assert project.status_code == 201
+    project_id = project.json()["id"]
+
+    ensured = await client.post(f"/api/v1/projects/{project_id}/metrics-pack/ensure")
+    assert ensured.status_code == 200
+    pack = ensured.json()
+
+    custom = await client.post(
+        f"/api/v1/projects/{project_id}/metrics-sets",
+        json={
+            "name": "LatencyOnly",
+            "entries": [
+                {
+                    **_metrics_set_entry_from_pack(pack, "latency"),
+                    "enabled": True,
+                }
+            ],
+        },
+    )
+    assert custom.status_code == 201, custom.text
+    custom_id = custom.json()["id"]
+
+    dataset_id = await _rag_dataset_with_item(client, project_id, "override-ds")
+
+    experiment = await client.post(
+        f"/api/v1/projects/{project_id}/experiments",
+        json={"name": "override-exp", "dataset_id": dataset_id},
+    )
+    assert experiment.status_code == 201
+    experiment_id = experiment.json()["id"]
+
+    evaluated = await client.post(
+        f"/api/v1/experiments/{experiment_id}/evaluate-pack",
+        json={"metrics_set_id": custom_id},
+    )
+    assert evaluated.status_code == 200, evaluated.text
+    kinds = await _evaluator_kinds_for_runs(client, project_id, evaluated.json()["runs"])
+    assert kinds == {"latency"}
+
+
+@pytest.mark.asyncio
+async def test_evaluate_pack_uses_experiment_metrics_set_id(client: AsyncClient) -> None:
+    project = await client.post("/api/v1/projects", json={"name": "Pack Pin"})
+    project_id = project.json()["id"]
+
+    pack = (await client.post(f"/api/v1/projects/{project_id}/metrics-pack/ensure")).json()
+    custom = await client.post(
+        f"/api/v1/projects/{project_id}/metrics-sets",
+        json={
+            "name": "HitOnly",
+            "entries": [
+                {
+                    **_metrics_set_entry_from_pack(pack, "hit_at_k"),
+                    "enabled": True,
+                }
+            ],
+        },
+    )
+    assert custom.status_code == 201
+    custom_id = custom.json()["id"]
+
+    dataset_id = await _rag_dataset_with_item(client, project_id, "pin-ds")
+    experiment = await client.post(
+        f"/api/v1/projects/{project_id}/experiments",
+        json={
+            "name": "pinned",
+            "dataset_id": dataset_id,
+            "metrics_set_id": custom_id,
+        },
+    )
+    assert experiment.status_code == 201, experiment.text
+    assert experiment.json()["metrics_set_id"] == custom_id
+    experiment_id = experiment.json()["id"]
+
+    evaluated = await client.post(
+        f"/api/v1/experiments/{experiment_id}/evaluate-pack",
+        json={},
+    )
+    assert evaluated.status_code == 200, evaluated.text
+    kinds = await _evaluator_kinds_for_runs(client, project_id, evaluated.json()["runs"])
+    assert kinds == {"hit_at_k"}
+
+
+@pytest.mark.asyncio
+async def test_evaluate_pack_save_as_default_persists(client: AsyncClient) -> None:
+    project = await client.post("/api/v1/projects", json={"name": "Save Default"})
+    project_id = project.json()["id"]
+    pack = (await client.post(f"/api/v1/projects/{project_id}/metrics-pack/ensure")).json()
+    custom = await client.post(
+        f"/api/v1/projects/{project_id}/metrics-sets",
+        json={
+            "name": "Persist",
+            "entries": [_metrics_set_entry_from_pack(pack, "latency")],
+        },
+    )
+    custom_id = custom.json()["id"]
+
+    dataset_id = await _rag_dataset_with_item(client, project_id, "persist-ds")
+    experiment = await client.post(
+        f"/api/v1/projects/{project_id}/experiments",
+        json={"name": "no-pin", "dataset_id": dataset_id},
+    )
+    experiment_id = experiment.json()["id"]
+    assert experiment.json().get("metrics_set_id") is None
+
+    scored = await client.post(
+        f"/api/v1/experiments/{experiment_id}/evaluate-pack",
+        json={"metrics_set_id": custom_id, "save_as_default": True},
+    )
+    assert scored.status_code == 200, scored.text
+
+    fetched = await client.get(f"/api/v1/experiments/{experiment_id}")
+    assert fetched.status_code == 200
+    assert fetched.json()["metrics_set_id"] == custom_id
+
+
+@pytest.mark.asyncio
+async def test_evaluate_pack_foreign_metrics_set_id_is_404(client: AsyncClient) -> None:
+    project_a = await client.post("/api/v1/projects", json={"name": "Proj A"})
+    project_b = await client.post("/api/v1/projects", json={"name": "Proj B"})
+    pid_a = project_a.json()["id"]
+    pid_b = project_b.json()["id"]
+
+    pack_b = (await client.post(f"/api/v1/projects/{pid_b}/metrics-pack/ensure")).json()
+    custom_b = await client.post(
+        f"/api/v1/projects/{pid_b}/metrics-sets",
+        json={
+            "name": "Bset",
+            "entries": [_metrics_set_entry_from_pack(pack_b, "hit_at_k")],
+        },
+    )
+    foreign_id = custom_b.json()["id"]
+
+    dataset_id = await _rag_dataset_with_item(client, pid_a, "foreign-ds")
+    experiment = await client.post(
+        f"/api/v1/projects/{pid_a}/experiments",
+        json={"name": "on-a", "dataset_id": dataset_id},
+    )
+    experiment_id = experiment.json()["id"]
+
+    resp = await client.post(
+        f"/api/v1/experiments/{experiment_id}/evaluate-pack",
+        json={"metrics_set_id": foreign_id},
+    )
+    assert resp.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_create_experiment_foreign_metrics_set_id_is_404(client: AsyncClient) -> None:
+    project_a = await client.post("/api/v1/projects", json={"name": "Create A"})
+    project_b = await client.post("/api/v1/projects", json={"name": "Create B"})
+    pid_a = project_a.json()["id"]
+    pid_b = project_b.json()["id"]
+
+    pack_b = (await client.post(f"/api/v1/projects/{pid_b}/metrics-pack/ensure")).json()
+    custom_b = await client.post(
+        f"/api/v1/projects/{pid_b}/metrics-sets",
+        json={
+            "name": "Other",
+            "entries": [_metrics_set_entry_from_pack(pack_b, "hit_at_k")],
+        },
+    )
+    foreign_id = custom_b.json()["id"]
+
+    dataset_id = await _rag_dataset_with_item(client, pid_a, "create-foreign-ds")
+    resp = await client.post(
+        f"/api/v1/projects/{pid_a}/experiments",
+        json={
+            "name": "bad-pin",
+            "dataset_id": dataset_id,
+            "metrics_set_id": foreign_id,
+        },
+    )
+    assert resp.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_ad_hoc_evaluate_ignores_sets(client: AsyncClient) -> None:
+    project = await client.post("/api/v1/projects", json={"name": "Ad Hoc"})
+    project_id = project.json()["id"]
+    pack = (await client.post(f"/api/v1/projects/{project_id}/metrics-pack/ensure")).json()
+    custom = await client.post(
+        f"/api/v1/projects/{project_id}/metrics-sets",
+        json={
+            "name": "Ignored",
+            "entries": [_metrics_set_entry_from_pack(pack, "latency")],
+        },
+    )
+    custom_id = custom.json()["id"]
+
+    dataset = await client.post(
+        f"/api/v1/projects/{project_id}/datasets",
+        json={"name": "simple-ds", "task_type": "classification"},
+    )
+    dataset_id = dataset.json()["id"]
+    await client.post(
+        f"/api/v1/datasets/{dataset_id}/items",
+        json={"input": "q", "expected_output": "a", "actual_output": "a"},
+    )
+
+    exact = await client.post(
+        f"/api/v1/projects/{project_id}/evaluators",
+        json={
+            "name": "exact",
+            "type": "deterministic",
+            "config": {"kind": "exact_match"},
+        },
+    )
+    evaluator_id = exact.json()["id"]
+
+    experiment = await client.post(
+        f"/api/v1/projects/{project_id}/experiments",
+        json={
+            "name": "adhoc",
+            "dataset_id": dataset_id,
+            "metrics_set_id": custom_id,
+        },
+    )
+    assert experiment.status_code == 201
+    experiment_id = experiment.json()["id"]
+
+    evaluated = await client.post(
+        f"/api/v1/experiments/{experiment_id}/evaluate",
+        json={"evaluator_ids": [evaluator_id]},
+    )
+    assert evaluated.status_code == 200, evaluated.text
+    assert len(evaluated.json()["runs"]) == 1
+    assert str(evaluated.json()["runs"][0]["evaluator_id"]) == evaluator_id
+
+
+@pytest.mark.asyncio
+async def test_put_pack_conflict_when_experiment_pins_default_via_create(
+    client: AsyncClient,
+) -> None:
+    project = await client.post("/api/v1/projects", json={"name": "Pack409Eval"})
+    project_id = project.json()["id"]
+    pack = (await client.post(f"/api/v1/projects/{project_id}/metrics-pack/ensure")).json()
+    default_id = pack["id"]
+
+    dataset_id = await _rag_dataset_with_item(client, project_id, "pack409-ds")
+    experiment = await client.post(
+        f"/api/v1/projects/{project_id}/experiments",
+        json={
+            "name": "pinned-default",
+            "dataset_id": dataset_id,
+            "metrics_set_id": default_id,
+        },
+    )
+    assert experiment.status_code == 201, experiment.text
+
+    entries = [
+        _pack_entry_payload(pack, kind)
+        for kind in ("hit_at_k", "must_contain", "groundedness", "correctness", "latency")
+    ]
+    conflict = await client.put(
+        f"/api/v1/projects/{project_id}/metrics-pack",
+        json={"entries": entries},
+    )
+    assert conflict.status_code == 409
