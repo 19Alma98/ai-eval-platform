@@ -9,9 +9,7 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
 
 if [[ $# -eq 0 ]]; then
-  JOBS=(backend sdk cli frontend)
-else
-  JOBS=("$@")
+  set -- backend sdk cli frontend
 fi
 
 run_python_job() {
@@ -40,7 +38,7 @@ run_frontend() {
   npm run typecheck
 }
 
-for job in "${JOBS[@]}"; do
+for job in "$@"; do
   case "$job" in
     backend)  run_python_job backend src/aiobs "--all-extras" ;;
     sdk)      run_python_job sdk src/aiobs "--extra dev" ;;
