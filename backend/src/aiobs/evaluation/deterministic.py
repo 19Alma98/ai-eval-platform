@@ -235,6 +235,73 @@ class CostEvaluator:
         )
 
 
+def _retrieved_doc_ids(ctx: dict[str, Any]) -> list[str] | None:
+    if "documents" in ctx:
+        documents = ctx["documents"]
+        if documents is None:
+            return None
+        if not isinstance(documents, list):
+            return None
+        ids: list[str] = []
+        for doc in documents:
+            if isinstance(doc, dict) and doc.get("id") is not None:
+                ids.append(str(doc["id"]))
+        return ids
+    if "retrieved_doc_ids" in ctx:
+        retrieved = ctx["retrieved_doc_ids"]
+        if retrieved is None:
+            return None
+        if not isinstance(retrieved, list):
+            return None
+        return [str(doc_id) for doc_id in retrieved]
+    return None
+
+
+class HitAtKEvaluator:
+    name = "hit_at_k"
+
+    def __init__(self, config: dict[str, Any]) -> None:
+        k = config.get("k", 5)
+        k_int = int(k)
+        if k_int < 1:
+            raise ValueError("hit_at_k evaluator requires config.k >= 1")
+        self._k = k_int
+
+    async def evaluate(self, sample: EvaluationSample) -> EvaluationResult:
+        expected = sample.metadata.get("expected_doc_ids")
+        if expected is None:
+            return EvaluationResult(
+                score=None,
+                label="SKIPPED",
+                explanation="metadata.expected_doc_ids is missing",
+            )
+        if not isinstance(expected, list):
+            return EvaluationResult(
+                score=None,
+                label="SKIPPED",
+                explanation="metadata.expected_doc_ids must be a list",
+            )
+        expected_ids = {str(doc_id) for doc_id in expected}
+
+        ctx = _as_context(sample)
+        retrieved = _retrieved_doc_ids(ctx)
+        if retrieved is None:
+            return EvaluationResult(
+                score=None,
+                label="SKIPPED",
+                explanation="context.documents or context.retrieved_doc_ids is missing",
+            )
+
+        top_k = set(retrieved[: self._k])
+        hit = bool(expected_ids & top_k)
+        return EvaluationResult(
+            score=1.0 if hit else 0.0,
+            label="PASS" if hit else "FAIL",
+            explanation="expected doc in top-k retrieved" if hit else "no expected doc in top-k retrieved",
+            metadata={"k": self._k, "expected_doc_ids": list(expected), "retrieved_top_k": retrieved[: self._k]},
+        )
+
+
 class ToolCallSuccessEvaluator:
     name = "tool_call_success"
 
@@ -284,3 +351,4 @@ def register_deterministic_evaluators() -> None:
     register_evaluator("token_usage", TokenUsageEvaluator)
     register_evaluator("cost", CostEvaluator)
     register_evaluator("tool_call_success", ToolCallSuccessEvaluator)
+    register_evaluator("hit_at_k", HitAtKEvaluator)
