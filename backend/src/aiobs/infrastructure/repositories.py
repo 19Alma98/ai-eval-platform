@@ -16,6 +16,7 @@ from aiobs.domain.evaluator import Evaluator
 from aiobs.domain.experiment import Experiment
 from aiobs.domain.experiment_output import ExperimentItemOutput
 from aiobs.domain.metrics_pack import MetricsPack, MetricsPackEntry
+from aiobs.domain.metrics_set import MetricsSet, MetricsSetEntry
 from aiobs.domain.project import Project
 from aiobs.domain.trace import Span, Trace
 from aiobs.infrastructure.models import (
@@ -29,6 +30,8 @@ from aiobs.infrastructure.models import (
     ExperimentItemOutputModel,
     ExperimentModel,
     MetricsPackModel,
+    MetricsSetEntryModel,
+    MetricsSetModel,
     ProjectModel,
     SpanModel,
     TraceModel,
@@ -373,6 +376,7 @@ def _experiment_to_domain(row: ExperimentModel) -> Experiment:
         status=row.status,
         created_at=row.created_at,
         app_config_id=row.app_config_id,
+        metrics_set_id=row.metrics_set_id,
     )
 
 
@@ -662,6 +666,7 @@ class SqlAlchemyExperimentRepository:
             version=experiment.version,
             baseline_experiment_id=experiment.baseline_experiment_id,
             app_config_id=experiment.app_config_id,
+            metrics_set_id=experiment.metrics_set_id,
             status=experiment.status,
             created_at=experiment.created_at,
         )
@@ -692,10 +697,19 @@ class SqlAlchemyExperimentRepository:
         row.version = experiment.version
         row.baseline_experiment_id = experiment.baseline_experiment_id
         row.app_config_id = experiment.app_config_id
+        row.metrics_set_id = experiment.metrics_set_id
         row.status = experiment.status
         await self._session.commit()
         await self._session.refresh(row)
         return _experiment_to_domain(row)
+
+    async def count_by_metrics_set_id(self, metrics_set_id: uuid.UUID) -> int:
+        result = await self._session.execute(
+            select(func.count())
+            .select_from(ExperimentModel)
+            .where(ExperimentModel.metrics_set_id == metrics_set_id)
+        )
+        return int(result.scalar_one())
 
 
 class SqlAlchemyEvaluationRunRepository:
@@ -782,6 +796,174 @@ class SqlAlchemyEvaluationRunRepository:
         self._session.add_all(rows)
         await self._session.commit()
         return [_result_to_domain(row) for row in rows]
+
+
+def _metrics_set_entry_to_domain(row: MetricsSetEntryModel) -> MetricsSetEntry:
+    return MetricsSetEntry(
+        id=row.id,
+        kind=row.kind,
+        enabled=row.enabled,
+        threshold=row.threshold,
+        config=dict(row.config or {}),
+        evaluator_id=row.evaluator_id,
+        is_default=row.is_default,
+        created_at=row.created_at,
+    )
+
+
+def _metrics_set_to_domain(row: MetricsSetModel) -> MetricsSet:
+    sorted_entries = sorted(row.entries, key=lambda e: e.kind)
+    entries = tuple(_metrics_set_entry_to_domain(e) for e in sorted_entries)
+    return MetricsSet(
+        id=row.id,
+        project_id=row.project_id,
+        name=row.name,
+        version=row.version,
+        description=row.description,
+        is_project_default=row.is_project_default,
+        created_at=row.created_at,
+        updated_at=row.updated_at,
+        entries=entries,
+    )
+
+
+def _metrics_set_entry_to_model(
+    entry: MetricsSetEntry,
+    metrics_set_id: uuid.UUID,
+) -> MetricsSetEntryModel:
+    return MetricsSetEntryModel(
+        id=entry.id,
+        metrics_set_id=metrics_set_id,
+        kind=entry.kind,
+        enabled=entry.enabled,
+        threshold=entry.threshold,
+        config=dict(entry.config),
+        evaluator_id=entry.evaluator_id,
+        is_default=entry.is_default,
+        created_at=entry.created_at,
+    )
+
+
+def _sync_metrics_set_entries(row: MetricsSetModel, entries: tuple[MetricsSetEntry, ...]) -> None:
+    by_kind = {entry.kind: entry for entry in row.entries}
+    by_id = {entry.id: entry for entry in row.entries}
+    desired_kinds = {entry.kind for entry in entries}
+    for kind in list(by_kind.keys()):
+        if kind not in desired_kinds:
+            row.entries.remove(by_kind[kind])
+    for entry in entries:
+        existing = by_kind.get(entry.kind) or by_id.get(entry.id)
+        if existing is not None:
+            existing.kind = entry.kind
+            existing.enabled = entry.enabled
+            existing.threshold = entry.threshold
+            existing.config = dict(entry.config)
+            existing.evaluator_id = entry.evaluator_id
+            existing.is_default = entry.is_default
+        else:
+            row.entries.append(_metrics_set_entry_to_model(entry, row.id))
+
+
+class SqlAlchemyMetricsSetRepository:
+    def __init__(self, session: AsyncSession) -> None:
+        self._session = session
+
+    async def add(self, metrics_set: MetricsSet) -> MetricsSet:
+        row = MetricsSetModel(
+            id=metrics_set.id,
+            project_id=metrics_set.project_id,
+            name=metrics_set.name,
+            version=metrics_set.version,
+            description=metrics_set.description,
+            is_project_default=metrics_set.is_project_default,
+            created_at=metrics_set.created_at,
+            updated_at=metrics_set.updated_at,
+            entries=[
+                _metrics_set_entry_to_model(entry, metrics_set.id) for entry in metrics_set.entries
+            ],
+        )
+        self._session.add(row)
+        try:
+            await self._session.commit()
+        except IntegrityError:
+            await self._session.rollback()
+            raise
+        result = await self._session.execute(
+            select(MetricsSetModel)
+            .options(selectinload(MetricsSetModel.entries))
+            .where(MetricsSetModel.id == metrics_set.id)
+        )
+        refreshed = result.scalar_one()
+        return _metrics_set_to_domain(refreshed)
+
+    async def get_by_id(self, metrics_set_id: uuid.UUID) -> MetricsSet | None:
+        result = await self._session.execute(
+            select(MetricsSetModel)
+            .options(selectinload(MetricsSetModel.entries))
+            .where(MetricsSetModel.id == metrics_set_id)
+        )
+        row = result.scalar_one_or_none()
+        return _metrics_set_to_domain(row) if row is not None else None
+
+    async def get_project_default(self, project_id: uuid.UUID) -> MetricsSet | None:
+        result = await self._session.execute(
+            select(MetricsSetModel)
+            .options(selectinload(MetricsSetModel.entries))
+            .where(
+                MetricsSetModel.project_id == project_id,
+                MetricsSetModel.is_project_default.is_(True),
+            )
+        )
+        row = result.scalar_one_or_none()
+        return _metrics_set_to_domain(row) if row is not None else None
+
+    async def list_by_project(self, project_id: uuid.UUID) -> list[MetricsSet]:
+        result = await self._session.execute(
+            select(MetricsSetModel)
+            .options(selectinload(MetricsSetModel.entries))
+            .where(MetricsSetModel.project_id == project_id)
+            .order_by(MetricsSetModel.created_at.asc())
+        )
+        return [_metrics_set_to_domain(row) for row in result.scalars().all()]
+
+    async def update(self, metrics_set: MetricsSet) -> MetricsSet:
+        result = await self._session.execute(
+            select(MetricsSetModel)
+            .options(selectinload(MetricsSetModel.entries))
+            .where(MetricsSetModel.id == metrics_set.id)
+        )
+        row = result.scalar_one_or_none()
+        if row is None:
+            raise ValueError(f"MetricsSet not found: {metrics_set.id}")
+        row.name = metrics_set.name
+        row.version = metrics_set.version
+        row.description = metrics_set.description
+        row.is_project_default = metrics_set.is_project_default
+        row.updated_at = metrics_set.updated_at
+        _sync_metrics_set_entries(row, metrics_set.entries)
+        try:
+            await self._session.commit()
+        except IntegrityError:
+            await self._session.rollback()
+            raise
+        refreshed = await self.get_by_id(metrics_set.id)
+        assert refreshed is not None
+        return refreshed
+
+    async def delete(self, metrics_set_id: uuid.UUID) -> None:
+        row = await self._session.get(MetricsSetModel, metrics_set_id)
+        if row is not None:
+            await self._session.delete(row)
+            await self._session.commit()
+
+    async def next_version(self, project_id: uuid.UUID, name: str) -> int:
+        result = await self._session.execute(
+            select(func.coalesce(func.max(MetricsSetModel.version), 0) + 1).where(
+                MetricsSetModel.project_id == project_id,
+                MetricsSetModel.name == name,
+            )
+        )
+        return int(result.scalar_one())
 
 
 def _metrics_pack_entry_to_json(entry: MetricsPackEntry) -> dict[str, Any]:

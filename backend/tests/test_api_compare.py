@@ -133,6 +133,9 @@ class InMemoryExperimentRepository:
         self._items[experiment.id] = experiment
         return experiment
 
+    async def count_by_metrics_set_id(self, metrics_set_id: uuid.UUID) -> int:
+        return sum(1 for e in self._items.values() if e.metrics_set_id == metrics_set_id)
+
 
 class InMemoryEvaluationRunRepository:
     def __init__(self) -> None:

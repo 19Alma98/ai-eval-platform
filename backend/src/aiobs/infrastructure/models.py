@@ -5,6 +5,7 @@ from datetime import datetime
 from typing import Any
 
 from sqlalchemy import (
+    Boolean,
     DateTime,
     Float,
     ForeignKey,
@@ -14,6 +15,7 @@ from sqlalchemy import (
     UniqueConstraint,
     Uuid,
     func,
+    text,
 )
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
@@ -256,6 +258,11 @@ class ExperimentModel(Base):
         ForeignKey("app_configs.id", ondelete="SET NULL"),
         nullable=True,
     )
+    metrics_set_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey("metrics_sets.id", ondelete="RESTRICT"),
+        nullable=True,
+    )
     status: Mapped[str] = mapped_column(String(32), nullable=False, server_default="created")
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
@@ -318,6 +325,98 @@ class EvaluationResultModel(Base):
     duration_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
     run: Mapped[EvaluationRunModel] = relationship("EvaluationRunModel", back_populates="results")
+
+
+class MetricsSetModel(Base):
+    __tablename__ = "metrics_sets"
+    __table_args__ = (
+        UniqueConstraint(
+            "project_id",
+            "name",
+            "version",
+            name="uq_metrics_sets_project_name_version",
+        ),
+        Index(
+            "uq_metrics_sets_one_project_default",
+            "project_id",
+            unique=True,
+            postgresql_where=text("is_project_default"),
+        ),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True)
+    project_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey("projects.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    name: Mapped[str] = mapped_column(String(200), nullable=False)
+    version: Mapped[int] = mapped_column(Integer, nullable=False, server_default="1")
+    description: Mapped[str | None] = mapped_column(String(2000), nullable=True)
+    is_project_default: Mapped[bool] = mapped_column(
+        Boolean,
+        nullable=False,
+        server_default=text("false"),
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+    )
+
+    entries: Mapped[list[MetricsSetEntryModel]] = relationship(
+        "MetricsSetEntryModel",
+        back_populates="metrics_set",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+    )
+
+
+class MetricsSetEntryModel(Base):
+    __tablename__ = "metrics_set_entries"
+    __table_args__ = (
+        UniqueConstraint(
+            "metrics_set_id",
+            "kind",
+            name="uq_metrics_set_entries_set_kind",
+        ),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True)
+    metrics_set_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey("metrics_sets.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    kind: Mapped[str] = mapped_column(String(64), nullable=False)
+    enabled: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    threshold: Mapped[float | None] = mapped_column(Float, nullable=True)
+    config: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False, server_default="{}")
+    evaluator_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey("evaluators.id", ondelete="RESTRICT"),
+        nullable=True,
+    )
+    is_default: Mapped[bool] = mapped_column(
+        Boolean,
+        nullable=False,
+        server_default=text("false"),
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+    )
+
+    metrics_set: Mapped[MetricsSetModel] = relationship(
+        "MetricsSetModel",
+        back_populates="entries",
+    )
 
 
 class MetricsPackModel(Base):
