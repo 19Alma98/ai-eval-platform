@@ -15,7 +15,7 @@ export default function ExperimentsPage() {
   return (
     <>
       <PageIntro
-        title="Experiments"
+        title="Runs"
         glossary="An evaluation run on a dataset — scores per evaluator (quality / latency / cost…)."
       />
       <ExperimentList />

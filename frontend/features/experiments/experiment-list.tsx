@@ -141,7 +141,7 @@ export function ExperimentList() {
           : "Unknown error";
     return (
       <ErrorState
-        title="Could not load experiments"
+        title="Could not load runs"
         message={message}
         onRetry={() => query.refetch()}
       />
@@ -169,8 +169,8 @@ export function ExperimentList() {
 
       {rows.length === 0 ? (
         <EmptyState
-          title="No experiments yet"
-          description="Create an experiment to run evaluators against a dataset."
+          title="No runs yet"
+          description="Create a run to execute evaluators against a test set."
           action={
             projectId ? (
               <CreateExperimentDialog
@@ -189,7 +189,7 @@ export function ExperimentList() {
           selectedIndex={selectedIndex}
           onSelectedIndexChange={setSelectedIndex}
           onRowActivate={onRowActivate}
-          aria-label="Experiments"
+          aria-label="Runs"
         />
       )}
     </div>

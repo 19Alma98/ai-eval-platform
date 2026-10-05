@@ -7,18 +7,28 @@ import { withProjectQuery } from "@/lib/project-href";
 import { cn } from "@/lib/cn";
 
 const STEPS = [
-  { id: "traces", label: "Traces", href: "/traces", match: (p: string) => p.startsWith("/traces") },
-  { id: "datasets", label: "Datasets", href: "/datasets", match: (p: string) => p.startsWith("/datasets") },
+  {
+    id: "datasets",
+    label: "Test set",
+    href: "/datasets",
+    match: (p: string) => p.startsWith("/datasets"),
+  },
+  {
+    id: "metrics",
+    label: "Metriche",
+    href: "/metrics",
+    match: (p: string) => p.startsWith("/metrics"),
+  },
   {
     id: "experiments",
-    label: "Experiments",
+    label: "Runs",
     href: "/experiments",
     match: (p: string) =>
       p.startsWith("/experiments") && !p.includes("/compare"),
   },
   {
     id: "compare",
-    label: "Compare",
+    label: "Confronta",
     // resolved inside component when pathname has experimentId
     href: "/experiments",
     match: (p: string) => p.includes("/compare"),

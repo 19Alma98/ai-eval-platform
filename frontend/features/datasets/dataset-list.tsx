@@ -133,7 +133,7 @@ export function DatasetList() {
           : "Unknown error";
     return (
       <ErrorState
-        title="Could not load datasets"
+        title="Could not load test sets"
         message={message}
         onRetry={() => query.refetch()}
       />
@@ -183,8 +183,8 @@ export function DatasetList() {
 
       {allRows.length === 0 ? (
         <EmptyState
-          title="No datasets yet"
-          description="Create a dataset to collect trace examples for evaluation. Optionally set a task type for focused hints."
+          title="No test sets yet"
+          description="Create a test set to collect trace examples for evaluation. Optionally set a task type for focused hints."
           action={
             projectId ? (
               <CreateDatasetDialog
@@ -198,7 +198,7 @@ export function DatasetList() {
       ) : rows.length === 0 ? (
         <EmptyState
           title="No matches"
-          description="No datasets match this task filter."
+          description="No test sets match this task filter."
         />
       ) : (
         <DataTable
@@ -208,7 +208,7 @@ export function DatasetList() {
           selectedIndex={selectedIndex}
           onSelectedIndexChange={setSelectedIndex}
           onRowActivate={onRowActivate}
-          aria-label="Datasets"
+          aria-label="Test set"
         />
       )}
     </div>

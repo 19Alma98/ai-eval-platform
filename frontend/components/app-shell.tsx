@@ -6,8 +6,8 @@ import {
   Database,
   FileCode,
   FlaskConical,
-  GitBranch,
   LayoutDashboard,
+  LineChart,
   ShieldCheck,
 } from "lucide-react";
 import { ProjectSwitcher } from "@/components/project-switcher";
@@ -23,9 +23,9 @@ import { projectsQueryOptions } from "@/lib/queries/projects";
 
 const NAV = [
   { href: "/overview", label: "Overview", icon: LayoutDashboard },
-  { href: "/traces", label: "Traces", icon: GitBranch },
-  { href: "/datasets", label: "Datasets", icon: Database },
-  { href: "/experiments", label: "Experiments", icon: FlaskConical },
+  { href: "/datasets", label: "Test set", icon: Database },
+  { href: "/metrics", label: "Metriche", icon: LineChart },
+  { href: "/experiments", label: "Runs", icon: FlaskConical },
   { href: "/app-configs", label: "App configs", icon: FileCode },
   { href: "/release", label: "Release", icon: ShieldCheck },
 ] as const;

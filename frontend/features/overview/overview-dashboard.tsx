@@ -21,8 +21,10 @@ import { useProjectId } from "@/lib/project-store";
 import { useTimeRange } from "@/lib/time-range-context";
 import { cn } from "@/lib/cn";
 import {
+  evaluatorsQueryKey,
   experimentsQueryKey,
   experimentsQueryOptions,
+  useEvaluators,
   useExperiments,
 } from "@/features/experiments/use-experiments";
 import {
@@ -159,6 +161,7 @@ export function OverviewDashboard() {
   const tracesQuery = useTraces(projectId, traceFilters);
   const datasetsQuery = useDatasets(projectId);
   const experimentsQuery = useExperiments(projectId);
+  const evaluatorsQuery = useEvaluators(projectId);
 
   const traceOpts = projectId
     ? tracesQueryOptions(projectId, traceFilters)
@@ -242,60 +245,60 @@ export function OverviewDashboard() {
   }, [experiments]);
 
   const loopCards = useMemo(() => {
-    const traceCount = traces.length;
     const datasetCount = datasets.length;
+    const evaluatorCount = evaluatorsQuery.data?.length ?? 0;
     const experimentCount = experiments.length;
 
     return [
       {
-        title: "Traces",
-        measure: "Telemetry: latency, errors, I/O — not quality scores.",
-        status: traceCount === 0 ? ("empty" as const) : ("ready" as const),
-        summary:
-          traceCount === 0
-            ? "No traces in this time window. Send OTLP or run the demo."
-            : `${traceCount} trace${traceCount === 1 ? "" : "s"} in time window`,
-        href: "/traces",
-        cta: "Open traces",
-      },
-      {
-        title: "Datasets",
+        title: "Test set",
         measure: "Reusable test cases (input + expected/actual).",
         status: datasetCount === 0 ? ("empty" as const) : ("ready" as const),
         summary:
           datasetCount === 0
-            ? "No datasets yet."
-            : `${datasetCount} dataset${datasetCount === 1 ? "" : "s"}`,
+            ? "No test sets yet."
+            : `${datasetCount} test set${datasetCount === 1 ? "" : "s"}`,
         href: "/datasets",
-        cta: datasetCount === 0 ? "Create dataset" : "Open datasets",
+        cta: datasetCount === 0 ? "Create test set" : "Open test set",
       },
       {
-        title: "Experiments",
+        title: "Metriche",
+        measure: "Evaluator packs — what you measure on each run.",
+        status: evaluatorCount === 0 ? ("empty" as const) : ("ready" as const),
+        summary:
+          evaluatorCount === 0
+            ? "No evaluators configured yet."
+            : `${evaluatorCount} evaluator${evaluatorCount === 1 ? "" : "s"}`,
+        href: "/metrics",
+        cta: evaluatorCount === 0 ? "Configure Metriche" : "Open Metriche",
+      },
+      {
+        title: "Runs",
         measure: "Evaluation runs — scores per evaluator.",
         status: experimentCount === 0 ? ("empty" as const) : ("ready" as const),
         summary:
           experimentCount === 0
-            ? "No experiments yet."
+            ? "No runs yet."
             : latestExperiment
-              ? `${experimentCount} experiment${experimentCount === 1 ? "" : "s"}. Latest: ${latestExperiment.status}`
-              : `${experimentCount} experiment${experimentCount === 1 ? "" : "s"}`,
+              ? `${experimentCount} run${experimentCount === 1 ? "" : "s"}. Latest: ${latestExperiment.status}`
+              : `${experimentCount} run${experimentCount === 1 ? "" : "s"}`,
         href: "/experiments",
-        cta: experimentCount === 0 ? "Create experiment" : "Open experiments",
+        cta: experimentCount === 0 ? "Create run" : "Open runs",
       },
       {
-        title: "Release",
+        title: "Release readiness",
         measure: "PASS/FAIL against YAML thresholds.",
         status: hasCompletedExperiment ? ("ready" as const) : ("empty" as const),
         summary: hasCompletedExperiment
-          ? "At least one completed experiment — ready to run release check."
-          : "Complete an experiment before running release check.",
+          ? "At least one completed run — ready to run release check."
+          : "Complete a run before running release check.",
         href: "/release",
         cta: "Open release",
       },
     ];
   }, [
-    traces.length,
     datasets.length,
+    evaluatorsQuery.data?.length,
     experiments.length,
     latestExperiment,
     hasCompletedExperiment,
@@ -305,6 +308,7 @@ export function OverviewDashboard() {
     tracesQuery.dataUpdatedAt ?? 0,
     datasetsQuery.dataUpdatedAt ?? 0,
     experimentsQuery.dataUpdatedAt ?? 0,
+    evaluatorsQuery.dataUpdatedAt ?? 0,
   );
 
   const onRefresh = useCallback(async () => {
@@ -318,6 +322,9 @@ export function OverviewDashboard() {
       }),
       queryClient.refetchQueries({
         queryKey: experimentsQueryKey(projectId),
+      }),
+      queryClient.refetchQueries({
+        queryKey: evaluatorsQueryKey(projectId),
       }),
     ]);
   }, [projectId, queryClient, traceFilters]);
@@ -405,7 +412,8 @@ export function OverviewDashboard() {
   if (
     tracesQuery.isLoading ||
     datasetsQuery.isLoading ||
-    experimentsQuery.isLoading
+    experimentsQuery.isLoading ||
+    evaluatorsQuery.isLoading
   ) {
     return <LoadingBlock className="min-h-[320px]" />;
   }
@@ -413,10 +421,14 @@ export function OverviewDashboard() {
   if (
     tracesQuery.isError ||
     datasetsQuery.isError ||
-    experimentsQuery.isError
+    experimentsQuery.isError ||
+    evaluatorsQuery.isError
   ) {
     const err =
-      tracesQuery.error ?? datasetsQuery.error ?? experimentsQuery.error;
+      tracesQuery.error ??
+      datasetsQuery.error ??
+      experimentsQuery.error ??
+      evaluatorsQuery.error;
     const message =
       err instanceof ApiError
         ? `${err.status}: ${err.message}`
@@ -431,6 +443,7 @@ export function OverviewDashboard() {
           void tracesQuery.refetch();
           void datasetsQuery.refetch();
           void experimentsQuery.refetch();
+          void evaluatorsQuery.refetch();
         }}
       />
     );
@@ -470,12 +483,12 @@ export function OverviewDashboard() {
 
       {!hasCompletedExperiment ? (
         <p className="text-sm text-muted-foreground">
-          Quality scores appear after you evaluate an experiment.{" "}
+          Quality scores appear after you evaluate a run.{" "}
           <Link
             href={withProjectQuery("/experiments", projectId)}
             className="text-primary hover:underline"
           >
-            Open experiments
+            Open runs
           </Link>
         </p>
       ) : null}
