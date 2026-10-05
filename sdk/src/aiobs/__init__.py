@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from aiobs._eval_run import bind_evaluation, set_retrieval_documents
 from aiobs._otel import flush, init
 from aiobs._trace import (
     current_trace_id,
@@ -18,6 +19,7 @@ from aiobs.registry import AppConfigClient
 __all__ = [
     "__version__",
     "AppConfigClient",
+    "bind_evaluation",
     "current_trace_id",
     "flush",
     "init",
@@ -26,6 +28,7 @@ __all__ = [
     "set_error",
     "set_input",
     "set_output",
+    "set_retrieval_documents",
     "trace",
     "trace_async",
 ]
