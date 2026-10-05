@@ -62,7 +62,8 @@ def backfill_metrics_sets(connection) -> None:  # noqa: ANN001
                         (id, metrics_set_id, kind, enabled, threshold, config,
                          evaluator_id, is_default)
                     VALUES
-                        (:id, :metrics_set_id, :kind, :enabled, :threshold, :config,
+                        (:id, :metrics_set_id, :kind, :enabled, :threshold,
+                         CAST(:config AS jsonb),
                          :evaluator_id, :is_default)
                     """
                 ),
@@ -251,7 +252,7 @@ def downgrade() -> None:
                 sa.text(
                     """
                     INSERT INTO metrics_packs (id, project_id, entries, updated_at)
-                    VALUES (:id, :project_id, :entries, :updated_at)
+                    VALUES (:id, :project_id, CAST(:entries AS jsonb), :updated_at)
                     """
                 ),
                 {
