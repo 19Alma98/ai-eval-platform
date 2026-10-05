@@ -2,8 +2,8 @@
 
 import Link from "next/link";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { useMemo, useState, type FormEvent } from "react";
-import { useDatasets } from "@/features/datasets/use-datasets";
+import { useEffect, useMemo, useState, type FormEvent, type ReactNode } from "react";
+import { useDatasets, useDataset } from "@/features/datasets/use-datasets";
 import { useTaskTypes } from "@/features/datasets/use-task-types";
 import { CreateEvaluatorDialog } from "./create-evaluator-dialog";
 import { withProjectQuery } from "@/lib/project-href";
@@ -27,18 +27,24 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import { ApiError } from "@/lib/api/client";
-import { evaluateExperiment } from "@/lib/api/experiments";
+import { evaluateExperiment, evaluatePack } from "@/lib/api/experiments";
 import type { Dataset, EvaluatorSummary } from "@/lib/api/types";
 import { truncateId } from "@/lib/format";
 import {
   experimentQueryOptions,
+  experimentOutputsQueryKey,
   experimentSummaryQueryKey,
   experimentSummaryQueryOptions,
   useEvaluators,
+  useEvaluationRun,
   useExperiment,
+  useExperimentOutputs,
   useExperimentSummary,
 } from "./use-experiments";
+import { RunItemTimeline } from "./run-item-timeline";
+import { buildRunItemViews, type RunItemView } from "./run-items";
 import {
   experimentAppConfigChip,
   experimentModel,
@@ -53,6 +59,51 @@ function formatScore(value: number | null): string {
 function formatPassRate(value: number | null): string {
   if (value === null || value === undefined) return "—";
   return `${(value * 100).toFixed(1)}%`;
+}
+
+const PREVIEW_MAX = 96;
+
+function valuePreview(value: unknown): string {
+  if (value === null || value === undefined) return "—";
+  if (typeof value === "string") return value;
+  try {
+    return JSON.stringify(value);
+  } catch {
+    return String(value);
+  }
+}
+
+function truncatePreview(text: string, max = PREVIEW_MAX): string {
+  if (text === "—") return text;
+  if (text.length <= max) return text;
+  return `${text.slice(0, max)}…`;
+}
+
+function formatJson(value: unknown): string {
+  if (value === null || value === undefined) return "—";
+  if (typeof value === "string") return value;
+  try {
+    return JSON.stringify(value, null, 2);
+  } catch {
+    return String(value);
+  }
+}
+
+function DetailBlock({
+  title,
+  children,
+}: {
+  title: string;
+  children: ReactNode;
+}) {
+  return (
+    <div className="flex flex-col gap-1.5">
+      <h3 className="text-xs font-medium text-muted-foreground">{title}</h3>
+      <pre className="max-h-[200px] overflow-auto rounded-md border border-border bg-surface p-3 font-mono text-xs whitespace-pre-wrap break-words text-foreground">
+        {children}
+      </pre>
+    </div>
+  );
 }
 
 function evaluatorKind(ev: { config: Record<string, unknown> }): string | null {
@@ -77,9 +128,14 @@ export function ExperimentDetailView({
   const [evaluateOpen, setEvaluateOpen] = useState(false);
   const [createEvaluatorOpen, setCreateEvaluatorOpen] = useState(false);
   const [selectedIndex, setSelectedIndex] = useState(0);
+  const [selectedItemIndex, setSelectedItemIndex] = useState(0);
 
   const experiment = experimentQuery.data;
   const evaluators = summaryQuery.data?.evaluators ?? [];
+  const selectedRunId = evaluators[selectedIndex]?.run_id ?? null;
+  const runQuery = useEvaluationRun(selectedRunId);
+  const outputsQuery = useExperimentOutputs(experimentId);
+  const datasetDetailQuery = useDataset(experiment?.dataset_id ?? null);
 
   const datasetById = useMemo(() => {
     const map = new Map<string, Dataset>();
@@ -100,6 +156,45 @@ export function ExperimentDetailView({
   const releaseHref = withProjectQuery(
     `/release?experiment=${encodeURIComponent(experimentId)}`,
     projectId,
+  );
+
+  const runItemViews = useMemo(() => {
+    const items = datasetDetailQuery.data?.items ?? [];
+    const outputs = outputsQuery.data ?? [];
+    const results = runQuery.data?.results ?? [];
+    return buildRunItemViews(items, outputs, results);
+  }, [datasetDetailQuery.data?.items, outputsQuery.data, runQuery.data?.results]);
+
+  useEffect(() => {
+    setSelectedItemIndex(0);
+  }, [selectedRunId, runItemViews.length]);
+
+  const itemColumns: DataTableColumn<RunItemView>[] = useMemo(
+    () => [
+      {
+        id: "question",
+        header: "Question",
+        cell: (row) => (
+          <span className="line-clamp-2 font-mono text-xs text-foreground">
+            {truncatePreview(valuePreview(row.question))}
+          </span>
+        ),
+      },
+      {
+        id: "score",
+        header: "Score",
+        headerClassName: "w-[88px] text-right",
+        className: "text-right font-mono tabular-nums text-sm",
+        cell: (row) => formatScore(row.score),
+      },
+      {
+        id: "label",
+        header: "Label",
+        headerClassName: "w-[96px]",
+        cell: (row) => row.label?.trim() || "—",
+      },
+    ],
+    [],
   );
 
   const columns: DataTableColumn<EvaluatorSummary>[] = useMemo(
@@ -268,6 +363,7 @@ export function ExperimentDetailView({
           </div>
         </div>
         <div className="flex flex-wrap items-center gap-2">
+          <ScorePackButton experimentId={experimentId} />
           <EvaluateDialog
             projectId={projectId}
             experimentId={experimentId}
@@ -309,7 +405,7 @@ export function ExperimentDetailView({
       {evaluators.length === 0 ? (
         <EmptyState
           title="No evaluation runs"
-          description="Run evaluators against this experiment to see aggregated metrics."
+          description="Score with the project metrics pack or run selected evaluators to see aggregated metrics and per-item results."
         />
       ) : (
         <DataTable
@@ -322,12 +418,222 @@ export function ExperimentDetailView({
           aria-label="Experiment evaluator summary"
         />
       )}
+
+      {selectedRunId ? (
+        <RunItemsSection
+          projectId={projectId}
+          runId={selectedRunId}
+          evaluatorName={
+            evaluators[selectedIndex]?.evaluator_name?.trim() ||
+            truncateId(evaluators[selectedIndex]?.evaluator_id ?? "", 10)
+          }
+          runStatus={runQuery.data?.status}
+          itemsLoading={
+            runQuery.isLoading ||
+            outputsQuery.isLoading ||
+            datasetDetailQuery.isLoading
+          }
+          itemsError={
+            runQuery.isError
+              ? runQuery.error
+              : outputsQuery.isError
+                ? outputsQuery.error
+                : datasetDetailQuery.isError
+                  ? datasetDetailQuery.error
+                  : null
+          }
+          onRetryItems={() => {
+            void runQuery.refetch();
+            void outputsQuery.refetch();
+            void datasetDetailQuery.refetch();
+          }}
+          runItems={runItemViews}
+          itemColumns={itemColumns}
+          selectedItemIndex={selectedItemIndex}
+          onSelectedItemIndexChange={setSelectedItemIndex}
+        />
+      ) : null}
       <CreateEvaluatorDialog
         projectId={projectId}
         open={createEvaluatorOpen}
         onOpenChange={setCreateEvaluatorOpen}
       />
     </div>
+  );
+}
+
+function ScorePackButton({ experimentId }: { experimentId: string }) {
+  const queryClient = useQueryClient();
+  const scorePack = useMutation({
+    mutationFn: () => evaluatePack(experimentId),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({
+        queryKey: experimentSummaryQueryKey(experimentId),
+      });
+      await queryClient.invalidateQueries({
+        queryKey: experimentQueryOptions(experimentId).queryKey,
+      });
+      await queryClient.invalidateQueries({
+        queryKey: experimentOutputsQueryKey(experimentId),
+      });
+      toast.success("Metrics pack scoring started");
+    },
+    onError: (err) => {
+      const message =
+        err instanceof ApiError
+          ? err.message
+          : err instanceof Error
+            ? err.message
+            : "Score with metrics pack failed";
+      toast.error(message);
+    },
+  });
+
+  return (
+    <Button
+      type="button"
+      variant="outline"
+      size="sm"
+      disabled={scorePack.isPending}
+      onClick={() => scorePack.mutate()}
+    >
+      {scorePack.isPending ? "Scoring…" : "Score with metrics pack"}
+    </Button>
+  );
+}
+
+function RunItemsSection({
+  projectId,
+  runId,
+  evaluatorName,
+  runStatus,
+  itemsLoading,
+  itemsError,
+  onRetryItems,
+  runItems,
+  itemColumns,
+  selectedItemIndex,
+  onSelectedItemIndexChange,
+}: {
+  projectId: string;
+  runId: string;
+  evaluatorName: string;
+  runStatus?: string;
+  itemsLoading: boolean;
+  itemsError: unknown;
+  onRetryItems: () => void;
+  runItems: RunItemView[];
+  itemColumns: DataTableColumn<RunItemView>[];
+  selectedItemIndex: number;
+  onSelectedItemIndexChange: (index: number) => void;
+}) {
+  const selectedItem =
+    runItems[Math.min(selectedItemIndex, Math.max(runItems.length - 1, 0))] ??
+    null;
+
+  return (
+    <section className="flex flex-col gap-3 border-t border-border pt-4">
+      <div className="flex flex-wrap items-baseline justify-between gap-2">
+        <h2 className="text-sm font-medium text-foreground">Run items</h2>
+        <p className="text-xs text-muted-foreground">
+          Evaluator{" "}
+          <span className="font-medium text-foreground">{evaluatorName}</span>
+          {" · "}
+          Run{" "}
+          <span className="font-mono text-foreground">
+            {truncateId(runId, 12)}
+          </span>
+          {runStatus ? (
+            <>
+              {" · "}
+              <StatusBadge status={runStatus} />
+            </>
+          ) : null}
+        </p>
+      </div>
+
+      {itemsLoading ? (
+        <LoadingBlock className="min-h-[160px]" />
+      ) : itemsError ? (
+        <ErrorState
+          title="Could not load run items"
+          message={
+            itemsError instanceof ApiError
+              ? itemsError.message
+              : itemsError instanceof Error
+                ? itemsError.message
+                : "Unknown error"
+          }
+          onRetry={onRetryItems}
+        />
+      ) : runItems.length === 0 ? (
+        <EmptyState
+          title="No dataset items"
+          description="This experiment's dataset has no cases to score."
+        />
+      ) : (
+        <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)]">
+          <DataTable
+            rows={runItems}
+            columns={itemColumns}
+            getRowKey={(row) => row.datasetItemId}
+            selectedIndex={Math.min(
+              selectedItemIndex,
+              Math.max(runItems.length - 1, 0),
+            )}
+            onSelectedIndexChange={onSelectedItemIndexChange}
+            onRowActivate={() => {}}
+            aria-label="Evaluation run items"
+          />
+          {selectedItem ? (
+            <ScrollArea className="max-h-[min(70vh,640px)] rounded-md border border-border p-4">
+              <div className="flex flex-col gap-4 pr-3">
+                <p className="text-xs text-muted-foreground">
+                  Item{" "}
+                  <span className="font-mono text-foreground">
+                    {truncateId(selectedItem.datasetItemId, 12)}
+                  </span>
+                </p>
+                <DetailBlock title="Question">
+                  {formatJson(selectedItem.question)}
+                </DetailBlock>
+                <DetailBlock title="Expected answer">
+                  {formatJson(selectedItem.expectedAnswer)}
+                </DetailBlock>
+                <DetailBlock title="Expected doc IDs">
+                  {selectedItem.expectedDocIds.length > 0
+                    ? selectedItem.expectedDocIds.join(", ")
+                    : "—"}
+                </DetailBlock>
+                <DetailBlock title="Retrieved documents">
+                  {selectedItem.retrievedDocuments != null
+                    ? formatJson(selectedItem.retrievedDocuments)
+                    : selectedItem.context != null
+                      ? formatJson(selectedItem.context)
+                      : "—"}
+                </DetailBlock>
+                <DetailBlock title="Actual output">
+                  {formatJson(selectedItem.actualOutput)}
+                </DetailBlock>
+                <DetailBlock title="Scores">
+                  {formatScore(selectedItem.score)}
+                  {selectedItem.label ? ` · ${selectedItem.label}` : ""}
+                  {selectedItem.explanation?.trim()
+                    ? `\n\n${selectedItem.explanation.trim()}`
+                    : ""}
+                </DetailBlock>
+                {selectedItem.sourceTraceId ? (
+                  <RunItemTimeline
+                    projectId={projectId}
+                    traceId={selectedItem.sourceTraceId}
+                  />
+                ) : null}
+              </div>
+            </ScrollArea>
+          ) : null}
+        </div>
+      )}
+    </section>
   );
 }
 
@@ -365,6 +671,9 @@ function EvaluateDialog({
       });
       await queryClient.invalidateQueries({
         queryKey: experimentQueryOptions(experimentId).queryKey,
+      });
+      await queryClient.invalidateQueries({
+        queryKey: experimentOutputsQueryKey(experimentId),
       });
       toast.success("Evaluation started");
       setSelectedIds(new Set());

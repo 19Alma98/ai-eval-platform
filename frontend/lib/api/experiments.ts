@@ -1,8 +1,10 @@
 import { apiGet, apiPost } from "./client";
 import type {
   EvaluateResponse,
+  EvaluationRun,
   Experiment,
   ExperimentCompareResponse,
+  ExperimentItemOutput,
   ExperimentSummary,
   ItemComparisonResponse,
 } from "./types";
@@ -62,4 +64,21 @@ export function evaluateExperiment(
   body: { evaluator_ids: string[] },
 ) {
   return apiPost<EvaluateResponse>(`/api/v1/experiments/${id}/evaluate`, body);
+}
+
+export function evaluatePack(experimentId: string) {
+  return apiPost<EvaluateResponse>(
+    `/api/v1/experiments/${experimentId}/evaluate-pack`,
+    {},
+  );
+}
+
+export function getEvaluationRun(runId: string) {
+  return apiGet<EvaluationRun>(`/api/v1/evaluation-runs/${runId}`);
+}
+
+export function listExperimentOutputs(experimentId: string) {
+  return apiGet<ExperimentItemOutput[]>(
+    `/api/v1/experiments/${experimentId}/outputs`,
+  );
 }

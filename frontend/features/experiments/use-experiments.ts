@@ -4,7 +4,9 @@ import { useQuery } from "@tanstack/react-query";
 import {
   compareExperimentItems,
   compareExperiments,
+  getEvaluationRun,
   getExperiment,
+  listExperimentOutputs,
   listExperiments,
   summarizeExperiment,
 } from "@/lib/api/experiments";
@@ -155,5 +157,43 @@ export function useEvaluators(projectId: string | null) {
   return useQuery({
     ...evaluatorsQueryOptions(key),
     enabled: Boolean(projectId),
+  });
+}
+
+export function evaluationRunQueryKey(runId: string) {
+  return ["evaluation-run", runId] as const;
+}
+
+export function evaluationRunQueryOptions(runId: string) {
+  return {
+    queryKey: evaluationRunQueryKey(runId),
+    queryFn: () => getEvaluationRun(runId),
+  } as const;
+}
+
+export function useEvaluationRun(runId: string | null) {
+  const key = runId ?? "";
+  return useQuery({
+    ...evaluationRunQueryOptions(key),
+    enabled: Boolean(runId),
+  });
+}
+
+export function experimentOutputsQueryKey(experimentId: string) {
+  return ["experiment-outputs", experimentId] as const;
+}
+
+export function experimentOutputsQueryOptions(experimentId: string) {
+  return {
+    queryKey: experimentOutputsQueryKey(experimentId),
+    queryFn: () => listExperimentOutputs(experimentId),
+  } as const;
+}
+
+export function useExperimentOutputs(experimentId: string | null) {
+  const key = experimentId ?? "";
+  return useQuery({
+    ...experimentOutputsQueryOptions(key),
+    enabled: Boolean(experimentId),
   });
 }

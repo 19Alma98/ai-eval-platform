@@ -195,18 +195,41 @@ export type ItemComparisonResponse = {
   items: ItemComparisonRow[];
 };
 
+export type EvaluationResult = {
+  id: string;
+  run_id: string;
+  dataset_item_id: string;
+  score: number | null;
+  label: string | null;
+  explanation: string | null;
+  metadata: Record<string, unknown>;
+  duration_ms: number | null;
+};
+
+export type EvaluationRun = {
+  id: string;
+  experiment_id: string;
+  evaluator_id: string;
+  status: string;
+  started_at: string | null;
+  finished_at: string | null;
+  metadata: Record<string, unknown>;
+  results: EvaluationResult[];
+};
+
+export type ExperimentItemOutput = {
+  id: string;
+  experiment_id: string;
+  dataset_item_id: string;
+  actual_output: unknown | null;
+  context: unknown | null;
+  metadata: Record<string, unknown>;
+  updated_at: string;
+};
+
 export type EvaluateResponse = {
   experiment: Experiment;
-  runs: {
-    id: string;
-    experiment_id: string;
-    evaluator_id: string;
-    status: string;
-    started_at: string | null;
-    finished_at: string | null;
-    metadata: Record<string, unknown>;
-    results: unknown[];
-  }[];
+  runs: EvaluationRun[];
 };
 
 export type ReleaseCheckItemResponse = {

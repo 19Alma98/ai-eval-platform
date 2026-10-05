@@ -132,7 +132,7 @@ export function ExperimentCompareView({
         />
         <EmptyState
           title="Choose a baseline"
-          description="Pick another experiment to compare against. You'll see deltas on metrics both runs share."
+          description="Pick another experiment on the same test set to compare against. You'll see deltas on metrics both runs share."
         />
       </div>
     );
@@ -154,12 +154,23 @@ export function ExperimentCompareView({
 
   if (compareQuery.isError) {
     const err = compareQuery.error;
-    const message =
+    const rawMessage =
       err instanceof ApiError
-        ? `${err.status}: ${err.message}`
+        ? err.message
         : err instanceof Error
           ? err.message
           : "Unknown error";
+    const isDatasetMismatch =
+      err instanceof ApiError &&
+      err.status === 400 &&
+      rawMessage.includes(
+        "Runs must share the same dataset (test set version)",
+      );
+    const message = isDatasetMismatch
+      ? "Runs must share the same dataset (test set version). Choose a baseline experiment created on the same dataset."
+      : err instanceof ApiError
+        ? `${err.status}: ${rawMessage}`
+        : rawMessage;
     return (
       <div className="flex flex-col gap-3">
         <CompareHeader
@@ -169,7 +180,9 @@ export function ExperimentCompareView({
           baselinePicker={baselinePicker}
         />
         <ErrorState
-          title="Could not compare experiments"
+          title={
+            isDatasetMismatch ? "Different test sets" : "Could not compare experiments"
+          }
           message={message}
           onRetry={() => compareQuery.refetch()}
         />

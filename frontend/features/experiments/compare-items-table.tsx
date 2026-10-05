@@ -362,7 +362,8 @@ function CompareItemsError({
   const isDatasetMismatch =
     error instanceof ApiError &&
     error.status === 400 &&
-    message.toLowerCase().includes("different datasets");
+    (message.includes("Runs must share the same dataset (test set version)") ||
+      message.toLowerCase().includes("different datasets"));
 
   const isAmbiguousEvaluator =
     error instanceof ApiError &&
@@ -372,8 +373,8 @@ function CompareItemsError({
   if (isDatasetMismatch) {
     return (
       <ErrorState
-        title="Different datasets"
-        message="These experiments are not on the same dataset, so item-level compare is not available."
+        title="Different test sets"
+        message="Runs must share the same dataset (test set version). Pick a baseline experiment that uses the same dataset as the candidate."
       />
     );
   }
