@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import logging
 import os
 from pathlib import Path
 from typing import Any
@@ -12,6 +13,8 @@ import aiobs
 from openai import OpenAI
 
 from kb import expected_for_question, iter_gold, load_knowledge, retrieve
+
+logger = logging.getLogger(__name__)
 
 SYSTEM_PROMPT = (
     "You are Acme's People Ops assistant. Answer using only the provided "
@@ -75,6 +78,12 @@ def answer_question(
     if experiment_id and dataset_item_id:
         aiobs.bind_evaluation(
             experiment_id=experiment_id, dataset_item_id=dataset_item_id
+        )
+    elif experiment_id:
+        logger.warning(
+            "experiment_id=%s set but dataset_item_id missing; "
+            "trace will not be bound to an evaluation item",
+            experiment_id,
         )
     aiobs.set_input(question)
     aiobs.set_attribute("llm.model", model)
