@@ -9,12 +9,14 @@ import pytest
 from httpx import ASGITransport, AsyncClient
 
 from aiobs.api.deps import (
+    get_bind_otlp_traces,
     get_dataset_repository,
     get_experiment_item_output_repository,
     get_experiment_repository,
     get_project_repository,
     get_trace_repository,
 )
+from aiobs.domain.trace import Trace
 from aiobs.main import create_app
 from tests.test_api_experiment_outputs import (
     InMemoryDatasetRepository,
@@ -199,6 +201,34 @@ async def test_otlp_unknown_experiment_still_stores_trace(client: AsyncClient) -
     assert otlp.status_code == 200
 
     traces = await client.get(f"/api/v1/projects/{project_id}/traces")
+    assert len(traces.json()["items"]) == 1
+
+
+class _FailingBindOtlpTraces:
+    async def execute(self, traces: list[Trace]) -> None:
+        raise RuntimeError("bind failed")
+
+
+@pytest.mark.asyncio
+async def test_otlp_bind_failure_still_stores_trace(client: AsyncClient) -> None:
+    project_id, experiment_id, item_id = await _seed_rag_experiment(client)
+    payload = _otlp_payload(experiment_id=experiment_id, dataset_item_id=item_id)
+
+    app = client._transport.app  # type: ignore[attr-defined]
+    app.dependency_overrides[get_bind_otlp_traces] = lambda: _FailingBindOtlpTraces()
+
+    otlp = await client.post(
+        "/v1/traces",
+        content=json.dumps(payload),
+        headers={
+            "content-type": "application/json",
+            "X-Project-Id": project_id,
+        },
+    )
+    assert otlp.status_code == 200
+
+    traces = await client.get(f"/api/v1/projects/{project_id}/traces")
+    assert traces.status_code == 200
     assert len(traces.json()["items"]) == 1
 
 

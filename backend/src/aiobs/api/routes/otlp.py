@@ -68,7 +68,10 @@ async def export_traces(
         )
 
     saved = await ingest.execute(traces)
-    await bind_outputs.execute(saved)
+    try:
+        await bind_outputs.execute(saved)
+    except Exception:
+        pass
 
     # OTLP success: empty ExportTraceServiceResponse (protobuf bytes)
     response = ExportTraceServiceResponse()
