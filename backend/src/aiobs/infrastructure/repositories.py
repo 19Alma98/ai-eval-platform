@@ -14,6 +14,7 @@ from aiobs.domain.evaluation import EvaluationResultRecord, EvaluationRun
 from aiobs.domain.evaluator import Evaluator
 from aiobs.domain.experiment import Experiment
 from aiobs.domain.experiment_output import ExperimentItemOutput
+from aiobs.domain.metrics_pack import MetricsPack, MetricsPackEntry
 from aiobs.domain.project import Project
 from aiobs.domain.trace import Span, Trace
 from aiobs.infrastructure.models import (
@@ -26,6 +27,7 @@ from aiobs.infrastructure.models import (
     EvaluatorModel,
     ExperimentItemOutputModel,
     ExperimentModel,
+    MetricsPackModel,
     ProjectModel,
     SpanModel,
     TraceModel,
@@ -779,6 +781,84 @@ class SqlAlchemyEvaluationRunRepository:
         self._session.add_all(rows)
         await self._session.commit()
         return [_result_to_domain(row) for row in rows]
+
+
+def _metrics_pack_entry_to_json(entry: MetricsPackEntry) -> dict:
+    return {
+        "kind": entry.kind,
+        "enabled": entry.enabled,
+        "threshold": entry.threshold,
+        "config": dict(entry.config),
+        "evaluator_id": str(entry.evaluator_id) if entry.evaluator_id is not None else None,
+        "removable": entry.removable,
+    }
+
+
+def _metrics_pack_entry_from_json(raw: dict) -> MetricsPackEntry:
+    evaluator_raw = raw.get("evaluator_id")
+    evaluator_id = uuid.UUID(evaluator_raw) if evaluator_raw else None
+    config_raw = raw.get("config") or {}
+    return MetricsPackEntry(
+        kind=str(raw["kind"]),
+        enabled=bool(raw.get("enabled", True)),
+        threshold=raw.get("threshold"),
+        config=dict(config_raw) if isinstance(config_raw, dict) else {},
+        evaluator_id=evaluator_id,
+        removable=bool(raw.get("removable", False)),
+    )
+
+
+def _metrics_pack_to_domain(row: MetricsPackModel) -> MetricsPack:
+    raw_entries = row.entries or []
+    entries = tuple(_metrics_pack_entry_from_json(item) for item in raw_entries)
+    return MetricsPack(
+        id=row.id,
+        project_id=row.project_id,
+        entries=entries,
+        updated_at=row.updated_at,
+    )
+
+
+class SqlAlchemyMetricsPackRepository:
+    def __init__(self, session: AsyncSession) -> None:
+        self._session = session
+
+    async def add(self, pack: MetricsPack) -> MetricsPack:
+        row = MetricsPackModel(
+            id=pack.id,
+            project_id=pack.project_id,
+            entries=[_metrics_pack_entry_to_json(e) for e in pack.entries],
+            updated_at=pack.updated_at,
+        )
+        self._session.add(row)
+        try:
+            await self._session.commit()
+        except IntegrityError:
+            await self._session.rollback()
+            raise
+        await self._session.refresh(row)
+        return _metrics_pack_to_domain(row)
+
+    async def get_by_project_id(self, project_id: uuid.UUID) -> MetricsPack | None:
+        result = await self._session.execute(
+            select(MetricsPackModel).where(MetricsPackModel.project_id == project_id)
+        )
+        row = result.scalar_one_or_none()
+        return _metrics_pack_to_domain(row) if row is not None else None
+
+    async def update(self, pack: MetricsPack) -> MetricsPack:
+        row = await self._session.get(MetricsPackModel, pack.id)
+        if row is None:
+            raise ValueError(f"MetricsPack not found: {pack.id}")
+        row.entries = [_metrics_pack_entry_to_json(e) for e in pack.entries]
+        row.updated_at = pack.updated_at
+        try:
+            await self._session.commit()
+        except IntegrityError:
+            await self._session.rollback()
+            raise
+        await self._session.refresh(row)
+        return _metrics_pack_to_domain(row)
 
 
 class SqlAlchemyExperimentItemOutputRepository:
