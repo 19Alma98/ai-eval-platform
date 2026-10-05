@@ -63,9 +63,12 @@ def row_to_item_fields(row: dict[str, Any]) -> tuple[str, str, dict[str, Any]]:
     question = row.get("question")
     answer = row.get("expected_answer")
     doc_ids = _coerce_expected_doc_ids(row.get("expected_doc_ids"))
+    metadata: dict[str, Any] = {"expected_doc_ids": doc_ids}
+    if "must_contain" in row:
+        metadata["must_contain"] = _coerce_expected_doc_ids(row.get("must_contain"))
     meta = validate_rag_qa_item(
         input=question,
         expected_output=answer,
-        metadata={"expected_doc_ids": doc_ids},
+        metadata=metadata,
     )
     return str(question).strip(), str(answer).strip(), meta

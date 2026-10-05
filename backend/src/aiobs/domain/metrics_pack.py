@@ -28,6 +28,14 @@ DEFAULT_RAG_ENTRIES: tuple[MetricsPackEntry, ...] = (
         removable=False,
     ),
     MetricsPackEntry(
+        kind="must_contain",
+        enabled=True,
+        threshold=1.0,
+        config={"case_sensitive": False},
+        evaluator_id=None,
+        removable=False,
+    ),
+    MetricsPackEntry(
         kind="groundedness",
         enabled=True,
         threshold=0.7,

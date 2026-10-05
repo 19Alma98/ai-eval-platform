@@ -37,8 +37,11 @@ function truncatePreview(text: string, max = PREVIEW_MAX): string {
   return `${text.slice(0, max)}…`;
 }
 
-function formatExpectedDocIds(metadata: Record<string, unknown>): string {
-  const raw = metadata.expected_doc_ids;
+function formatStringList(
+  metadata: Record<string, unknown>,
+  key: string,
+): string {
+  const raw = metadata[key];
   if (Array.isArray(raw)) {
     const ids = raw.filter((id): id is string => typeof id === "string");
     return ids.length > 0 ? ids.join(", ") : "—";
@@ -109,7 +112,21 @@ export function DatasetDetailView({
         headerClassName: "w-[160px]",
         cell: (row) => (
           <span className="line-clamp-2 font-mono text-xs text-muted-foreground">
-            {truncatePreview(formatExpectedDocIds(row.metadata ?? {}))}
+            {truncatePreview(
+              formatStringList(row.metadata ?? {}, "expected_doc_ids"),
+            )}
+          </span>
+        ),
+      },
+      {
+        id: "must_contain",
+        header: "Must contain",
+        headerClassName: "w-[160px]",
+        cell: (row) => (
+          <span className="line-clamp-2 font-mono text-xs text-muted-foreground">
+            {truncatePreview(
+              formatStringList(row.metadata ?? {}, "must_contain"),
+            )}
           </span>
         ),
       },

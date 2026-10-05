@@ -434,7 +434,7 @@ async def test_evaluate_pack_uses_enabled_metrics_pack_evaluators(
     pack = ensured.json()
     entries = [
         _pack_entry_payload(pack, kind)
-        for kind in ("hit_at_k", "groundedness", "correctness", "latency")
+        for kind in ("hit_at_k", "must_contain", "groundedness", "correctness", "latency")
     ]
     for entry in entries:
         entry["enabled"] = entry["kind"] == "hit_at_k"

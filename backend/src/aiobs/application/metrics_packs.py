@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import uuid
 from dataclasses import dataclass, replace
+from datetime import UTC, datetime
 from typing import Any
 
 from aiobs.application.evaluators import CreateEvaluator, CreateEvaluatorCommand
@@ -123,6 +124,10 @@ class EnsureMetricsPack:
         pack = await self._packs.get_by_project_id(project_id)
         if pack is None:
             pack = await self._packs.add(MetricsPack.create(project_id))
+        else:
+            backfilled = _with_missing_default_entries(pack)
+            if backfilled.entries != pack.entries:
+                pack = await self._packs.update(backfilled)
 
         updated = await self._ensure_evaluator_ids(pack)
         if updated.entries != pack.entries:
@@ -152,6 +157,22 @@ class EnsureMetricsPack:
                 current, replace(current_entry, evaluator_id=evaluator.id)
             )
         return current
+
+
+def _with_missing_default_entries(pack: MetricsPack) -> MetricsPack:
+    existing = {e.kind for e in pack.entries}
+    extras = [
+        replace(default, config=dict(default.config))
+        for default in DEFAULT_RAG_ENTRIES
+        if default.kind not in existing
+    ]
+    if not extras:
+        return pack
+    return replace(
+        pack,
+        entries=(*pack.entries, *extras),
+        updated_at=datetime.now(UTC),
+    )
 
 
 class GetMetricsPack:

@@ -20,3 +20,27 @@ def test_row_to_item_fields_json_array_string_doc_ids() -> None:
         }
     )
     assert meta["expected_doc_ids"] == ["a", "b"]
+
+
+def test_row_to_item_fields_must_contain_pipe() -> None:
+    _, _, meta = row_to_item_fields(
+        {
+            "question": "Q?",
+            "expected_answer": "A",
+            "expected_doc_ids": "pto",
+            "must_contain": "20 days|PTO",
+        }
+    )
+    assert meta["must_contain"] == ["20 days", "PTO"]
+
+
+def test_row_to_item_fields_empty_must_contain_omitted() -> None:
+    _, _, meta = row_to_item_fields(
+        {
+            "question": "Q?",
+            "expected_answer": "A",
+            "expected_doc_ids": "pto",
+            "must_contain": "",
+        }
+    )
+    assert "must_contain" not in meta

@@ -155,6 +155,7 @@ async def test_import_json_happy_path(client: AsyncClient) -> None:
             "question": "Q1?",
             "expected_answer": "A1",
             "expected_doc_ids": ["d1", "d2"],
+            "must_contain": ["phrase one"],
         },
     ]
     resp = await client.post(
@@ -163,6 +164,8 @@ async def test_import_json_happy_path(client: AsyncClient) -> None:
     )
     assert resp.status_code == 200
     assert resp.json()["created"] == 1
+    detail = await client.get(f"/api/v1/datasets/{ds_id}")
+    assert detail.json()["items"][0]["metadata"]["must_contain"] == ["phrase one"]
 
 
 @pytest.mark.asyncio

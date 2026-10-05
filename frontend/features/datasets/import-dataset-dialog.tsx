@@ -132,12 +132,13 @@ export function ImportDatasetDialog({
                   <span className="font-medium text-foreground">
                     {datasetName}
                   </span>
-                  . Required columns: question, expected_answer, expected_doc_ids.
+                  . Required: question, expected_answer, expected_doc_ids.
+                  Optional: must_contain.
                 </>
               ) : (
                 <>
-                  Upload CSV or JSON with question, expected_answer, and
-                  expected_doc_ids.
+                  Upload CSV or JSON with question, expected_answer,
+                  expected_doc_ids, and optional must_contain.
                 </>
               )}
             </DialogDescription>
@@ -158,8 +159,8 @@ export function ImportDatasetDialog({
                 }}
               />
               <p className="text-xs text-muted-foreground">
-                CSV: pipe-separated doc ids in expected_doc_ids. JSON: array of
-                objects with the same fields.
+                CSV: pipe-separated values in expected_doc_ids and must_contain.
+                JSON: arrays for the same fields.
               </p>
             </div>
             {importErrors.length > 0 ? (

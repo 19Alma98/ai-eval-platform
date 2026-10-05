@@ -19,6 +19,15 @@ def test_validate_ok() -> None:
     assert meta["expected_doc_ids"] == ["pto-1"]
 
 
+def test_validate_normalizes_must_contain() -> None:
+    meta = validate_rag_qa_item(
+        input="What is PTO?",
+        expected_output="20 days",
+        metadata={"expected_doc_ids": ["pto-1"], "must_contain": "20 days|PTO"},
+    )
+    assert meta["must_contain"] == ["20 days", "PTO"]
+
+
 @pytest.mark.parametrize(
     "kwargs",
     [

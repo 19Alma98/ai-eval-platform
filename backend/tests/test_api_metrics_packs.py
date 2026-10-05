@@ -95,14 +95,22 @@ def _entry_payload(pack: dict, kind: str) -> dict:
 
 
 @pytest.mark.asyncio
-async def test_ensure_creates_four_entries_with_evaluator_ids(client: AsyncClient) -> None:
+async def test_ensure_creates_default_entries_with_evaluator_ids(
+    client: AsyncClient,
+) -> None:
     proj = (await client.post("/api/v1/projects", json={"name": "P", "slug": "p-mp"})).json()
     resp = await client.post(f"/api/v1/projects/{proj['id']}/metrics-pack/ensure")
     assert resp.status_code == 200
     body = resp.json()
-    assert len(body["entries"]) == 4
+    assert len(body["entries"]) == 5
     kinds = {e["kind"] for e in body["entries"]}
-    assert kinds == {"hit_at_k", "groundedness", "correctness", "latency"}
+    assert kinds == {
+        "hit_at_k",
+        "must_contain",
+        "groundedness",
+        "correctness",
+        "latency",
+    }
     for entry in body["entries"]:
         assert entry["evaluator_id"] is not None
 
@@ -117,7 +125,7 @@ async def test_put_cannot_drop_hit_at_k(client: AsyncClient) -> None:
     ensured = (await client.post(f"/api/v1/projects/{proj['id']}/metrics-pack/ensure")).json()
     entries = [
         _entry_payload(ensured, k)
-        for k in ("groundedness", "correctness", "latency")
+        for k in ("must_contain", "groundedness", "correctness", "latency")
     ]
     bad = await client.put(
         f"/api/v1/projects/{proj['id']}/metrics-pack",
@@ -130,7 +138,10 @@ async def test_put_cannot_drop_hit_at_k(client: AsyncClient) -> None:
 async def test_put_can_disable_hit_at_k(client: AsyncClient) -> None:
     proj = (await client.post("/api/v1/projects", json={"name": "P3", "slug": "p-mp3"})).json()
     ensured = (await client.post(f"/api/v1/projects/{proj['id']}/metrics-pack/ensure")).json()
-    entries = [_entry_payload(ensured, k) for k in ("hit_at_k", "groundedness", "correctness", "latency")]
+    entries = [
+        _entry_payload(ensured, k)
+        for k in ("hit_at_k", "must_contain", "groundedness", "correctness", "latency")
+    ]
     hit = next(e for e in entries if e["kind"] == "hit_at_k")
     hit["enabled"] = False
     updated = await client.put(
@@ -149,7 +160,10 @@ async def test_put_rejects_foreign_or_unknown_evaluator_id(client: AsyncClient) 
     ensured = (
         await client.post(f"/api/v1/projects/{proj_a['id']}/metrics-pack/ensure")
     ).json()
-    entries = [_entry_payload(ensured, k) for k in ("hit_at_k", "groundedness", "correctness", "latency")]
+    entries = [
+        _entry_payload(ensured, k)
+        for k in ("hit_at_k", "must_contain", "groundedness", "correctness", "latency")
+    ]
 
     foreign_resp = await client.post(
         f"/api/v1/projects/{proj_b['id']}/evaluators",
@@ -197,5 +211,5 @@ async def test_rag_qa_dataset_create_auto_ensures_metrics_pack(client: AsyncClie
     )
     pack = await client.get(f"/api/v1/projects/{proj['id']}/metrics-pack")
     assert pack.status_code == 200
-    assert len(pack.json()["entries"]) == 4
+    assert len(pack.json()["entries"]) == 5
     assert all(e["evaluator_id"] for e in pack.json()["entries"])

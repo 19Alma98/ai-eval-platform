@@ -349,6 +349,59 @@ class ToolCallSuccessEvaluator:
         )
 
 
+class MustContainEvaluator:
+    name = "must_contain"
+
+    def __init__(self, config: dict[str, Any]) -> None:
+        self._case_sensitive = bool(config.get("case_sensitive", False))
+
+    async def evaluate(self, sample: EvaluationSample) -> EvaluationResult:
+        if sample.actual_output is None:
+            return EvaluationResult(
+                score=None, label="SKIPPED", explanation="actual_output is missing"
+            )
+        raw = sample.metadata.get("must_contain")
+        if raw is None:
+            return EvaluationResult(
+                score=None,
+                label="SKIPPED",
+                explanation="metadata.must_contain is missing",
+            )
+        if not isinstance(raw, list) or not raw:
+            return EvaluationResult(
+                score=None,
+                label="SKIPPED",
+                explanation="metadata.must_contain must be a non-empty list",
+            )
+        keywords = [str(x).strip() for x in raw if str(x).strip()]
+        if not keywords:
+            return EvaluationResult(
+                score=None,
+                label="SKIPPED",
+                explanation="metadata.must_contain must be a non-empty list",
+            )
+
+        haystack = _stringify(sample.actual_output)
+        needles = keywords
+        if not self._case_sensitive:
+            haystack = haystack.lower()
+            needles = [k.lower() for k in keywords]
+        missing = [keywords[i] for i, needle in enumerate(needles) if needle not in haystack]
+        ok = len(missing) == 0
+        return EvaluationResult(
+            score=1.0 if ok else 0.0,
+            label="PASS" if ok else "FAIL",
+            explanation=(
+                "all required phrases found" if ok else f"missing: {', '.join(missing)}"
+            ),
+            metadata={
+                "must_contain": keywords,
+                "missing": missing,
+                "case_sensitive": self._case_sensitive,
+            },
+        )
+
+
 def register_deterministic_evaluators() -> None:
     register_evaluator("exact_match", ExactMatchEvaluator)
     register_evaluator("contains", ContainsEvaluator)
@@ -359,3 +412,4 @@ def register_deterministic_evaluators() -> None:
     register_evaluator("cost", CostEvaluator)
     register_evaluator("tool_call_success", ToolCallSuccessEvaluator)
     register_evaluator("hit_at_k", HitAtKEvaluator)
+    register_evaluator("must_contain", MustContainEvaluator)
