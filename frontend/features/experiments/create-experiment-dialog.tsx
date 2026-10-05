@@ -33,7 +33,6 @@ import {
   useAppConfigs,
 } from "@/features/app-configs/use-app-configs";
 import { useDatasets } from "@/features/datasets/use-datasets";
-import { taskTypeLabel, useTaskTypes } from "@/features/datasets/use-task-types";
 import { experimentsQueryKey } from "./use-experiments";
 
 type ModelSource = "free" | "app-config";
@@ -51,7 +50,6 @@ export function CreateExperimentDialog({
   const router = useRouter();
   const queryClient = useQueryClient();
   const datasetsQuery = useDatasets(projectId);
-  const taskTypesQuery = useTaskTypes();
   const appConfigsQuery = useAppConfigs(projectId);
   const aliasesQuery = useAppConfigAliases(projectId);
   const datasets = datasetsQuery.data ?? [];
@@ -198,15 +196,11 @@ export function CreateExperimentDialog({
                   <SelectValue placeholder="Select dataset" />
                 </SelectTrigger>
                 <SelectContent>
-                  {datasets.map((d) => {
-                    const label = taskTypeLabel(taskTypesQuery.data, d.task_type);
-                    return (
-                      <SelectItem key={d.id} value={d.id}>
-                        {d.name} (v{d.version})
-                        {label ? ` · ${label}` : ""}
-                      </SelectItem>
-                    );
-                  })}
+                  {datasets.map((d) => (
+                    <SelectItem key={d.id} value={d.id}>
+                      {d.name} (v{d.version})
+                    </SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
               {!hasDatasets ? (

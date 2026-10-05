@@ -29,6 +29,7 @@ import {
   listDatasets,
 } from "@/lib/api/datasets";
 import { LoadingBlock } from "@/components/loading-block";
+import { RAG_QA_TASK } from "@/features/datasets/rag-qa";
 import { datasetQueryKey } from "@/features/datasets/use-datasets";
 import { withProjectQuery } from "@/lib/project-href";
 
@@ -64,6 +65,7 @@ export function AddToDatasetDialog({
       if (mode === "new") {
         const created = await createDataset(projectId, {
           name: newName.trim(),
+          task_type: RAG_QA_TASK,
         });
         targetId = created.id;
       }

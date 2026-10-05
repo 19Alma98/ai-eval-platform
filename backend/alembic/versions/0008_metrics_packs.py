@@ -20,6 +20,9 @@ depends_on: str | Sequence[str] | None = None
 
 
 def upgrade() -> None:
+    inspector = sa.inspect(op.get_bind())
+    if inspector.has_table("metrics_packs"):
+        return
     op.create_table(
         "metrics_packs",
         sa.Column("id", sa.Uuid(), nullable=False),

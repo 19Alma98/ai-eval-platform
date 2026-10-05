@@ -3,8 +3,8 @@
 import Link from "next/link";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useState, type FormEvent, type ReactNode } from "react";
+import { RAG_RECOMMENDED_EVALUATOR_KINDS } from "@/features/datasets/rag-qa";
 import { useDatasets, useDataset } from "@/features/datasets/use-datasets";
-import { useTaskTypes } from "@/features/datasets/use-task-types";
 import { CreateEvaluatorDialog } from "./create-evaluator-dialog";
 import { withProjectQuery } from "@/lib/project-href";
 import { ArrowLeft, GitCompare, ShieldCheck } from "lucide-react";
@@ -123,7 +123,6 @@ export function ExperimentDetailView({
   const experimentQuery = useExperiment(experimentId);
   const summaryQuery = useExperimentSummary(experimentId);
   const datasetsQuery = useDatasets(projectId);
-  const taskTypesQuery = useTaskTypes();
   const summaryOpts = experimentSummaryQueryOptions(experimentId);
   const [evaluateOpen, setEvaluateOpen] = useState(false);
   const [createEvaluatorOpen, setCreateEvaluatorOpen] = useState(false);
@@ -295,10 +294,7 @@ export function ExperimentDetailView({
     `/datasets/${encodeURIComponent(experiment.dataset_id)}`,
     projectId,
   );
-  const taskInfo = (taskTypesQuery.data ?? []).find(
-    (t) => t.id === dataset?.task_type,
-  );
-  const recommendedKinds = taskInfo?.recommended_evaluator_kinds ?? [];
+  const recommendedKinds = [...RAG_RECOMMENDED_EVALUATOR_KINDS];
   const modelLabel = experimentModel(experiment);
   const versionLabel = experimentVersion(experiment);
   const appConfigChip = experimentAppConfigChip(experiment);
@@ -341,9 +337,6 @@ export function ExperimentDetailView({
               >
                 {datasetLabel}
               </Link>
-              {taskInfo ? (
-                <Badge variant="secondary">{taskInfo.label}</Badge>
-              ) : null}
             </span>
             {appConfigChip && appConfigHref ? (
               <span className="inline-flex items-center gap-2">
@@ -746,7 +739,7 @@ function EvaluateDialog({
             <DialogDescription>
               Select one or more evaluators to run against this experiment.
               {recommendedKinds.length > 0
-                ? ` Recommended for this dataset task: ${recommendedKinds.join(", ")}.`
+                ? ` Recommended for RAG Q&A: ${recommendedKinds.join(", ")}.`
                 : ""}
             </DialogDescription>
           </DialogHeader>

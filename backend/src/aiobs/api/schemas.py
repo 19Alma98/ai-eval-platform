@@ -99,7 +99,7 @@ class CreateDatasetRequest(BaseModel):
     name: str = Field(min_length=1, max_length=200)
     version: int = Field(default=1, ge=1)
     description: str | None = Field(default=None, max_length=2000)
-    task_type: str | None = Field(default=None, max_length=64)
+    task_type: str | None = Field(default="rag_qa", max_length=64)
 
 
 class DatasetResponse(BaseModel):

@@ -39,7 +39,7 @@ class Dataset:
             name=cleaned,
             version=version,
             description=description.strip() if description else None,
-            task_type=normalize_task_type(task_type),
+            task_type=normalize_task_type(task_type) or "rag_qa",
             created_at=datetime.now(UTC),
         )
 

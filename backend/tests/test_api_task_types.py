@@ -123,6 +123,19 @@ async def test_create_dataset_with_task_type(client: AsyncClient) -> None:
 
 
 @pytest.mark.asyncio
+async def test_create_dataset_defaults_to_rag_qa(client: AsyncClient) -> None:
+    project = await client.post("/api/v1/projects", json={"name": "Default Type"})
+    project_id = project.json()["id"]
+
+    created = await client.post(
+        f"/api/v1/projects/{project_id}/datasets",
+        json={"name": "untitled"},
+    )
+    assert created.status_code == 201, created.text
+    assert created.json()["task_type"] == "rag_qa"
+
+
+@pytest.mark.asyncio
 async def test_create_dataset_rejects_unknown_task_type(client: AsyncClient) -> None:
     project = await client.post("/api/v1/projects", json={"name": "Bad Type"})
     project_id = project.json()["id"]

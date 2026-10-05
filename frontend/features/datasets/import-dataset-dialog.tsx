@@ -17,9 +17,8 @@ import {
 import { Input } from "@/components/ui/input";
 import { ApiError } from "@/lib/api/client";
 import { importDatasetItems } from "@/lib/api/datasets";
+import { RAG_QA_TASK } from "./rag-qa";
 import { datasetQueryKey, datasetsQueryKey } from "./use-datasets";
-
-const RAG_QA_TASK = "rag_qa";
 
 export function ImportDatasetDialog({
   projectId,
@@ -113,7 +112,7 @@ export function ImportDatasetDialog({
               title={
                 canImport
                   ? undefined
-                  : "Import is available for RAG Q&A test sets only"
+                  : "Import is available for this test set only after it is created as RAG Q&A"
               }
             >
               <Upload className="size-4" />
