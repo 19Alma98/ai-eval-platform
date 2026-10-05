@@ -6,7 +6,13 @@ from opentelemetry.proto.collector.trace.v1.trace_service_pb2 import (
     ExportTraceServiceResponse,
 )
 
-from aiobs.api.deps import get_app_settings, get_ingest_traces, get_resolve_project
+from aiobs.api.deps import (
+    get_app_settings,
+    get_bind_otlp_traces,
+    get_ingest_traces,
+    get_resolve_project,
+)
+from aiobs.tracing.run_binding import BindOtlpTracesToExperimentOutputs
 from aiobs.application.traces import IngestNormalizedTraces, ProjectMissingError, ResolveProject
 from aiobs.config import Settings
 from aiobs.tracing.ingestion import ingest_otlp_payload
@@ -20,6 +26,7 @@ async def export_traces(
     request: Request,
     resolve: ResolveProject = Depends(get_resolve_project),
     ingest: IngestNormalizedTraces = Depends(get_ingest_traces),
+    bind_outputs: BindOtlpTracesToExperimentOutputs = Depends(get_bind_otlp_traces),
     settings: Settings = Depends(get_app_settings),
     x_project_id: str | None = Header(default=None, alias="X-Project-Id"),
     x_project_slug: str | None = Header(default=None, alias="X-Project-Slug"),
@@ -60,7 +67,8 @@ async def export_traces(
             content={"detail": str(exc)},
         )
 
-    await ingest.execute(traces)
+    saved = await ingest.execute(traces)
+    await bind_outputs.execute(saved)
 
     # OTLP success: empty ExportTraceServiceResponse (protobuf bytes)
     response = ExportTraceServiceResponse()

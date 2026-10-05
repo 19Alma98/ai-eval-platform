@@ -66,6 +66,7 @@ from aiobs.infrastructure.repositories import (
     SqlAlchemyProjectRepository,
     SqlAlchemyTraceRepository,
 )
+from aiobs.tracing.run_binding import BindOtlpTracesToExperimentOutputs
 
 
 async def get_db_session() -> AsyncGenerator[AsyncSession, None]:
@@ -149,6 +150,16 @@ def get_ingest_traces(
     repository: SqlAlchemyTraceRepository = Depends(get_trace_repository),
 ) -> IngestNormalizedTraces:
     return IngestNormalizedTraces(repository)
+
+
+def get_bind_otlp_traces(
+    experiments: SqlAlchemyExperimentRepository = Depends(get_experiment_repository),
+    datasets: SqlAlchemyDatasetRepository = Depends(get_dataset_repository),
+    outputs: SqlAlchemyExperimentItemOutputRepository = Depends(
+        get_experiment_item_output_repository
+    ),
+) -> BindOtlpTracesToExperimentOutputs:
+    return BindOtlpTracesToExperimentOutputs(experiments, datasets, outputs)
 
 
 def get_create_trace(
