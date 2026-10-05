@@ -40,7 +40,7 @@ def test_activates_when_both_present(monkeypatch: pytest.MonkeyPatch) -> None:
     fake_mod = types.ModuleType("openinference.instrumentation.openai")
     instrumentor_instance = MagicMock()
     fake_cls = MagicMock(return_value=instrumentor_instance)
-    setattr(fake_mod, "OpenAIInstrumentor", fake_cls)
+    fake_mod.OpenAIInstrumentor = fake_cls
 
     # Ensure parent packages exist for import machinery
     oi = types.ModuleType("openinference")

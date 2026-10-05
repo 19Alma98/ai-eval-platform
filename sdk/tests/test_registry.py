@@ -29,9 +29,7 @@ def captured_requests() -> list[Request]:
 
 
 @pytest.fixture
-def mock_urlopen(
-    monkeypatch: pytest.MonkeyPatch, captured_requests: list[Request]
-) -> None:
+def mock_urlopen(monkeypatch: pytest.MonkeyPatch, captured_requests: list[Request]) -> None:
     def fake_urlopen(req: Request, timeout: float = 30.0) -> _FakeHTTPResponse:
         captured_requests.append(req)
         method = req.get_method()
@@ -107,10 +105,7 @@ def test_set_alias_put_body_and_path(
     assert result["name"] == "baseline"
     req = captured_requests[0]
     assert req.get_method() == "PUT"
-    assert (
-        req.full_url
-        == "http://api.example/api/v1/projects/proj-2/app-config-aliases/baseline"
-    )
+    assert req.full_url == "http://api.example/api/v1/projects/proj-2/app-config-aliases/baseline"
     assert isinstance(req.data, bytes)
     body = json.loads(req.data.decode())
     assert body == {"app_config_id": config_id}
