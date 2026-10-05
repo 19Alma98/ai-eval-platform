@@ -22,6 +22,7 @@ from aiobs.application.metrics_packs import (
     MetricsPackValidationError,
     ReplaceMetricsPack,
 )
+from aiobs.application.metrics_sets import MetricsSetReferencedError
 from aiobs.application.projects import ProjectNotFoundError
 from aiobs.domain.metrics_pack import MetricsPack
 
@@ -91,6 +92,8 @@ async def replace_metrics_pack(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
     except MetricsPackValidationError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+    except MetricsSetReferencedError as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
     return _pack_response(pack)

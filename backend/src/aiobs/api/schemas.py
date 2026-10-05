@@ -214,6 +214,59 @@ class MetricsPackResponse(BaseModel):
     updated_at: datetime
 
 
+class MetricsSetEntryRequest(BaseModel):
+    kind: str = Field(min_length=1, max_length=64)
+    enabled: bool
+    threshold: float | None = None
+    config: dict[str, Any] = Field(default_factory=dict)
+    evaluator_id: uuid.UUID | None = None
+
+
+class CreateMetricsSetRequest(BaseModel):
+    name: str = Field(min_length=1, max_length=200)
+    description: str | None = Field(default=None, max_length=2000)
+    entries: list[MetricsSetEntryRequest] = Field(min_length=1)
+
+
+class PatchMetricsSetRequest(BaseModel):
+    name: str | None = Field(default=None, min_length=1, max_length=200)
+    description: str | None = Field(default=None, max_length=2000)
+    entries: list[MetricsSetEntryRequest] | None = None
+
+
+class VersionMetricsSetRequest(BaseModel):
+    description: str | None = Field(default=None, max_length=2000)
+    entries: list[MetricsSetEntryRequest] | None = None
+
+
+class MetricsSetEntryResponse(BaseModel):
+    id: uuid.UUID
+    kind: str
+    enabled: bool
+    threshold: float | None
+    config: dict[str, Any]
+    evaluator_id: uuid.UUID | None
+    is_default: bool
+    created_at: datetime
+
+
+class MetricsSetSummaryResponse(BaseModel):
+    id: uuid.UUID
+    project_id: uuid.UUID
+    name: str
+    version: int
+    description: str | None
+    is_project_default: bool
+    created_at: datetime
+    updated_at: datetime
+    entry_count: int
+    enabled_count: int
+
+
+class MetricsSetResponse(MetricsSetSummaryResponse):
+    entries: list[MetricsSetEntryResponse]
+
+
 class CreateExperimentRequest(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
 

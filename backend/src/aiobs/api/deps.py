@@ -44,8 +44,14 @@ from aiobs.application.metrics_packs import (
     ReplaceMetricsPack,
 )
 from aiobs.application.metrics_sets import (
+    CreateMetricsSet,
+    DeleteMetricsSet,
+    DeleteMetricsSetEntry,
     EnsureProjectDefaultMetricsSet,
+    GetMetricsSet,
+    ListMetricsSets,
     PatchMetricsSet,
+    VersionMetricsSet,
 )
 from aiobs.application.projects import CreateProject, GetProject, ListProjects
 from aiobs.application.release_check import ReleaseCheck
@@ -295,6 +301,46 @@ def get_patch_metrics_set(
     experiments: SqlAlchemyExperimentRepository = Depends(get_experiment_repository),
 ) -> PatchMetricsSet:
     return PatchMetricsSet(metrics_sets, evaluators, experiments)
+
+
+def get_list_metrics_sets(
+    metrics_sets: SqlAlchemyMetricsSetRepository = Depends(get_metrics_set_repository),
+) -> ListMetricsSets:
+    return ListMetricsSets(metrics_sets)
+
+
+def get_get_metrics_set(
+    metrics_sets: SqlAlchemyMetricsSetRepository = Depends(get_metrics_set_repository),
+) -> GetMetricsSet:
+    return GetMetricsSet(metrics_sets)
+
+
+def get_create_metrics_set(
+    metrics_sets: SqlAlchemyMetricsSetRepository = Depends(get_metrics_set_repository),
+    evaluators: SqlAlchemyEvaluatorRepository = Depends(get_evaluator_repository),
+) -> CreateMetricsSet:
+    return CreateMetricsSet(metrics_sets, evaluators)
+
+
+def get_version_metrics_set(
+    metrics_sets: SqlAlchemyMetricsSetRepository = Depends(get_metrics_set_repository),
+    evaluators: SqlAlchemyEvaluatorRepository = Depends(get_evaluator_repository),
+) -> VersionMetricsSet:
+    return VersionMetricsSet(metrics_sets, evaluators)
+
+
+def get_delete_metrics_set(
+    metrics_sets: SqlAlchemyMetricsSetRepository = Depends(get_metrics_set_repository),
+    experiments: SqlAlchemyExperimentRepository = Depends(get_experiment_repository),
+) -> DeleteMetricsSet:
+    return DeleteMetricsSet(metrics_sets, experiments)
+
+
+def get_delete_metrics_set_entry(
+    metrics_sets: SqlAlchemyMetricsSetRepository = Depends(get_metrics_set_repository),
+    experiments: SqlAlchemyExperimentRepository = Depends(get_experiment_repository),
+) -> DeleteMetricsSetEntry:
+    return DeleteMetricsSetEntry(metrics_sets, experiments)
 
 
 def get_ensure_metrics_pack(

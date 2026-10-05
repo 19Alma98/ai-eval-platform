@@ -91,11 +91,17 @@ class InMemoryExperimentRepository:
         return sum(1 for e in self._items.values() if e.metrics_set_id == metrics_set_id)
 
 
-def wire_metrics_pack_repos(app) -> tuple[InMemoryEvaluatorRepository, InMemoryMetricsSetRepository]:  # noqa: ANN001
+def wire_metrics_pack_repos(
+    app,  # noqa: ANN001
+) -> tuple[
+    InMemoryEvaluatorRepository,
+    InMemoryMetricsSetRepository,
+    InMemoryExperimentRepository,
+]:
     evaluators = InMemoryEvaluatorRepository()
     metrics_sets = InMemoryMetricsSetRepository()
     experiments = InMemoryExperimentRepository()
     app.dependency_overrides[get_evaluator_repository] = lambda: evaluators
     app.dependency_overrides[get_metrics_set_repository] = lambda: metrics_sets
     app.dependency_overrides[get_experiment_repository] = lambda: experiments
-    return evaluators, metrics_sets
+    return evaluators, metrics_sets, experiments
