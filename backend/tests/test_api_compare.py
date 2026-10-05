@@ -262,21 +262,16 @@ async def _seed_dataset_and_evaluator(client: AsyncClient) -> tuple[str, str, st
 async def test_summary_and_compare_experiments(client: AsyncClient) -> None:
     project_id, dataset_id, evaluator_id = await _seed_dataset_and_evaluator(client)
 
-    # Candidate dataset item fails exact match when we use a second dataset.
-    bad_dataset = await client.post(
-        f"/api/v1/projects/{project_id}/datasets",
-        json={"name": "support-bad"},
-    )
-    bad_dataset_id = bad_dataset.json()["id"]
     item = await client.post(
-        f"/api/v1/datasets/{bad_dataset_id}/items",
+        f"/api/v1/datasets/{dataset_id}/items",
         json={
-            "input": "hi",
+            "input": "hi2",
             "expected_output": "hello",
-            "actual_output": "nope",
+            "actual_output": "hello",
         },
     )
     assert item.status_code == 201
+    second_item_id = item.json()["id"]
 
     baseline = await client.post(
         f"/api/v1/projects/{project_id}/experiments",
@@ -289,12 +284,22 @@ async def test_summary_and_compare_experiments(client: AsyncClient) -> None:
         f"/api/v1/projects/{project_id}/experiments",
         json={
             "name": "candidate",
-            "dataset_id": bad_dataset_id,
+            "dataset_id": dataset_id,
             "baseline_experiment_id": baseline_id,
         },
     )
     assert candidate.status_code == 201
     candidate_id = candidate.json()["id"]
+
+    put = await client.put(
+        f"/api/v1/experiments/{candidate_id}/outputs",
+        json={
+            "items": [
+                {"dataset_item_id": second_item_id, "actual_output": "nope"},
+            ]
+        },
+    )
+    assert put.status_code == 200, put.text
 
     for experiment_id in (baseline_id, candidate_id):
         evaluated = await client.post(
@@ -340,6 +345,47 @@ async def test_compare_missing_baseline_404(client: AsyncClient) -> None:
     missing = uuid.uuid4()
     response = await client.get(f"/api/v1/experiments/{experiment_id}/compare/{missing}")
     assert response.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_compare_rejects_different_dataset(client: AsyncClient) -> None:
+    project_id, dataset_id, evaluator_id = await _seed_dataset_and_evaluator(client)
+    other_dataset = await client.post(
+        f"/api/v1/projects/{project_id}/datasets",
+        json={"name": "other-set"},
+    )
+    assert other_dataset.status_code == 201
+    other_dataset_id = other_dataset.json()["id"]
+    await client.post(
+        f"/api/v1/datasets/{other_dataset_id}/items",
+        json={
+            "input": "x",
+            "expected_output": "y",
+            "actual_output": "y",
+        },
+    )
+
+    baseline = await client.post(
+        f"/api/v1/projects/{project_id}/experiments",
+        json={"name": "base", "dataset_id": dataset_id},
+    )
+    baseline_id = baseline.json()["id"]
+    candidate = await client.post(
+        f"/api/v1/projects/{project_id}/experiments",
+        json={"name": "cand", "dataset_id": other_dataset_id},
+    )
+    candidate_id = candidate.json()["id"]
+
+    for experiment_id in (baseline_id, candidate_id):
+        evaluated = await client.post(
+            f"/api/v1/experiments/{experiment_id}/evaluate",
+            json={"evaluator_ids": [evaluator_id]},
+        )
+        assert evaluated.status_code == 200, evaluated.text
+
+    response = await client.get(f"/api/v1/experiments/{candidate_id}/compare/{baseline_id}")
+    assert response.status_code == 400
+    assert response.json()["detail"] == "Runs must share the same dataset (test set version)"
 
 
 @pytest.mark.asyncio

@@ -9,6 +9,7 @@ from aiobs.api.deps import (
     get_compare_experiments,
     get_create_experiment,
     get_evaluate_experiment,
+    get_score_experiment_from_pack,
     get_get_experiment,
     get_list_experiment_outputs,
     get_list_experiment_runs,
@@ -62,6 +63,8 @@ from aiobs.application.evaluate import (
     EvaluationRunNotFoundError,
     GetEvaluationRun,
     ListExperimentRuns,
+    ScoreExperimentFromPack,
+    ScoreExperimentFromPackCommand,
 )
 from aiobs.application.evaluators import EvaluatorNotFoundError
 from aiobs.application.experiment_outputs import (
@@ -347,6 +350,32 @@ async def evaluate_experiment(
     except (
         ExperimentNotFoundError,
         EvaluatorNotFoundError,
+    ) as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    except EmptyEvaluatorListError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+    return EvaluateResponse(
+        experiment=_experiment_response(outcome.experiment),
+        runs=[_run_response(run, outcome.results_by_run.get(run.id, [])) for run in outcome.runs],
+    )
+
+
+@router.post(
+    "/api/v1/experiments/{experiment_id}/evaluate-pack",
+    response_model=EvaluateResponse,
+)
+async def evaluate_experiment_from_pack(
+    experiment_id: uuid.UUID,
+    use_case: ScoreExperimentFromPack = Depends(get_score_experiment_from_pack),
+) -> EvaluateResponse:
+    try:
+        outcome = await use_case.execute(
+            ScoreExperimentFromPackCommand(experiment_id=experiment_id)
+        )
+    except (
+        ExperimentNotFoundError,
+        EvaluatorNotFoundError,
+        ProjectNotFoundError,
     ) as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
     except EmptyEvaluatorListError as exc:

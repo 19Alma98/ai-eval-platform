@@ -26,6 +26,7 @@ from aiobs.application.evaluate import (
     EvaluateExperiment,
     GetEvaluationRun,
     ListExperimentRuns,
+    ScoreExperimentFromPack,
 )
 from aiobs.application.evaluators import CreateEvaluator, ListEvaluators
 from aiobs.application.experiment_outputs import (
@@ -334,6 +335,20 @@ def get_evaluate_experiment(
     ),
 ) -> EvaluateExperiment:
     return EvaluateExperiment(experiments, datasets, evaluators, runs, runner, outputs)
+
+
+def get_score_experiment_from_pack(
+    experiments: SqlAlchemyExperimentRepository = Depends(get_experiment_repository),
+    get_metrics_pack: GetMetricsPack = Depends(get_get_metrics_pack),
+    ensure_metrics_pack: EnsureMetricsPack = Depends(get_ensure_metrics_pack),
+    evaluate_experiment: EvaluateExperiment = Depends(get_evaluate_experiment),
+) -> ScoreExperimentFromPack:
+    return ScoreExperimentFromPack(
+        experiments,
+        get_metrics_pack,
+        ensure_metrics_pack,
+        evaluate_experiment,
+    )
 
 
 def get_list_experiment_runs(

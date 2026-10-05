@@ -122,6 +122,11 @@ class CompareExperiments:
         if baseline is None:
             raise ExperimentNotFoundError(baseline_id)
 
+        if experiment.dataset_id != baseline.dataset_id:
+            raise InvalidCompareSelectionError(
+                "Runs must share the same dataset (test set version)"
+            )
+
         candidate_runs = await self._runs.list_runs_by_experiment(experiment_id)
         baseline_runs = await self._runs.list_runs_by_experiment(baseline_id)
 

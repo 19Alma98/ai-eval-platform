@@ -15,6 +15,7 @@ from aiobs.domain.repositories import (
     ExperimentItemOutputRepository,
     ExperimentRepository,
 )
+from aiobs.application.metrics_packs import EnsureMetricsPack, GetMetricsPack, MetricsPackNotFoundError
 from aiobs.evaluation.runner import EvaluationRunner
 
 
@@ -125,6 +126,49 @@ class EvaluateExperiment:
             experiment=experiment,
             runs=finished_runs,
             results_by_run=results_by_run,
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class ScoreExperimentFromPackCommand:
+    experiment_id: uuid.UUID
+
+
+class ScoreExperimentFromPack:
+    def __init__(
+        self,
+        experiments: ExperimentRepository,
+        get_metrics_pack: GetMetricsPack,
+        ensure_metrics_pack: EnsureMetricsPack,
+        evaluate_experiment: EvaluateExperiment,
+    ) -> None:
+        self._experiments = experiments
+        self._get_metrics_pack = get_metrics_pack
+        self._ensure_metrics_pack = ensure_metrics_pack
+        self._evaluate_experiment = evaluate_experiment
+
+    async def execute(
+        self, command: ScoreExperimentFromPackCommand
+    ) -> EvaluateExperimentResult:
+        experiment = await self._experiments.get_by_id(command.experiment_id)
+        if experiment is None:
+            raise ExperimentNotFoundError(command.experiment_id)
+
+        try:
+            pack = await self._get_metrics_pack.execute(experiment.project_id)
+        except MetricsPackNotFoundError:
+            pack = await self._ensure_metrics_pack.execute(experiment.project_id)
+
+        evaluator_ids = [
+            entry.evaluator_id
+            for entry in pack.entries
+            if entry.enabled and entry.evaluator_id is not None
+        ]
+        return await self._evaluate_experiment.execute(
+            EvaluateExperimentCommand(
+                experiment_id=command.experiment_id,
+                evaluator_ids=evaluator_ids,
+            )
         )
 
 

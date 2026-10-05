@@ -14,9 +14,11 @@ from aiobs.api.deps import (
     get_evaluator_repository,
     get_experiment_item_output_repository,
     get_experiment_repository,
+    get_metrics_pack_repository,
     get_project_repository,
     get_trace_repository,
 )
+from support.repositories import InMemoryMetricsPackRepository
 from aiobs.domain.dataset import Dataset, DatasetItem
 from aiobs.domain.evaluation import EvaluationResultRecord, EvaluationRun
 from aiobs.domain.evaluator import Evaluator
@@ -213,9 +215,11 @@ async def client() -> AsyncIterator[AsyncClient]:
     experiments = InMemoryExperimentRepository()
     runs = InMemoryEvaluationRunRepository()
     outputs = InMemoryExperimentItemOutputRepository()
+    metrics_packs = InMemoryMetricsPackRepository()
 
     app = create_app()
     app.dependency_overrides[get_project_repository] = lambda: projects
+    app.dependency_overrides[get_metrics_pack_repository] = lambda: metrics_packs
     app.dependency_overrides[get_trace_repository] = lambda: traces
     app.dependency_overrides[get_dataset_repository] = lambda: datasets
     app.dependency_overrides[get_evaluator_repository] = lambda: evaluators
@@ -401,3 +405,75 @@ async def test_from_trace_item(client: AsyncClient) -> None:
     assert body["actual_output"] == {"a": "hello"}
     assert body["context"]["latency_ms"] == 2000.0
     assert body["context"]["total_tokens"] == 10
+
+
+def _pack_entry_payload(pack: dict, kind: str) -> dict:
+    for entry in pack["entries"]:
+        if entry["kind"] == kind:
+            return {
+                "kind": entry["kind"],
+                "enabled": entry["enabled"],
+                "threshold": entry["threshold"],
+                "config": entry["config"],
+                "evaluator_id": entry.get("evaluator_id"),
+                "removable": entry["removable"],
+            }
+    raise KeyError(kind)
+
+
+@pytest.mark.asyncio
+async def test_evaluate_pack_uses_enabled_metrics_pack_evaluators(
+    client: AsyncClient,
+) -> None:
+    project = await client.post("/api/v1/projects", json={"name": "Pack Eval"})
+    assert project.status_code == 201
+    project_id = project.json()["id"]
+
+    ensured = await client.post(f"/api/v1/projects/{project_id}/metrics-pack/ensure")
+    assert ensured.status_code == 200, ensured.text
+    pack = ensured.json()
+    entries = [
+        _pack_entry_payload(pack, kind)
+        for kind in ("hit_at_k", "groundedness", "correctness", "latency")
+    ]
+    for entry in entries:
+        entry["enabled"] = entry["kind"] == "hit_at_k"
+    updated = await client.put(
+        f"/api/v1/projects/{project_id}/metrics-pack",
+        json={"entries": entries},
+    )
+    assert updated.status_code == 200, updated.text
+
+    dataset = await client.post(
+        f"/api/v1/projects/{project_id}/datasets",
+        json={"name": "rag-pack", "task_type": "rag_qa"},
+    )
+    assert dataset.status_code == 201
+    dataset_id = dataset.json()["id"]
+
+    item = await client.post(
+        f"/api/v1/datasets/{dataset_id}/items",
+        json={
+            "input": "q",
+            "expected_output": "a",
+            "actual_output": "ans",
+            "context": {"retrieved_doc_ids": ["target"]},
+            "metadata": {"expected_doc_ids": ["target"]},
+        },
+    )
+    assert item.status_code == 201
+
+    experiment = await client.post(
+        f"/api/v1/projects/{project_id}/experiments",
+        json={"name": "pack-run", "dataset_id": dataset_id},
+    )
+    assert experiment.status_code == 201
+    experiment_id = experiment.json()["id"]
+
+    evaluated = await client.post(f"/api/v1/experiments/{experiment_id}/evaluate-pack")
+    assert evaluated.status_code == 200, evaluated.text
+    body = evaluated.json()
+    assert body["experiment"]["status"] == "completed"
+    assert len(body["runs"]) == 1
+    assert body["runs"][0]["status"] == "PASSED"
+    assert body["runs"][0]["results"][0]["score"] == 1.0

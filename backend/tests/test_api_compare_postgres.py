@@ -55,25 +55,20 @@ async def test_compare_persisted(client: AsyncClient) -> None:
     assert project.status_code == 201
     project_id = project.json()["id"]
 
-    good = await client.post(
+    dataset = await client.post(
         f"/api/v1/projects/{project_id}/datasets",
-        json={"name": "good"},
+        json={"name": "shared"},
     )
-    good_id = good.json()["id"]
+    dataset_id = dataset.json()["id"]
     await client.post(
-        f"/api/v1/datasets/{good_id}/items",
+        f"/api/v1/datasets/{dataset_id}/items",
         json={"input": "q", "expected_output": "a", "actual_output": "a"},
     )
-
-    bad = await client.post(
-        f"/api/v1/projects/{project_id}/datasets",
-        json={"name": "bad"},
+    bad_item = await client.post(
+        f"/api/v1/datasets/{dataset_id}/items",
+        json={"input": "q2", "expected_output": "a", "actual_output": "a"},
     )
-    bad_id = bad.json()["id"]
-    await client.post(
-        f"/api/v1/datasets/{bad_id}/items",
-        json={"input": "q", "expected_output": "a", "actual_output": "b"},
-    )
+    bad_item_id = bad_item.json()["id"]
 
     evaluator = await client.post(
         f"/api/v1/projects/{project_id}/evaluators",
@@ -87,14 +82,20 @@ async def test_compare_persisted(client: AsyncClient) -> None:
 
     baseline = await client.post(
         f"/api/v1/projects/{project_id}/experiments",
-        json={"name": "baseline", "dataset_id": good_id},
+        json={"name": "baseline", "dataset_id": dataset_id},
     )
     baseline_id = baseline.json()["id"]
     candidate = await client.post(
         f"/api/v1/projects/{project_id}/experiments",
-        json={"name": "candidate", "dataset_id": bad_id},
+        json={"name": "candidate", "dataset_id": dataset_id},
     )
     candidate_id = candidate.json()["id"]
+
+    put = await client.put(
+        f"/api/v1/experiments/{candidate_id}/outputs",
+        json={"items": [{"dataset_item_id": bad_item_id, "actual_output": "b"}]},
+    )
+    assert put.status_code == 200
 
     for experiment_id in (baseline_id, candidate_id):
         evaluated = await client.post(

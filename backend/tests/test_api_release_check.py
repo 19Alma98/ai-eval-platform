@@ -231,7 +231,7 @@ async def release_env() -> AsyncIterator[tuple[AsyncClient, InMemoryEvaluationRu
 
 async def _seed_quality(
     client: AsyncClient, *, actual_output: str = "hello"
-) -> tuple[str, str, str]:
+) -> tuple[str, str, str, str]:
     project = await client.post("/api/v1/projects", json={"name": "Release Demo"})
     assert project.status_code == 201
     project_id = project.json()["id"]
@@ -260,7 +260,7 @@ async def _seed_quality(
         },
     )
     assert evaluator.status_code == 201
-    return project_id, dataset_id, evaluator.json()["id"]
+    return project_id, dataset_id, evaluator.json()["id"], item.json()["id"]
 
 
 @pytest.mark.asyncio
@@ -268,7 +268,7 @@ async def test_release_check_passes_quality_min(
     release_env: tuple[AsyncClient, InMemoryEvaluationRunRepository],
 ) -> None:
     client, _ = release_env
-    project_id, dataset_id, evaluator_id = await _seed_quality(client)
+    project_id, dataset_id, evaluator_id, _item_id = await _seed_quality(client)
 
     experiment = await client.post(
         f"/api/v1/projects/{project_id}/experiments",
@@ -300,36 +300,28 @@ async def test_release_check_fails_quality_and_regression(
     release_env: tuple[AsyncClient, InMemoryEvaluationRunRepository],
 ) -> None:
     client, _ = release_env
-    project_id, good_dataset_id, evaluator_id = await _seed_quality(client)
-
-    bad_dataset = await client.post(
-        f"/api/v1/projects/{project_id}/datasets",
-        json={"name": "support-bad"},
-    )
-    bad_dataset_id = bad_dataset.json()["id"]
-    await client.post(
-        f"/api/v1/datasets/{bad_dataset_id}/items",
-        json={
-            "input": "hi",
-            "expected_output": "hello",
-            "actual_output": "nope",
-        },
-    )
+    project_id, dataset_id, evaluator_id, item_id = await _seed_quality(client)
 
     baseline = await client.post(
         f"/api/v1/projects/{project_id}/experiments",
-        json={"name": "baseline", "dataset_id": good_dataset_id},
+        json={"name": "baseline", "dataset_id": dataset_id},
     )
     baseline_id = baseline.json()["id"]
     candidate = await client.post(
         f"/api/v1/projects/{project_id}/experiments",
         json={
             "name": "candidate",
-            "dataset_id": bad_dataset_id,
+            "dataset_id": dataset_id,
             "baseline_experiment_id": baseline_id,
         },
     )
     candidate_id = candidate.json()["id"]
+
+    put = await client.put(
+        f"/api/v1/experiments/{candidate_id}/outputs",
+        json={"items": [{"dataset_item_id": item_id, "actual_output": "nope"}]},
+    )
+    assert put.status_code == 200
 
     for experiment_id in (baseline_id, candidate_id):
         evaluated = await client.post(
@@ -362,7 +354,7 @@ async def test_release_check_missing_baseline_and_invalid_policy(
     release_env: tuple[AsyncClient, InMemoryEvaluationRunRepository],
 ) -> None:
     client, _ = release_env
-    project_id, dataset_id, evaluator_id = await _seed_quality(client)
+    project_id, dataset_id, evaluator_id, _item_id = await _seed_quality(client)
     experiment = await client.post(
         f"/api/v1/projects/{project_id}/experiments",
         json={"name": "cand", "dataset_id": dataset_id},
@@ -397,7 +389,7 @@ async def test_release_check_latency_unavailable_without_metadata(
     release_env: tuple[AsyncClient, InMemoryEvaluationRunRepository],
 ) -> None:
     client, runs = release_env
-    project_id, dataset_id, _ = await _seed_quality(client)
+    project_id, dataset_id, _, _item_id = await _seed_quality(client)
     experiment = await client.post(
         f"/api/v1/projects/{project_id}/experiments",
         json={"name": "cand", "dataset_id": dataset_id},
@@ -443,7 +435,7 @@ async def test_release_check_latency_pass_with_seeded_metadata(
     release_env: tuple[AsyncClient, InMemoryEvaluationRunRepository],
 ) -> None:
     client, runs = release_env
-    project_id, dataset_id, _ = await _seed_quality(client)
+    project_id, dataset_id, _, _item_id = await _seed_quality(client)
     experiment = await client.post(
         f"/api/v1/projects/{project_id}/experiments",
         json={"name": "cand", "dataset_id": dataset_id},
