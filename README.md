@@ -105,7 +105,7 @@ Technical specification lives in [`docs/`](docs/). Phase 1 design: [`docs/superp
 
 ## Local CI checks
 
-Same checks as [`.github/workflows/ci.yml`](.github/workflows/ci.yml) (ruff / mypy / pytest for backend+sdk+cli, frontend typecheck). Backend pytest needs Postgres up (`docker compose up -d postgres`).
+Same checks as [`.github/workflows/ci.yml`](.github/workflows/ci.yml) (ruff / mypy / pytest for backend+sdk+cli, frontend typecheck). Backend integration tests use a dedicated `aiobs_test` database on host port **5434** (created automatically; they do not wipe the Compose `aiobs` demo DB).
 
 ```bash
 ./scripts/ci-local.sh              # all jobs
