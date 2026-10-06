@@ -13,6 +13,7 @@ from aiobs.application.metrics_sets import (
     DeleteMetricsSetEntry,
     EnsureProjectDefaultMetricsSet,
     MetricsSetEntryInput,
+    MetricsSetEntryNotFoundError,
     MetricsSetNotFoundError,
     MetricsSetProtectedError,
     MetricsSetReferencedError,
@@ -147,7 +148,7 @@ async def test_create_custom_does_not_steal_project_default() -> None:
     ev = await evaluators.add(
         Evaluator.create(project.id, "hit_at_k", "deterministic", {"kind": "hit_at_k", "k": 5})
     )
-    custom = await CreateMetricsSet(sets, evaluators).execute(
+    custom = await CreateMetricsSet(sets, evaluators, projects).execute(
         CreateMetricsSetCommand(
             project_id=project.id,
             name="Custom",
@@ -248,6 +249,25 @@ async def test_delete_is_default_entry_raises() -> None:
 
 
 @pytest.mark.asyncio
+async def test_delete_missing_entry_raises_entry_not_found() -> None:
+    projects = InMemoryProjectRepository()
+    project = await _seed_project(projects)
+    sets = InMemoryMetricsSetRepository()
+    evaluators = InMemoryEvaluatorRepository()
+    create_eval = StubCreateEvaluator(evaluators)
+    metrics_set = await EnsureProjectDefaultMetricsSet(
+        sets, evaluators, projects, create_eval
+    ).execute(project.id)
+    missing_entry = uuid.uuid4()
+
+    with pytest.raises(MetricsSetEntryNotFoundError) as exc_info:
+        await DeleteMetricsSetEntry(sets, InMemoryExperimentRepository()).execute(
+            metrics_set.id, missing_entry
+        )
+    assert exc_info.value.entry_id == missing_entry
+
+
+@pytest.mark.asyncio
 async def test_resolve_prefers_body_then_experiment_then_project_default() -> None:
     projects = InMemoryProjectRepository()
     project = await _seed_project(projects)
@@ -261,7 +281,7 @@ async def test_resolve_prefers_body_then_experiment_then_project_default() -> No
     ev = await evaluators.add(
         Evaluator.create(project.id, "hit_at_k", "deterministic", {"kind": "hit_at_k", "k": 5})
     )
-    custom = await CreateMetricsSet(sets, evaluators).execute(
+    custom = await CreateMetricsSet(sets, evaluators, projects).execute(
         CreateMetricsSetCommand(
             project_id=project.id,
             name="Alt",
@@ -322,7 +342,7 @@ async def test_save_as_default_persists_experiment_when_body_set_id() -> None:
     ev = await evaluators.add(
         Evaluator.create(project.id, "hit_at_k", "deterministic", {"kind": "hit_at_k", "k": 5})
     )
-    custom = await CreateMetricsSet(sets, evaluators).execute(
+    custom = await CreateMetricsSet(sets, evaluators, projects).execute(
         CreateMetricsSetCommand(
             project_id=project.id,
             name="Pinned",

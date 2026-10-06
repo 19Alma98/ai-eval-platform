@@ -944,7 +944,8 @@ class SqlAlchemyMetricsSetRepository:
             await self._session.rollback()
             raise
         refreshed = await self.get_by_id(metrics_set.id)
-        assert refreshed is not None
+        if refreshed is None:
+            raise ValueError(f"MetricsSet not found: {metrics_set.id}")
         return refreshed
 
     async def delete(self, metrics_set_id: uuid.UUID) -> None:

@@ -1,6 +1,6 @@
 "use client";
 
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
 import { useCallback, useMemo, useState, type FormEvent } from "react";
 import { PackagePlus, Plus } from "lucide-react";
@@ -25,15 +25,11 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { ApiError } from "@/lib/api/client";
 import { ensureMetricsPack } from "@/lib/api/metrics-packs";
-import {
-  createMetricsSet,
-  getMetricsSet,
-  listMetricsSets,
-} from "@/lib/api/metrics-sets";
+import { getMetricsSet, listMetricsSets } from "@/lib/api/metrics-sets";
 import type { MetricsSetEntryInput, MetricsSetSummary } from "@/lib/api/types";
 import {
-  metricsSetsQueryKey,
   metricsSetsQueryOptions,
+  useCreateMetricsSet,
   useEnsureMetricsPackForProject,
   useMetricsSets,
 } from "./use-metrics-sets";
@@ -215,46 +211,38 @@ function CreateMetricsSetDialog({
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }) {
-  const queryClient = useQueryClient();
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
-
-  const seedAndCreate = useMutation({
-    mutationFn: async () => {
-      const entries = await seedEntriesForCreate(projectId);
-      return createMetricsSet(projectId, {
-        name: name.trim(),
-        description: description.trim() || null,
-        entries,
-      });
-    },
-    onSuccess: async () => {
-      await queryClient.invalidateQueries({
-        queryKey: metricsSetsQueryKey(projectId),
-      });
-      toast.success("Set metriche creato");
-      setName("");
-      setDescription("");
-      onOpenChange(false);
-    },
-    onError: (err) => {
-      const message =
-        err instanceof ApiError
-          ? err.message
-          : err instanceof Error
-            ? err.message
-            : "Creazione fallita";
-      toast.error(message);
-    },
-  });
+  const createSet = useCreateMetricsSet(projectId);
 
   function handleSubmit(e: FormEvent) {
     e.preventDefault();
     if (!name.trim()) return;
-    seedAndCreate.mutate();
+    void (async () => {
+      try {
+        const entries = await seedEntriesForCreate(projectId);
+        await createSet.mutateAsync({
+          name: name.trim(),
+          description: description.trim() || null,
+          entries,
+        });
+        toast.success("Set metriche creato");
+        setName("");
+        setDescription("");
+        onOpenChange(false);
+      } catch (err) {
+        const message =
+          err instanceof ApiError
+            ? err.message
+            : err instanceof Error
+              ? err.message
+              : "Creazione fallita";
+        toast.error(message);
+      }
+    })();
   }
 
-  const pending = seedAndCreate.isPending;
+  const pending = createSet.isPending;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>

@@ -31,6 +31,7 @@ from aiobs.application.metrics_sets import (
     ListMetricsSets,
     MetricsSetConflictError,
     MetricsSetEntryInput,
+    MetricsSetEntryNotFoundError,
     MetricsSetNotFoundError,
     MetricsSetProtectedError,
     MetricsSetReferencedError,
@@ -40,6 +41,7 @@ from aiobs.application.metrics_sets import (
     VersionMetricsSet,
     VersionMetricsSetCommand,
 )
+from aiobs.application.projects import ProjectNotFoundError
 from aiobs.domain.metrics_set import MetricsSet, MetricsSetEntry
 
 router = APIRouter(tags=["metrics-sets"])
@@ -108,7 +110,10 @@ async def list_metrics_sets(
     project_id: uuid.UUID,
     use_case: ListMetricsSets = Depends(get_list_metrics_sets),
 ) -> list[MetricsSetSummaryResponse]:
-    sets = await use_case.execute(project_id)
+    try:
+        sets = await use_case.execute(project_id)
+    except ProjectNotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
     return [_summary_response(s) for s in sets]
 
 
@@ -131,6 +136,8 @@ async def create_metrics_set(
                 entries=_entry_inputs_from_request(body.entries),
             )
         )
+    except ProjectNotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
     except MetricsSetConflictError as exc:
         raise _http_conflict(exc) from exc
     except MetricsSetValidationError as exc:
@@ -247,6 +254,8 @@ async def delete_metrics_set_entry(
     try:
         metrics_set = await use_case.execute(metrics_set_id, entry_id)
     except MetricsSetNotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    except MetricsSetEntryNotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
     except MetricsSetReferencedError as exc:
         raise _http_conflict(exc) from exc

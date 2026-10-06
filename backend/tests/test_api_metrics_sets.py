@@ -261,3 +261,51 @@ async def test_get_and_patch_unknown_metrics_set_404(
     assert (
         await ac.patch(f"/api/v1/metrics-sets/{missing}", json={"name": "x"})
     ).status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_list_and_create_unknown_project_404(
+    client: tuple[AsyncClient, InMemoryExperimentRepository],
+) -> None:
+    ac, _ = client
+    missing_project = uuid.uuid4()
+    listed = await ac.get(f"/api/v1/projects/{missing_project}/metrics-sets")
+    assert listed.status_code == 404
+
+    created = await ac.post(
+        f"/api/v1/projects/{missing_project}/metrics-sets",
+        json={
+            "name": "Orphan",
+            "entries": [
+                {
+                    "kind": "hit_at_k",
+                    "enabled": True,
+                    "threshold": None,
+                    "config": {"k": 5},
+                    "evaluator_id": None,
+                }
+            ],
+        },
+    )
+    assert created.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_delete_unknown_entry_not_same_as_unknown_set(
+    client: tuple[AsyncClient, InMemoryExperimentRepository],
+) -> None:
+    ac, _ = client
+    proj, pack = await _ensure_default(ac, "ms-entry-404")
+    missing_entry = uuid.uuid4()
+    on_set = await ac.delete(
+        f"/api/v1/metrics-sets/{pack['id']}/entries/{missing_entry}",
+    )
+    assert on_set.status_code == 404
+    assert "entry" in on_set.json()["detail"].lower()
+
+    missing_set = uuid.uuid4()
+    on_missing_set = await ac.delete(
+        f"/api/v1/metrics-sets/{missing_set}/entries/{missing_entry}",
+    )
+    assert on_missing_set.status_code == 404
+    assert "Metrics set not found" in on_missing_set.json()["detail"]

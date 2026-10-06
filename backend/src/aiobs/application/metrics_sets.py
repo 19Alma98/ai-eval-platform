@@ -31,6 +31,15 @@ class MetricsSetNotFoundError(Exception):
         super().__init__(f"Metrics set not found: {metrics_set_id}")
 
 
+class MetricsSetEntryNotFoundError(Exception):
+    def __init__(self, metrics_set_id: uuid.UUID, entry_id: uuid.UUID) -> None:
+        self.metrics_set_id = metrics_set_id
+        self.entry_id = entry_id
+        super().__init__(
+            f"Metrics set entry not found: {entry_id} in metrics set {metrics_set_id}"
+        )
+
+
 class MetricsSetConflictError(Exception):
     def __init__(self, name: str, version: int) -> None:
         self.name = name
@@ -317,10 +326,18 @@ class EnsureProjectDefaultMetricsSet:
 
 
 class ListMetricsSets:
-    def __init__(self, metrics_sets: MetricsSetRepository) -> None:
+    def __init__(
+        self,
+        metrics_sets: MetricsSetRepository,
+        projects: ProjectRepository,
+    ) -> None:
         self._metrics_sets = metrics_sets
+        self._projects = projects
 
     async def execute(self, project_id: uuid.UUID) -> list[MetricsSet]:
+        project = await self._projects.get_by_id(project_id)
+        if project is None:
+            raise ProjectNotFoundError(project_id)
         return await self._metrics_sets.list_by_project(project_id)
 
 
@@ -340,11 +357,16 @@ class CreateMetricsSet:
         self,
         metrics_sets: MetricsSetRepository,
         evaluators: EvaluatorRepository,
+        projects: ProjectRepository,
     ) -> None:
         self._metrics_sets = metrics_sets
         self._evaluators = evaluators
+        self._projects = projects
 
     async def execute(self, command: CreateMetricsSetCommand) -> MetricsSet:
+        project = await self._projects.get_by_id(command.project_id)
+        if project is None:
+            raise ProjectNotFoundError(command.project_id)
         for inp in command.entries:
             if inp.evaluator_id is not None:
                 await _require_evaluator_in_project(
@@ -491,7 +513,7 @@ class DeleteMetricsSetEntry:
 
         entry = next((e for e in metrics_set.entries if e.id == entry_id), None)
         if entry is None:
-            raise MetricsSetNotFoundError(metrics_set_id)
+            raise MetricsSetEntryNotFoundError(metrics_set_id, entry_id)
 
         if entry.is_default:
             raise MetricsSetProtectedError(

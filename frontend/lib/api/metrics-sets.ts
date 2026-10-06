@@ -1,4 +1,4 @@
-import { ApiError, apiDelete, apiGet, apiPatch, apiPost } from "./client";
+import { ApiError, apiGet, apiPatch, apiPost } from "./client";
 import type {
   CreateMetricsSetBody,
   MetricsSet,
@@ -35,10 +35,6 @@ export function versionMetricsSet(metricsSetId: string, body?: { description?: s
     `/api/v1/metrics-sets/${metricsSetId}/version`,
     body ?? {},
   );
-}
-
-export function deleteMetricsSet(metricsSetId: string) {
-  return apiDelete(`/api/v1/metrics-sets/${metricsSetId}`);
 }
 
 export async function deleteMetricsSetEntry(

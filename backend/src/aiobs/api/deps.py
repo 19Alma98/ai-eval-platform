@@ -304,8 +304,9 @@ def get_patch_metrics_set(
 
 def get_list_metrics_sets(
     metrics_sets: SqlAlchemyMetricsSetRepository = Depends(get_metrics_set_repository),
+    projects: SqlAlchemyProjectRepository = Depends(get_project_repository),
 ) -> ListMetricsSets:
-    return ListMetricsSets(metrics_sets)
+    return ListMetricsSets(metrics_sets, projects)
 
 
 def get_get_metrics_set(
@@ -317,8 +318,9 @@ def get_get_metrics_set(
 def get_create_metrics_set(
     metrics_sets: SqlAlchemyMetricsSetRepository = Depends(get_metrics_set_repository),
     evaluators: SqlAlchemyEvaluatorRepository = Depends(get_evaluator_repository),
+    projects: SqlAlchemyProjectRepository = Depends(get_project_repository),
 ) -> CreateMetricsSet:
-    return CreateMetricsSet(metrics_sets, evaluators)
+    return CreateMetricsSet(metrics_sets, evaluators, projects)
 
 
 def get_version_metrics_set(
