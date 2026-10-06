@@ -167,9 +167,7 @@ async def patch_metrics_set(
     patch_cmd: dict[str, Any] = {
         "metrics_set_id": metrics_set_id,
         "name": body.name,
-        "entries": (
-            _entry_inputs_from_request(body.entries) if body.entries is not None else None
-        ),
+        "entries": (_entry_inputs_from_request(body.entries) if body.entries is not None else None),
     }
     if "description" in body.model_fields_set:
         patch_cmd["description"] = body.description

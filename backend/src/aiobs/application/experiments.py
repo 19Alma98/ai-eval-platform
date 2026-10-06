@@ -6,10 +6,10 @@ from typing import Any
 
 from aiobs.application.app_configs import AppConfigNotFoundError
 from aiobs.application.datasets import DatasetNotFoundError
+from aiobs.application.metrics_sets import MetricsSetNotFoundError
 from aiobs.application.projects import ProjectNotFoundError
 from aiobs.domain.app_config import AppConfig
 from aiobs.domain.experiment import Experiment
-from aiobs.application.metrics_sets import MetricsSetNotFoundError
 from aiobs.domain.repositories import (
     AppConfigRepository,
     DatasetRepository,

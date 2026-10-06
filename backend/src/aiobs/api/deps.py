@@ -291,9 +291,7 @@ def get_ensure_project_default_metrics_set(
     projects: SqlAlchemyProjectRepository = Depends(get_project_repository),
     create_evaluator: CreateEvaluator = Depends(get_create_evaluator),
 ) -> EnsureProjectDefaultMetricsSet:
-    return EnsureProjectDefaultMetricsSet(
-        metrics_sets, evaluators, projects, create_evaluator
-    )
+    return EnsureProjectDefaultMetricsSet(metrics_sets, evaluators, projects, create_evaluator)
 
 
 def get_patch_metrics_set(

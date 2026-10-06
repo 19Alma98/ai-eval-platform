@@ -10,10 +10,10 @@ from aiobs.application.projects import ProjectNotFoundError
 from aiobs.domain.evaluator import Evaluator
 from aiobs.domain.experiment import Experiment
 from aiobs.domain.metrics_set import (
+    _UNSET,
     DEFAULT_RAG_SET_ENTRIES,
     MetricsSet,
     MetricsSetEntry,
-    _UNSET,
 )
 from aiobs.domain.repositories import (
     EvaluatorRepository,
@@ -73,9 +73,7 @@ async def _require_evaluator_in_project(
     if evaluator is None:
         raise MetricsSetValidationError(f"Unknown evaluator_id: {evaluator_id}")
     if evaluator.project_id != project_id:
-        raise MetricsSetValidationError(
-            f"evaluator_id does not belong to project: {evaluator_id}"
-        )
+        raise MetricsSetValidationError(f"evaluator_id does not belong to project: {evaluator_id}")
 
 
 async def _find_evaluator_by_kind(
@@ -143,9 +141,7 @@ async def _ensure_all_entry_evaluator_ids(
             )
         idx = next(i for i, e in enumerate(current.entries) if e.kind == entry.kind)
         current_entry = current.entries[idx]
-        current = _replace_entry_at(
-            current, replace(current_entry, evaluator_id=evaluator.id)
-        )
+        current = _replace_entry_at(current, replace(current_entry, evaluator_id=evaluator.id))
     return current
 
 
@@ -170,13 +166,15 @@ async def _ensure_enabled_entry_evaluator_ids(
             )
         idx = next(i for i, e in enumerate(current.entries) if e.kind == entry.kind)
         current_entry = current.entries[idx]
-        current = _replace_entry_at(
-            current, replace(current_entry, evaluator_id=evaluator.id)
-        )
+        current = _replace_entry_at(current, replace(current_entry, evaluator_id=evaluator.id))
     return current
 
 
-def _apply_entry_input(metrics_set: MetricsSet, existing: MetricsSetEntry, inp: MetricsSetEntryInput) -> MetricsSet:
+def _apply_entry_input(
+    metrics_set: MetricsSet,
+    existing: MetricsSetEntry,
+    inp: MetricsSetEntryInput,
+) -> MetricsSet:
     merged_config = dict(existing.config)
     merged_config.update(dict(inp.config))
     merged_config.pop("kind", None)
@@ -401,9 +399,7 @@ class PatchMetricsSet:
                 raise MetricsSetValidationError("Metrics set name must not be empty")
             updated = replace(updated, name=cleaned, updated_at=datetime.now(UTC))
         if command.description is not _UNSET:
-            description = (
-                command.description.strip() if command.description else None
-            )
+            description = command.description.strip() if command.description else None
             updated = replace(updated, description=description, updated_at=datetime.now(UTC))
 
         if command.entries is not None:
@@ -551,9 +547,7 @@ class ResolveMetricsSetForScore:
             resolved = with_evaluators
 
         if save_as_default and request_metrics_set_id is not None:
-            await self._experiments.update(
-                experiment.with_metrics_set_id(resolved.id)
-            )
+            await self._experiments.update(experiment.with_metrics_set_id(resolved.id))
 
         return resolved
 
