@@ -171,10 +171,7 @@ async def test_import_json_happy_path(client: AsyncClient) -> None:
 @pytest.mark.asyncio
 async def test_import_all_rows_invalid_still_200(client: AsyncClient) -> None:
     ds_id = await _rag_qa_dataset(client)
-    csv_body = (
-        "question,expected_answer,expected_doc_ids\n"
-        ",,\n"
-    )
+    csv_body = "question,expected_answer,expected_doc_ids\n,,\n"
     resp = await client.post(
         f"/api/v1/datasets/{ds_id}/items/import",
         files={"file": ("items.csv", csv_body, "text/csv")},

@@ -62,9 +62,7 @@ class InMemoryMetricsSetRepository:
 
     async def next_version(self, project_id: uuid.UUID, name: str) -> int:
         versions = [
-            s.version
-            for s in self._items.values()
-            if s.project_id == project_id and s.name == name
+            s.version for s in self._items.values() if s.project_id == project_id and s.name == name
         ]
         return (max(versions) if versions else 0) + 1
 

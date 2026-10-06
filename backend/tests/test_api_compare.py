@@ -13,6 +13,7 @@ from aiobs.api.deps import (
     get_evaluator_repository,
     get_experiment_item_output_repository,
     get_experiment_repository,
+    get_metrics_set_repository,
     get_project_repository,
     get_trace_repository,
 )
@@ -24,6 +25,7 @@ from aiobs.domain.experiment_output import ExperimentItemOutput
 from aiobs.domain.project import Project
 from aiobs.domain.trace import Trace
 from aiobs.main import create_app
+from tests.support.repositories import InMemoryMetricsSetRepository
 
 
 class InMemoryProjectRepository:
@@ -208,6 +210,7 @@ async def client() -> AsyncIterator[AsyncClient]:
     experiments = InMemoryExperimentRepository()
     runs = InMemoryEvaluationRunRepository()
     outputs = InMemoryExperimentItemOutputRepository()
+    metrics_sets = InMemoryMetricsSetRepository()
 
     app = create_app()
     app.dependency_overrides[get_project_repository] = lambda: projects
@@ -217,6 +220,7 @@ async def client() -> AsyncIterator[AsyncClient]:
     app.dependency_overrides[get_experiment_repository] = lambda: experiments
     app.dependency_overrides[get_evaluation_run_repository] = lambda: runs
     app.dependency_overrides[get_experiment_item_output_repository] = lambda: outputs
+    app.dependency_overrides[get_metrics_set_repository] = lambda: metrics_sets
 
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as ac:
@@ -234,7 +238,7 @@ async def _seed_dataset_and_evaluator(client: AsyncClient) -> tuple[str, str, st
 
     dataset = await client.post(
         f"/api/v1/projects/{project_id}/datasets",
-        json={"name": "support-v1"},
+        json={"name": "support-v1", "task_type": "classification"},
     )
     assert dataset.status_code == 201
     dataset_id = dataset.json()["id"]
@@ -355,7 +359,7 @@ async def test_compare_rejects_different_dataset(client: AsyncClient) -> None:
     project_id, dataset_id, evaluator_id = await _seed_dataset_and_evaluator(client)
     other_dataset = await client.post(
         f"/api/v1/projects/{project_id}/datasets",
-        json={"name": "other-set"},
+        json={"name": "other-set", "task_type": "classification"},
     )
     assert other_dataset.status_code == 201
     other_dataset_id = other_dataset.json()["id"]

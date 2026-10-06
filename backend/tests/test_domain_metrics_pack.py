@@ -48,7 +48,7 @@ def test_patch_entry_updates_threshold_and_merges_config() -> None:
     assert hit.threshold == 0.9
     assert hit.config == {"k": 10}
 
-    latency = next(e for e in updated.entries if e.kind == "latency")
+    _ = next(e for e in updated.entries if e.kind == "latency")
     cleared = updated.patch_entry("latency", threshold=None)
     lat = next(e for e in cleared.entries if e.kind == "latency")
     assert lat.threshold is None

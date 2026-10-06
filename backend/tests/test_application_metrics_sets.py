@@ -111,9 +111,9 @@ async def test_ensure_creates_default_v1_with_evaluator_ids() -> None:
     evaluators = InMemoryEvaluatorRepository()
     create_eval = StubCreateEvaluator(evaluators)
 
-    result = await EnsureProjectDefaultMetricsSet(
-        sets, evaluators, projects, create_eval
-    ).execute(project.id)
+    result = await EnsureProjectDefaultMetricsSet(sets, evaluators, projects, create_eval).execute(
+        project.id
+    )
 
     assert result.name == "Default"
     assert result.version == 1
@@ -141,9 +141,9 @@ async def test_create_custom_does_not_steal_project_default() -> None:
     sets = InMemoryMetricsSetRepository()
     evaluators = InMemoryEvaluatorRepository()
     create_eval = StubCreateEvaluator(evaluators)
-    default = await EnsureProjectDefaultMetricsSet(
-        sets, evaluators, projects, create_eval
-    ).execute(project.id)
+    default = await EnsureProjectDefaultMetricsSet(sets, evaluators, projects, create_eval).execute(
+        project.id
+    )
 
     ev = await evaluators.add(
         Evaluator.create(project.id, "hit_at_k", "deterministic", {"kind": "hit_at_k", "k": 5})
@@ -198,9 +198,9 @@ async def test_version_bump_clears_default_flags() -> None:
     sets = InMemoryMetricsSetRepository()
     evaluators = InMemoryEvaluatorRepository()
     create_eval = StubCreateEvaluator(evaluators)
-    source = await EnsureProjectDefaultMetricsSet(
-        sets, evaluators, projects, create_eval
-    ).execute(project.id)
+    source = await EnsureProjectDefaultMetricsSet(sets, evaluators, projects, create_eval).execute(
+        project.id
+    )
 
     v2 = await VersionMetricsSet(sets, evaluators).execute(
         VersionMetricsSetCommand(metrics_set_id=source.id)
@@ -274,9 +274,9 @@ async def test_resolve_prefers_body_then_experiment_then_project_default() -> No
     sets = InMemoryMetricsSetRepository()
     evaluators = InMemoryEvaluatorRepository()
     create_eval = StubCreateEvaluator(evaluators)
-    default = await EnsureProjectDefaultMetricsSet(
-        sets, evaluators, projects, create_eval
-    ).execute(project.id)
+    default = await EnsureProjectDefaultMetricsSet(sets, evaluators, projects, create_eval).execute(
+        project.id
+    )
 
     ev = await evaluators.add(
         Evaluator.create(project.id, "hit_at_k", "deterministic", {"kind": "hit_at_k", "k": 5})
@@ -365,9 +365,7 @@ async def test_save_as_default_persists_experiment_when_body_set_id() -> None:
     ensure = EnsureProjectDefaultMetricsSet(sets, evaluators, projects, create_eval)
     resolve = ResolveMetricsSetForScore(sets, experiments, evaluators, create_eval, ensure)
 
-    await resolve.execute(
-        experiment=experiment, metrics_set_id=custom.id, save_as_default=True
-    )
+    await resolve.execute(experiment=experiment, metrics_set_id=custom.id, save_as_default=True)
 
     updated = await experiments.get_by_id(experiment.id)
     assert updated is not None

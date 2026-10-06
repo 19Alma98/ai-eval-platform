@@ -102,7 +102,9 @@ async def _ensure_default(client: AsyncClient, slug: str) -> tuple[dict, dict]:
 
 
 @pytest.mark.asyncio
-async def test_list_includes_default_after_ensure(client: tuple[AsyncClient, InMemoryExperimentRepository]) -> None:
+async def test_list_includes_default_after_ensure(
+    client: tuple[AsyncClient, InMemoryExperimentRepository],
+) -> None:
     ac, _ = client
     proj, _pack = await _ensure_default(ac, "ms-list")
     listed = await ac.get(f"/api/v1/projects/{proj['id']}/metrics-sets")

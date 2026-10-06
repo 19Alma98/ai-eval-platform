@@ -72,11 +72,7 @@ class InMemoryAppConfigRepository:
         return sorted(items, key=lambda c: c.created_at, reverse=True)
 
     async def list_versions(self, project_id: uuid.UUID, name: str) -> list[AppConfig]:
-        items = [
-            c
-            for c in self._configs.values()
-            if c.project_id == project_id and c.name == name
-        ]
+        items = [c for c in self._configs.values() if c.project_id == project_id and c.name == name]
         return sorted(items, key=lambda c: c.version)
 
     async def next_version(self, project_id: uuid.UUID, name: str) -> int:

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import uuid
 from collections.abc import AsyncIterator
+
 import pytest
 from httpx import ASGITransport, AsyncClient
 
@@ -167,9 +168,7 @@ async def test_put_rejects_foreign_or_unknown_evaluator_id(
     ac, _ = client
     proj_a = (await ac.post("/api/v1/projects", json={"name": "PA", "slug": "p-mp-a"})).json()
     proj_b = (await ac.post("/api/v1/projects", json={"name": "PB", "slug": "p-mp-b"})).json()
-    ensured = (
-        await ac.post(f"/api/v1/projects/{proj_a['id']}/metrics-pack/ensure")
-    ).json()
+    ensured = (await ac.post(f"/api/v1/projects/{proj_a['id']}/metrics-pack/ensure")).json()
     entries = [
         _entry_payload(ensured, k)
         for k in ("hit_at_k", "must_contain", "groundedness", "correctness", "latency")

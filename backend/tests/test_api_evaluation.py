@@ -18,7 +18,6 @@ from aiobs.api.deps import (
     get_project_repository,
     get_trace_repository,
 )
-from support.repositories import InMemoryMetricsSetRepository
 from aiobs.domain.dataset import Dataset, DatasetItem
 from aiobs.domain.evaluation import EvaluationResultRecord, EvaluationRun
 from aiobs.domain.evaluator import Evaluator
@@ -27,6 +26,7 @@ from aiobs.domain.experiment_output import ExperimentItemOutput
 from aiobs.domain.project import Project
 from aiobs.domain.trace import Trace
 from aiobs.main import create_app
+from support.repositories import InMemoryMetricsSetRepository
 
 
 class InMemoryProjectRepository:

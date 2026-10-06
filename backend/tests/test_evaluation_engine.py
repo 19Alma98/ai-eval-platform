@@ -206,9 +206,7 @@ def test_build_eval_context_includes_retrieval_documents() -> None:
         end_time=end,
         status="ok",
         attributes={
-            "retrieval.documents": json.dumps(
-                [{"id": "doc-3", "text": "Remote work policy."}]
-            ),
+            "retrieval.documents": json.dumps([{"id": "doc-3", "text": "Remote work policy."}]),
         },
     )
     trace = Trace(
@@ -238,9 +236,7 @@ async def test_groundedness_judge_payload_includes_document_texts() -> None:
             captured["user"] = user
             return {"score": 1.0, "label": "PASS", "explanation": "grounded"}
 
-    judge = LlmJudgeEvaluator(
-        "groundedness", {}, FakeLlm(), default_model=get_settings().llm_model
-    )
+    judge = LlmJudgeEvaluator("groundedness", {}, FakeLlm(), default_model=get_settings().llm_model)
     await judge.evaluate(
         _sample(
             context={

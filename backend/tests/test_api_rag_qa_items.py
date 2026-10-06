@@ -2,11 +2,10 @@ from __future__ import annotations
 
 import uuid
 from collections.abc import AsyncIterator
+from datetime import UTC, datetime
 
 import pytest
 from httpx import ASGITransport, AsyncClient
-
-from datetime import UTC, datetime
 
 from aiobs.api.deps import get_dataset_repository, get_project_repository, get_trace_repository
 from aiobs.domain.dataset import Dataset, DatasetItem

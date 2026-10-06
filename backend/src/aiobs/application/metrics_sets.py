@@ -35,9 +35,7 @@ class MetricsSetEntryNotFoundError(Exception):
     def __init__(self, metrics_set_id: uuid.UUID, entry_id: uuid.UUID) -> None:
         self.metrics_set_id = metrics_set_id
         self.entry_id = entry_id
-        super().__init__(
-            f"Metrics set entry not found: {entry_id} in metrics set {metrics_set_id}"
-        )
+        super().__init__(f"Metrics set entry not found: {entry_id} in metrics set {metrics_set_id}")
 
 
 class MetricsSetConflictError(Exception):

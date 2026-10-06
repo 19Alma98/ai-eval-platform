@@ -11,13 +11,16 @@ from httpx import ASGITransport, AsyncClient
 from aiobs.api.deps import (
     get_bind_otlp_traces,
     get_dataset_repository,
+    get_evaluator_repository,
     get_experiment_item_output_repository,
     get_experiment_repository,
+    get_metrics_set_repository,
     get_project_repository,
     get_trace_repository,
 )
 from aiobs.domain.trace import Trace
 from aiobs.main import create_app
+from tests.support.repositories import InMemoryEvaluatorRepository, InMemoryMetricsSetRepository
 from tests.test_api_experiment_outputs import (
     InMemoryDatasetRepository,
     InMemoryExperimentItemOutputRepository,
@@ -41,6 +44,8 @@ async def client() -> AsyncIterator[AsyncClient]:
     datasets = InMemoryDatasetRepository()
     experiments = InMemoryExperimentRepository()
     outputs = InMemoryExperimentItemOutputRepository()
+    evaluators = InMemoryEvaluatorRepository()
+    metrics_sets = InMemoryMetricsSetRepository()
 
     app = create_app()
     app.dependency_overrides[get_project_repository] = lambda: projects
@@ -48,6 +53,8 @@ async def client() -> AsyncIterator[AsyncClient]:
     app.dependency_overrides[get_dataset_repository] = lambda: datasets
     app.dependency_overrides[get_experiment_repository] = lambda: experiments
     app.dependency_overrides[get_experiment_item_output_repository] = lambda: outputs
+    app.dependency_overrides[get_evaluator_repository] = lambda: evaluators
+    app.dependency_overrides[get_metrics_set_repository] = lambda: metrics_sets
 
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as ac:
@@ -65,7 +72,7 @@ async def _seed_rag_experiment(client: AsyncClient) -> tuple[str, str, str]:
 
     dataset = await client.post(
         f"/api/v1/projects/{project_id}/datasets",
-        json={"name": "rag-ds"},
+        json={"name": "rag-ds", "task_type": "classification"},
     )
     assert dataset.status_code == 201
     dataset_id = dataset.json()["id"]

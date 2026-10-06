@@ -6,17 +6,20 @@ from typing import Any
 
 import pytest
 from httpx import ASGITransport, AsyncClient
-from tests.test_api_app_configs import InMemoryAppConfigRepository, InMemoryProjectRepository
 
 from aiobs.api.deps import (
     get_app_config_repository,
     get_dataset_repository,
+    get_evaluator_repository,
     get_experiment_repository,
+    get_metrics_set_repository,
     get_project_repository,
 )
 from aiobs.domain.dataset import Dataset
 from aiobs.domain.experiment import Experiment
 from aiobs.main import create_app
+from tests.support.repositories import InMemoryEvaluatorRepository, InMemoryMetricsSetRepository
+from tests.test_api_app_configs import InMemoryAppConfigRepository, InMemoryProjectRepository
 
 
 class InMemoryDatasetRepository:
@@ -80,12 +83,16 @@ async def client() -> AsyncIterator[AsyncClient]:
     app_configs = InMemoryAppConfigRepository()
     datasets = InMemoryDatasetRepository()
     experiments = InMemoryExperimentRepository()
+    evaluators = InMemoryEvaluatorRepository()
+    metrics_sets = InMemoryMetricsSetRepository()
 
     app = create_app()
     app.dependency_overrides[get_project_repository] = lambda: projects
     app.dependency_overrides[get_app_config_repository] = lambda: app_configs
     app.dependency_overrides[get_dataset_repository] = lambda: datasets
     app.dependency_overrides[get_experiment_repository] = lambda: experiments
+    app.dependency_overrides[get_evaluator_repository] = lambda: evaluators
+    app.dependency_overrides[get_metrics_set_repository] = lambda: metrics_sets
 
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as ac:
