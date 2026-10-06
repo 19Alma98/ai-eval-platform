@@ -23,6 +23,7 @@ export function createExperiment(
     app_config_alias?: string;
     version?: string | null;
     baseline_experiment_id?: string | null;
+    metrics_set_id?: string | null;
   },
 ) {
   return apiPost<Experiment>(
@@ -66,10 +67,13 @@ export function evaluateExperiment(
   return apiPost<EvaluateResponse>(`/api/v1/experiments/${id}/evaluate`, body);
 }
 
-export function evaluatePack(experimentId: string) {
+export function evaluatePack(
+  experimentId: string,
+  body?: { metrics_set_id?: string; save_as_default?: boolean },
+) {
   return apiPost<EvaluateResponse>(
     `/api/v1/experiments/${experimentId}/evaluate-pack`,
-    {},
+    body ?? {},
   );
 }
 

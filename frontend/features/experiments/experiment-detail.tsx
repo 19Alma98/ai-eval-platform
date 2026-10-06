@@ -28,9 +28,21 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { ApiError } from "@/lib/api/client";
 import { evaluateExperiment, evaluatePack } from "@/lib/api/experiments";
 import type { Dataset, EvaluatorSummary } from "@/lib/api/types";
+import { evaluatePackBody } from "@/features/metrics/metrics-set-submit";
+import {
+  useMetricsSet,
+  useMetricsSets,
+} from "@/features/metrics/use-metrics-sets";
 import { truncateId } from "@/lib/format";
 import {
   experimentQueryOptions,
@@ -49,6 +61,7 @@ import {
   experimentAppConfigChip,
   experimentModel,
   experimentVersion,
+  metricsSetBoundLabel,
 } from "./experiment-meta";
 
 function formatScore(value: number | null): string {
@@ -123,6 +136,18 @@ export function ExperimentDetailView({
   const experimentQuery = useExperiment(experimentId);
   const summaryQuery = useExperimentSummary(experimentId);
   const datasetsQuery = useDatasets(projectId);
+  const metricsSetsQuery = useMetricsSets(projectId);
+  const boundMetricsSetId = experimentQuery.data?.metrics_set_id ?? null;
+  const boundSetInList = useMemo(
+    () =>
+      boundMetricsSetId
+        ? (metricsSetsQuery.data ?? []).find((s) => s.id === boundMetricsSetId)
+        : undefined,
+    [boundMetricsSetId, metricsSetsQuery.data],
+  );
+  const boundSetDetailQuery = useMetricsSet(
+    boundMetricsSetId && !boundSetInList ? boundMetricsSetId : null,
+  );
   const summaryOpts = experimentSummaryQueryOptions(experimentId);
   const [evaluateOpen, setEvaluateOpen] = useState(false);
   const [createEvaluatorOpen, setCreateEvaluatorOpen] = useState(false);
@@ -298,6 +323,11 @@ export function ExperimentDetailView({
   const modelLabel = experimentModel(experiment);
   const versionLabel = experimentVersion(experiment);
   const appConfigChip = experimentAppConfigChip(experiment);
+  const metricsSetLabel = metricsSetBoundLabel(
+    experiment,
+    metricsSetsQuery.data,
+    boundSetDetailQuery.data,
+  );
   const appConfigHref = appConfigChip
     ? withProjectQuery(
         `/app-configs/${encodeURIComponent(appConfigChip.familyName)}`,
@@ -350,13 +380,14 @@ export function ExperimentDetailView({
             ) : null}
             {modelLabel ? <span>Model {modelLabel}</span> : null}
             {versionLabel ? <span>Version {versionLabel}</span> : null}
+            <span>Metrics set {metricsSetLabel}</span>
             <span>
               Created <RelativeTime date={experiment.created_at} />
             </span>
           </div>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <ScorePackButton experimentId={experimentId} />
+          <ScorePackControls projectId={projectId} experimentId={experimentId} />
           <EvaluateDialog
             projectId={projectId}
             experimentId={experimentId}
@@ -455,20 +486,35 @@ export function ExperimentDetailView({
   );
 }
 
-function ScorePackButton({ experimentId }: { experimentId: string }) {
+function useInvalidateExperimentScoring(experimentId: string) {
   const queryClient = useQueryClient();
+  return async () => {
+    await queryClient.invalidateQueries({
+      queryKey: experimentSummaryQueryKey(experimentId),
+    });
+    await queryClient.invalidateQueries({
+      queryKey: experimentQueryOptions(experimentId).queryKey,
+    });
+    await queryClient.invalidateQueries({
+      queryKey: experimentOutputsQueryKey(experimentId),
+    });
+  };
+}
+
+function ScorePackControls({
+  projectId,
+  experimentId,
+}: {
+  projectId: string;
+  experimentId: string;
+}) {
+  const invalidate = useInvalidateExperimentScoring(experimentId);
+  const [overrideOpen, setOverrideOpen] = useState(false);
+
   const scorePack = useMutation({
     mutationFn: () => evaluatePack(experimentId),
     onSuccess: async () => {
-      await queryClient.invalidateQueries({
-        queryKey: experimentSummaryQueryKey(experimentId),
-      });
-      await queryClient.invalidateQueries({
-        queryKey: experimentQueryOptions(experimentId).queryKey,
-      });
-      await queryClient.invalidateQueries({
-        queryKey: experimentOutputsQueryKey(experimentId),
-      });
+      await invalidate();
       toast.success("Metrics pack scoring started");
     },
     onError: (err) => {
@@ -483,15 +529,173 @@ function ScorePackButton({ experimentId }: { experimentId: string }) {
   });
 
   return (
-    <Button
-      type="button"
-      variant="outline"
-      size="sm"
-      disabled={scorePack.isPending}
-      onClick={() => scorePack.mutate()}
-    >
-      {scorePack.isPending ? "Scoring…" : "Score with metrics pack"}
-    </Button>
+    <>
+      <Button
+        type="button"
+        variant="outline"
+        size="sm"
+        disabled={scorePack.isPending}
+        onClick={() => scorePack.mutate()}
+      >
+        {scorePack.isPending ? "Scoring…" : "Score with metrics pack"}
+      </Button>
+      <ScorePackOverrideDialog
+        projectId={projectId}
+        experimentId={experimentId}
+        open={overrideOpen}
+        onOpenChange={setOverrideOpen}
+        scoringPending={scorePack.isPending}
+      />
+      <Button
+        type="button"
+        variant="outline"
+        size="sm"
+        onClick={() => setOverrideOpen(true)}
+        disabled={scorePack.isPending}
+      >
+        Override metrics set…
+      </Button>
+    </>
+  );
+}
+
+function ScorePackOverrideDialog({
+  projectId,
+  experimentId,
+  open,
+  onOpenChange,
+  scoringPending,
+}: {
+  projectId: string;
+  experimentId: string;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  scoringPending: boolean;
+}) {
+  const metricsSetsQuery = useMetricsSets(projectId);
+  const invalidate = useInvalidateExperimentScoring(experimentId);
+  const metricsSets = metricsSetsQuery.data ?? [];
+  const [overrideSetId, setOverrideSetId] = useState("");
+  const [saveAsDefault, setSaveAsDefault] = useState(false);
+
+  useEffect(() => {
+    if (!open) {
+      setOverrideSetId("");
+      setSaveAsDefault(false);
+      return;
+    }
+    if (!overrideSetId && metricsSets.length > 0) {
+      setOverrideSetId(metricsSets[0].id);
+    }
+  }, [open, metricsSets, overrideSetId]);
+
+  const overrideScore = useMutation({
+    mutationFn: () =>
+      evaluatePack(
+        experimentId,
+        evaluatePackBody({ overrideSetId, saveAsDefault }),
+      ),
+    onSuccess: async () => {
+      await invalidate();
+      toast.success("Metrics pack scoring started");
+      onOpenChange(false);
+    },
+    onError: (err) => {
+      const message =
+        err instanceof ApiError
+          ? err.message
+          : err instanceof Error
+            ? err.message
+            : "Score with metrics pack failed";
+      toast.error(message);
+    },
+  });
+
+  function handleSubmit(e: FormEvent) {
+    e.preventDefault();
+    if (!overrideSetId) return;
+    overrideScore.mutate();
+  }
+
+  const pending = scoringPending || overrideScore.isPending;
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-md">
+        <form onSubmit={handleSubmit}>
+          <DialogHeader>
+            <DialogTitle>Score with another metrics set</DialogTitle>
+            <DialogDescription>
+              Run the metrics pack using a different set for this scoring run.
+              Optionally pin that set as this experiment&apos;s default.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex flex-col gap-3 py-4">
+            {metricsSetsQuery.isLoading ? (
+              <p className="text-sm text-muted-foreground">Loading metrics sets…</p>
+            ) : metricsSets.length === 0 ? (
+              <p className="text-sm text-muted-foreground">
+                No metrics sets in this project yet.
+              </p>
+            ) : (
+              <>
+                <div className="flex flex-col gap-2">
+                  <label
+                    htmlFor="score-override-metrics-set"
+                    className="text-sm font-medium"
+                  >
+                    Metrics set
+                  </label>
+                  <Select
+                    value={overrideSetId}
+                    onValueChange={(v) => setOverrideSetId(v ?? "")}
+                  >
+                    <SelectTrigger id="score-override-metrics-set">
+                      <SelectValue placeholder="Select metrics set" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {metricsSets.map((s) => (
+                        <SelectItem key={s.id} value={s.id}>
+                          {s.name} v{s.version}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <label className="flex cursor-pointer items-start gap-3 rounded-md border border-border px-3 py-2 hover:bg-surface">
+                  <input
+                    type="checkbox"
+                    className="mt-0.5 size-4 rounded border-border"
+                    checked={saveAsDefault}
+                    onChange={(e) => setSaveAsDefault(e.target.checked)}
+                  />
+                  <span className="text-sm text-foreground">
+                    Salva come default di questo esperimento
+                  </span>
+                </label>
+              </>
+            )}
+          </div>
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => onOpenChange(false)}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="submit"
+              disabled={
+                pending || metricsSets.length === 0 || !overrideSetId
+              }
+            >
+              {overrideScore.isPending ? "Scoring…" : "Score"}
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
   );
 }
 

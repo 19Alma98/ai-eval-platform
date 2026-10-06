@@ -33,6 +33,11 @@ import {
   useAppConfigs,
 } from "@/features/app-configs/use-app-configs";
 import { useDatasets } from "@/features/datasets/use-datasets";
+import {
+  metricsSetIdForCreate,
+  PROJECT_DEFAULT_SELECT,
+} from "@/features/metrics/metrics-set-submit";
+import { useMetricsSets } from "@/features/metrics/use-metrics-sets";
 import { experimentsQueryKey } from "./use-experiments";
 
 type ModelSource = "free" | "app-config";
@@ -50,6 +55,7 @@ export function CreateExperimentDialog({
   const router = useRouter();
   const queryClient = useQueryClient();
   const datasetsQuery = useDatasets(projectId);
+  const metricsSetsQuery = useMetricsSets(projectId);
   const appConfigsQuery = useAppConfigs(projectId);
   const aliasesQuery = useAppConfigAliases(projectId);
   const datasets = datasetsQuery.data ?? [];
@@ -64,6 +70,11 @@ export function CreateExperimentDialog({
   const [selectedAlias, setSelectedAlias] = useState("");
   const [selectedFamily, setSelectedFamily] = useState("");
   const [selectedConfigId, setSelectedConfigId] = useState("");
+  const [selectedMetricsSet, setSelectedMetricsSet] = useState(
+    PROJECT_DEFAULT_SELECT,
+  );
+
+  const metricsSets = metricsSetsQuery.data ?? [];
 
   const versionsQuery = useAppConfigVersions(
     modelSource === "app-config" && appConfigPick === "family" ? projectId : null,
@@ -83,10 +94,12 @@ export function CreateExperimentDialog({
   const create = useMutation({
     mutationFn: () => {
       const versionTrimmed = version.trim();
+      const metricsSetId = metricsSetIdForCreate(selectedMetricsSet);
       const base = {
         name: name.trim(),
         dataset_id: datasetId,
         ...(versionTrimmed ? { version: versionTrimmed } : {}),
+        ...(metricsSetId != null ? { metrics_set_id: metricsSetId } : {}),
       };
 
       if (modelSource === "app-config") {
@@ -122,6 +135,7 @@ export function CreateExperimentDialog({
       setSelectedAlias("");
       setSelectedFamily("");
       setSelectedConfigId("");
+      setSelectedMetricsSet(PROJECT_DEFAULT_SELECT);
       onOpenChange(false);
       router.push(
         withProjectQuery(`/experiments/${encodeURIComponent(experiment.id)}`, projectId),
@@ -215,6 +229,31 @@ export function CreateExperimentDialog({
                   first.
                 </p>
               ) : null}
+            </div>
+            <div className="flex flex-col gap-2">
+              <label htmlFor="experiment-create-metrics-set" className="text-sm font-medium">
+                Metrics set
+              </label>
+              <Select
+                value={selectedMetricsSet}
+                onValueChange={(v) =>
+                  setSelectedMetricsSet(v ?? PROJECT_DEFAULT_SELECT)
+                }
+              >
+                <SelectTrigger id="experiment-create-metrics-set">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={PROJECT_DEFAULT_SELECT}>
+                    Default progetto (fallback)
+                  </SelectItem>
+                  {metricsSets.map((s) => (
+                    <SelectItem key={s.id} value={s.id}>
+                      {s.name} v{s.version}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
             <div className="flex flex-col gap-2">
               <label htmlFor="experiment-create-model-source" className="text-sm font-medium">

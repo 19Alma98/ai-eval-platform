@@ -1,4 +1,16 @@
-import type { Experiment } from "@/lib/api/types";
+import type { Experiment, MetricsSetSummary } from "@/lib/api/types";
+
+export function metricsSetBoundLabel(
+  experiment: Pick<Experiment, "metrics_set_id">,
+  sets: MetricsSetSummary[] | undefined,
+  resolved?: Pick<MetricsSetSummary, "name" | "version"> | null,
+): string {
+  const id = experiment.metrics_set_id;
+  if (!id) return "Project default";
+  const found = sets?.find((s) => s.id === id) ?? resolved;
+  if (found) return `${found.name} v${found.version}`;
+  return id;
+}
 
 /** User-declared model label from experiment.model_config.model */
 export function experimentModel(experiment: Experiment): string | null {
