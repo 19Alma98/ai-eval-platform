@@ -31,7 +31,7 @@ Navigation strip for RAG projects:
 `Test set → Metriche → Runs → Confronta → Release`
 
 - **Test set** — create/import `rag_qa` items (`question`, expected answer, `expected_doc_ids`); versioned datasets.
-- **Metriche** — project metrics pack defaults and thresholds; optional custom evaluators.
+- **Metriche** — versioned metrics sets per project (`/metrics`, `/metrics/[metricsSetId]`): list with “Default progetto” badge, create set seeded from the project default pack, detail editor (enable/threshold/remove custom entries), and “Crea versione N+1” when a set is referenced. Empty projects use `POST …/metrics-pack/ensure` then refetch. Legacy pack API remains for ensure/alias compatibility.
 - **Runs** — experiments pinned to a dataset version; per-item scores and execution detail (retrieve/generate timeline from bound traces).
 - **Confronta** / **Release** — compare runs on the same dataset+version; CI gate uses pack metric names.
 

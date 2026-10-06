@@ -111,6 +111,52 @@ export type ReplaceMetricsPackBody = {
   entries: MetricsPackEntry[];
 };
 
+export type MetricsSetEntry = {
+  id: string;
+  kind: string;
+  enabled: boolean;
+  threshold: number | null;
+  config: Record<string, unknown>;
+  evaluator_id: string | null;
+  is_default: boolean;
+  created_at: string;
+};
+
+export type MetricsSetSummary = {
+  id: string;
+  project_id: string;
+  name: string;
+  version: number;
+  description: string | null;
+  is_project_default: boolean;
+  created_at: string;
+  updated_at: string;
+  entry_count: number;
+  enabled_count: number;
+};
+
+export type MetricsSet = MetricsSetSummary & { entries: MetricsSetEntry[] };
+
+export type MetricsSetEntryInput = {
+  kind: string;
+  enabled: boolean;
+  threshold: number | null;
+  config: Record<string, unknown>;
+  evaluator_id: string | null;
+};
+
+export type CreateMetricsSetBody = {
+  name: string;
+  description?: string | null;
+  entries: MetricsSetEntryInput[];
+};
+
+export type PatchMetricsSetBody = {
+  name?: string;
+  description?: string | null;
+  entries?: MetricsSetEntryInput[];
+};
+
 export type Experiment = {
   id: string;
   project_id: string;
@@ -120,6 +166,7 @@ export type Experiment = {
   app_config_id: string | null;
   version: string | null;
   baseline_experiment_id: string | null;
+  metrics_set_id: string | null;
   status: string;
   created_at: string;
 };

@@ -1,3 +1,4 @@
+/** Legacy pack view; ensure-from-empty-state still uses POST …/metrics-pack/ensure. */
 import { apiGet, apiPost, apiPut } from "./client";
 import type { MetricsPack, ReplaceMetricsPackBody } from "./types";
 
