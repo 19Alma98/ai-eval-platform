@@ -225,6 +225,9 @@ class SqlAlchemyTraceRepository:
             )
 
         await self._session.commit()
+        # Span rows were added separately; expire so selectinload is not stuck
+        # on the empty in-memory collection of this new TraceModel.
+        self._session.expire(row, ["spans"])
         refreshed = await self.get_by_trace_id(trace.project_id, trace.trace_id)
         assert refreshed is not None
         return refreshed

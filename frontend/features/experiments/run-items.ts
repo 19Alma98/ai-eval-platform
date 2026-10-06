@@ -4,6 +4,12 @@ import type {
   ExperimentItemOutput,
 } from "@/lib/api/types";
 
+export function shouldRenderRunItemsSection(_opts: {
+  hasEvaluationRun: boolean;
+}): boolean {
+  return true;
+}
+
 export type RunItemView = {
   datasetItemId: string;
   question: unknown;

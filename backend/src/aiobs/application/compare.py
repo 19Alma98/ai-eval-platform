@@ -79,9 +79,7 @@ class SummarizeExperiment:
             raise InvalidCompareSelectionError(str(exc)) from exc
 
         if not selected:
-            raise InvalidCompareSelectionError(
-                f"No evaluation runs selected for experiment {experiment_id}"
-            )
+            return ExperimentSummary(experiment_id=experiment_id, evaluators=[])
 
         summaries: list[EvaluatorSummary] = []
         for run in sorted(selected, key=lambda r: str(r.evaluator_id)):

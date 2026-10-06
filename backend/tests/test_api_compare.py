@@ -396,7 +396,7 @@ async def test_compare_rejects_different_dataset(client: AsyncClient) -> None:
 
 
 @pytest.mark.asyncio
-async def test_summary_without_runs_400(client: AsyncClient) -> None:
+async def test_summary_without_runs_returns_empty_evaluators(client: AsyncClient) -> None:
     project_id, dataset_id, _evaluator_id = await _seed_dataset_and_evaluator(client)
     experiment = await client.post(
         f"/api/v1/projects/{project_id}/experiments",
@@ -404,4 +404,7 @@ async def test_summary_without_runs_400(client: AsyncClient) -> None:
     )
     experiment_id = experiment.json()["id"]
     response = await client.get(f"/api/v1/experiments/{experiment_id}/summary")
-    assert response.status_code == 400
+    assert response.status_code == 200
+    body = response.json()
+    assert body["experiment_id"] == experiment_id
+    assert body["evaluators"] == []

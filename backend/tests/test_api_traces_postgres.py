@@ -139,3 +139,84 @@ async def test_rest_create_persisted(client: AsyncClient) -> None:
     got = await client.get(f"/api/v1/projects/{project_id}/traces/{'ab' * 16}")
     assert got.status_code == 200
     assert uuid.UUID(got.json()["id"])
+
+
+@pytest.mark.asyncio
+async def test_otlp_first_insert_binds_outputs_for_each_trace(client: AsyncClient) -> None:
+    project = await client.post("/api/v1/projects", json={"name": "Bind Many"})
+    assert project.status_code == 201
+    project_id = project.json()["id"]
+
+    dataset = await client.post(
+        f"/api/v1/projects/{project_id}/datasets",
+        json={"name": "ds", "task_type": "classification"},
+    )
+    dataset_id = dataset.json()["id"]
+    item_ids: list[str] = []
+    for i in range(2):
+        item = await client.post(
+            f"/api/v1/datasets/{dataset_id}/items",
+            json={"input": f"q{i}", "expected_output": f"a{i}"},
+        )
+        assert item.status_code == 201
+        item_ids.append(item.json()["id"])
+
+    experiment = await client.post(
+        f"/api/v1/projects/{project_id}/experiments",
+        json={"name": "exp", "dataset_id": dataset_id},
+    )
+    experiment_id = experiment.json()["id"]
+
+    for i, item_id in enumerate(item_ids):
+        payload = {
+            "resourceSpans": [
+                {
+                    "scopeSpans": [
+                        {
+                            "spans": [
+                                {
+                                    "traceId": f"{i + 1:02x}" * 16,
+                                    "spanId": f"{i + 1:02x}" * 8,
+                                    "name": "chain",
+                                    "startTimeUnixNano": "1700000000000000000",
+                                    "endTimeUnixNano": "1700000001000000000",
+                                    "status": {"code": "STATUS_CODE_OK"},
+                                    "attributes": [
+                                        {
+                                            "key": "openinference.span.kind",
+                                            "value": {"stringValue": "CHAIN"},
+                                        },
+                                        {
+                                            "key": "aiobs.experiment_id",
+                                            "value": {"stringValue": experiment_id},
+                                        },
+                                        {
+                                            "key": "aiobs.dataset_item_id",
+                                            "value": {"stringValue": item_id},
+                                        },
+                                        {
+                                            "key": "output.value",
+                                            "value": {"stringValue": f"answer-{i}"},
+                                        },
+                                    ],
+                                }
+                            ]
+                        }
+                    ]
+                }
+            ]
+        }
+        otlp = await client.post(
+            "/v1/traces",
+            json=payload,
+            headers={"X-Project-Id": project_id, "content-type": "application/json"},
+        )
+        assert otlp.status_code == 200, otlp.text
+
+    listed = await client.get(f"/api/v1/experiments/{experiment_id}/outputs")
+    assert listed.status_code == 200
+    rows = listed.json()
+    assert len(rows) == 2
+    by_item = {row["dataset_item_id"]: row["actual_output"] for row in rows}
+    assert by_item[item_ids[0]] == "answer-0"
+    assert by_item[item_ids[1]] == "answer-1"

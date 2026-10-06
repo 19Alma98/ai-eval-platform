@@ -47,6 +47,30 @@ def extract_run_binding(trace: Trace) -> tuple[uuid.UUID, uuid.UUID] | None:
     return None
 
 
+def traces_for_output_binding(
+    payload_traces: list[Trace], saved_traces: list[Trace]
+) -> list[Trace]:
+    """Prefer DB-merged traces when they still carry bind attrs.
+
+    A first insert can return a saved trace whose span collection was empty in
+    the SQLAlchemy identity map; fall back to the decoded payload in that case.
+    """
+    saved_by_id = {trace.trace_id: trace for trace in saved_traces}
+    chosen: list[Trace] = []
+    seen: set[str] = set()
+    for payload in payload_traces:
+        seen.add(payload.trace_id)
+        saved = saved_by_id.get(payload.trace_id)
+        if saved is not None and extract_run_binding(saved) is not None:
+            chosen.append(saved)
+        else:
+            chosen.append(payload)
+    for saved in saved_traces:
+        if saved.trace_id not in seen:
+            chosen.append(saved)
+    return chosen
+
+
 def build_output_from_trace(trace: Trace) -> dict[str, Any]:
     context = build_eval_context_from_trace(trace)
     return {

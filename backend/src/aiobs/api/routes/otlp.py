@@ -18,7 +18,10 @@ from aiobs.application.traces import IngestNormalizedTraces, ProjectMissingError
 from aiobs.config import Settings
 from aiobs.tracing.ingestion import ingest_otlp_payload
 from aiobs.tracing.otel import OtlpDecodeError
-from aiobs.tracing.run_binding import BindOtlpTracesToExperimentOutputs
+from aiobs.tracing.run_binding import (
+    BindOtlpTracesToExperimentOutputs,
+    traces_for_output_binding,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -73,7 +76,7 @@ async def export_traces(
 
     saved = await ingest.execute(traces)
     try:
-        await bind_outputs.execute(saved)
+        await bind_outputs.execute(traces_for_output_binding(traces, saved))
     except Exception:
         logger.warning("OTLP experiment output binding failed", exc_info=True)
 

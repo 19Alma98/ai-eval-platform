@@ -56,7 +56,11 @@ import {
   useExperimentSummary,
 } from "./use-experiments";
 import { RunItemTimeline } from "./run-item-timeline";
-import { buildRunItemViews, type RunItemView } from "./run-items";
+import {
+  buildRunItemViews,
+  shouldRenderRunItemsSection,
+  type RunItemView,
+} from "./run-items";
 import {
   experimentAppConfigChip,
   experimentModel,
@@ -201,6 +205,15 @@ export function ExperimentDetailView({
         cell: (row) => (
           <span className="line-clamp-2 font-mono text-xs text-foreground">
             {truncatePreview(valuePreview(row.question))}
+          </span>
+        ),
+      },
+      {
+        id: "answer",
+        header: "Answer",
+        cell: (row) => (
+          <span className="line-clamp-2 font-mono text-xs text-muted-foreground">
+            {truncatePreview(valuePreview(row.actualOutput))}
           </span>
         ),
       },
@@ -429,7 +442,7 @@ export function ExperimentDetailView({
       {evaluators.length === 0 ? (
         <EmptyState
           title="No evaluation runs"
-          description="Score with the project metrics pack or run selected evaluators to see aggregated metrics and per-item results."
+          description="Score with the project metrics pack or run selected evaluators to see aggregated metrics. Dataset questions and bound answers are listed below."
         />
       ) : (
         <DataTable
@@ -443,22 +456,26 @@ export function ExperimentDetailView({
         />
       )}
 
-      {selectedRunId ? (
+      {shouldRenderRunItemsSection({
+        hasEvaluationRun: Boolean(selectedRunId),
+      }) ? (
         <RunItemsSection
           projectId={projectId}
           runId={selectedRunId}
           evaluatorName={
-            evaluators[selectedIndex]?.evaluator_name?.trim() ||
-            truncateId(evaluators[selectedIndex]?.evaluator_id ?? "", 10)
+            selectedRunId
+              ? evaluators[selectedIndex]?.evaluator_name?.trim() ||
+                truncateId(evaluators[selectedIndex]?.evaluator_id ?? "", 10)
+              : null
           }
           runStatus={runQuery.data?.status}
           itemsLoading={
-            runQuery.isLoading ||
+            (selectedRunId ? runQuery.isLoading : false) ||
             outputsQuery.isLoading ||
             datasetDetailQuery.isLoading
           }
           itemsError={
-            runQuery.isError
+            selectedRunId && runQuery.isError
               ? runQuery.error
               : outputsQuery.isError
                 ? outputsQuery.error
@@ -467,7 +484,7 @@ export function ExperimentDetailView({
                   : null
           }
           onRetryItems={() => {
-            void runQuery.refetch();
+            if (selectedRunId) void runQuery.refetch();
             void outputsQuery.refetch();
             void datasetDetailQuery.refetch();
           }}
@@ -713,8 +730,8 @@ function RunItemsSection({
   onSelectedItemIndexChange,
 }: {
   projectId: string;
-  runId: string;
-  evaluatorName: string;
+  runId: string | null;
+  evaluatorName: string | null;
   runStatus?: string;
   itemsLoading: boolean;
   itemsError: unknown;
@@ -733,19 +750,27 @@ function RunItemsSection({
       <div className="flex flex-wrap items-baseline justify-between gap-2">
         <h2 className="text-sm font-medium text-foreground">Run items</h2>
         <p className="text-xs text-muted-foreground">
-          Evaluator{" "}
-          <span className="font-medium text-foreground">{evaluatorName}</span>
-          {" · "}
-          Run{" "}
-          <span className="font-mono text-foreground">
-            {truncateId(runId, 12)}
-          </span>
-          {runStatus ? (
+          {runId ? (
             <>
+              Evaluator{" "}
+              <span className="font-medium text-foreground">
+                {evaluatorName ?? "—"}
+              </span>
               {" · "}
-              <StatusBadge status={runStatus} />
+              Run{" "}
+              <span className="font-mono text-foreground">
+                {truncateId(runId, 12)}
+              </span>
+              {runStatus ? (
+                <>
+                  {" · "}
+                  <StatusBadge status={runStatus} />
+                </>
+              ) : null}
             </>
-          ) : null}
+          ) : (
+            "Not scored yet — questions and bound answers from this run."
+          )}
         </p>
       </div>
 
