@@ -6,15 +6,89 @@ import argparse
 import json
 import logging
 import os
+import time
+import urllib.error
+import urllib.request
 from pathlib import Path
 from typing import Any
 
-import aiobs
+from kb import expected_for_question, iter_gold, load_knowledge, retrieve
 from openai import OpenAI
 
-from kb import expected_for_question, iter_gold, load_knowledge, retrieve
+import aiobs
 
 logger = logging.getLogger(__name__)
+
+
+def api_base_url() -> str:
+    return os.getenv("AIOBS_BASE_URL", "http://localhost:8000").rstrip("/")
+
+
+def http_json(
+    method: str,
+    url: str,
+    *,
+    body: dict[str, Any] | None = None,
+) -> Any:
+    data = None if body is None else json.dumps(body).encode("utf-8")
+    req = urllib.request.Request(
+        url,
+        data=data,
+        method=method,
+        headers={"content-type": "application/json", "accept": "application/json"},
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=60) as resp:
+            raw = resp.read()
+            if not raw:
+                return None
+            return json.loads(raw.decode("utf-8"))
+    except urllib.error.HTTPError as exc:
+        detail = exc.read().decode("utf-8", errors="replace")
+        raise SystemExit(f"{method} {url} -> {exc.code}: {detail}") from exc
+
+
+def question_from_item_input(raw: Any) -> str:
+    if isinstance(raw, str) and raw.strip():
+        return raw
+    if isinstance(raw, dict):
+        for key in ("question", "input", "query", "text"):
+            value = raw.get(key)
+            if isinstance(value, str) and value.strip():
+                return value
+    raise SystemExit(f"cannot extract question from dataset item input: {raw!r}")
+
+
+def load_dataset_jobs(dataset_id: str) -> tuple[str, list[tuple[str, str, Any]]]:
+    detail = http_json("GET", f"{api_base_url()}/api/v1/datasets/{dataset_id}")
+    items = detail.get("items") or []
+    if not items:
+        raise SystemExit(f"dataset {dataset_id} has no items")
+    jobs: list[tuple[str, str, Any]] = []
+    for item in items:
+        jobs.append(
+            (
+                question_from_item_input(item.get("input")),
+                str(item["id"]),
+                item.get("expected_output"),
+            )
+        )
+    return str(detail["project_id"]), jobs
+
+
+def create_experiment(project_id: str, dataset_id: str, *, model: str) -> str:
+    stamp = time.strftime("%Y%m%d-%H%M%S")
+    experiment = http_json(
+        "POST",
+        f"{api_base_url()}/api/v1/projects/{project_id}/experiments",
+        body={
+            "name": f"hr-it-assistant-{stamp}",
+            "dataset_id": dataset_id,
+            "model_config": {"model": model},
+            "version": stamp,
+        },
+    )
+    return str(experiment["id"])
 
 SYSTEM_PROMPT = (
     "You are Acme's People Ops assistant. Answer using only the provided "
@@ -135,6 +209,11 @@ def main(argv: list[str] | None = None) -> int:
         default=None,
         help="JSON map question text -> dataset_item_id for --all runs",
     )
+    parser.add_argument(
+        "--dataset-id",
+        default=os.getenv("AIOBS_DATASET_ID"),
+        help="Load questions from this dataset and bind each trace to its item",
+    )
     args = parser.parse_args(argv)
 
     item_map: dict[str, str] = {}
@@ -143,7 +222,12 @@ def main(argv: list[str] | None = None) -> int:
         if not isinstance(item_map, dict):
             raise SystemExit("--item-map must be a JSON object")
 
-    project_id = os.getenv("AIOBS_PROJECT_ID")
+    dataset_jobs: list[tuple[str, str, Any]] | None = None
+    dataset_project_id: str | None = None
+    if args.dataset_id:
+        dataset_project_id, dataset_jobs = load_dataset_jobs(args.dataset_id)
+
+    project_id = os.getenv("AIOBS_PROJECT_ID") or dataset_project_id
     project_slug = os.getenv("AIOBS_PROJECT_SLUG", "hr-it-assistant")
     init_kwargs: dict[str, Any] = {
         "endpoint": os.getenv("AIOBS_OTLP_ENDPOINT", "http://localhost:8000/v1/traces"),
@@ -164,26 +248,42 @@ def main(argv: list[str] | None = None) -> int:
         timeout=float(os.getenv("OLLAMA_TIMEOUT_SECONDS", "300")),
     )
 
-    if args.all:
-        questions = [q for q, _, _ in iter_gold(docs)]
+    experiment_id = args.experiment_id
+    jobs: list[tuple[str, str | None, Any]]
+    if dataset_jobs is not None:
+        if not experiment_id:
+            if not project_id:
+                raise SystemExit(
+                    "dataset run needs project_id from the dataset or AIOBS_PROJECT_ID"
+                )
+            experiment_id = create_experiment(
+                project_id, args.dataset_id, model=args.model
+            )
+            print(f"created experiment {experiment_id} for dataset {args.dataset_id}")
+        jobs = [(q, item_id, expected) for q, item_id, expected in dataset_jobs]
+    elif args.all:
+        jobs = [(q, item_map.get(q), None) for q, _, _ in iter_gold(docs)]
     elif args.question:
-        questions = [args.question]
+        jobs = [(args.question, item_map.get(args.question) if item_map else None, None)]
     else:
-        parser.error("provide a question or --all")
+        parser.error("provide a question, --all, or --dataset-id")
 
     try:
-        for question in questions:
-            item_id = item_map.get(question) if item_map else None
+        for question, item_id, expected_output in jobs:
             result = answer_question(
                 question,
                 docs=docs,
                 client=client,
                 model=args.model,
-                experiment_id=args.experiment_id,
+                experiment_id=experiment_id,
                 dataset_item_id=item_id,
             )
             aiobs.flush()
-            result["expected_output"] = expected_for_question(docs, question)
+            result["expected_output"] = (
+                expected_output
+                if expected_output is not None
+                else expected_for_question(docs, question)
+            )
             if args.json:
                 print(json.dumps(result, ensure_ascii=True))
             else:
