@@ -19,6 +19,10 @@ services:
     build:
       context: ./backend
       dockerfile: Dockerfile
+    env_file:
+      - ./backend/.env
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     environment:
       DATABASE_URL: postgresql+asyncpg://aiobs:aiobs@postgres:5432/aiobs
       APP_HOST: 0.0.0.0
