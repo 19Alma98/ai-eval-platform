@@ -145,6 +145,7 @@ def _summary_response(summary: ExperimentSummary) -> ExperimentSummaryResponse:
                 evaluator_id=item.evaluator_id,
                 evaluator_name=item.evaluator_name,
                 run_id=item.run_id,
+                status=item.status,
                 n_items=item.aggregates.n_items,
                 n_scored=item.aggregates.n_scored,
                 n_error=item.aggregates.n_error,

@@ -250,6 +250,56 @@ def test_build_eval_context_includes_retrieval_documents() -> None:
 
 
 @pytest.mark.asyncio
+async def test_tool_call_success_non_list_skipped() -> None:
+    tools = ToolCallSuccessEvaluator({})
+    result = await tools.evaluate(
+        _sample(actual_output=None, context={"tool_calls": {"name": "search"}})
+    )
+    assert result.label == "SKIPPED"
+    assert result.score is None
+    assert result.explanation == "context.tool_calls must be a list"
+
+
+@pytest.mark.asyncio
+async def test_groundedness_empty_documents_fail_min() -> None:
+    class FakeLlm:
+        async def complete_json(self, *, system: str, user: str, model: str | None = None):
+            raise AssertionError("judge should not be called when documents are empty")
+
+    judge = LlmJudgeEvaluator("groundedness", {}, FakeLlm(), default_model=get_settings().llm_model)
+    result = await judge.evaluate(
+        _sample(context={"documents": []}),
+    )
+    assert result.label == "FAIL"
+    assert result.score == 0.0
+    assert result.explanation == "context.documents are missing or empty"
+
+
+@pytest.mark.asyncio
+async def test_groundedness_missing_documents_fail_min() -> None:
+    class FakeLlm:
+        async def complete_json(self, *, system: str, user: str, model: str | None = None):
+            raise AssertionError("judge should not be called when documents are missing")
+
+    judge = LlmJudgeEvaluator("groundedness", {}, FakeLlm(), default_model=get_settings().llm_model)
+    result = await judge.evaluate(_sample(context={"latency_ms": 10}))
+    assert result.label == "FAIL"
+    assert result.score == 0.0
+
+
+@pytest.mark.asyncio
+async def test_groundedness_context_none_skipped() -> None:
+    class FakeLlm:
+        async def complete_json(self, *, system: str, user: str, model: str | None = None):
+            raise AssertionError("judge should not be called when context is missing")
+
+    judge = LlmJudgeEvaluator("groundedness", {}, FakeLlm(), default_model=get_settings().llm_model)
+    result = await judge.evaluate(_sample(context=None))
+    assert result.label == "SKIPPED"
+    assert result.score is None
+
+
+@pytest.mark.asyncio
 async def test_groundedness_judge_payload_includes_document_texts() -> None:
     captured: dict[str, str] = {}
 

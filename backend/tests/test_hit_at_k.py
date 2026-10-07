@@ -82,7 +82,7 @@ async def test_hit_at_k_skipped_missing_expected() -> None:
 
 
 @pytest.mark.asyncio
-async def test_hit_at_k_skipped_empty_documents() -> None:
+async def test_hit_at_k_fail_empty_documents() -> None:
     ev = HitAtKEvaluator({"k": 5})
     sample = EvaluationSample(
         input="q",
@@ -92,12 +92,14 @@ async def test_hit_at_k_skipped_empty_documents() -> None:
         metadata={"expected_doc_ids": ["a"]},
     )
     result = await ev.evaluate(sample)
-    assert result.score is None
-    assert result.label == "SKIPPED"
+    assert result.score == 0.0
+    assert result.label == "FAIL"
+    assert result.explanation is not None
+    assert "empty" in result.explanation
 
 
 @pytest.mark.asyncio
-async def test_hit_at_k_skipped_documents_without_ids() -> None:
+async def test_hit_at_k_fail_documents_without_ids() -> None:
     ev = HitAtKEvaluator({"k": 5})
     sample = EvaluationSample(
         input="q",
@@ -107,12 +109,12 @@ async def test_hit_at_k_skipped_documents_without_ids() -> None:
         metadata={"expected_doc_ids": ["a"]},
     )
     result = await ev.evaluate(sample)
-    assert result.score is None
-    assert result.label == "SKIPPED"
+    assert result.score == 0.0
+    assert result.label == "FAIL"
 
 
 @pytest.mark.asyncio
-async def test_hit_at_k_skipped_empty_retrieved_doc_ids() -> None:
+async def test_hit_at_k_fail_empty_retrieved_doc_ids() -> None:
     ev = HitAtKEvaluator({"k": 5})
     sample = EvaluationSample(
         input="q",
@@ -122,12 +124,12 @@ async def test_hit_at_k_skipped_empty_retrieved_doc_ids() -> None:
         metadata={"expected_doc_ids": ["a"]},
     )
     result = await ev.evaluate(sample)
-    assert result.score is None
-    assert result.label == "SKIPPED"
+    assert result.score == 0.0
+    assert result.label == "FAIL"
 
 
 @pytest.mark.asyncio
-async def test_hit_at_k_skipped_missing_retrieved() -> None:
+async def test_hit_at_k_fail_missing_retrieved() -> None:
     ev = HitAtKEvaluator({"k": 5})
     sample = EvaluationSample(
         input="q",
@@ -137,8 +139,10 @@ async def test_hit_at_k_skipped_missing_retrieved() -> None:
         metadata={"expected_doc_ids": ["a"]},
     )
     result = await ev.evaluate(sample)
-    assert result.score is None
-    assert result.label == "SKIPPED"
+    assert result.score == 0.0
+    assert result.label == "FAIL"
+    assert result.explanation is not None
+    assert "no documents retrieved" in result.explanation
 
 
 @pytest.mark.asyncio

@@ -165,7 +165,7 @@ Optional query params:
 - `run_ids` — explicit runs (must belong to the experiment); default = latest run per evaluator
 - `evaluator_ids` — filter after run selection
 
-Response includes per-evaluator aggregates: `mean_score`, `pass_rate`, item counts.
+Response includes per-evaluator aggregates: run `status`, `mean_score`, `pass_rate`, item counts (`n_scored`, `n_error`, `n_skipped`).
 
 ## Evaluators
 

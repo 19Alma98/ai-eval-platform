@@ -24,6 +24,7 @@ class EvaluatorSummary:
     evaluator_id: uuid.UUID
     evaluator_name: str | None
     run_id: uuid.UUID
+    status: str
     aggregates: Aggregates
 
 
@@ -89,6 +90,7 @@ class SummarizeExperiment:
                     evaluator_id=run.evaluator_id,
                     evaluator_name=_evaluator_name(run),
                     run_id=run.id,
+                    status=run.status,
                     aggregates=aggregate_results(results),
                 )
             )

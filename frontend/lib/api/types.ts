@@ -184,6 +184,7 @@ export type EvaluatorSummary = {
   evaluator_id: string;
   evaluator_name: string | null;
   run_id: string;
+  status: string;
   n_items: number;
   n_scored: number;
   n_error: number;

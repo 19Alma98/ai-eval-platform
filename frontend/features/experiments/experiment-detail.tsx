@@ -229,8 +229,28 @@ export function ExperimentDetailView({
       {
         id: "label",
         header: "Label",
-        headerClassName: "w-[96px]",
-        cell: (row) => row.label?.trim() || "—",
+        headerClassName: "w-[104px]",
+        cell: (row) => {
+          const label = row.label?.trim();
+          if (!label) return "—";
+          return <StatusBadge status={label} />;
+        },
+      },
+      {
+        id: "explanation",
+        header: "Explanation",
+        cell: (row) => {
+          const text = row.explanation?.trim() || "";
+          if (!text) return "—";
+          return (
+            <span
+              className="line-clamp-2 text-xs text-muted-foreground"
+              title={text}
+            >
+              {text}
+            </span>
+          );
+        },
       },
     ],
     [],
@@ -247,6 +267,13 @@ export function ExperimentDetailView({
               truncateId(row.evaluator_id, 10)}
           </span>
         ),
+      },
+      {
+        id: "status",
+        header: "Status",
+        headerClassName: "w-[104px]",
+        cell: (row) =>
+          row.status?.trim() ? <StatusBadge status={row.status} /> : "—",
       },
       {
         id: "mean_score",
@@ -274,14 +301,34 @@ export function ExperimentDetailView({
         header: "Errors",
         headerClassName: "w-[72px] text-right",
         className: "text-right font-mono tabular-nums text-muted-foreground",
-        cell: (row) => row.n_error,
+        cell: (row) => (
+          <span
+            className={
+              row.n_error > 0
+                ? "font-medium text-status-fail"
+                : undefined
+            }
+          >
+            {row.n_error}
+          </span>
+        ),
       },
       {
         id: "n_skipped",
         header: "Skipped",
         headerClassName: "w-[80px] text-right",
         className: "text-right font-mono tabular-nums text-muted-foreground",
-        cell: (row) => row.n_skipped,
+        cell: (row) => (
+          <span
+            className={
+              row.n_skipped > 0
+                ? "font-medium text-status-warn"
+                : undefined
+            }
+          >
+            {row.n_skipped}
+          </span>
+        ),
       },
       {
         id: "n_items",

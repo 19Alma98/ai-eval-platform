@@ -62,7 +62,9 @@ Features:
 
 Features:
 - run status and pack scoring (`evaluate-pack`)
-- per-item results and bound trace timeline
+- per-item results with outcome badges (`PASS` / `FAIL` / `SKIPPED` / `ERROR`) and always-visible explanations
+- evaluator summary shows run status and emphasizes error/skipped counts
+- bound trace timeline
 - baseline comparison on the same test set version
 - regression markers
 - create dialog binds **App config** as a peer field to Dataset (alias or family@version); free-form model/version sits under Advanced when no registry config is selected

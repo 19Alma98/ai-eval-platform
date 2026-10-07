@@ -4,6 +4,7 @@ import json
 import re
 from typing import Any
 
+from aiobs.evaluation.outcomes import fail_min, pass_, skip
 from aiobs.evaluation.protocol import EvaluationResult, EvaluationSample
 from aiobs.evaluation.registry import register_evaluator
 
@@ -270,49 +271,32 @@ class HitAtKEvaluator:
     async def evaluate(self, sample: EvaluationSample) -> EvaluationResult:
         expected = sample.metadata.get("expected_doc_ids")
         if expected is None:
-            return EvaluationResult(
-                score=None,
-                label="SKIPPED",
-                explanation="metadata.expected_doc_ids is missing",
-            )
+            return skip("metadata.expected_doc_ids is missing")
         if not isinstance(expected, list):
-            return EvaluationResult(
-                score=None,
-                label="SKIPPED",
-                explanation="metadata.expected_doc_ids must be a list",
-            )
+            return skip("metadata.expected_doc_ids must be a list")
         expected_ids = {str(doc_id) for doc_id in expected}
 
         ctx = _as_context(sample)
         retrieved = _retrieved_doc_ids(ctx)
         if retrieved is None:
-            return EvaluationResult(
-                score=None,
-                label="SKIPPED",
-                explanation="context.documents or context.retrieved_doc_ids is missing",
+            return fail_min(
+                "no documents retrieved "
+                "(context.documents or context.retrieved_doc_ids is missing)"
             )
 
         if not retrieved:
-            return EvaluationResult(
-                score=None,
-                label="SKIPPED",
-                explanation="retrieved documents are empty or have no document ids",
-            )
+            return fail_min("retrieved documents are empty or have no document ids")
 
         top_k = set(retrieved[: self._k])
         hit = bool(expected_ids & top_k)
-        return EvaluationResult(
-            score=1.0 if hit else 0.0,
-            label="PASS" if hit else "FAIL",
-            explanation="expected doc in top-k retrieved"
-            if hit
-            else "no expected doc in top-k retrieved",
-            metadata={
-                "k": self._k,
-                "expected_doc_ids": list(expected),
-                "retrieved_top_k": retrieved[: self._k],
-            },
-        )
+        meta = {
+            "k": self._k,
+            "expected_doc_ids": list(expected),
+            "retrieved_top_k": retrieved[: self._k],
+        }
+        if hit:
+            return pass_("expected doc in top-k retrieved", metadata=meta)
+        return fail_min("no expected doc in top-k retrieved", metadata=meta)
 
 
 class ToolCallSuccessEvaluator:
@@ -325,34 +309,21 @@ class ToolCallSuccessEvaluator:
         ctx = _as_context(sample)
         tool_calls = ctx.get("tool_calls")
         if tool_calls is None:
-            return EvaluationResult(
-                score=None, label="SKIPPED", explanation="context.tool_calls is missing"
-            )
+            return skip("context.tool_calls is missing")
         if not isinstance(tool_calls, list):
-            return EvaluationResult(
-                score=None,
-                label="ERROR",
-                explanation="context.tool_calls must be a list",
-            )
+            return skip("context.tool_calls must be a list")
         if not tool_calls:
-            return EvaluationResult(
-                score=1.0,
-                label="PASS",
-                explanation="no tool calls",
-                metadata={"tool_call_count": 0},
-            )
+            return pass_("no tool calls", metadata={"tool_call_count": 0})
         failures = [
             call
             for call in tool_calls
             if not isinstance(call, dict) or call.get("success") is not True
         ]
         ok = len(failures) == 0
-        return EvaluationResult(
-            score=1.0 if ok else 0.0,
-            label="PASS" if ok else "FAIL",
-            explanation="all tool calls succeeded" if ok else "one or more tool calls failed",
-            metadata={"tool_call_count": len(tool_calls), "failures": len(failures)},
-        )
+        meta = {"tool_call_count": len(tool_calls), "failures": len(failures)}
+        if ok:
+            return pass_("all tool calls succeeded", metadata=meta)
+        return fail_min("one or more tool calls failed", metadata=meta)
 
 
 class MustContainEvaluator:

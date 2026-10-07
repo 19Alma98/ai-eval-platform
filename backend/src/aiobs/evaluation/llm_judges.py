@@ -4,7 +4,21 @@ import json
 from collections.abc import Callable
 from typing import Any
 
+from aiobs.evaluation.outcomes import fail_min, skip
 from aiobs.evaluation.protocol import EvaluationResult, EvaluationSample, LlmClient
+
+
+def _groundedness_documents_missing_or_empty(context: Any) -> bool:
+    if not isinstance(context, dict):
+        return True
+    if "documents" not in context:
+        return True
+    documents = context["documents"]
+    if documents is None:
+        return True
+    if not isinstance(documents, list):
+        return True
+    return len(documents) == 0
 
 PROMPT_VERSIONS = {
     "answer_relevance": "answer_relevance.v1",
@@ -62,15 +76,14 @@ class LlmJudgeEvaluator:
 
     async def evaluate(self, sample: EvaluationSample) -> EvaluationResult:
         if sample.actual_output is None:
-            return EvaluationResult(
-                score=None, label="SKIPPED", explanation="actual_output is missing"
-            )
+            return skip("actual_output is missing")
         if self._kind == "correctness" and sample.expected_output is None:
-            return EvaluationResult(
-                score=None, label="SKIPPED", explanation="expected_output is missing"
-            )
-        if self._kind == "groundedness" and sample.context is None:
-            return EvaluationResult(score=None, label="SKIPPED", explanation="context is missing")
+            return skip("expected_output is missing")
+        if self._kind == "groundedness":
+            if sample.context is None:
+                return skip("context is missing")
+            if _groundedness_documents_missing_or_empty(sample.context):
+                return fail_min("context.documents are missing or empty")
 
         raw = await self._llm.complete_json(
             system=_SYSTEM_PROMPTS[self._kind],

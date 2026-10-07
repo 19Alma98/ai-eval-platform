@@ -336,6 +336,7 @@ class EvaluatorSummaryResponse(BaseModel):
     evaluator_id: uuid.UUID
     evaluator_name: str | None = None
     run_id: uuid.UUID
+    status: str
     n_items: int
     n_scored: int
     n_error: int

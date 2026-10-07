@@ -9,11 +9,15 @@ const STATUS_STYLES: Record<string, string> = {
   error: "bg-status-fail-bg text-status-fail",
 };
 
-function normalizeStatus(status: string): string {
+export function statusTone(status: string): string {
   const s = status.toLowerCase();
   if (s in STATUS_STYLES) return s;
-  if (s === "passed" || s === "complete") return "ok";
-  if (s === "failed") return "fail";
+  if (s === "pass" || s === "passed" || s === "complete" || s === "completed") {
+    return "ok";
+  }
+  if (s === "fail" || s === "failed") return "fail";
+  if (s === "error") return "error";
+  if (s === "skipped") return "warn";
   return "unset";
 }
 
@@ -24,7 +28,7 @@ export function StatusBadge({
   status: string;
   className?: string;
 }) {
-  const key = normalizeStatus(status);
+  const key = statusTone(status);
   const style =
     STATUS_STYLES[key] ?? "bg-status-unset-bg text-status-unset";
 

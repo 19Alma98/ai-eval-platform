@@ -102,7 +102,7 @@ An evaluation run stores:
 
 ## Failure handling
 
-An evaluator failure must not silently become score=0.
+Do not use score=0 for infrastructure failures or non-evaluable inputs.
 
 Use explicit states:
 
@@ -114,6 +114,14 @@ FAILED
 ERROR
 SKIPPED
 ```
+
+Outcome classes:
+
+- **ERROR** — judge/infra failure (timeout, exception). `score` is null; run becomes `ERROR`.
+- **SKIPPED** — metric cannot be evaluated (missing gold / required fields). `score` is null; excluded from mean/pass_rate.
+- **FAIL** with minimum score (usually `0.0`) — quality miss, including empty/missing retrieval when gold is present. Lowers mean/pass_rate and can fail gates.
+
+Helpers: `aiobs.evaluation.outcomes` (`skip`, `fail_min`, `error`, `pass_`).
 
 ## LLM judge requirements
 
