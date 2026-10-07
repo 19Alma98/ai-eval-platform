@@ -98,6 +98,14 @@ function truncatePreview(text: string, max = PREVIEW_MAX): string {
   return `${text.slice(0, max)}…`;
 }
 
+function runContextWithoutDocuments(context: unknown): unknown {
+  if (typeof context !== "object" || context === null || Array.isArray(context)) {
+    return context;
+  }
+  const { documents: _documents, ...rest } = context as Record<string, unknown>;
+  return rest;
+}
+
 function formatJson(value: unknown): string {
   if (value === null || value === undefined) return "—";
   if (typeof value === "string") return value;
@@ -905,10 +913,16 @@ function RunItemsSection({
                 </DetailBlock>
                 <DetailBlock title="Retrieved documents">
                   {selectedItem.retrievedDocuments != null
-                    ? formatJson(selectedItem.retrievedDocuments)
-                    : selectedItem.context != null
-                      ? formatJson(selectedItem.context)
-                      : "—"}
+                    ? Array.isArray(selectedItem.retrievedDocuments) &&
+                      selectedItem.retrievedDocuments.length === 0
+                      ? "None (empty retrieval)"
+                      : formatJson(selectedItem.retrievedDocuments)
+                    : "—"}
+                </DetailBlock>
+                <DetailBlock title="Run context">
+                  {selectedItem.context != null
+                    ? formatJson(runContextWithoutDocuments(selectedItem.context))
+                    : "—"}
                 </DetailBlock>
                 <DetailBlock title="Actual output">
                   {formatJson(selectedItem.actualOutput)}

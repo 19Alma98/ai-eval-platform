@@ -249,6 +249,34 @@ def test_build_eval_context_includes_retrieval_documents() -> None:
     ]
 
 
+def test_build_eval_context_empty_retrieval_sets_documents_list() -> None:
+    start = datetime(2024, 1, 1, tzinfo=UTC)
+    end = datetime(2024, 1, 1, 0, 0, 1, tzinfo=UTC)
+    retriever = Span(
+        id=uuid.uuid4(),
+        span_id="c" * 16,
+        parent_span_id=None,
+        name="retrieve",
+        kind="RETRIEVER",
+        start_time=start,
+        end_time=end,
+        status="error",
+        attributes={"retrieval.document_count": 0},
+    )
+    trace = Trace(
+        id=uuid.uuid4(),
+        project_id=uuid.uuid4(),
+        trace_id="e" * 32,
+        name="rag",
+        status="ok",
+        start_time=start,
+        end_time=end,
+        spans=(retriever,),
+    )
+    ctx = build_eval_context_from_trace(trace)
+    assert ctx["documents"] == []
+
+
 @pytest.mark.asyncio
 async def test_tool_call_success_non_list_skipped() -> None:
     tools = ToolCallSuccessEvaluator({})

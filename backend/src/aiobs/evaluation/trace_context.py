@@ -88,9 +88,11 @@ def build_eval_context_from_trace(
         context["tool_calls"] = tool_calls
 
     docs: list[dict[str, Any]] = []
+    saw_retriever = False
     for span in spans:
         if span.kind.upper() != "RETRIEVER":
             continue
+        saw_retriever = True
         attrs = span.attributes or {}
         raw = attrs.get("retrieval.documents")
         if raw is None:
@@ -104,7 +106,17 @@ def build_eval_context_from_trace(
                 continue
             if isinstance(parsed, list):
                 docs.extend(normalize_documents(parsed))
-    if docs:
+        elif raw is None:
+            # Explicit empty retrieval (document_count=0 without a documents payload).
+            count = attrs.get("retrieval.document_count")
+            if count is not None:
+                try:
+                    if int(count) == 0:
+                        continue
+                except (TypeError, ValueError):
+                    pass
+    # Always expose documents when a RETRIEVER span ran, including empty lists.
+    if saw_retriever:
         context["documents"] = docs
 
     return context

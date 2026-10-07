@@ -110,19 +110,16 @@ def retrieve_traced(
 ) -> list[dict[str, Any]]:
     aiobs.set_input(question)
     hits = retrieve(docs, question, top_k=top_k)
-    if hits:
-        aiobs.set_retrieval_documents(
-            [
-                {
-                    "id": d["id"],
-                    "title": d.get("title"),
-                    "text": d.get("body") or "",
-                }
-                for d in hits
-            ]
-        )
-    else:
-        aiobs.set_attributes({"retrieval.document_count": 0})
+    aiobs.set_retrieval_documents(
+        [
+            {
+                "id": d["id"],
+                "title": d.get("title"),
+                "text": d.get("body") or "",
+            }
+            for d in hits
+        ]
+    )
     if not hits:
         aiobs.set_error("no documents")
     return hits

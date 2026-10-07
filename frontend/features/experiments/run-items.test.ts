@@ -46,4 +46,49 @@ describe("buildRunItemViews", () => {
     assert.equal(views[0].actualOutput, "20 days");
     assert.equal(views[0].score, null);
   });
+
+  it("does not treat latency/tokens as retrieved documents", () => {
+    const items = [item("item-1", "q")];
+    const outputs: ExperimentItemOutput[] = [
+      {
+        id: "out-1",
+        experiment_id: "exp",
+        dataset_item_id: "item-1",
+        actual_output: "a",
+        context: {
+          latency_ms: 100,
+          total_tokens: 10,
+          prompt_tokens: 4,
+          completion_tokens: 6,
+        },
+        metadata: {},
+        updated_at: "2026-10-06T00:00:00Z",
+      },
+    ];
+    const views = buildRunItemViews(items, outputs, []);
+    assert.equal(views[0].retrievedDocuments, null);
+    assert.deepEqual(views[0].context, {
+      latency_ms: 100,
+      total_tokens: 10,
+      prompt_tokens: 4,
+      completion_tokens: 6,
+    });
+  });
+
+  it("exposes empty documents list as empty retrieval", () => {
+    const items = [item("item-1", "q")];
+    const outputs: ExperimentItemOutput[] = [
+      {
+        id: "out-1",
+        experiment_id: "exp",
+        dataset_item_id: "item-1",
+        actual_output: "a",
+        context: { documents: [], latency_ms: 50 },
+        metadata: {},
+        updated_at: "2026-10-06T00:00:00Z",
+      },
+    ];
+    const views = buildRunItemViews(items, outputs, []);
+    assert.deepEqual(views[0].retrievedDocuments, []);
+  });
 });
