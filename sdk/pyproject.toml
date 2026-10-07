@@ -5,6 +5,7 @@ description = "Python SDK for AI Evaluation & Observability Platform (OTLP + Ope
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
+    "httpx2>=2.13.0",
     "opentelemetry-api>=1.28.0",
     "opentelemetry-sdk>=1.28.0",
     "opentelemetry-exporter-otlp-proto-http>=1.28.0",

@@ -7,8 +7,6 @@ import json
 import logging
 import os
 import time
-import urllib.error
-import urllib.request
 from pathlib import Path
 from typing import Any
 
@@ -16,36 +14,16 @@ from kb import expected_for_question, iter_gold, load_knowledge, retrieve
 from openai import OpenAI
 
 import aiobs
+from aiobs import Client
 
 logger = logging.getLogger(__name__)
 
 
-def api_base_url() -> str:
-    return os.getenv("AIOBS_BASE_URL", "http://localhost:8000").rstrip("/")
-
-
-def http_json(
-    method: str,
-    url: str,
-    *,
-    body: dict[str, Any] | None = None,
-) -> Any:
-    data = None if body is None else json.dumps(body).encode("utf-8")
-    req = urllib.request.Request(
-        url,
-        data=data,
-        method=method,
-        headers={"content-type": "application/json", "accept": "application/json"},
+def api_client() -> Client:
+    return Client(
+        os.getenv("AIOBS_API_BASE_URL") or os.getenv("AIOBS_BASE_URL"),
+        timeout=60.0,
     )
-    try:
-        with urllib.request.urlopen(req, timeout=60) as resp:
-            raw = resp.read()
-            if not raw:
-                return None
-            return json.loads(raw.decode("utf-8"))
-    except urllib.error.HTTPError as exc:
-        detail = exc.read().decode("utf-8", errors="replace")
-        raise SystemExit(f"{method} {url} -> {exc.code}: {detail}") from exc
 
 
 def question_from_item_input(raw: Any) -> str:
@@ -60,7 +38,7 @@ def question_from_item_input(raw: Any) -> str:
 
 
 def load_dataset_jobs(dataset_id: str) -> tuple[str, list[tuple[str, str, Any]]]:
-    detail = http_json("GET", f"{api_base_url()}/api/v1/datasets/{dataset_id}")
+    detail = api_client().datasets.get(dataset_id)
     items = detail.get("items") or []
     if not items:
         raise SystemExit(f"dataset {dataset_id} has no items")
@@ -78,15 +56,12 @@ def load_dataset_jobs(dataset_id: str) -> tuple[str, list[tuple[str, str, Any]]]
 
 def create_experiment(project_id: str, dataset_id: str, *, model: str) -> str:
     stamp = time.strftime("%Y%m%d-%H%M%S")
-    experiment = http_json(
-        "POST",
-        f"{api_base_url()}/api/v1/projects/{project_id}/experiments",
-        body={
-            "name": f"hr-it-assistant-{stamp}",
-            "dataset_id": dataset_id,
-            "model_config": {"model": model},
-            "version": stamp,
-        },
+    experiment = api_client().experiments.create(
+        project_id,
+        name=f"hr-it-assistant-{stamp}",
+        dataset_id=dataset_id,
+        model_config={"model": model},
+        version=stamp,
     )
     return str(experiment["id"])
 

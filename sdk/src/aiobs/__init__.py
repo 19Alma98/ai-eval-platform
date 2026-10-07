@@ -1,8 +1,9 @@
-"""aiobs — thin OTLP + OpenInference client SDK."""
+"""aiobs — OTLP + OpenInference tracing and platform control-plane client."""
 
 from __future__ import annotations
 
 from aiobs._eval_run import bind_evaluation, set_retrieval_documents
+from aiobs._http import AiobsAPIError
 from aiobs._otel import flush, init
 from aiobs._trace import (
     current_trace_id,
@@ -14,11 +15,14 @@ from aiobs._trace import (
     trace,
     trace_async,
 )
+from aiobs.client import Client
 from aiobs.registry import AppConfigClient
 
 __all__ = [
     "__version__",
+    "AiobsAPIError",
     "AppConfigClient",
+    "Client",
     "bind_evaluation",
     "current_trace_id",
     "flush",

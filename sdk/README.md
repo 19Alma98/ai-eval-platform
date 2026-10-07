@@ -1,6 +1,6 @@
 # aiobs
 
-Python SDK for the AI Evaluation & Observability Platform: OTLP/HTTP export with optional OpenInference instrumentation for popular AI libraries.
+Python SDK for the AI Evaluation & Observability Platform: OTLP/HTTP export with optional OpenInference instrumentation, plus a control-plane `Client` for datasets, experiments, and evaluation.
 
 ## Install
 
@@ -57,13 +57,58 @@ Runnable example: [`examples/sdk_hello/`](../examples/sdk_hello/README.md) (Olla
 | `aiobs.set_attribute` / `set_attributes` | Custom attributes on the current span |
 | `aiobs.set_error(...)` | Mark current span ERROR |
 | `aiobs.current_trace_id()` | 32-char hex trace id while inside a `@trace` span |
+| `aiobs.bind_evaluation(...)` | Bind current span to `experiment_id` + `dataset_item_id` |
+| `aiobs.set_retrieval_documents([...])` | Attach retrieval docs for RAG eval context |
 | `aiobs.flush()` | Drain the batch span processor before exit |
+| `aiobs.Client(...)` | Control-plane REST client (projects, datasets, experiments, …) |
 
 App code should use these helpers instead of importing OpenTelemetry directly.
 
-## Registry (app configs)
+## Control plane (`Client`)
 
-Optional HTTP client for the platform registry API (`urllib` only — no extra install). Point `base_url` at the FastAPI host (for example `http://localhost:8000`):
+HTTP client for the platform JSON API (uses `httpx2`, a core SDK dependency). Point `base_url` at the FastAPI host (default `http://localhost:8000`, or `AIOBS_API_BASE_URL` / `AIOBS_BASE_URL`):
+
+```python
+from aiobs import Client
+
+client = Client("http://localhost:8000")
+
+project = client.projects.create(name="Demo", slug="demo")
+ds = client.datasets.create_with_items(
+    project["id"],
+    name="gold-v1",
+    task_type="rag_qa",
+    items=[{"input": "Q?", "expected_output": "A"}],
+)
+# or CSV/JSONL via multipart import:
+# client.datasets.import_items(ds["id"], path="gold.csv", format="csv")
+
+exp = client.experiments.create(
+    project["id"],
+    name="baseline",
+    dataset_id=ds["id"],
+    model_config={"model": "gemma4:e2b"},
+)
+client.metrics_packs.ensure(project["id"])
+# after OTLP-bound runs:
+client.experiments.evaluate_pack(exp["id"])
+summary = client.experiments.summary(exp["id"])
+```
+
+Namespaces: `projects`, `datasets` (`create`, `create_with_items`, `add_item`, `get`, `list`, `import_items`), `experiments` (`create`, `get`, `list_outputs`, `evaluate_pack`, `summary`, `compare`), `metrics_packs` (`ensure`, `get`), `app_configs` (same methods as `AppConfigClient`). Non-2xx responses raise `AiobsAPIError`.
+
+Eval binding still uses tracing attributes (no REST call):
+
+```python
+@aiobs.trace
+def run_item(question: str) -> str:
+    aiobs.bind_evaluation(experiment_id=exp_id, dataset_item_id=item_id)
+    ...
+```
+
+### Registry (app configs)
+
+`AppConfigClient` remains available for standalone use; `client.app_configs` exposes the same API:
 
 ```python
 from aiobs import AppConfigClient
@@ -77,10 +122,9 @@ created = registry.create_app_config(
 )
 latest = registry.list_app_configs(project_id, latest=True)
 registry.set_alias(project_id, "baseline", created["id"])
-aliases = registry.get_aliases(project_id)
 ```
 
-Methods: `create_app_config`, `list_app_configs` (`name`, `latest`), `set_alias`, `get_aliases`. Non-2xx responses raise `RuntimeError` with the response body. Import `AppConfigClient` from `aiobs.registry` if you want registry helpers without pulling tracing into the import graph via `import aiobs`.
+Methods: `create_app_config`, `list_app_configs` (`name`, `latest`), `set_alias`, `get_aliases`.
 
 ## Tier-1 compatibility matrix
 
@@ -102,6 +146,7 @@ Install the extra for the providers you use, then `init(instrument="auto")` acti
 | `AIOBS_PROJECT_SLUG` | Project slug header (`X-Project-Slug`) |
 | `AIOBS_OTLP_ENDPOINT` | OTLP/HTTP traces URL (default `http://localhost:8000/v1/traces`) |
 | `AIOBS_SERVICE_NAME` | OpenTelemetry `service.name` (default `aiobs-app`) |
+| `AIOBS_API_BASE_URL` | Default host for `Client()` (fallback: `AIOBS_BASE_URL`, then `http://localhost:8000`) |
 
 Arguments to `init()` override these when set.
 

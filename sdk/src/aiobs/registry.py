@@ -1,18 +1,22 @@
-"""HTTP client for app config registry REST endpoints."""
-
 from __future__ import annotations
 
-import json
 from typing import Any
-from urllib.error import HTTPError
-from urllib.parse import quote, urlencode
-from urllib.request import Request, urlopen
+from urllib.parse import quote
+
+import httpx2
+
+from aiobs._http import _HttpTransport
 
 
 class AppConfigClient:
-    def __init__(self, base_url: str, *, timeout: float = 30.0) -> None:
-        self._base_url = base_url.rstrip("/")
-        self._timeout = timeout
+    def __init__(
+        self,
+        base_url: str,
+        *,
+        timeout: float = 30.0,
+        transport: httpx2.BaseTransport | None = None,
+    ) -> None:
+        self._http = _HttpTransport(base_url, timeout=timeout, transport=transport)
 
     def _request(
         self,
@@ -22,24 +26,7 @@ class AppConfigClient:
         body: dict[str, Any] | None = None,
         query: dict[str, str] | None = None,
     ) -> Any:
-        url = f"{self._base_url}{path}"
-        if query:
-            url = f"{url}?{urlencode(query)}"
-        data: bytes | None = None
-        headers = {"Accept": "application/json"}
-        if body is not None:
-            data = json.dumps(body).encode("utf-8")
-            headers["Content-Type"] = "application/json"
-        req = Request(url, data=data, headers=headers, method=method)
-        try:
-            with urlopen(req, timeout=self._timeout) as resp:
-                raw = resp.read()
-        except HTTPError as exc:
-            detail = exc.read().decode("utf-8", errors="replace")
-            raise RuntimeError(f"HTTP {exc.code}: {detail}") from exc
-        if not raw:
-            return None
-        return json.loads(raw.decode("utf-8"))
+        return self._http.request(method, path, body=body, query=query)
 
     def create_app_config(
         self,

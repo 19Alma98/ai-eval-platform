@@ -10,8 +10,6 @@ import subprocess
 import sys
 import tempfile
 import time
-import urllib.error
-import urllib.request
 from pathlib import Path
 from typing import Any
 
@@ -22,43 +20,17 @@ KNOWLEDGE_PATH = APP_DIR / "knowledge.json"
 POLICY_PATH = APP_DIR / "aiobs.yaml"
 CLI_DIR = ROOT / "cli"
 
+sys.path.insert(0, str(SDK_DIR / "src"))
 
-def http_json(
-    method: str,
-    url: str,
-    *,
-    body: dict[str, Any] | None = None,
-    timeout: float = 120.0,
-) -> Any:
-    data = None if body is None else json.dumps(body).encode("utf-8")
-    req = urllib.request.Request(
-        url,
-        data=data,
-        method=method,
-        headers={"content-type": "application/json", "accept": "application/json"},
-    )
-    try:
-        with urllib.request.urlopen(req, timeout=timeout) as resp:
-            raw = resp.read()
-            if not raw:
-                return None
-            return json.loads(raw.decode("utf-8"))
-    except urllib.error.HTTPError as exc:
-        detail = exc.read().decode("utf-8", errors="replace")
-        raise RuntimeError(f"{method} {url} -> {exc.code}: {detail}") from exc
+from aiobs import Client  # noqa: E402
 
 
-def ensure_project(base: str, slug: str, name: str) -> dict[str, Any]:
-    projects = http_json("GET", f"{base}/api/v1/projects")
-    for project in projects or []:
+def ensure_project(client: Client, slug: str, name: str) -> dict[str, Any]:
+    for project in client.projects.list():
         if project.get("slug") == slug:
             print(f"reusing project {slug} ({project['id']})")
             return project
-    project = http_json(
-        "POST",
-        f"{base}/api/v1/projects",
-        body={"name": name, "slug": slug},
-    )
+    project = client.projects.create(name=name, slug=slug)
     print(f"created project {slug} ({project['id']})")
     return project
 
@@ -84,30 +56,24 @@ def load_gold_rows() -> list[dict[str, Any]]:
 
 
 def create_rag_dataset(
-    base: str, project_id: str, *, name: str
+    client: Client, project_id: str, *, name: str
 ) -> tuple[str, dict[str, str]]:
-    dataset = http_json(
-        "POST",
-        f"{base}/api/v1/projects/{project_id}/datasets",
-        body={
-            "name": name,
-            "description": "People Ops RAG gold (portfolio demo)",
-            "task_type": "rag_qa",
-        },
+    dataset = client.datasets.create(
+        project_id,
+        name=name,
+        description="People Ops RAG gold (portfolio demo)",
+        task_type="rag_qa",
     )
     dataset_id = dataset["id"]
     item_map: dict[str, str] = {}
     for row in load_gold_rows():
-        item = http_json(
-            "POST",
-            f"{base}/api/v1/datasets/{dataset_id}/items",
-            body={
-                "input": row["question"],
-                "expected_output": row["expected_output"],
-                "metadata": {
-                    "expected_doc_ids": row["expected_doc_ids"],
-                    "must_contain": row["must_contain"],
-                },
+        item = client.datasets.add_item(
+            dataset_id,
+            input=row["question"],
+            expected_output=row["expected_output"],
+            metadata={
+                "expected_doc_ids": row["expected_doc_ids"],
+                "must_contain": row["must_contain"],
             },
         )
         item_map[row["question"]] = item["id"]
@@ -115,14 +81,14 @@ def create_rag_dataset(
     return dataset_id, item_map
 
 
-def ensure_metrics_pack(base: str, project_id: str) -> None:
-    pack = http_json("POST", f"{base}/api/v1/projects/{project_id}/metrics-pack/ensure")
+def ensure_metrics_pack(client: Client, project_id: str) -> None:
+    pack = client.metrics_packs.ensure(project_id)
     kinds = [e["kind"] for e in pack.get("entries") or []]
     print(f"metrics pack ready: {', '.join(kinds)}")
 
 
 def create_experiment(
-    base: str,
+    client: Client,
     project_id: str,
     *,
     name: str,
@@ -130,18 +96,13 @@ def create_experiment(
     baseline_experiment_id: str | None = None,
     model_config: dict[str, Any] | None = None,
 ) -> str:
-    body: dict[str, Any] = {
-        "name": name,
-        "dataset_id": dataset_id,
-        "model_config": model_config or {},
-        "version": name,
-    }
-    if baseline_experiment_id:
-        body["baseline_experiment_id"] = baseline_experiment_id
-    experiment = http_json(
-        "POST",
-        f"{base}/api/v1/projects/{project_id}/experiments",
-        body=body,
+    experiment = client.experiments.create(
+        project_id,
+        name=name,
+        dataset_id=dataset_id,
+        model_config=model_config or {},
+        version=name,
+        baseline_experiment_id=baseline_experiment_id,
     )
     return experiment["id"]
 
@@ -205,12 +166,11 @@ def run_assistant(
 
 
 def wait_for_outputs(
-    base: str, experiment_id: str, expected: int, *, attempts: int = 30
+    client: Client, experiment_id: str, expected: int, *, attempts: int = 30
 ) -> list[dict[str, Any]]:
-    url = f"{base}/api/v1/experiments/{experiment_id}/outputs"
     last: list[dict[str, Any]] = []
     for _ in range(attempts):
-        last = http_json("GET", url) or []
+        last = client.experiments.list_outputs(experiment_id)
         if len(last) >= expected:
             return last
         time.sleep(0.5)
@@ -219,10 +179,8 @@ def wait_for_outputs(
     )
 
 
-def evaluate_pack(base: str, experiment_id: str) -> None:
-    evaluated = http_json(
-        "POST", f"{base}/api/v1/experiments/{experiment_id}/evaluate-pack"
-    )
+def evaluate_pack(client: Client, experiment_id: str) -> None:
+    evaluated = client.experiments.evaluate_pack(experiment_id)
     run = evaluated["runs"][0] if evaluated.get("runs") else None
     print(
         f"evaluate-pack: status={evaluated['experiment']['status']} "
@@ -230,7 +188,7 @@ def evaluate_pack(base: str, experiment_id: str) -> None:
     )
     if run:
         print(f"  first run status={run.get('status')} results={len(run.get('results') or [])}")
-    summary = http_json("GET", f"{base}/api/v1/experiments/{experiment_id}/summary")
+    summary = client.experiments.summary(experiment_id)
     for row in summary.get("evaluators") or []:
         print(
             f"  {row.get('evaluator_name')}: mean={row.get('mean_score')} "
@@ -295,13 +253,14 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     base = args.base_url.rstrip("/")
-    health = http_json("GET", f"{base}/health")
+    client = Client(base, timeout=120.0)
+    health = client.health()
     if not health or health.get("status") != "ok":
         raise SystemExit(f"API unhealthy at {base}/health: {health}")
 
-    project = ensure_project(base, args.project_slug, "Acme People Ops")
+    project = ensure_project(client, args.project_slug, "Acme People Ops")
     project_id = project["id"]
-    ensure_metrics_pack(base, project_id)
+    ensure_metrics_pack(client, project_id)
 
     stamp = time.strftime("%Y%m%d-%H%M%S")
     model1 = os.getenv("OLLAMA_MODEL1", os.getenv("OLLAMA_MODEL", "gemma4:e2b"))
@@ -316,12 +275,12 @@ def main(argv: list[str] | None = None) -> int:
 
     print(f"creating rag_qa test set people-ops-gold-{stamp} …")
     dataset_id, item_map = create_rag_dataset(
-        base, project_id, name=f"people-ops-gold-{stamp}"
+        client, project_id, name=f"people-ops-gold-{stamp}"
     )
     expected_items = len(item_map)
 
     baseline_id = create_experiment(
-        base,
+        client,
         project_id,
         name=f"baseline-{stamp}",
         dataset_id=dataset_id,
@@ -334,11 +293,11 @@ def main(argv: list[str] | None = None) -> int:
         item_map=item_map,
         env_extra=env_extra,
     )
-    wait_for_outputs(base, baseline_id, expected_items)
-    evaluate_pack(base, baseline_id)
+    wait_for_outputs(client, baseline_id, expected_items)
+    evaluate_pack(client, baseline_id)
 
     candidate_id = create_experiment(
-        base,
+        client,
         project_id,
         name=f"candidate-{stamp}",
         dataset_id=dataset_id,
@@ -352,13 +311,10 @@ def main(argv: list[str] | None = None) -> int:
         item_map=item_map,
         env_extra=env_extra,
     )
-    wait_for_outputs(base, candidate_id, expected_items)
-    evaluate_pack(base, candidate_id)
+    wait_for_outputs(client, candidate_id, expected_items)
+    evaluate_pack(client, candidate_id)
 
-    compare = http_json(
-        "GET",
-        f"{base}/api/v1/experiments/{candidate_id}/compare/{baseline_id}",
-    )
+    compare = client.experiments.compare(candidate_id, baseline_id)
     print("compare:")
     print(json.dumps(compare, indent=2))
 
