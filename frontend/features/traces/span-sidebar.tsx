@@ -1,6 +1,7 @@
 "use client";
 
 import type { Span, TraceDetail } from "@/lib/api/types";
+import { CopyTechnicalId } from "@/components/copy-technical-id";
 import { JsonBlock } from "@/components/json-block";
 import { StatusBadge } from "@/components/status-badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -55,10 +56,8 @@ export function SpanSidebar({ span, trace }: SpanSidebarProps) {
         <div className="flex flex-wrap items-center gap-2">
           <h2 className="text-sm font-semibold text-foreground">{span.name}</h2>
           <StatusBadge status={span.status} />
+          <CopyTechnicalId id={span.span_id} label="Copy span ID" />
         </div>
-        <p className="mt-1 font-mono text-xs text-muted-foreground">
-          {span.span_id}
-        </p>
         <dl className="mt-3 grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
           <div>
             <dt className="text-muted-foreground">Duration</dt>

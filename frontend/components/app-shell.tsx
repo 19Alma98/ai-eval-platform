@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
+  Activity,
   Database,
   FileCode,
   FlaskConical,
@@ -23,9 +24,10 @@ import { projectsQueryOptions } from "@/lib/queries/projects";
 
 const NAV = [
   { href: "/overview", label: "Overview", icon: LayoutDashboard },
+  { href: "/traces", label: "Traces", icon: Activity },
   { href: "/datasets", label: "Test set", icon: Database },
   { href: "/app-configs", label: "App configs", icon: FileCode },
-  { href: "/metrics", label: "Metriche", icon: LineChart },
+  { href: "/metrics", label: "Metrics", icon: LineChart },
   { href: "/experiments", label: "Runs", icon: FlaskConical },
   { href: "/release", label: "Release", icon: ShieldCheck },
 ] as const;

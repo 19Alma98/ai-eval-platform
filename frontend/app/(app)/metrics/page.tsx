@@ -15,7 +15,7 @@ export default function MetricsPage() {
   return (
     <>
       <PageIntro
-        title="Metriche"
+        title="Metrics"
         glossary="Evaluator packs and thresholds — what you measure on each test set run."
       />
       <MetricsSetList projectId={projectId} />

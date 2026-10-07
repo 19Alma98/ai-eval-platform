@@ -13,7 +13,6 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ApiError } from "@/lib/api/client";
 import type { DatasetItem } from "@/lib/api/types";
-import { truncateId } from "@/lib/format";
 import { withProjectQuery } from "@/lib/project-href";
 import { ImportDatasetDialog } from "./import-dataset-dialog";
 import { RAG_FIELD_HINTS } from "./rag-qa";
@@ -79,14 +78,14 @@ export function DatasetDetailView({
   const columns: DataTableColumn<DatasetItem>[] = useMemo(
     () => [
       {
-        id: "id",
-        header: "Item ID",
-        headerClassName: "w-[120px]",
-        cell: (row) => (
-          <span className="font-mono text-xs text-muted-foreground">
-            {truncateId(row.id, 10)}
-          </span>
-        ),
+        id: "index",
+        header: "#",
+        headerClassName: "w-[48px]",
+        className: "font-mono tabular-nums text-muted-foreground",
+        cell: (row) => {
+          const idx = filteredItems.findIndex((item) => item.id === row.id);
+          return idx >= 0 ? idx + 1 : "—";
+        },
       },
       {
         id: "input",
@@ -142,7 +141,7 @@ export function DatasetDetailView({
       {
         id: "source_trace",
         header: "Source trace",
-        headerClassName: "w-[140px]",
+        headerClassName: "w-[112px]",
         cell: (row) =>
           row.source_trace_id ? (
             <Link
@@ -150,24 +149,17 @@ export function DatasetDetailView({
                 `/traces/${encodeURIComponent(row.source_trace_id)}`,
                 projectId,
               )}
-              className="font-mono text-xs text-primary hover:underline"
+              className="text-xs font-medium text-primary hover:underline"
               onClick={(e) => e.stopPropagation()}
             >
-              {truncateId(row.source_trace_id, 10)}
+              View trace
             </Link>
           ) : (
             <span className="text-muted-foreground">—</span>
           ),
       },
-      {
-        id: "metadata",
-        header: "Metadata keys",
-        headerClassName: "w-[112px] text-right",
-        className: "text-right font-mono tabular-nums text-muted-foreground",
-        cell: (row) => Object.keys(row.metadata ?? {}).length,
-      },
     ],
-    [projectId],
+    [filteredItems, projectId],
   );
 
   if (query.isLoading) {

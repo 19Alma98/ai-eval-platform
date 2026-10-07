@@ -9,6 +9,39 @@ const STATUS_STYLES: Record<string, string> = {
   error: "bg-status-fail-bg text-status-fail",
 };
 
+const STATUS_LABELS: Record<string, string> = {
+  ok: "OK",
+  success: "Success",
+  warn: "Warning",
+  warning: "Warning",
+  fail: "Failed",
+  failed: "Failed",
+  error: "Error",
+  pass: "Passed",
+  passed: "Passed",
+  complete: "Completed",
+  completed: "Completed",
+  pending: "Pending",
+  skipped: "Skipped",
+  regression: "Regression",
+  improved: "Improved",
+  unchanged: "Unchanged",
+  unavailable: "Unavailable",
+  unset: "Unset",
+};
+
+function capitalizeWord(value: string): string {
+  if (!value) return value;
+  return value.charAt(0).toUpperCase() + value.slice(1).toLowerCase();
+}
+
+/** Human-readable English label for known API status strings. */
+export function formatStatusLabel(status: string): string {
+  const key = status.trim().toLowerCase();
+  if (key in STATUS_LABELS) return STATUS_LABELS[key]!;
+  return capitalizeWord(status.trim());
+}
+
 export function statusTone(status: string): string {
   const s = status.toLowerCase();
   if (s in STATUS_STYLES) return s;
@@ -35,12 +68,12 @@ export function StatusBadge({
   return (
     <span
       className={cn(
-        "inline-flex items-center rounded px-1.5 py-0.5 text-xs font-medium capitalize",
+        "inline-flex items-center rounded px-1.5 py-0.5 text-xs font-medium",
         style,
         className,
       )}
     >
-      {status}
+      {formatStatusLabel(status)}
     </span>
   );
 }

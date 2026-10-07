@@ -4,6 +4,7 @@ import { useMemo } from "react";
 import { DataTable, type DataTableColumn } from "@/components/data-table";
 import { cn } from "@/lib/cn";
 import type { MetricComparison } from "@/lib/api/types";
+import { formatStatusLabel } from "@/components/status-badge";
 import { resolveLabel } from "@/lib/format";
 import { useEvaluators } from "./use-experiments";
 import { sortMetricsForDisplay } from "./sort-metrics";
@@ -31,16 +32,16 @@ function formatDelta(value: number | null): string {
 
 export function CompareStatusCell({ status }: { status: string }) {
   const style =
-    METRIC_STATUS_STYLES[status] ??
+    METRIC_STATUS_STYLES[status.toLowerCase()] ??
     "bg-status-unset-bg text-status-unset";
   return (
     <span
       className={cn(
-        "inline-flex items-center rounded px-1.5 py-0.5 text-xs font-medium capitalize",
+        "inline-flex items-center rounded px-1.5 py-0.5 text-xs font-medium",
         style,
       )}
     >
-      {status}
+      {formatStatusLabel(status)}
     </span>
   );
 }

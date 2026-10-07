@@ -21,7 +21,7 @@ const STEPS = [
   },
   {
     id: "metrics",
-    label: "Metriche",
+    label: "Metrics",
     href: "/metrics",
     match: (p: string) => p.startsWith("/metrics"),
   },
@@ -34,7 +34,7 @@ const STEPS = [
   },
   {
     id: "compare",
-    label: "Confronta",
+    label: "Compare",
     // resolved inside component when pathname has experimentId
     href: "/experiments",
     match: (p: string) => p.includes("/compare"),

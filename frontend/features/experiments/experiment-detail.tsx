@@ -44,7 +44,8 @@ import {
   useMetricsSet,
   useMetricsSets,
 } from "@/features/metrics/use-metrics-sets";
-import { resolveLabel, truncateId } from "@/lib/format";
+import { CopyTechnicalId } from "@/components/copy-technical-id";
+import { resolveLabel } from "@/lib/format";
 import {
   experimentQueryOptions,
   experimentOutputsQueryKey,
@@ -848,37 +849,36 @@ function RunItemsSection({
   selectedItemIndex: number;
   onSelectedItemIndexChange: (index: number) => void;
 }) {
-  const selectedItem =
-    runItems[Math.min(selectedItemIndex, Math.max(runItems.length - 1, 0))] ??
-    null;
+  const selectedItemIndexClamped = Math.min(
+    selectedItemIndex,
+    Math.max(runItems.length - 1, 0),
+  );
+  const selectedItem = runItems[selectedItemIndexClamped] ?? null;
+  const caseNumber =
+    selectedItem && runItems.length > 0 ? selectedItemIndexClamped + 1 : null;
 
   return (
     <section className="flex flex-col gap-3 border-t border-border pt-4">
-      <div className="flex flex-wrap items-baseline justify-between gap-2">
+      <div className="flex flex-wrap items-center justify-between gap-2">
         <h2 className="text-sm font-medium text-foreground">Run items</h2>
-        <p className="text-xs text-muted-foreground">
+        <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
           {runId ? (
             <>
-              Evaluator{" "}
-              <span className="font-medium text-foreground">
-                {evaluatorName ?? "—"}
+              <span>
+                Evaluator{" "}
+                <span className="font-medium text-foreground">
+                  {evaluatorName ?? "—"}
+                </span>
               </span>
-              {" · "}
-              Run{" "}
-              <span className="font-mono text-foreground">
-                {truncateId(runId, 12)}
-              </span>
-              {runStatus ? (
-                <>
-                  {" · "}
-                  <StatusBadge status={runStatus} />
-                </>
-              ) : null}
+              {runStatus ? <StatusBadge status={runStatus} /> : null}
+              <CopyTechnicalId id={runId} label="Copy run ID" />
             </>
           ) : (
-            "Not scored yet — questions and bound answers from this run."
+            <span>
+              Not scored yet — questions and bound answers from this run.
+            </span>
           )}
-        </p>
+        </div>
       </div>
 
       {itemsLoading ? (
@@ -917,12 +917,15 @@ function RunItemsSection({
           {selectedItem ? (
             <ScrollArea className="max-h-[min(70vh,640px)] rounded-md border border-border p-4">
               <div className="flex flex-col gap-4 pr-3">
-                <p className="text-xs text-muted-foreground">
-                  Item{" "}
-                  <span className="font-mono text-foreground">
-                    {truncateId(selectedItem.datasetItemId, 12)}
+                <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                  <span className="font-medium text-foreground">
+                    Case {caseNumber} of {runItems.length}
                   </span>
-                </p>
+                  <CopyTechnicalId
+                    id={selectedItem.datasetItemId}
+                    label="Copy case ID"
+                  />
+                </div>
                 <DetailBlock title="Question">
                   {formatJson(selectedItem.question)}
                 </DetailBlock>

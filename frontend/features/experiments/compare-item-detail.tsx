@@ -1,6 +1,7 @@
 "use client";
 
 import type { ReactNode } from "react";
+import { CopyTechnicalId } from "@/components/copy-technical-id";
 import {
   Dialog,
   DialogContent,
@@ -10,8 +11,9 @@ import {
 } from "@/components/ui/dialog";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import type { ItemComparisonRow } from "@/lib/api/types";
-import { truncateId } from "@/lib/format";
 import { CompareStatusCell } from "./compare-table";
+
+const TITLE_PREVIEW_MAX = 64;
 
 function formatJson(value: unknown): string {
   if (value === null || value === undefined) return "—";
@@ -32,6 +34,24 @@ function formatDelta(value: number | null): string {
   if (value === null || value === undefined) return "—";
   const sign = value > 0 ? "+" : "";
   return `${sign}${value.toFixed(4)}`;
+}
+
+function inputTitlePreview(value: unknown): string {
+  if (value === null || value === undefined) return "Case";
+  const text =
+    typeof value === "string"
+      ? value
+      : (() => {
+          try {
+            return JSON.stringify(value);
+          } catch {
+            return String(value);
+          }
+        })();
+  const trimmed = text.trim();
+  if (!trimmed) return "Case";
+  if (trimmed.length <= TITLE_PREVIEW_MAX) return trimmed;
+  return `${trimmed.slice(0, TITLE_PREVIEW_MAX)}…`;
 }
 
 function DetailBlock({
@@ -71,11 +91,16 @@ export function CompareItemDetail({
       <DialogContent className="flex max-h-[min(90vh,720px)] flex-col gap-4 sm:max-w-2xl">
         <DialogHeader>
           <DialogTitle className="flex flex-wrap items-center gap-2">
-            Item{" "}
-            <span className="font-mono text-sm font-normal text-muted-foreground">
-              {row ? truncateId(row.dataset_item_id, 12) : "—"}
+            <span className="min-w-0 truncate font-normal">
+              {row ? inputTitlePreview(row.input) : "Case"}
             </span>
             {row ? <CompareStatusCell status={row.status} /> : null}
+            {row ? (
+              <CopyTechnicalId
+                id={row.dataset_item_id}
+                label="Copy case ID"
+              />
+            ) : null}
           </DialogTitle>
           <DialogDescription>
             Full inputs, outputs, judge notes, and context for this case.

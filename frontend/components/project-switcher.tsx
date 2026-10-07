@@ -52,7 +52,7 @@ export function ProjectSwitcher() {
           <span className="truncate">
             {isLoading
               ? "Loading…"
-              : current?.name ?? projectId ?? "Select project"}
+              : current?.name ?? (projectId ? "Unknown project" : "Select project")}
           </span>
           <ChevronsUpDown className="size-3.5 shrink-0 opacity-50" />
         </DropdownMenuTrigger>

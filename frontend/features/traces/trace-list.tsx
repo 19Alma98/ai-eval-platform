@@ -3,8 +3,6 @@
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Copy } from "lucide-react";
-import { toast } from "sonner";
 import { DataTable, type DataTableColumn } from "@/components/data-table";
 import { EmptyState } from "@/components/empty-state";
 import { ErrorState } from "@/components/error-state";
@@ -12,10 +10,9 @@ import { LoadingBlock } from "@/components/loading-block";
 import { RefreshControl } from "@/components/refresh-control";
 import { RelativeTime } from "@/components/relative-time";
 import { StatusBadge } from "@/components/status-badge";
-import { Button } from "@/components/ui/button";
 import { ApiError } from "@/lib/api/client";
 import type { TraceSummary } from "@/lib/api/types";
-import { formatDurationMs, truncateId } from "@/lib/format";
+import { formatDurationMs } from "@/lib/format";
 import { withProjectQuery } from "@/lib/project-href";
 import { useProjectId } from "@/lib/project-store";
 import { useTimeRange } from "@/lib/time-range-context";
@@ -38,16 +35,6 @@ function traceDurationMs(trace: TraceSummary): number | null {
   return (
     new Date(trace.end_time).getTime() - new Date(trace.start_time).getTime()
   );
-}
-
-async function copyTraceId(id: string, e: React.MouseEvent) {
-  e.stopPropagation();
-  try {
-    await navigator.clipboard.writeText(id);
-    toast.success("Trace ID copied");
-  } catch {
-    toast.error("Could not copy");
-  }
 }
 
 export function TraceList() {
@@ -141,28 +128,6 @@ export function TraceList() {
           return ms == null ? "—" : formatDurationMs(ms);
         },
       },
-      {
-        id: "trace_id",
-        header: "Trace ID",
-        headerClassName: "w-[140px]",
-        cell: (row) => (
-          <div className="flex items-center gap-1">
-            <span className="font-mono text-xs text-muted-foreground">
-              {truncateId(row.trace_id, 10)}
-            </span>
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon-sm"
-              className="size-6 shrink-0"
-              aria-label={`Copy trace ID ${row.trace_id}`}
-              onClick={(e) => copyTraceId(row.trace_id, e)}
-            >
-              <Copy className="size-3" />
-            </Button>
-          </div>
-        ),
-      },
     ],
     [],
   );
@@ -205,7 +170,7 @@ export function TraceList() {
         ) : (
           <EmptyState
             title="No traces yet"
-            description="Send OTLP to this project (docker compose + examples/otlp_hello), then refresh."
+            description="Send telemetry to this project, then refresh. Developers can use OTLP (see examples/otlp_hello)."
             action={
               projectId ? (
                 <Link

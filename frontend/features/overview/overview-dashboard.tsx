@@ -262,7 +262,7 @@ export function OverviewDashboard() {
         cta: datasetCount === 0 ? "Create test set" : "Open test set",
       },
       {
-        title: "Metriche",
+        title: "Metrics",
         measure: "Evaluator packs — what you measure on each run.",
         status: evaluatorCount === 0 ? ("empty" as const) : ("ready" as const),
         summary:
@@ -270,7 +270,7 @@ export function OverviewDashboard() {
             ? "No evaluators configured yet."
             : `${evaluatorCount} evaluator${evaluatorCount === 1 ? "" : "s"}`,
         href: "/metrics",
-        cta: evaluatorCount === 0 ? "Configure Metriche" : "Open Metriche",
+        cta: evaluatorCount === 0 ? "Configure Metrics" : "Open Metrics",
       },
       {
         title: "Runs",
@@ -565,7 +565,7 @@ export function OverviewDashboard() {
       <section className="flex flex-col gap-2">
         <div className="flex items-baseline justify-between gap-2">
           <h2 className="text-sm font-semibold text-foreground">
-            Latest experiments
+            Latest runs
           </h2>
           <Link
             href={`/experiments${projectQuery}`}
@@ -575,7 +575,7 @@ export function OverviewDashboard() {
           </Link>
         </div>
         {latestExperiments.length === 0 ? (
-          <p className="text-sm text-muted-foreground">No experiments yet.</p>
+          <p className="text-sm text-muted-foreground">No runs yet.</p>
         ) : (
           <DataTable
             rows={latestExperiments}
@@ -584,7 +584,7 @@ export function OverviewDashboard() {
             selectedIndex={experimentSelectedIndex}
             onSelectedIndexChange={setExperimentSelectedIndex}
             onRowActivate={onExperimentActivate}
-            aria-label="Latest experiments"
+            aria-label="Latest runs"
           />
         )}
       </section>

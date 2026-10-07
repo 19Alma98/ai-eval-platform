@@ -195,15 +195,15 @@ export function CompareItemsTable({
       },
       {
         id: "baseline_score",
-        header: "Base score",
-        headerClassName: "w-[88px] text-right",
+        header: "Baseline score",
+        headerClassName: "w-[112px] text-right",
         className: "text-right font-mono tabular-nums text-sm text-muted-foreground",
         cell: (row) => formatScore(row.baseline.score),
       },
       {
         id: "candidate_score",
-        header: "Cand score",
-        headerClassName: "w-[88px] text-right",
+        header: "Candidate score",
+        headerClassName: "w-[120px] text-right",
         className: "text-right font-mono tabular-nums text-sm",
         cell: (row) => formatScore(row.candidate.score),
       },
@@ -320,7 +320,15 @@ export function CompareItemsTable({
       ) : !rows.some(hasResolvableOutput) ? (
         <EmptyState
           title="No agent responses to show"
-          description="Upload per-experiment outputs before evaluate, or set actual_output on dataset items (legacy). Use PUT /api/v1/experiments/{experiment_id}/outputs with dataset_item_id, actual_output, and optional context."
+          description="Bind or upload answers on the run, then evaluate."
+          action={
+            <Link
+              href={experimentDetailHref}
+              className="text-sm font-medium text-foreground underline-offset-4 hover:underline"
+            >
+              Open run to bind answers
+            </Link>
+          }
         />
       ) : (
         <>

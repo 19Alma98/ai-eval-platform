@@ -3,8 +3,8 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useQuery } from "@tanstack/react-query";
-import { ArrowLeft, Copy } from "lucide-react";
-import { toast } from "sonner";
+import { ArrowLeft } from "lucide-react";
+import { CopyTechnicalId } from "@/components/copy-technical-id";
 import { ErrorState } from "@/components/error-state";
 import { LoadingBlock } from "@/components/loading-block";
 import { RelativeTime } from "@/components/relative-time";
@@ -94,16 +94,6 @@ export function TraceDetailView({ projectId, traceId }: TraceDetailViewProps) {
     );
   }, [trace]);
 
-  async function copyTraceId() {
-    if (!trace) return;
-    try {
-      await navigator.clipboard.writeText(trace.trace_id);
-      toast.success("Trace ID copied");
-    } catch {
-      toast.error("Could not copy");
-    }
-  }
-
   if (query.isLoading) {
     return <LoadingBlock className="min-h-[320px]" />;
   }
@@ -161,19 +151,7 @@ export function TraceDetailView({ projectId, traceId }: TraceDetailViewProps) {
               Start{" "}
               <RelativeTime date={trace.start_time} />
             </span>
-            <span className="inline-flex items-center gap-1 font-mono text-xs">
-              {trace.trace_id}
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon-sm"
-                className="size-6"
-                aria-label="Copy trace ID"
-                onClick={copyTraceId}
-              >
-                <Copy className="size-3" />
-              </Button>
-            </span>
+            <CopyTechnicalId id={trace.trace_id} label="Copy trace ID" />
           </div>
         </div>
       </div>

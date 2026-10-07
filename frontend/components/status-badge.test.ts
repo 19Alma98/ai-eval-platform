@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { statusTone } from "./status-badge";
+import { formatStatusLabel, statusTone } from "./status-badge";
 
 describe("statusTone", () => {
   it("maps pass labels to ok", () => {
@@ -23,5 +23,26 @@ describe("statusTone", () => {
 
   it("falls back to unset", () => {
     assert.equal(statusTone("PENDING"), "unset");
+  });
+});
+
+describe("formatStatusLabel", () => {
+  it("maps known statuses to readable English labels", () => {
+    assert.equal(formatStatusLabel("completed"), "Completed");
+    assert.equal(formatStatusLabel("PENDING"), "Pending");
+    assert.equal(formatStatusLabel("failed"), "Failed");
+    assert.equal(formatStatusLabel("ERROR"), "Error");
+    assert.equal(formatStatusLabel("skipped"), "Skipped");
+    assert.equal(formatStatusLabel("regression"), "Regression");
+    assert.equal(formatStatusLabel("improved"), "Improved");
+    assert.equal(formatStatusLabel("unchanged"), "Unchanged");
+    assert.equal(formatStatusLabel("unavailable"), "Unavailable");
+    assert.equal(formatStatusLabel("pass"), "Passed");
+    assert.equal(formatStatusLabel("passed"), "Passed");
+    assert.equal(formatStatusLabel("unset"), "Unset");
+  });
+
+  it("capitalizes unknown statuses", () => {
+    assert.equal(formatStatusLabel("running"), "Running");
   });
 });
