@@ -42,7 +42,7 @@ uv run --extra openai --with openai python ../examples/hr_it_assistant/main.py \
   --model gemma4:e2b "How many PTO days do full-time employees get per year?"
 ```
 
-## Full portfolio loop
+## Full portfolio loop (model A/B)
 
 From the repo root (after Compose + Ollama + both models):
 
@@ -52,6 +52,30 @@ python scripts/portfolio_demo.py
 ```
 
 This creates a gold `rag_qa` test set (`expected_doc_ids` from `knowledge.json`), ensures the RAG metrics pack, runs all gold questions twice with SDK run binding (`OLLAMA_MODEL1` baseline run, then `OLLAMA_MODEL2` candidate), calls `evaluate-pack` on each run, writes `examples/hr_it_assistant/aiobs.yaml` (pack metric names), and runs `aiobs check`.
+
+## Prompt A/B loop (same model, different system prompt)
+
+Same KB and a **single** Ollama model; the variable under test is the generation system prompt, versioned as App Config and bound to each experiment.
+
+```bash
+cd cli && uv sync && cd ..
+python scripts/prompt_ab_demo.py
+# optional: --skip-check
+```
+
+What it does:
+
+1. Creates two App Config versions of `people-ops-rag` (identical `model` / `retrieval`, different `prompt.system`).
+2. Creates two experiments on the same gold dataset, each with `app_config_id`.
+3. Runs `hr_it_assistant` twice (prompt from `AIOBS_SYSTEM_PROMPT` / experiment snapshot).
+4. `evaluate-pack` on both, then `experiments.compare`.
+5. Writes `examples/hr_it_assistant/aiobs.prompt-ab.yaml` and runs `aiobs check` (unless `--skip-check`).
+
+In the UI, open each run’s **App config snapshot** to see the frozen prompts. Design: [`docs/superpowers/specs/2026-10-07-prompt-ab-demo-design.md`](../../docs/superpowers/specs/2026-10-07-prompt-ab-demo-design.md).
+
+| Variable | Purpose |
+|---|---|
+| `OLLAMA_MODEL` | Fixed model for both runs (default: `gemma4:e2b`) |
 
 ## Release gate note
 

@@ -65,11 +65,38 @@ def create_experiment(project_id: str, dataset_id: str, *, model: str) -> str:
     )
     return str(experiment["id"])
 
-SYSTEM_PROMPT = (
+
+DEFAULT_SYSTEM_PROMPT = (
     "You are Acme's People Ops assistant. Answer using only the provided "
     "policy context. Be concise (1-2 sentences). If the context is insufficient, "
     "say you do not know."
 )
+
+# Back-compat alias for importers / docs that expect SYSTEM_PROMPT.
+SYSTEM_PROMPT = DEFAULT_SYSTEM_PROMPT
+
+
+def system_prompt_from_experiment(experiment_id: str) -> str | None:
+    detail = api_client().experiments.get(experiment_id)
+    mc = detail.get("model_config") or {}
+    prompt = mc.get("prompt") if isinstance(mc, dict) else None
+    if not isinstance(prompt, dict):
+        return None
+    system = prompt.get("system")
+    if isinstance(system, str) and system.strip():
+        return system.strip()
+    return None
+
+
+def resolve_system_prompt(*, experiment_id: str | None) -> str:
+    env_prompt = os.getenv("AIOBS_SYSTEM_PROMPT")
+    if isinstance(env_prompt, str) and env_prompt.strip():
+        return env_prompt.strip()
+    if experiment_id:
+        from_exp = system_prompt_from_experiment(experiment_id)
+        if from_exp:
+            return from_exp
+    return DEFAULT_SYSTEM_PROMPT
 
 
 @aiobs.trace(
@@ -101,11 +128,13 @@ def retrieve_traced(
     return hits
 
 
-def call_ollama(client: OpenAI, *, model: str, user_prompt: str) -> str:
+def call_ollama(
+    client: OpenAI, *, model: str, user_prompt: str, system_prompt: str
+) -> str:
     response = client.chat.completions.create(
         model=model,
         messages=[
-            {"role": "system", "content": SYSTEM_PROMPT},
+            {"role": "system", "content": system_prompt},
             {"role": "user", "content": user_prompt},
         ],
     )
@@ -121,6 +150,7 @@ def answer_question(
     docs: list[dict[str, Any]],
     client: OpenAI,
     model: str,
+    system_prompt: str,
     experiment_id: str | None = None,
     dataset_item_id: str | None = None,
 ) -> dict[str, Any]:
@@ -136,6 +166,7 @@ def answer_question(
         )
     aiobs.set_input(question)
     aiobs.set_attribute("llm.model", model)
+    aiobs.set_attribute("llm.system_prompt_chars", len(system_prompt))
 
     hits = retrieve_traced(question, docs, top_k=2)
     if hits:
@@ -148,7 +179,9 @@ def answer_question(
             f"No policy context was retrieved.\n\nQuestion: {question}\nAnswer:"
         )
 
-    answer = call_ollama(client, model=model, user_prompt=user_prompt)
+    answer = call_ollama(
+        client, model=model, user_prompt=user_prompt, system_prompt=system_prompt
+    )
     aiobs.set_output(answer)
     return {
         "question": question,
@@ -243,6 +276,9 @@ def main(argv: list[str] | None = None) -> int:
     else:
         parser.error("provide a question, --all, or --dataset-id")
 
+    system_prompt = resolve_system_prompt(experiment_id=experiment_id)
+    logger.info("using system prompt (%d chars)", len(system_prompt))
+
     try:
         for question, item_id, expected_output in jobs:
             result = answer_question(
@@ -250,6 +286,7 @@ def main(argv: list[str] | None = None) -> int:
                 docs=docs,
                 client=client,
                 model=args.model,
+                system_prompt=system_prompt,
                 experiment_id=experiment_id,
                 dataset_item_id=item_id,
             )

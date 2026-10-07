@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState, type FormEvent } from "react";
+import { useMemo, useState, type SubmitEvent } from "react";
 import { EmptyState } from "@/components/empty-state";
 import { ErrorState } from "@/components/error-state";
 import { LoadingBlock } from "@/components/loading-block";
@@ -47,7 +47,7 @@ export function ReleaseCheckForm({
 
   const experiments = experimentsQuery.data ?? [];
 
-  function handleSubmit(event: FormEvent) {
+  function handleSubmit(event: SubmitEvent) {
     event.preventDefault();
     setParseError(null);
 

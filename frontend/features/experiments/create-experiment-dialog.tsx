@@ -3,7 +3,7 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useMemo, useState, type FormEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type SubmitEvent } from "react";
 import { Plus } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -40,8 +40,16 @@ import {
 import { useMetricsSets } from "@/features/metrics/use-metrics-sets";
 import { experimentsQueryKey } from "./use-experiments";
 
-type ModelSource = "free" | "app-config";
-type AppConfigPick = "alias" | "family";
+type AppConfigPick = "none" | "alias" | "family";
+
+function defaultAppConfigPick(
+  aliasCount: number,
+  familyCount: number,
+): AppConfigPick {
+  if (aliasCount > 0) return "alias";
+  if (familyCount > 0) return "family";
+  return "none";
+}
 
 export function CreateExperimentDialog({
   projectId,
@@ -63,23 +71,19 @@ export function CreateExperimentDialog({
 
   const [name, setName] = useState("");
   const [datasetId, setDatasetId] = useState("");
-  const [modelSource, setModelSource] = useState<ModelSource>("free");
+  const [appConfigPick, setAppConfigPick] = useState<AppConfigPick>("none");
   const [model, setModel] = useState("");
   const [version, setVersion] = useState("");
-  const [appConfigPick, setAppConfigPick] = useState<AppConfigPick>("alias");
   const [selectedAlias, setSelectedAlias] = useState("");
   const [selectedFamily, setSelectedFamily] = useState("");
   const [selectedConfigId, setSelectedConfigId] = useState("");
   const [selectedMetricsSet, setSelectedMetricsSet] = useState(
     PROJECT_DEFAULT_SELECT,
   );
+  const defaultPickApplied = useRef(false);
 
   const metricsSets = metricsSetsQuery.data ?? [];
-
-  const versionsQuery = useAppConfigVersions(
-    modelSource === "app-config" && appConfigPick === "family" ? projectId : null,
-    selectedFamily || null,
-  );
+  const aliases = aliasesQuery.data ?? [];
 
   const familyNames = useMemo(() => {
     const names = new Set<string>();
@@ -89,7 +93,25 @@ export function CreateExperimentDialog({
     return [...names].sort((a, b) => a.localeCompare(b));
   }, [appConfigsQuery.data]);
 
-  const aliases = aliasesQuery.data ?? [];
+  const registryReady =
+    !appConfigsQuery.isLoading && !aliasesQuery.isLoading;
+
+  useEffect(() => {
+    if (!open || !registryReady || defaultPickApplied.current) return;
+    setAppConfigPick(defaultAppConfigPick(aliases.length, familyNames.length));
+    defaultPickApplied.current = true;
+  }, [open, registryReady, aliases.length, familyNames.length]);
+
+  useEffect(() => {
+    if (!open) {
+      defaultPickApplied.current = false;
+    }
+  }, [open]);
+
+  const versionsQuery = useAppConfigVersions(
+    appConfigPick === "family" ? projectId : null,
+    selectedFamily || null,
+  );
 
   const create = useMutation({
     mutationFn: () => {
@@ -98,17 +120,16 @@ export function CreateExperimentDialog({
       const base = {
         name: name.trim(),
         dataset_id: datasetId,
-        ...(versionTrimmed ? { version: versionTrimmed } : {}),
         ...(metricsSetId != null ? { metrics_set_id: metricsSetId } : {}),
       };
 
-      if (modelSource === "app-config") {
-        if (appConfigPick === "alias") {
-          return createExperiment(projectId, {
-            ...base,
-            app_config_alias: selectedAlias,
-          });
-        }
+      if (appConfigPick === "alias") {
+        return createExperiment(projectId, {
+          ...base,
+          app_config_alias: selectedAlias,
+        });
+      }
+      if (appConfigPick === "family") {
         return createExperiment(projectId, {
           ...base,
           app_config_id: selectedConfigId,
@@ -118,6 +139,7 @@ export function CreateExperimentDialog({
       const modelTrimmed = model.trim();
       return createExperiment(projectId, {
         ...base,
+        ...(versionTrimmed ? { version: versionTrimmed } : {}),
         ...(modelTrimmed ? { model_config: { model: modelTrimmed } } : {}),
       });
     },
@@ -128,14 +150,14 @@ export function CreateExperimentDialog({
       toast.success("Experiment created");
       setName("");
       setDatasetId("");
-      setModelSource("free");
+      setAppConfigPick("none");
       setModel("");
       setVersion("");
-      setAppConfigPick("alias");
       setSelectedAlias("");
       setSelectedFamily("");
       setSelectedConfigId("");
       setSelectedMetricsSet(PROJECT_DEFAULT_SELECT);
+      defaultPickApplied.current = false;
       onOpenChange(false);
       router.push(
         withProjectQuery(`/experiments/${encodeURIComponent(experiment.id)}`, projectId),
@@ -152,19 +174,31 @@ export function CreateExperimentDialog({
     },
   });
 
-  function handleSubmit(e: FormEvent) {
+  function handleSubmit(e: SubmitEvent) {
     e.preventDefault();
     if (!canSubmit) return;
     create.mutate();
   }
 
+  function selectAppConfigPick(next: AppConfigPick) {
+    setAppConfigPick(next);
+    setSelectedAlias("");
+    setSelectedFamily("");
+    setSelectedConfigId("");
+    if (next !== "none") {
+      setModel("");
+      setVersion("");
+    }
+  }
+
   const appConfigReady =
-    modelSource !== "app-config" ||
+    appConfigPick === "none" ||
     (appConfigPick === "alias"
       ? Boolean(selectedAlias)
       : Boolean(selectedFamily && selectedConfigId));
 
   const canSubmit = Boolean(name.trim() && datasetId && hasDatasets && appConfigReady);
+  const hasRegistry = aliases.length > 0 || familyNames.length > 0;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -231,6 +265,121 @@ export function CreateExperimentDialog({
               ) : null}
             </div>
             <div className="flex flex-col gap-2">
+              <label htmlFor="experiment-create-app-pick" className="text-sm font-medium">
+                App config{" "}
+                <span className="font-normal text-muted-foreground">(optional)</span>
+              </label>
+              <p className="text-xs text-muted-foreground">
+                Versioned prompt, model, and retrieval settings for this run.
+              </p>
+              <Select
+                value={appConfigPick}
+                onValueChange={(v) =>
+                  selectAppConfigPick((v ?? "none") as AppConfigPick)
+                }
+              >
+                <SelectTrigger id="experiment-create-app-pick">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">None — use advanced below</SelectItem>
+                  <SelectItem value="alias" disabled={aliases.length === 0}>
+                    Alias
+                  </SelectItem>
+                  <SelectItem value="family" disabled={familyNames.length === 0}>
+                    Family + version
+                  </SelectItem>
+                </SelectContent>
+              </Select>
+              {!hasRegistry ? (
+                <p className="text-xs text-muted-foreground">
+                  No app configs yet —{" "}
+                  <Link
+                    href={withProjectQuery("/app-configs", projectId)}
+                    className="text-primary hover:underline"
+                  >
+                    create one
+                  </Link>
+                  .
+                </p>
+              ) : null}
+            </div>
+            {appConfigPick === "alias" ? (
+              <div className="flex flex-col gap-2">
+                <label htmlFor="experiment-create-alias" className="text-sm font-medium">
+                  Alias
+                </label>
+                <Select
+                  value={selectedAlias}
+                  onValueChange={(v) => setSelectedAlias(v ?? "")}
+                  disabled={aliases.length === 0}
+                >
+                  <SelectTrigger id="experiment-create-alias">
+                    <SelectValue placeholder="Select alias" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {aliases.map((a) => (
+                      <SelectItem key={a.name} value={a.name}>
+                        {a.name} → {a.app_config.name}@v{a.app_config.version}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            ) : null}
+            {appConfigPick === "family" ? (
+              <>
+                <div className="flex flex-col gap-2">
+                  <label htmlFor="experiment-create-family" className="text-sm font-medium">
+                    Config family
+                  </label>
+                  <Select
+                    value={selectedFamily}
+                    onValueChange={(v) => {
+                      setSelectedFamily(v ?? "");
+                      setSelectedConfigId("");
+                    }}
+                    disabled={familyNames.length === 0}
+                  >
+                    <SelectTrigger id="experiment-create-family">
+                      <SelectValue placeholder="Select family" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {familyNames.map((family) => (
+                        <SelectItem key={family} value={family}>
+                          {family}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="flex flex-col gap-2">
+                  <label
+                    htmlFor="experiment-create-config-version"
+                    className="text-sm font-medium"
+                  >
+                    Config version
+                  </label>
+                  <Select
+                    value={selectedConfigId}
+                    onValueChange={(v) => setSelectedConfigId(v ?? "")}
+                    disabled={!selectedFamily || (versionsQuery.data ?? []).length === 0}
+                  >
+                    <SelectTrigger id="experiment-create-config-version">
+                      <SelectValue placeholder="Select version" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {(versionsQuery.data ?? []).map((c) => (
+                        <SelectItem key={c.id} value={c.id}>
+                          v{c.version}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </>
+            ) : null}
+            <div className="flex flex-col gap-2">
               <label htmlFor="experiment-create-metrics-set" className="text-sm font-medium">
                 Metrics set
               </label>
@@ -255,194 +404,39 @@ export function CreateExperimentDialog({
                 </SelectContent>
               </Select>
             </div>
-            <div className="flex flex-col gap-2">
-              <label htmlFor="experiment-create-model-source" className="text-sm font-medium">
-                Model configuration
-              </label>
-              <Select
-                value={modelSource}
-                onValueChange={(v) => {
-                  const next = (v ?? "free") as ModelSource;
-                  setModelSource(next);
-                  if (next === "free") {
-                    setSelectedAlias("");
-                    setSelectedFamily("");
-                    setSelectedConfigId("");
-                  } else {
-                    setModel("");
-                  }
-                }}
-              >
-                <SelectTrigger id="experiment-create-model-source">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="free">Free-form model</SelectItem>
-                  <SelectItem value="app-config">App config (registry)</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            {modelSource === "free" ? (
-              <>
-                <div className="flex flex-col gap-2">
-                  <label htmlFor="experiment-create-model" className="text-sm font-medium">
-                    Model{" "}
-                    <span className="font-normal text-muted-foreground">(optional)</span>
-                  </label>
-                  <Input
-                    id="experiment-create-model"
-                    value={model}
-                    onChange={(e) => setModel(e.target.value)}
-                    placeholder="gpt-4o, ollama/gemma4:e2b, …"
-                  />
-                </div>
-                <div className="flex flex-col gap-2">
-                  <label htmlFor="experiment-create-version" className="text-sm font-medium">
-                    Version{" "}
-                    <span className="font-normal text-muted-foreground">(optional)</span>
-                  </label>
-                  <Input
-                    id="experiment-create-version"
-                    value={version}
-                    onChange={(e) => setVersion(e.target.value)}
-                    placeholder="v1.2, prompt-rev-3, git sha…"
-                  />
-                </div>
-              </>
-            ) : (
-              <>
-                <div className="flex flex-col gap-2">
-                  <label htmlFor="experiment-create-app-pick" className="text-sm font-medium">
-                    Registry reference
-                  </label>
-                  <Select
-                    value={appConfigPick}
-                    onValueChange={(v) => {
-                      const next = (v ?? "alias") as AppConfigPick;
-                      setAppConfigPick(next);
-                      setSelectedAlias("");
-                      setSelectedFamily("");
-                      setSelectedConfigId("");
-                    }}
-                  >
-                    <SelectTrigger id="experiment-create-app-pick">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="alias">Alias</SelectItem>
-                      <SelectItem value="family">Family + version</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                {appConfigPick === "alias" ? (
+            {appConfigPick === "none" ? (
+              <details className="rounded-md border border-border px-3 py-2" open>
+                <summary className="cursor-pointer text-sm font-medium text-foreground">
+                  Advanced — without registry
+                </summary>
+                <div className="mt-3 flex flex-col gap-3">
                   <div className="flex flex-col gap-2">
-                    <label htmlFor="experiment-create-alias" className="text-sm font-medium">
-                      Alias
+                    <label htmlFor="experiment-create-model" className="text-sm font-medium">
+                      Model{" "}
+                      <span className="font-normal text-muted-foreground">(optional)</span>
                     </label>
-                    <Select
-                      value={selectedAlias}
-                      onValueChange={(v) => setSelectedAlias(v ?? "")}
-                      disabled={aliases.length === 0}
-                    >
-                      <SelectTrigger id="experiment-create-alias">
-                        <SelectValue placeholder="Select alias" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {aliases.map((a) => (
-                          <SelectItem key={a.name} value={a.name}>
-                            {a.name} → {a.app_config.name}@v{a.app_config.version}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                    {aliases.length === 0 ? (
-                      <p className="text-xs text-muted-foreground">
-                        No aliases yet —{" "}
-                        <Link
-                          href={withProjectQuery("/app-configs", projectId)}
-                          className="text-primary hover:underline"
-                        >
-                          set up app configs
-                        </Link>
-                        .
-                      </p>
-                    ) : null}
+                    <Input
+                      id="experiment-create-model"
+                      value={model}
+                      onChange={(e) => setModel(e.target.value)}
+                      placeholder="gpt-4o, ollama/gemma4:e2b, …"
+                    />
                   </div>
-                ) : (
-                  <>
-                    <div className="flex flex-col gap-2">
-                      <label htmlFor="experiment-create-family" className="text-sm font-medium">
-                        Config family
-                      </label>
-                      <Select
-                        value={selectedFamily}
-                        onValueChange={(v) => {
-                          setSelectedFamily(v ?? "");
-                          setSelectedConfigId("");
-                        }}
-                        disabled={familyNames.length === 0}
-                      >
-                        <SelectTrigger id="experiment-create-family">
-                          <SelectValue placeholder="Select family" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {familyNames.map((family) => (
-                            <SelectItem key={family} value={family}>
-                              {family}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    <div className="flex flex-col gap-2">
-                      <label htmlFor="experiment-create-config-version" className="text-sm font-medium">
-                        Version
-                      </label>
-                      <Select
-                        value={selectedConfigId}
-                        onValueChange={(v) => setSelectedConfigId(v ?? "")}
-                        disabled={!selectedFamily || (versionsQuery.data ?? []).length === 0}
-                      >
-                        <SelectTrigger id="experiment-create-config-version">
-                          <SelectValue placeholder="Select version" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {(versionsQuery.data ?? []).map((c) => (
-                            <SelectItem key={c.id} value={c.id}>
-                              v{c.version}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    {familyNames.length === 0 ? (
-                      <p className="text-xs text-muted-foreground">
-                        No app configs yet —{" "}
-                        <Link
-                          href={withProjectQuery("/app-configs", projectId)}
-                          className="text-primary hover:underline"
-                        >
-                          create one
-                        </Link>
-                        .
-                      </p>
-                    ) : null}
-                  </>
-                )}
-                <div className="flex flex-col gap-2">
-                  <label htmlFor="experiment-create-run-version" className="text-sm font-medium">
-                    Run label{" "}
-                    <span className="font-normal text-muted-foreground">(optional)</span>
-                  </label>
-                  <Input
-                    id="experiment-create-run-version"
-                    value={version}
-                    onChange={(e) => setVersion(e.target.value)}
-                    placeholder="v1.2, prompt-rev-3, git sha…"
-                  />
+                  <div className="flex flex-col gap-2">
+                    <label htmlFor="experiment-create-version" className="text-sm font-medium">
+                      Version{" "}
+                      <span className="font-normal text-muted-foreground">(optional)</span>
+                    </label>
+                    <Input
+                      id="experiment-create-version"
+                      value={version}
+                      onChange={(e) => setVersion(e.target.value)}
+                      placeholder="v1.2, prompt-rev-3, git sha…"
+                    />
+                  </div>
                 </div>
-              </>
-            )}
+              </details>
+            ) : null}
           </div>
           <DialogFooter>
             <Button

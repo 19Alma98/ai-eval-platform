@@ -2,7 +2,7 @@
 
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Upload } from "lucide-react";
-import { useState, type FormEvent } from "react";
+import { useState, type SubmitEvent } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import {
@@ -84,7 +84,7 @@ export function ImportDatasetDialog({
     },
   });
 
-  function handleSubmit(e: FormEvent) {
+  function handleSubmit(e: SubmitEvent) {
     e.preventDefault();
     if (!file || !canImport) return;
     setImportErrors([]);

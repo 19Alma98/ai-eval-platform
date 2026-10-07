@@ -126,6 +126,8 @@ registry.set_alias(project_id, "baseline", created["id"])
 
 Methods: `create_app_config`, `list_app_configs` (`name`, `latest`), `set_alias`, `get_aliases`.
 
+End-to-end prompt A/B on the People Ops RAG example (same model, two App Config prompts): `python scripts/prompt_ab_demo.py` — see `examples/hr_it_assistant/README.md`.
+
 ## Tier-1 compatibility matrix
 
 | Key | Target library | OpenInference package | Notes |

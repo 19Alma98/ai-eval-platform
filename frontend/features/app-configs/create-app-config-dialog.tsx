@@ -2,7 +2,7 @@
 
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Plus } from "lucide-react";
-import { useState, type FormEvent } from "react";
+import { useState, type SubmitEvent } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import {
@@ -88,7 +88,7 @@ export function CreateAppConfigDialog({
     },
   });
 
-  function handleSubmit(e: FormEvent) {
+  function handleSubmit(e: SubmitEvent) {
     e.preventDefault();
     if (!name.trim()) return;
     create.mutate();

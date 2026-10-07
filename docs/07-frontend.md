@@ -65,6 +65,8 @@ Features:
 - per-item results and bound trace timeline
 - baseline comparison on the same test set version
 - regression markers
+- create dialog binds **App config** as a peer field to Dataset (alias or family@version); free-form model/version sits under Advanced when no registry config is selected
+- run detail shows a read-only **App config snapshot** (prompt, model, retrieval, content hash) when the experiment was created from a registry config
 
 ### 5. App configs (`/app-configs`)
 
@@ -73,7 +75,7 @@ Project-scoped registry UI (requires `projectId` query param like other console 
 - **`/app-configs`** — list config families (latest version per name), create new versions, manage aliases
 - **`/app-configs/[name]`** — version history for one family, alias pins, JSON prompt/model/retrieval editors
 
-Experiment create flow can bind `app_config_id`, a specific version, or an alias instead of free-form `model_config`.
+Experiment create prefers binding `app_config_id` or `app_config_alias` (peer to dataset) over free-form `model_config`.
 
 ### 6. Release Check
 

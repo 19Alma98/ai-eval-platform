@@ -61,3 +61,29 @@ export function experimentAppConfigChip(
     label: `${familyName}@${configVersion}`,
   };
 }
+
+function asRecord(value: unknown): Record<string, unknown> | null {
+  if (value && typeof value === "object" && !Array.isArray(value)) {
+    return value as Record<string, unknown>;
+  }
+  return null;
+}
+
+/** Frozen app-config snapshot fields from experiment.model_config when registry-bound. */
+export function experimentAppConfigSnapshot(experiment: Experiment): {
+  prompt: Record<string, unknown>;
+  model: Record<string, unknown>;
+  retrieval: Record<string, unknown>;
+  contentHash: string | null;
+} | null {
+  if (!experimentAppConfigChip(experiment)) return null;
+  const mc = experiment.model_config ?? {};
+  const hashRaw = mc.content_hash;
+  return {
+    prompt: asRecord(mc.prompt) ?? {},
+    model: asRecord(mc.model) ?? {},
+    retrieval: asRecord(mc.retrieval) ?? {},
+    contentHash:
+      typeof hashRaw === "string" && hashRaw.trim() ? hashRaw.trim() : null,
+  };
+}

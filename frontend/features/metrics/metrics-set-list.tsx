@@ -2,7 +2,7 @@
 
 import { useMutation } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
-import { useCallback, useMemo, useState, type FormEvent } from "react";
+import { useCallback, useMemo, useState, type SubmitEvent } from "react";
 import { PackagePlus, Plus } from "lucide-react";
 import { toast } from "sonner";
 import { DataTable, type DataTableColumn } from "@/components/data-table";
@@ -215,7 +215,7 @@ function CreateMetricsSetDialog({
   const [description, setDescription] = useState("");
   const createSet = useCreateMetricsSet(projectId);
 
-  function handleSubmit(e: FormEvent) {
+  function handleSubmit(e: SubmitEvent) {
     e.preventDefault();
     if (!name.trim()) return;
     void (async () => {

@@ -2,7 +2,7 @@
 
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
-import { useCallback, useMemo, useState, type FormEvent } from "react";
+import { useCallback, useMemo, useState, type SubmitEvent } from "react";
 import { Plus } from "lucide-react";
 import { toast } from "sonner";
 import { DataTable, type DataTableColumn } from "@/components/data-table";
@@ -215,7 +215,7 @@ function CreateDatasetDialog({
     },
   });
 
-  function handleSubmit(e: FormEvent) {
+  function handleSubmit(e: SubmitEvent) {
     e.preventDefault();
     if (!name.trim()) return;
     create.mutate();

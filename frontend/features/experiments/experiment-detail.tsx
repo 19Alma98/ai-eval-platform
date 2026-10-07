@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { useEffect, useMemo, useState, type FormEvent, type ReactNode } from "react";
+import { useEffect, useMemo, useState, type SubmitEvent, type ReactNode } from "react";
 import { RAG_RECOMMENDED_EVALUATOR_KINDS } from "@/features/datasets/rag-qa";
 import { useDatasets, useDataset } from "@/features/datasets/use-datasets";
 import { CreateEvaluatorDialog } from "./create-evaluator-dialog";
@@ -63,6 +63,7 @@ import {
 } from "./run-items";
 import {
   experimentAppConfigChip,
+  experimentAppConfigSnapshot,
   experimentModel,
   experimentVersion,
   metricsSetBoundLabel,
@@ -336,6 +337,7 @@ export function ExperimentDetailView({
   const modelLabel = experimentModel(experiment);
   const versionLabel = experimentVersion(experiment);
   const appConfigChip = experimentAppConfigChip(experiment);
+  const appConfigSnapshot = experimentAppConfigSnapshot(experiment);
   const metricsSetLabel = metricsSetBoundLabel(
     experiment,
     metricsSetsQuery.data,
@@ -436,6 +438,32 @@ export function ExperimentDetailView({
           />
         </div>
       </div>
+
+      {appConfigSnapshot ? (
+        <div className="flex flex-col gap-2">
+          <div className="flex flex-wrap items-baseline justify-between gap-2">
+            <h2 className="text-sm font-medium text-foreground">
+              App config snapshot
+            </h2>
+            {appConfigSnapshot.contentHash ? (
+              <span className="font-mono text-xs text-muted-foreground">
+                hash {appConfigSnapshot.contentHash.slice(0, 12)}…
+              </span>
+            ) : null}
+          </div>
+          <div className="grid gap-3 md:grid-cols-3">
+            <DetailBlock title="Prompt">
+              {formatJson(appConfigSnapshot.prompt)}
+            </DetailBlock>
+            <DetailBlock title="Model">
+              {formatJson(appConfigSnapshot.model)}
+            </DetailBlock>
+            <DetailBlock title="Retrieval">
+              {formatJson(appConfigSnapshot.retrieval)}
+            </DetailBlock>
+          </div>
+        </div>
+      ) : null}
 
       <h2 className="text-sm font-medium text-foreground">Summary</h2>
 
@@ -628,7 +656,7 @@ function ScorePackOverrideDialog({
     },
   });
 
-  function handleSubmit(e: FormEvent) {
+  function handleSubmit(e: SubmitEvent) {
     e.preventDefault();
     if (!overrideSetId) return;
     overrideScore.mutate();
@@ -933,7 +961,7 @@ function EvaluateDialog({
     setSelectedIds(next);
   }
 
-  function handleSubmit(e: FormEvent) {
+  function handleSubmit(e: SubmitEvent) {
     e.preventDefault();
     if (selectedIds.size === 0) return;
     evaluate.mutate();
