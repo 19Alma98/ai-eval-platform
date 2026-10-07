@@ -280,8 +280,7 @@ class HitAtKEvaluator:
         retrieved = _retrieved_doc_ids(ctx)
         if retrieved is None:
             return fail_min(
-                "no documents retrieved "
-                "(context.documents or context.retrieved_doc_ids is missing)"
+                "no documents retrieved (context.documents or context.retrieved_doc_ids is missing)"
             )
 
         if not retrieved:

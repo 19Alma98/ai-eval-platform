@@ -20,6 +20,7 @@ def _groundedness_documents_missing_or_empty(context: Any) -> bool:
         return True
     return len(documents) == 0
 
+
 PROMPT_VERSIONS = {
     "answer_relevance": "answer_relevance.v1",
     "groundedness": "groundedness.v1",
