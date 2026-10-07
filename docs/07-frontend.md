@@ -28,7 +28,7 @@ No login/signup screens are required for v0.1. The UI assumes a trusted local or
 
 Navigation strip for RAG projects:
 
-`Test set → Metriche → Runs → Confronta → Release`
+`Test set → App configs → Metriche → Runs → Confronta → Release`
 
 - **Test set** — create/import `rag_qa` items (`question`, expected answer, `expected_doc_ids`); versioned datasets.
 - **Metriche** — versioned metrics sets per project (`/metrics`, `/metrics/[metricsSetId]`): list with “Default progetto” badge, create set seeded from the project default pack, detail editor (enable/threshold/remove custom entries), and “Crea versione N+1” when a set is referenced. Empty projects use `POST …/metrics-pack/ensure` then refetch. Legacy pack API remains for ensure/alias compatibility.

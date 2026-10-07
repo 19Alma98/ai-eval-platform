@@ -14,6 +14,12 @@ const STEPS = [
     match: (p: string) => p.startsWith("/datasets"),
   },
   {
+    id: "app-configs",
+    label: "App configs",
+    href: "/app-configs",
+    match: (p: string) => p.startsWith("/app-configs"),
+  },
+  {
     id: "metrics",
     label: "Metriche",
     href: "/metrics",
@@ -33,7 +39,12 @@ const STEPS = [
     href: "/experiments",
     match: (p: string) => p.includes("/compare"),
   },
-  { id: "release", label: "Release", href: "/release", match: (p: string) => p.startsWith("/release") },
+  {
+    id: "release",
+    label: "Release",
+    href: "/release",
+    match: (p: string) => p.startsWith("/release"),
+  },
 ] as const;
 
 export function QualityLoopStrip() {

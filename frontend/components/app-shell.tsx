@@ -24,9 +24,9 @@ import { projectsQueryOptions } from "@/lib/queries/projects";
 const NAV = [
   { href: "/overview", label: "Overview", icon: LayoutDashboard },
   { href: "/datasets", label: "Test set", icon: Database },
+  { href: "/app-configs", label: "App configs", icon: FileCode },
   { href: "/metrics", label: "Metriche", icon: LineChart },
   { href: "/experiments", label: "Runs", icon: FlaskConical },
-  { href: "/app-configs", label: "App configs", icon: FileCode },
   { href: "/release", label: "Release", icon: ShieldCheck },
 ] as const;
 

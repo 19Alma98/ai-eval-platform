@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { ArrowLeft, Trash2 } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useMemo, useState, type ReactNode } from "react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { DataTable, type DataTableColumn } from "@/components/data-table";
@@ -33,6 +33,33 @@ import {
 } from "./use-app-configs";
 
 const PRESET_ALIASES = ["prod", "baseline", "candidate"] as const;
+
+function formatJson(value: unknown): string {
+  if (value === null || value === undefined) return "—";
+  if (typeof value === "string") return value;
+  try {
+    return JSON.stringify(value, null, 2);
+  } catch {
+    return String(value);
+  }
+}
+
+function DetailBlock({
+  title,
+  children,
+}: {
+  title: string;
+  children: ReactNode;
+}) {
+  return (
+    <div className="flex flex-col gap-1.5">
+      <h3 className="text-xs font-medium text-muted-foreground">{title}</h3>
+      <pre className="max-h-[min(320px,40vh)] overflow-auto rounded-md border border-border bg-surface p-3 font-mono text-xs whitespace-pre-wrap break-words text-foreground">
+        {children}
+      </pre>
+    </div>
+  );
+}
 
 function configSnapshot(config: AppConfig): string {
   return JSON.stringify(
@@ -90,6 +117,7 @@ export function AppConfigFamilyDetail({
 
   const configA = compareA ? versionById.get(compareA) : undefined;
   const configB = compareB ? versionById.get(compareB) : undefined;
+  const selectedVersion = versions[selectedIndex] ?? versions[0];
 
   const setAliasMutation = useMutation({
     mutationFn: ({
@@ -347,39 +375,70 @@ export function AppConfigFamilyDetail({
             getRowKey={(row) => row.id}
             selectedIndex={selectedIndex}
             onSelectedIndexChange={setSelectedIndex}
-            onRowActivate={() => {}}
+            onRowActivate={(_row, index) => setSelectedIndex(index)}
             aria-label="App config versions"
           />
 
-          <section className="flex flex-col gap-2">
-            <h2 className="text-sm font-medium text-foreground">
-              Compare versions
-            </h2>
-            <div className="flex flex-wrap gap-3">
-              <VersionPicker
-                label="Version A"
-                versions={versions}
-                value={compareA}
-                onChange={setCompareA}
-              />
-              <VersionPicker
-                label="Version B"
-                versions={versions}
-                value={compareB}
-                onChange={setCompareB}
-              />
-            </div>
-            {configA && configB ? (
-              <div className="grid gap-3 md:grid-cols-2">
-                <ComparePane title={`v${configA.version}`} config={configA} />
-                <ComparePane title={`v${configB.version}`} config={configB} />
+          {selectedVersion ? (
+            <section className="flex flex-col gap-2">
+              <div className="flex flex-wrap items-baseline justify-between gap-2">
+                <h2 className="text-sm font-medium text-foreground">
+                  Version detail · v{selectedVersion.version}
+                </h2>
+                <span className="font-mono text-xs text-muted-foreground">
+                  hash {selectedVersion.content_hash.slice(0, 12)}…
+                </span>
               </div>
-            ) : (
-              <p className="text-sm text-muted-foreground">
-                Select two versions to compare JSON side by side.
-              </p>
-            )}
-          </section>
+              {selectedVersion.description?.trim() ? (
+                <p className="text-sm text-muted-foreground">
+                  {selectedVersion.description.trim()}
+                </p>
+              ) : null}
+              <div className="grid gap-3 md:grid-cols-3">
+                <DetailBlock title="Prompt">
+                  {formatJson(selectedVersion.prompt)}
+                </DetailBlock>
+                <DetailBlock title="Model">
+                  {formatJson(selectedVersion.model)}
+                </DetailBlock>
+                <DetailBlock title="Retrieval">
+                  {formatJson(selectedVersion.retrieval)}
+                </DetailBlock>
+              </div>
+            </section>
+          ) : null}
+
+          <details className="rounded-md border border-border px-3 py-2">
+            <summary className="cursor-pointer text-sm font-medium text-foreground">
+              Compare versions
+            </summary>
+            <div className="mt-3 flex flex-col gap-2">
+              <div className="flex flex-wrap gap-3">
+                <VersionPicker
+                  label="Version A"
+                  versions={versions}
+                  value={compareA}
+                  onChange={setCompareA}
+                />
+                <VersionPicker
+                  label="Version B"
+                  versions={versions}
+                  value={compareB}
+                  onChange={setCompareB}
+                />
+              </div>
+              {configA && configB ? (
+                <div className="grid gap-3 md:grid-cols-2">
+                  <ComparePane title={`v${configA.version}`} config={configA} />
+                  <ComparePane title={`v${configB.version}`} config={configB} />
+                </div>
+              ) : (
+                <p className="text-sm text-muted-foreground">
+                  Select two versions to compare JSON side by side.
+                </p>
+              )}
+            </div>
+          </details>
         </>
       )}
     </div>
