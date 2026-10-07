@@ -77,7 +77,7 @@ def test_select_runs_unknown_id_raises() -> None:
         select_runs([_run()], run_ids=[missing])
 
 
-def test_aggregate_mean_and_pass_rate_excludes_skipped_error() -> None:
+def test_aggregate_mean_and_pass_rate_include_skipped_error_as_zero() -> None:
     aggregates = aggregate_results(
         [
             _result(score=1.0, label="PASS"),
@@ -90,17 +90,34 @@ def test_aggregate_mean_and_pass_rate_excludes_skipped_error() -> None:
     assert aggregates.n_scored == 2
     assert aggregates.n_skipped == 1
     assert aggregates.n_error == 1
-    assert aggregates.mean_score == 0.5
+    assert aggregates.mean_score == 0.25
+    assert aggregates.pass_rate == 0.25
+
+
+def test_aggregate_pass_rate_normalizes_label_casing() -> None:
+    aggregates = aggregate_results(
+        [
+            _result(score=1.0, label="pass"),
+            _result(score=0.0, label="Fail"),
+        ]
+    )
     assert aggregates.pass_rate == 0.5
+    assert aggregates.mean_score == 0.5
 
 
-def test_aggregate_null_when_no_scored_or_pass_fail() -> None:
+def test_aggregate_all_skipped_or_error_counts_as_zero() -> None:
     aggregates = aggregate_results(
         [
             _result(score=None, label="SKIPPED"),
             _result(score=None, label="ERROR"),
         ]
     )
+    assert aggregates.mean_score == 0.0
+    assert aggregates.pass_rate == 0.0
+
+
+def test_aggregate_empty_is_null() -> None:
+    aggregates = aggregate_results([])
     assert aggregates.mean_score is None
     assert aggregates.pass_rate is None
 

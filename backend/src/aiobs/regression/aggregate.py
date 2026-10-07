@@ -79,16 +79,23 @@ def select_runs(
     return selected
 
 
+def _normalize_label(label: str | None) -> str | None:
+    if label is None:
+        return None
+    return label.strip().upper()
+
+
 def aggregate_results(results: Iterable[EvaluationResultRecord]) -> Aggregates:
     items = list(results)
     scores = [r.score for r in items if r.score is not None]
-    n_error = sum(1 for r in items if r.label == "ERROR")
-    n_skipped = sum(1 for r in items if r.label == "SKIPPED")
-    n_pass = sum(1 for r in items if r.label == "PASS")
-    n_fail = sum(1 for r in items if r.label == "FAIL")
-    denom = n_pass + n_fail
-    mean_score = sum(scores) / len(scores) if scores else None
-    pass_rate = (n_pass / denom) if denom else None
+    labels = [_normalize_label(r.label) for r in items]
+    n_error = sum(1 for label in labels if label == "ERROR")
+    n_skipped = sum(1 for label in labels if label == "SKIPPED")
+    n_pass = sum(1 for label in labels if label == "PASS")
+    # Coverage-aware: missing scores (SKIPPED/ERROR) count as 0.0 in the mean.
+    covered_scores = [r.score if r.score is not None else 0.0 for r in items]
+    mean_score = sum(covered_scores) / len(covered_scores) if covered_scores else None
+    pass_rate = (n_pass / len(items)) if items else None
     return Aggregates(
         n_items=len(items),
         n_scored=len(scores),

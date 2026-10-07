@@ -28,6 +28,7 @@ class EmptyEvaluatorListError(Exception):
 class EvaluateExperimentCommand:
     experiment_id: uuid.UUID
     evaluator_ids: list[uuid.UUID]
+    pass_thresholds: dict[uuid.UUID, float | None] | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -97,8 +98,16 @@ class EvaluateExperiment:
             entity = by_id[evaluator_id]
             run = EvaluationRun.create(experiment.id, entity.id, status="PENDING")
             run = await self._runs.add_run(run)
+            pass_threshold = (
+                None
+                if command.pass_thresholds is None
+                else command.pass_thresholds.get(evaluator_id)
+            )
             run, results = await self._runner.run_evaluator(
-                run=run, evaluator_entity=entity, items=merged_items
+                run=run,
+                evaluator_entity=entity,
+                items=merged_items,
+                pass_threshold=pass_threshold,
             )
             run = await self._runs.update_run(run)
             if results:
@@ -160,15 +169,18 @@ class ScoreExperimentFromPack:
             save_as_default=command.save_as_default,
         )
 
-        evaluator_ids = [
-            entry.evaluator_id
-            for entry in resolved.entries
-            if entry.enabled and entry.evaluator_id is not None
-        ]
+        evaluator_ids: list[uuid.UUID] = []
+        pass_thresholds: dict[uuid.UUID, float | None] = {}
+        for entry in resolved.entries:
+            if not entry.enabled or entry.evaluator_id is None:
+                continue
+            evaluator_ids.append(entry.evaluator_id)
+            pass_thresholds[entry.evaluator_id] = entry.threshold
         return await self._evaluate_experiment.execute(
             EvaluateExperimentCommand(
                 experiment_id=command.experiment_id,
                 evaluator_ids=evaluator_ids,
+                pass_thresholds=pass_thresholds,
             )
         )
 

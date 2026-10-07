@@ -49,6 +49,7 @@ class EvaluationRunner:
         run: EvaluationRun,
         evaluator_entity: EvaluatorEntity,
         items: list[DatasetItem],
+        pass_threshold: float | None = None,
     ) -> tuple[EvaluationRun, list[EvaluationResultRecord]]:
         started = datetime.now(UTC)
         run = run.with_status("RUNNING", started_at=started)
@@ -62,11 +63,18 @@ class EvaluationRunner:
 
         results = list(await asyncio.gather(*[_one(item) for item in items]))
         finished = datetime.now(UTC)
-        labels = {r.label for r in results}
+        labels = {(r.label or "").strip().upper() for r in results}
         if "ERROR" in labels:
             status = "ERROR"
         elif results and labels <= {"SKIPPED"}:
             status = "SKIPPED"
+        elif pass_threshold is not None:
+            scored = [r.score for r in results if r.score is not None]
+            status = (
+                "PASSED"
+                if scored and all(score >= pass_threshold for score in scored)
+                else "FAILED"
+            )
         elif any(r.score == 0.0 for r in results if r.score is not None):
             status = "FAILED"
         else:

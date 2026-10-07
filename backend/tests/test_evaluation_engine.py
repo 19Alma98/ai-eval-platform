@@ -160,6 +160,59 @@ async def test_runner_maps_errors_not_to_zero() -> None:
     assert results[0].label == "ERROR"
 
 
+@pytest.mark.asyncio
+async def test_runner_pass_threshold_fails_below_and_passes_at_or_above() -> None:
+    class Partial:
+        name = "partial"
+
+        def __init__(self, score: float) -> None:
+            self._score = score
+
+        async def evaluate(self, sample):
+            from aiobs.evaluation.protocol import EvaluationResult
+
+            return EvaluationResult(
+                score=self._score,
+                label="PASS" if self._score >= 0.7 else "FAIL",
+                explanation="partial",
+                metadata={},
+            )
+
+    entity = Evaluator.create(uuid.uuid4(), "partial", "llm_judge", {"kind": "correctness"})
+    item = DatasetItem.create(uuid.uuid4(), input="x", expected_output="y", actual_output="y")
+    runner_fail = EvaluationRunner(resolve_evaluator=lambda _e: Partial(0.6))
+    run_fail = EvaluationRun.create(uuid.uuid4(), entity.id)
+    finished_fail, _ = await runner_fail.run_evaluator(
+        run=run_fail, evaluator_entity=entity, items=[item], pass_threshold=0.7
+    )
+    assert finished_fail.status == "FAILED"
+
+    runner_pass = EvaluationRunner(resolve_evaluator=lambda _e: Partial(0.7))
+    run_pass = EvaluationRun.create(uuid.uuid4(), entity.id)
+    finished_pass, _ = await runner_pass.run_evaluator(
+        run=run_pass, evaluator_entity=entity, items=[item], pass_threshold=0.7
+    )
+    assert finished_pass.status == "PASSED"
+
+
+@pytest.mark.asyncio
+async def test_runner_without_threshold_keeps_legacy_zero_fail() -> None:
+    class Partial:
+        name = "partial"
+
+        async def evaluate(self, sample):
+            from aiobs.evaluation.protocol import EvaluationResult
+
+            return EvaluationResult(score=0.6, label="FAIL", explanation="ok", metadata={})
+
+    entity = Evaluator.create(uuid.uuid4(), "partial", "llm_judge", {"kind": "correctness"})
+    item = DatasetItem.create(uuid.uuid4(), input="x", expected_output="y", actual_output="y")
+    runner = EvaluationRunner(resolve_evaluator=lambda _e: Partial())
+    run = EvaluationRun.create(uuid.uuid4(), entity.id)
+    finished, _ = await runner.run_evaluator(run=run, evaluator_entity=entity, items=[item])
+    assert finished.status == "PASSED"
+
+
 def test_registry_lists_kinds() -> None:
     assert "exact_match" in list_registered_kinds()
     create_evaluator("exact_match", {})
