@@ -25,6 +25,7 @@ import { ApiError } from "@/lib/api/client";
 import { deleteAlias, setAlias } from "@/lib/api/app-configs";
 import type { AppConfig, AppConfigAlias } from "@/lib/api/types";
 import { withProjectQuery } from "@/lib/project-href";
+import { formatConfigValue } from "./format-config-value";
 import {
   appConfigAliasesQueryKey,
   appConfigVersionsQueryOptions,
@@ -33,16 +34,6 @@ import {
 } from "./use-app-configs";
 
 const PRESET_ALIASES = ["prod", "baseline", "candidate"] as const;
-
-function formatJson(value: unknown): string {
-  if (value === null || value === undefined) return "—";
-  if (typeof value === "string") return value;
-  try {
-    return JSON.stringify(value, null, 2);
-  } catch {
-    return String(value);
-  }
-}
 
 function DetailBlock({
   title,
@@ -54,26 +45,25 @@ function DetailBlock({
   return (
     <div className="flex flex-col gap-1.5">
       <h3 className="text-xs font-medium text-muted-foreground">{title}</h3>
-      <pre className="max-h-[min(320px,40vh)] overflow-auto rounded-md border border-border bg-surface p-3 font-mono text-xs whitespace-pre-wrap break-words text-foreground">
+      <div className="max-h-[min(320px,40vh)] overflow-auto rounded-md border border-border bg-surface p-3 text-sm whitespace-pre-wrap break-words text-foreground">
         {children}
-      </pre>
+      </div>
     </div>
   );
 }
 
-function configSnapshot(config: AppConfig): string {
-  return JSON.stringify(
-    {
-      version: config.version,
-      description: config.description,
-      prompt: config.prompt,
-      model: config.model,
-      retrieval: config.retrieval,
-      content_hash: config.content_hash,
-    },
-    null,
-    2,
-  );
+function configPlainSnapshot(config: AppConfig): string {
+  const parts = [
+    `version: ${config.version}`,
+    config.description?.trim()
+      ? `description\n${config.description.trim()}`
+      : null,
+    `prompt\n${formatConfigValue(config.prompt)}`,
+    `model\n${formatConfigValue(config.model)}`,
+    `retrieval\n${formatConfigValue(config.retrieval)}`,
+    `content_hash: ${config.content_hash}`,
+  ];
+  return parts.filter(Boolean).join("\n\n");
 }
 
 type AppConfigFamilyDetailProps = {
@@ -396,13 +386,13 @@ export function AppConfigFamilyDetail({
               ) : null}
               <div className="grid gap-3 md:grid-cols-3">
                 <DetailBlock title="Prompt">
-                  {formatJson(selectedVersion.prompt)}
+                  {formatConfigValue(selectedVersion.prompt)}
                 </DetailBlock>
                 <DetailBlock title="Model">
-                  {formatJson(selectedVersion.model)}
+                  {formatConfigValue(selectedVersion.model)}
                 </DetailBlock>
                 <DetailBlock title="Retrieval">
-                  {formatJson(selectedVersion.retrieval)}
+                  {formatConfigValue(selectedVersion.retrieval)}
                 </DetailBlock>
               </div>
             </section>
@@ -434,7 +424,7 @@ export function AppConfigFamilyDetail({
                 </div>
               ) : (
                 <p className="text-sm text-muted-foreground">
-                  Select two versions to compare JSON side by side.
+                  Select two versions to compare side by side.
                 </p>
               )}
             </div>
@@ -487,9 +477,9 @@ function ComparePane({
       <div className="border-b border-border px-3 py-2 text-xs font-medium text-muted-foreground">
         {title}
       </div>
-      <pre className="max-h-[min(480px,50vh)] overflow-auto p-3 font-mono text-xs leading-relaxed text-foreground">
-        {configSnapshot(config)}
-      </pre>
+      <div className="max-h-[min(480px,50vh)] overflow-auto p-3 text-sm leading-relaxed whitespace-pre-wrap break-words text-foreground">
+        {configPlainSnapshot(config)}
+      </div>
     </div>
   );
 }

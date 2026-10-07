@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useState, type SubmitEvent, type ReactNode } from "react";
+import { formatConfigValue } from "@/features/app-configs/format-config-value";
 import { RAG_RECOMMENDED_EVALUATOR_KINDS } from "@/features/datasets/rag-qa";
 import { useDatasets, useDataset } from "@/features/datasets/use-datasets";
 import { CreateEvaluatorDialog } from "./create-evaluator-dialog";
@@ -117,9 +118,9 @@ function DetailBlock({
   return (
     <div className="flex flex-col gap-1.5">
       <h3 className="text-xs font-medium text-muted-foreground">{title}</h3>
-      <pre className="max-h-[200px] overflow-auto rounded-md border border-border bg-surface p-3 font-mono text-xs whitespace-pre-wrap break-words text-foreground">
+      <div className="max-h-[200px] overflow-auto rounded-md border border-border bg-surface p-3 text-sm whitespace-pre-wrap break-words text-foreground">
         {children}
-      </pre>
+      </div>
     </div>
   );
 }
@@ -453,13 +454,13 @@ export function ExperimentDetailView({
           </div>
           <div className="grid gap-3 md:grid-cols-3">
             <DetailBlock title="Prompt">
-              {formatJson(appConfigSnapshot.prompt)}
+              {formatConfigValue(appConfigSnapshot.prompt)}
             </DetailBlock>
             <DetailBlock title="Model">
-              {formatJson(appConfigSnapshot.model)}
+              {formatConfigValue(appConfigSnapshot.model)}
             </DetailBlock>
             <DetailBlock title="Retrieval">
-              {formatJson(appConfigSnapshot.retrieval)}
+              {formatConfigValue(appConfigSnapshot.retrieval)}
             </DetailBlock>
           </div>
         </div>
