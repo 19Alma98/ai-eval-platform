@@ -1,4 +1,4 @@
-import { apiDelete, apiGet, apiPost, apiPut } from "./client";
+import { apiDelete, apiGet, apiPut } from "./client";
 import type { AppConfig, AppConfigAlias } from "./types";
 
 export function listAppConfigs(
@@ -12,19 +12,6 @@ export function listAppConfigs(
   return apiGet<AppConfig[]>(
     `/api/v1/projects/${projectId}/app-configs${qs}`,
   );
-}
-
-export function createAppConfig(
-  projectId: string,
-  body: {
-    name: string;
-    description?: string;
-    prompt?: Record<string, unknown>;
-    model?: Record<string, unknown>;
-    retrieval?: Record<string, unknown>;
-  },
-) {
-  return apiPost<AppConfig>(`/api/v1/projects/${projectId}/app-configs`, body);
 }
 
 export function listAppConfigVersions(projectId: string, name: string) {

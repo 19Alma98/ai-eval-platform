@@ -357,7 +357,7 @@ export function AppConfigFamilyDetail({
       {versions.length === 0 ? (
         <EmptyState
           title="No versions"
-          description="Create a new version from the app configs list."
+          description="Register a new version from your app via the SDK or API, then refresh this page."
           action={
             <Link
               href={backHref}

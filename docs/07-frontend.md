@@ -72,8 +72,10 @@ Features:
 
 Project-scoped registry UI (requires `projectId` query param like other console routes):
 
-- **`/app-configs`** — list config families (latest version per name), create new versions, manage aliases
-- **`/app-configs/[name]`** — version history for one family, alias pins, JSON prompt/model/retrieval editors
+- **`/app-configs`** — list config families (latest version per name); no create in the console
+- **`/app-configs/[name]`** — version history for one family, alias pins, read-only prompt/model/retrieval snapshots
+
+Versions are registered from the evaluated app via SDK/API (or demo scripts). The console is for browsing, alias management, and binding configs when creating experiments.
 
 Experiment create prefers binding `app_config_id` or `app_config_alias` (peer to dataset) over free-form `model_config`.
 

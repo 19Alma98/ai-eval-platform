@@ -12,7 +12,6 @@ import { RelativeTime } from "@/components/relative-time";
 import { ApiError } from "@/lib/api/client";
 import type { AppConfig } from "@/lib/api/types";
 import { useProjectId } from "@/lib/project-store";
-import { CreateAppConfigDialog } from "./create-app-config-dialog";
 import {
   appConfigsQueryOptions,
   useAppConfigAliases,
@@ -51,7 +50,6 @@ export function AppConfigList() {
   const configsQuery = useAppConfigs(projectId);
   const aliasesQuery = useAppConfigAliases(projectId);
   const queryOpts = projectId ? appConfigsQueryOptions(projectId) : null;
-  const [createOpen, setCreateOpen] = useState(false);
   const [selectedIndex, setSelectedIndex] = useState(0);
 
   const aliasNamesByFamily = useMemo(() => {
@@ -166,13 +164,6 @@ export function AppConfigList() {
     <div className="flex flex-col gap-3">
       <div className="sticky top-0 z-20 -mx-1 flex flex-wrap items-center gap-3 border-b border-border bg-background px-1 pb-3">
         <div className="flex-1" />
-        {projectId ? (
-          <CreateAppConfigDialog
-            projectId={projectId}
-            open={createOpen}
-            onOpenChange={setCreateOpen}
-          />
-        ) : null}
         {queryOpts ? (
           <RefreshControl
             queryKey={queryOpts.queryKey}
@@ -184,16 +175,7 @@ export function AppConfigList() {
       {rows.length === 0 ? (
         <EmptyState
           title="No app configs yet"
-          description="Create a versioned prompt, model, and retrieval bundle for experiments."
-          action={
-            projectId ? (
-              <CreateAppConfigDialog
-                projectId={projectId}
-                open={createOpen}
-                onOpenChange={setCreateOpen}
-              />
-            ) : null
-          }
+          description="Register versioned prompt, model, and retrieval bundles from your app via the SDK or API. This console is for browsing versions and managing aliases."
         />
       ) : (
         <DataTable

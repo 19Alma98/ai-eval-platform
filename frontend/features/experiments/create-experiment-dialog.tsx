@@ -293,14 +293,8 @@ export function CreateExperimentDialog({
               </Select>
               {!hasRegistry ? (
                 <p className="text-xs text-muted-foreground">
-                  No app configs yet —{" "}
-                  <Link
-                    href={withProjectQuery("/app-configs", projectId)}
-                    className="text-primary hover:underline"
-                  >
-                    create one
-                  </Link>
-                  .
+                  No app configs in this project yet. Register them from your app
+                  via the SDK or API, then refresh. Or use Advanced below.
                 </p>
               ) : null}
             </div>
