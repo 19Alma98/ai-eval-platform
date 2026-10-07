@@ -33,7 +33,7 @@ Dataset-first RAG loop: gold test set → metrics pack → SDK-bound runs (`bind
 
 In the UI: **Test set → Metriche → Runs**. Release policy uses pack names: `hit_at_k`, `groundedness`, `correctness`, `latency`.
 
-**AI Eval Run (prod-sim):** with API + LLM judge up, run `python scripts/live_run_demo.py` then open **Live runs** in the UI (`/live-runs`).
+**AI Eval Run (prod-sim):** with API + LLM judge up, run `cd sdk && uv run python ../scripts/live_run_demo.py` then open **Live runs** in the UI (`/live-runs`).
 
 Details: [`examples/hr_it_assistant/README.md`](examples/hr_it_assistant/README.md). RAG vertical: [`docs/superpowers/specs/2026-10-05-rag-eval-dataset-first-design.md`](docs/superpowers/specs/2026-10-05-rag-eval-dataset-first-design.md).
 

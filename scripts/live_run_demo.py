@@ -9,14 +9,15 @@ Requires:
   - API up (default http://localhost:8000)
   - migrations applied (incl. live_interactions)
   - LLM judge configured on the API (same as TestSet groundedness)
+  - SDK deps available (prefer running via the sdk env — see Usage)
 
 Usage (from repo root)::
 
     export AIOBS_API_BASE_URL=http://localhost:8000
-    python scripts/live_run_demo.py
+    cd sdk && uv run python ../scripts/live_run_demo.py
 
-    # reuse project / skip wait
-    python scripts/live_run_demo.py --project-slug live-demo --no-wait
+    # or, with sdk/.venv activated:
+    #   python ../scripts/live_run_demo.py --project-slug acme-people-ops
 """
 
 from __future__ import annotations
@@ -33,8 +34,7 @@ ROOT = Path(__file__).resolve().parents[1]
 SDK_DIR = ROOT / "sdk"
 sys.path.insert(0, str(SDK_DIR / "src"))
 
-import httpx2  # noqa: E402
-from aiobs import Client  # noqa: E402
+from aiobs import AiobsAPIError, Client  # noqa: E402
 from aiobs._http import resolve_api_base_url  # noqa: E402
 
 KNOWLEDGE_PATH = ROOT / "examples" / "hr_it_assistant" / "knowledge.json"
@@ -98,26 +98,22 @@ def sample_turns(docs: dict[str, dict[str, str]]) -> list[dict[str, Any]]:
     ]
 
 
-def api_get(base: str, path: str) -> dict[str, Any] | list[Any]:
-    with httpx2.Client(base_url=base.rstrip("/"), timeout=60.0) as http:
-        r = http.get(path, headers={"Accept": "application/json"})
-        r.raise_for_status()
-        return r.json()
+def api_get(client: Client, path: str) -> dict[str, Any] | list[Any]:
+    result = client._http.request("GET", path)
+    assert isinstance(result, (dict, list))
+    return result
 
 
-def api_post(base: str, path: str, body: dict[str, Any] | None = None) -> dict[str, Any]:
-    with httpx2.Client(base_url=base.rstrip("/"), timeout=120.0) as http:
-        r = http.post(
-            path,
-            json=body or {},
-            headers={"Accept": "application/json", "Content-Type": "application/json"},
-        )
-        r.raise_for_status()
-        return r.json()
+def api_post(
+    client: Client, path: str, body: dict[str, Any] | None = None
+) -> dict[str, Any]:
+    result = client._http.request("POST", path, body=body or {})
+    assert isinstance(result, dict)
+    return result
 
 
 def wait_until_scored(
-    base: str,
+    client: Client,
     interaction_id: str,
     *,
     timeout_s: float,
@@ -126,16 +122,15 @@ def wait_until_scored(
     deadline = time.monotonic() + timeout_s
     last: dict[str, Any] = {}
     while time.monotonic() < deadline:
-        raw = api_get(base, f"/api/v1/live-interactions/{interaction_id}")
+        raw = api_get(client, f"/api/v1/live-interactions/{interaction_id}")
         assert isinstance(raw, dict)
         last = raw
         status = str(last.get("judge_status") or "")
         if status in {"scored", "error"}:
             return last
         time.sleep(poll_s)
-    # Background task may have been skipped (e.g. cold start); force sync rescore.
     print(f"  timeout waiting; calling rescore for {interaction_id[:8]}…")
-    return api_post(base, f"/api/v1/live-interactions/{interaction_id}/rescore")
+    return api_post(client, f"/api/v1/live-interactions/{interaction_id}/rescore")
 
 
 def summarize(interaction: dict[str, Any]) -> str:
@@ -164,7 +159,11 @@ def main() -> int:
         help="Submit only; do not wait/rescore (check UI after background judge)",
     )
     parser.add_argument("--timeout", type=float, default=90.0, help="Seconds to wait per turn")
-    parser.add_argument("--promote", action="store_true", help="Promote the first grounded turn to a dataset")
+    parser.add_argument(
+        "--promote",
+        action="store_true",
+        help="Promote the first grounded turn to a dataset",
+    )
     args = parser.parse_args()
 
     base = resolve_api_base_url(args.base_url)
@@ -207,7 +206,7 @@ def main() -> int:
         print("\nWaiting for judge (background, then rescore if needed)…")
         for item in submitted:
             detail = wait_until_scored(
-                base,
+                client,
                 item["id"],
                 timeout_s=args.timeout,
                 poll_s=2.0,
@@ -223,7 +222,7 @@ def main() -> int:
             task_type="rag_qa",
         )
         item = api_post(
-            base,
+            client,
             f"/api/v1/live-interactions/{target['id']}/promote",
             {"dataset_id": dataset["id"]},
         )
@@ -232,7 +231,11 @@ def main() -> int:
             f"item {item.get('id', '')[:8]}…"
         )
 
-    listed = api_get(base, f"/api/v1/projects/{project_id}/live-interactions?limit=20")
+    listed = client._http.request(
+        "GET",
+        f"/api/v1/projects/{project_id}/live-interactions",
+        query={"limit": "20"},
+    )
     n = len(listed) if isinstance(listed, list) else 0
     print(f"\nLive interactions in project: {n}")
     print(f"Open UI: http://localhost:3000/live-runs?project={project_id}")
@@ -243,8 +246,16 @@ def main() -> int:
 if __name__ == "__main__":
     try:
         raise SystemExit(main())
-    except httpx2.HTTPError as exc:
-        print(f"HTTP error: {exc}", file=sys.stderr)
+    except AiobsAPIError as exc:
+        print(f"API error: {exc}", file=sys.stderr)
+        raise SystemExit(1) from exc
+    except ModuleNotFoundError as exc:
+        print(
+            f"{exc}\n"
+            "Install SDK deps, then re-run:\n"
+            "  cd sdk && uv sync --extra dev && uv run python ../scripts/live_run_demo.py\n",
+            file=sys.stderr,
+        )
         raise SystemExit(1) from exc
     except Exception as exc:
         print(exc, file=sys.stderr)
