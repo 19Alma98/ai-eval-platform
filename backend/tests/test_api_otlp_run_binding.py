@@ -297,3 +297,114 @@ async def test_otlp_foreign_dataset_item_still_stores_trace(client: AsyncClient)
 
     traces = await client.get(f"/api/v1/projects/{project_id}/traces")
     assert len(traces.json()["items"]) == 1
+
+
+@pytest.mark.asyncio
+async def test_otlp_cross_project_experiment_does_not_bind(client: AsyncClient) -> None:
+    project_a, experiment_id, item_id = await _seed_rag_experiment(client)
+    project_b = await client.post("/api/v1/projects", json={"name": "Other Project"})
+    assert project_b.status_code == 201
+    project_b_id = project_b.json()["id"]
+
+    payload = _otlp_payload(experiment_id=experiment_id, dataset_item_id=item_id)
+    otlp = await client.post(
+        "/v1/traces",
+        content=json.dumps(payload),
+        headers={
+            "content-type": "application/json",
+            "X-Project-Id": project_b_id,
+        },
+    )
+    assert otlp.status_code == 200
+
+    listed = await client.get(f"/api/v1/experiments/{experiment_id}/outputs")
+    assert listed.status_code == 200
+    assert listed.json() == []
+
+    traces_b = await client.get(f"/api/v1/projects/{project_b_id}/traces")
+    assert len(traces_b.json()["items"]) == 1
+    traces_a = await client.get(f"/api/v1/projects/{project_a}/traces")
+    assert traces_a.json()["items"] == []
+
+
+@pytest.mark.asyncio
+async def test_otlp_bind_capture_off_keeps_retrieval_context(
+    client: AsyncClient,
+) -> None:
+    import os
+
+    from aiobs.config import get_settings
+
+    os.environ["CONTENT_CAPTURE_ENABLED"] = "false"
+    get_settings.cache_clear()
+    try:
+        project_id, experiment_id, item_id = await _seed_rag_experiment(client)
+        payload = _otlp_payload(experiment_id=experiment_id, dataset_item_id=item_id)
+        otlp = await client.post(
+            "/v1/traces",
+            content=json.dumps(payload),
+            headers={
+                "content-type": "application/json",
+                "X-Project-Id": project_id,
+            },
+        )
+        assert otlp.status_code == 200
+
+        listed = await client.get(f"/api/v1/experiments/{experiment_id}/outputs")
+        assert listed.status_code == 200
+        rows = listed.json()
+        assert len(rows) == 1
+        assert rows[0]["actual_output"] is None
+        assert rows[0]["context"]["documents"][0]["id"] == "doc-1"
+        assert rows[0]["metadata"]["source_trace_id"] == "aa" * 16
+    finally:
+        os.environ["CONTENT_CAPTURE_ENABLED"] = "true"
+        get_settings.cache_clear()
+
+
+@pytest.mark.asyncio
+async def test_otlp_bind_capture_off_preserves_existing_actual_output(
+    client: AsyncClient,
+) -> None:
+    import os
+
+    from aiobs.config import get_settings
+
+    project_id, experiment_id, item_id = await _seed_rag_experiment(client)
+    seed = await client.put(
+        f"/api/v1/experiments/{experiment_id}/outputs",
+        json={
+            "items": [
+                {
+                    "dataset_item_id": item_id,
+                    "actual_output": "seeded answer",
+                    "metadata": {"model": "manual"},
+                }
+            ]
+        },
+    )
+    assert seed.status_code == 200
+
+    os.environ["CONTENT_CAPTURE_ENABLED"] = "false"
+    get_settings.cache_clear()
+    try:
+        payload = _otlp_payload(experiment_id=experiment_id, dataset_item_id=item_id)
+        otlp = await client.post(
+            "/v1/traces",
+            content=json.dumps(payload),
+            headers={
+                "content-type": "application/json",
+                "X-Project-Id": project_id,
+            },
+        )
+        assert otlp.status_code == 200
+
+        listed = await client.get(f"/api/v1/experiments/{experiment_id}/outputs")
+        row = listed.json()[0]
+        assert row["actual_output"] == "seeded answer"
+        assert row["context"]["documents"][0]["id"] == "doc-1"
+        assert row["metadata"]["model"] == "manual"
+        assert row["metadata"]["source_trace_id"] == "aa" * 16
+    finally:
+        os.environ["CONTENT_CAPTURE_ENABLED"] = "true"
+        get_settings.cache_clear()

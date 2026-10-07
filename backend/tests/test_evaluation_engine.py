@@ -121,6 +121,28 @@ async def test_llm_judge_with_mock() -> None:
 
 
 @pytest.mark.asyncio
+async def test_runner_hit_at_k_scores_without_actual_output() -> None:
+    entity = Evaluator.create(
+        uuid.uuid4(), "hit_at_k", "deterministic", {"kind": "hit_at_k", "k": 2}
+    )
+    item = DatasetItem.create(
+        uuid.uuid4(),
+        input="q",
+        expected_output="gold",
+        actual_output=None,
+        context={"documents": [{"id": "doc-a"}, {"id": "doc-b"}]},
+        metadata={"expected_doc_ids": ["doc-a"]},
+    )
+    runner = EvaluationRunner()
+    run = EvaluationRun.create(uuid.uuid4(), entity.id)
+    finished, results = await runner.run_evaluator(run=run, evaluator_entity=entity, items=[item])
+    assert results[0].label == "PASS"
+    assert results[0].score == 1.0
+    assert results[0].explanation != "actual_output is missing"
+    assert finished.status == "PASSED"
+
+
+@pytest.mark.asyncio
 async def test_runner_maps_errors_not_to_zero() -> None:
     class Boom:
         name = "boom"

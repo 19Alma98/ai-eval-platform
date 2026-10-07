@@ -69,11 +69,13 @@ def load_gold_rows() -> list[dict[str, Any]]:
     for doc in data:
         doc_id = str(doc["id"])
         for g in doc.get("gold") or []:
+            phrase = str(g["must_contain"])
             rows.append(
                 {
                     "question": str(g["question"]),
-                    "expected_output": str(g["must_contain"]),
+                    "expected_output": phrase,
                     "expected_doc_ids": [doc_id],
+                    "must_contain": [phrase],
                 }
             )
     if not rows:
@@ -102,7 +104,10 @@ def create_rag_dataset(
             body={
                 "input": row["question"],
                 "expected_output": row["expected_output"],
-                "metadata": {"expected_doc_ids": row["expected_doc_ids"]},
+                "metadata": {
+                    "expected_doc_ids": row["expected_doc_ids"],
+                    "must_contain": row["must_contain"],
+                },
             },
         )
         item_map[row["question"]] = item["id"]

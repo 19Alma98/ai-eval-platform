@@ -99,6 +99,8 @@ class BindOtlpTracesToExperimentOutputs:
         experiment = await self.experiments.get_by_id(experiment_id)
         if experiment is None:
             return
+        if experiment.project_id != trace.project_id:
+            return
 
         dataset_item = await self.datasets.get_item(dataset_item_id)
         if dataset_item is None or dataset_item.dataset_id != experiment.dataset_id:
@@ -110,8 +112,11 @@ class BindOtlpTracesToExperimentOutputs:
             existing = ExperimentItemOutput.create(experiment_id, dataset_item_id)
         merged_metadata = dict(existing.metadata)
         merged_metadata.update(payload["metadata"])
+        actual_output = payload["actual_output"]
+        if actual_output is None and existing.actual_output is not None:
+            actual_output = existing.actual_output
         patched = existing.with_patch(
-            actual_output=payload["actual_output"],
+            actual_output=actual_output,
             context=payload["context"],
             metadata=merged_metadata,
         )

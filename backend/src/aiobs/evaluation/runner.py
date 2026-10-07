@@ -22,7 +22,13 @@ def config_hash(config: dict[str, Any]) -> str:
 
 
 def _requires_actual(kind: str) -> bool:
-    return kind not in {"latency", "token_usage", "cost", "tool_call_success"}
+    return kind not in {
+        "latency",
+        "token_usage",
+        "cost",
+        "tool_call_success",
+        "hit_at_k",
+    }
 
 
 class EvaluationRunner:

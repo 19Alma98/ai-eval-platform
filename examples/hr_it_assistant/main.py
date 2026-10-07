@@ -201,7 +201,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--experiment-id",
         default=os.getenv("AIOBS_EXPERIMENT_ID"),
-        help="Run id to bind traces to (SDK bind_evaluation)",
+        help="Experiment id to bind traces to (SDK bind_evaluation)",
     )
     parser.add_argument(
         "--item-map",
