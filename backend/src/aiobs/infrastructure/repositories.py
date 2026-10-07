@@ -110,6 +110,14 @@ class SqlAlchemyProjectRepository:
         )
         return [_project_to_domain(row) for row in result.scalars().all()]
 
+    async def delete(self, project_id: uuid.UUID) -> bool:
+        row = await self._session.get(ProjectModel, project_id)
+        if row is None:
+            return False
+        await self._session.delete(row)
+        await self._session.commit()
+        return True
+
 
 class SqlAlchemyTraceRepository:
     def __init__(self, session: AsyncSession) -> None:

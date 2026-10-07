@@ -54,7 +54,12 @@ from aiobs.application.metrics_sets import (
     ResolveMetricsSetForScore,
     VersionMetricsSet,
 )
-from aiobs.application.projects import CreateProject, GetProject, ListProjects
+from aiobs.application.projects import (
+    CreateProject,
+    DeleteProject,
+    GetProject,
+    ListProjects,
+)
 from aiobs.application.release_check import ReleaseCheck
 from aiobs.application.traces import (
     CreateTrace,
@@ -155,6 +160,12 @@ def get_get_project(
     repository: SqlAlchemyProjectRepository = Depends(get_project_repository),
 ) -> GetProject:
     return GetProject(repository)
+
+
+def get_delete_project(
+    repository: SqlAlchemyProjectRepository = Depends(get_project_repository),
+) -> DeleteProject:
+    return DeleteProject(repository)
 
 
 def get_ingest_traces(

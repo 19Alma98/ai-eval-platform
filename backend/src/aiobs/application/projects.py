@@ -54,3 +54,13 @@ class GetProject:
         if project is None:
             raise ProjectNotFoundError(project_id)
         return project
+
+
+class DeleteProject:
+    def __init__(self, repository: ProjectRepository) -> None:
+        self._repository = repository
+
+    async def execute(self, project_id: uuid.UUID) -> None:
+        deleted = await self._repository.delete(project_id)
+        if not deleted:
+            raise ProjectNotFoundError(project_id)

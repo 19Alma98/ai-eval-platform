@@ -36,6 +36,12 @@ class InMemoryProjectRepository:
             reverse=True,
         )
 
+    async def delete(self, project_id: uuid.UUID) -> bool:
+        if project_id not in self._projects:
+            return False
+        del self._projects[project_id]
+        return True
+
 
 @pytest.fixture
 async def client() -> AsyncIterator[AsyncClient]:
@@ -92,3 +98,20 @@ async def test_slug_conflict(client: AsyncClient) -> None:
     assert first.status_code == 201
     second = await client.post("/api/v1/projects", json={"name": "Two", "slug": "dup"})
     assert second.status_code == 409
+
+
+@pytest.mark.asyncio
+async def test_delete_project(client: AsyncClient) -> None:
+    create = await client.post("/api/v1/projects", json={"name": "ToDelete", "slug": "to-delete"})
+    assert create.status_code == 201
+    project_id = create.json()["id"]
+
+    deleted = await client.delete(f"/api/v1/projects/{project_id}")
+    assert deleted.status_code == 204
+
+    listed = await client.get("/api/v1/projects")
+    assert listed.status_code == 200
+    assert listed.json() == []
+
+    missing = await client.delete(f"/api/v1/projects/{project_id}")
+    assert missing.status_code == 404

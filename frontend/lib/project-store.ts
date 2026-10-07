@@ -13,6 +13,7 @@ function readStoredProjectId(): string | null {
 export function useProjectId(): {
   projectId: string | null;
   setProjectId: (id: string) => void;
+  clearProjectId: () => void;
 } {
   const router = useRouter();
   const pathname = usePathname();
@@ -42,5 +43,14 @@ export function useProjectId(): {
     [pathname, router, searchParams],
   );
 
-  return { projectId, setProjectId };
+  const clearProjectId = useCallback(() => {
+    setProjectIdState(null);
+    localStorage.removeItem(STORAGE_KEY);
+    const params = new URLSearchParams(searchParams.toString());
+    params.delete("project");
+    const qs = params.toString();
+    router.replace(qs ? `${pathname}?${qs}` : pathname);
+  }, [pathname, router, searchParams]);
+
+  return { projectId, setProjectId, clearProjectId };
 }

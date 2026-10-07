@@ -4,11 +4,17 @@ import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, status
 
-from aiobs.api.deps import get_create_project, get_get_project, get_list_projects
+from aiobs.api.deps import (
+    get_create_project,
+    get_delete_project,
+    get_get_project,
+    get_list_projects,
+)
 from aiobs.api.schemas import CreateProjectRequest, ProjectResponse
 from aiobs.application.projects import (
     CreateProject,
     CreateProjectCommand,
+    DeleteProject,
     GetProject,
     ListProjects,
     ProjectNotFoundError,
@@ -74,3 +80,17 @@ async def get_project(
         slug=project.slug,
         created_at=project.created_at,
     )
+
+
+@router.delete("/{project_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_project(
+    project_id: uuid.UUID,
+    use_case: DeleteProject = Depends(get_delete_project),
+) -> None:
+    try:
+        await use_case.execute(project_id)
+    except ProjectNotFoundError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=str(exc),
+        ) from exc

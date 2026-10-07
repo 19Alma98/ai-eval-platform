@@ -22,6 +22,7 @@ Do not block the platform MVP on SSO, sessions, or RBAC.
 GET /projects
 POST /projects
 GET /projects/{project_id}
+DELETE /projects/{project_id}
 ```
 
 ## Traces
