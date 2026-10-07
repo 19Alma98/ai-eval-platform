@@ -319,3 +319,42 @@ export type AppConfigAlias = {
   updated_at: string;
   app_config: AppConfigSummary;
 };
+
+export type LiveInteractionScore = {
+  id: string;
+  live_interaction_id: string;
+  evaluator_id: string | null;
+  kind: string;
+  score: number | null;
+  label: string | null;
+  explanation: string | null;
+  threshold: number | null;
+  created_at: string;
+};
+
+export type LiveReview = {
+  id: string;
+  live_interaction_id: string;
+  verdict: string;
+  note: string | null;
+  reviewer: string | null;
+  created_at: string;
+};
+
+export type LiveInteraction = {
+  id: string;
+  project_id: string;
+  question: string;
+  answer: string;
+  documents: Record<string, unknown>[];
+  metadata: Record<string, unknown>;
+  external_id: string | null;
+  judge_status: string;
+  metrics_set_id: string | null;
+  score_warning: string | null;
+  error_message: string | null;
+  created_at: string;
+  scored_at: string | null;
+  scores: LiveInteractionScore[];
+  review: LiveReview | null;
+};

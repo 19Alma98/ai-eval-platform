@@ -12,6 +12,7 @@ from sqlalchemy import (
     Index,
     Integer,
     String,
+    Text,
     UniqueConstraint,
     Uuid,
     func,
@@ -450,4 +451,118 @@ class ExperimentItemOutputModel(Base):
         DateTime(timezone=True),
         nullable=False,
         server_default=func.now(),
+    )
+
+
+class LiveInteractionModel(Base):
+    __tablename__ = "live_interactions"
+    __table_args__ = (
+        UniqueConstraint(
+            "project_id",
+            "external_id",
+            name="uq_live_interactions_project_external_id",
+        ),
+        Index("ix_live_interactions_project_created_at", "project_id", "created_at"),
+        Index("ix_live_interactions_project_judge_status", "project_id", "judge_status"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True)
+    project_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey("projects.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    question: Mapped[str] = mapped_column(Text, nullable=False)
+    answer: Mapped[str] = mapped_column(Text, nullable=False)
+    documents: Mapped[list[Any]] = mapped_column(JSONB, nullable=False, server_default="[]")
+    metadata_json: Mapped[dict[str, Any]] = mapped_column(
+        "metadata", JSONB, nullable=False, server_default="{}"
+    )
+    external_id: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    judge_status: Mapped[str] = mapped_column(String(32), nullable=False)
+    metrics_set_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey("metrics_sets.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    score_warning: Mapped[str | None] = mapped_column(Text, nullable=True)
+    error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+    )
+    scored_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    scores: Mapped[list[LiveInteractionScoreModel]] = relationship(
+        "LiveInteractionScoreModel",
+        back_populates="live_interaction",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+    )
+    review: Mapped[LiveReviewModel | None] = relationship(
+        "LiveReviewModel",
+        back_populates="live_interaction",
+        uselist=False,
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+    )
+
+
+class LiveInteractionScoreModel(Base):
+    __tablename__ = "live_interaction_scores"
+    __table_args__ = (Index("ix_live_interaction_scores_interaction_id", "live_interaction_id"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True)
+    live_interaction_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey("live_interactions.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    evaluator_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey("evaluators.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    kind: Mapped[str] = mapped_column(String(64), nullable=False)
+    score: Mapped[float | None] = mapped_column(Float, nullable=True)
+    label: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    explanation: Mapped[str | None] = mapped_column(Text, nullable=True)
+    threshold: Mapped[float | None] = mapped_column(Float, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+    )
+
+    live_interaction: Mapped[LiveInteractionModel] = relationship(
+        "LiveInteractionModel",
+        back_populates="scores",
+    )
+
+
+class LiveReviewModel(Base):
+    __tablename__ = "live_reviews"
+    __table_args__ = (
+        UniqueConstraint("live_interaction_id", name="uq_live_reviews_interaction_id"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True)
+    live_interaction_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey("live_interactions.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    verdict: Mapped[str] = mapped_column(String(32), nullable=False)
+    note: Mapped[str | None] = mapped_column(Text, nullable=True)
+    reviewer: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+    )
+
+    live_interaction: Mapped[LiveInteractionModel] = relationship(
+        "LiveInteractionModel",
+        back_populates="review",
     )

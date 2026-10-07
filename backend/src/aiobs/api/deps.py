@@ -38,6 +38,14 @@ from aiobs.application.experiments import (
     GetExperiment,
     ListExperiments,
 )
+from aiobs.application.live_interactions import (
+    GetLiveInteraction,
+    ListLiveInteractions,
+    PromoteLiveInteraction,
+    ScoreLiveInteraction,
+    SubmitLiveInteraction,
+    UpsertLiveReview,
+)
 from aiobs.application.metrics_packs import (
     EnsureMetricsPack,
     GetMetricsPack,
@@ -78,6 +86,7 @@ from aiobs.infrastructure.repositories import (
     SqlAlchemyEvaluatorRepository,
     SqlAlchemyExperimentItemOutputRepository,
     SqlAlchemyExperimentRepository,
+    SqlAlchemyLiveInteractionRepository,
     SqlAlchemyMetricsSetRepository,
     SqlAlchemyProjectRepository,
     SqlAlchemyTraceRepository,
@@ -525,3 +534,55 @@ def get_release_check(
     compare: CompareExperiments = Depends(get_compare_experiments),
 ) -> ReleaseCheck:
     return ReleaseCheck(projects, experiments, runs, compare)
+
+
+def get_live_interaction_repository(
+    session: AsyncSession = Depends(get_db_session),
+) -> SqlAlchemyLiveInteractionRepository:
+    return SqlAlchemyLiveInteractionRepository(session)
+
+
+def get_submit_live_interaction(
+    projects: SqlAlchemyProjectRepository = Depends(get_project_repository),
+    live: SqlAlchemyLiveInteractionRepository = Depends(get_live_interaction_repository),
+    metrics_sets: SqlAlchemyMetricsSetRepository = Depends(get_metrics_set_repository),
+) -> SubmitLiveInteraction:
+    return SubmitLiveInteraction(projects, live, metrics_sets)
+
+
+def get_score_live_interaction(
+    live: SqlAlchemyLiveInteractionRepository = Depends(get_live_interaction_repository),
+    metrics_sets: SqlAlchemyMetricsSetRepository = Depends(get_metrics_set_repository),
+    evaluators: SqlAlchemyEvaluatorRepository = Depends(get_evaluator_repository),
+    create_evaluator: CreateEvaluator = Depends(get_create_evaluator),
+    ensure_default: EnsureProjectDefaultMetricsSet = Depends(
+        get_ensure_project_default_metrics_set
+    ),
+) -> ScoreLiveInteraction:
+    return ScoreLiveInteraction(live, metrics_sets, evaluators, create_evaluator, ensure_default)
+
+
+def get_list_live_interactions(
+    live: SqlAlchemyLiveInteractionRepository = Depends(get_live_interaction_repository),
+) -> ListLiveInteractions:
+    return ListLiveInteractions(live)
+
+
+def get_get_live_interaction(
+    live: SqlAlchemyLiveInteractionRepository = Depends(get_live_interaction_repository),
+) -> GetLiveInteraction:
+    return GetLiveInteraction(live)
+
+
+def get_upsert_live_review(
+    live: SqlAlchemyLiveInteractionRepository = Depends(get_live_interaction_repository),
+) -> UpsertLiveReview:
+    return UpsertLiveReview(live)
+
+
+def get_promote_live_interaction(
+    live: SqlAlchemyLiveInteractionRepository = Depends(get_live_interaction_repository),
+    datasets: SqlAlchemyDatasetRepository = Depends(get_dataset_repository),
+    add_item: AddDatasetItem = Depends(get_add_dataset_item),
+) -> PromoteLiveInteraction:
+    return PromoteLiveInteraction(live, datasets, add_item)

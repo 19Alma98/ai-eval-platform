@@ -28,7 +28,7 @@ No login/signup screens are required for v0.1. The UI assumes a trusted local or
 
 Navigation strip for RAG projects:
 
-`Test set → App configs → Metriche → Runs → Confronta → Release`
+`Test set → App configs → Metriche → Runs → Confronta → Release` (TestSet pillar) plus **Live runs** (AI Eval Run pillar)
 
 - **Test set** — create/import `rag_qa` items (`question`, expected answer, `expected_doc_ids`); versioned datasets.
 - **Metriche** — versioned metrics sets per project (`/metrics`, `/metrics/[metricsSetId]`): list with “Default progetto” badge, create set seeded from the project default pack, detail editor (enable/threshold/remove custom entries), and “Crea versione N+1” when a set is referenced. Empty projects use `POST …/metrics-pack/ensure` then refetch. Legacy pack API remains for ensure/alias compatibility.
@@ -57,6 +57,11 @@ Features:
 - `rag_qa` gold fields and import (CSV/JSON)
 - item list with expected doc ids
 - add-from-trace (secondary; not the RAG primary path)
+
+### 4b. Live runs
+
+- `/live-runs` — list of prod-like interactions (`judge_status`, scores, review badge); filters for status / failed-only
+- `/live-runs/[id]` — Q/A/documents, judge explanations, agree/disagree + note, promote to Test set, rescore
 
 ### 4. Runs (experiments)
 

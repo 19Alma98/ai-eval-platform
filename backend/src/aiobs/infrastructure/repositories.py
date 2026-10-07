@@ -14,6 +14,11 @@ from aiobs.domain.evaluation import EvaluationResultRecord, EvaluationRun
 from aiobs.domain.evaluator import Evaluator
 from aiobs.domain.experiment import Experiment
 from aiobs.domain.experiment_output import ExperimentItemOutput
+from aiobs.domain.live_interaction import (
+    LiveInteraction,
+    LiveInteractionScore,
+    LiveReview,
+)
 from aiobs.domain.metrics_set import MetricsSet, MetricsSetEntry
 from aiobs.domain.project import Project
 from aiobs.domain.trace import Span, Trace
@@ -27,6 +32,9 @@ from aiobs.infrastructure.models import (
     EvaluatorModel,
     ExperimentItemOutputModel,
     ExperimentModel,
+    LiveInteractionModel,
+    LiveInteractionScoreModel,
+    LiveReviewModel,
     MetricsSetEntryModel,
     MetricsSetModel,
     ProjectModel,
@@ -1025,3 +1033,200 @@ class SqlAlchemyExperimentItemOutputRepository:
         )
         row = result.scalar_one_or_none()
         return _experiment_item_output_to_domain(row) if row is not None else None
+
+
+def _live_interaction_to_domain(row: LiveInteractionModel) -> LiveInteraction:
+    return LiveInteraction(
+        id=row.id,
+        project_id=row.project_id,
+        question=row.question,
+        answer=row.answer,
+        documents=list(row.documents or []),
+        metadata=dict(row.metadata_json or {}),
+        external_id=row.external_id,
+        judge_status=row.judge_status,
+        metrics_set_id=row.metrics_set_id,
+        score_warning=row.score_warning,
+        error_message=row.error_message,
+        created_at=row.created_at,
+        scored_at=row.scored_at,
+    )
+
+
+def _live_score_to_domain(row: LiveInteractionScoreModel) -> LiveInteractionScore:
+    return LiveInteractionScore(
+        id=row.id,
+        live_interaction_id=row.live_interaction_id,
+        evaluator_id=row.evaluator_id,
+        kind=row.kind,
+        score=row.score,
+        label=row.label,
+        explanation=row.explanation,
+        threshold=row.threshold,
+        created_at=row.created_at,
+    )
+
+
+def _live_review_to_domain(row: LiveReviewModel) -> LiveReview:
+    return LiveReview(
+        id=row.id,
+        live_interaction_id=row.live_interaction_id,
+        verdict=row.verdict,
+        note=row.note,
+        reviewer=row.reviewer,
+        created_at=row.created_at,
+    )
+
+
+class SqlAlchemyLiveInteractionRepository:
+    def __init__(self, session: AsyncSession) -> None:
+        self._session = session
+
+    async def add(self, interaction: LiveInteraction) -> LiveInteraction:
+        row = LiveInteractionModel(
+            id=interaction.id,
+            project_id=interaction.project_id,
+            question=interaction.question,
+            answer=interaction.answer,
+            documents=list(interaction.documents),
+            metadata_json=dict(interaction.metadata),
+            external_id=interaction.external_id,
+            judge_status=interaction.judge_status,
+            metrics_set_id=interaction.metrics_set_id,
+            score_warning=interaction.score_warning,
+            error_message=interaction.error_message,
+            created_at=interaction.created_at,
+            scored_at=interaction.scored_at,
+        )
+        self._session.add(row)
+        try:
+            await self._session.commit()
+        except IntegrityError:
+            await self._session.rollback()
+            raise
+        await self._session.refresh(row)
+        return _live_interaction_to_domain(row)
+
+    async def update(self, interaction: LiveInteraction) -> LiveInteraction:
+        row = await self._session.get(LiveInteractionModel, interaction.id)
+        if row is None:
+            raise ValueError(f"LiveInteraction not found: {interaction.id}")
+        row.question = interaction.question
+        row.answer = interaction.answer
+        row.documents = list(interaction.documents)
+        row.metadata_json = dict(interaction.metadata)
+        row.external_id = interaction.external_id
+        row.judge_status = interaction.judge_status
+        row.metrics_set_id = interaction.metrics_set_id
+        row.score_warning = interaction.score_warning
+        row.error_message = interaction.error_message
+        row.scored_at = interaction.scored_at
+        await self._session.commit()
+        await self._session.refresh(row)
+        return _live_interaction_to_domain(row)
+
+    async def get_by_id(self, interaction_id: uuid.UUID) -> LiveInteraction | None:
+        row = await self._session.get(LiveInteractionModel, interaction_id)
+        return _live_interaction_to_domain(row) if row is not None else None
+
+    async def get_by_external_id(
+        self, project_id: uuid.UUID, external_id: str
+    ) -> LiveInteraction | None:
+        result = await self._session.execute(
+            select(LiveInteractionModel).where(
+                LiveInteractionModel.project_id == project_id,
+                LiveInteractionModel.external_id == external_id,
+            )
+        )
+        row = result.scalar_one_or_none()
+        return _live_interaction_to_domain(row) if row is not None else None
+
+    async def list_by_project(
+        self,
+        project_id: uuid.UUID,
+        *,
+        judge_status: str | None = None,
+        search: str | None = None,
+        limit: int = 50,
+    ) -> list[LiveInteraction]:
+        stmt = select(LiveInteractionModel).where(LiveInteractionModel.project_id == project_id)
+        if judge_status is not None:
+            stmt = stmt.where(LiveInteractionModel.judge_status == judge_status)
+        if search:
+            pattern = f"%{search.strip()}%"
+            stmt = stmt.where(LiveInteractionModel.question.ilike(pattern))
+        stmt = stmt.order_by(LiveInteractionModel.created_at.desc()).limit(max(1, min(limit, 200)))
+        result = await self._session.execute(stmt)
+        return [_live_interaction_to_domain(row) for row in result.scalars().all()]
+
+    async def replace_scores(
+        self, interaction_id: uuid.UUID, scores: list[LiveInteractionScore]
+    ) -> list[LiveInteractionScore]:
+        existing = await self._session.execute(
+            select(LiveInteractionScoreModel).where(
+                LiveInteractionScoreModel.live_interaction_id == interaction_id
+            )
+        )
+        for row in existing.scalars().all():
+            await self._session.delete(row)
+        await self._session.flush()
+        saved: list[LiveInteractionScore] = []
+        for score in scores:
+            row = LiveInteractionScoreModel(
+                id=score.id,
+                live_interaction_id=score.live_interaction_id,
+                evaluator_id=score.evaluator_id,
+                kind=score.kind,
+                score=score.score,
+                label=score.label,
+                explanation=score.explanation,
+                threshold=score.threshold,
+                created_at=score.created_at,
+            )
+            self._session.add(row)
+            saved.append(score)
+        await self._session.commit()
+        return saved
+
+    async def list_scores(self, interaction_id: uuid.UUID) -> list[LiveInteractionScore]:
+        result = await self._session.execute(
+            select(LiveInteractionScoreModel)
+            .where(LiveInteractionScoreModel.live_interaction_id == interaction_id)
+            .order_by(LiveInteractionScoreModel.created_at.asc())
+        )
+        return [_live_score_to_domain(row) for row in result.scalars().all()]
+
+    async def upsert_review(self, review: LiveReview) -> LiveReview:
+        result = await self._session.execute(
+            select(LiveReviewModel).where(
+                LiveReviewModel.live_interaction_id == review.live_interaction_id
+            )
+        )
+        existing = result.scalar_one_or_none()
+        if existing is None:
+            row = LiveReviewModel(
+                id=review.id,
+                live_interaction_id=review.live_interaction_id,
+                verdict=review.verdict,
+                note=review.note,
+                reviewer=review.reviewer,
+                created_at=review.created_at,
+            )
+            self._session.add(row)
+            await self._session.commit()
+            await self._session.refresh(row)
+            return _live_review_to_domain(row)
+        existing.verdict = review.verdict
+        existing.note = review.note
+        existing.reviewer = review.reviewer
+        existing.created_at = review.created_at
+        await self._session.commit()
+        await self._session.refresh(existing)
+        return _live_review_to_domain(existing)
+
+    async def get_review(self, interaction_id: uuid.UUID) -> LiveReview | None:
+        result = await self._session.execute(
+            select(LiveReviewModel).where(LiveReviewModel.live_interaction_id == interaction_id)
+        )
+        row = result.scalar_one_or_none()
+        return _live_review_to_domain(row) if row is not None else None

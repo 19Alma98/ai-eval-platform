@@ -79,6 +79,17 @@ def mock_transport(captured_requests: list[httpx2.Request]) -> httpx2.MockTransp
             return httpx2.Response(200, json={"deltas": []})
         if method == "POST" and url.endswith("/metrics-pack/ensure"):
             return httpx2.Response(200, json={"entries": [{"kind": "hit_at_k"}]})
+        if method == "POST" and "/live-interactions" in url:
+            body = json.loads(request.content.decode()) if request.content else {}
+            return httpx2.Response(
+                202,
+                json={
+                    "id": "live-1",
+                    "judge_status": "pending",
+                    "question": body.get("question"),
+                    "answer": body.get("answer"),
+                },
+            )
         raise AssertionError(f"unexpected request: {method} {url}")
 
     return httpx2.MockTransport(handler)
@@ -171,3 +182,27 @@ def test_experiments_and_metrics_pack(
     assert evaluated["experiment"]["status"] == "evaluated"
     assert client.experiments.summary("exp-1")["experiment_id"] == "exp-1"
     assert client.experiments.compare("exp-1", "exp-0") == {"deltas": []}
+
+
+def test_live_runs_submit(
+    mock_transport: httpx2.MockTransport,
+    captured_requests: list[httpx2.Request],
+) -> None:
+    client = Client("http://localhost:8000", transport=mock_transport)
+    result = client.live_runs.submit(
+        "proj-1",
+        question="What is PTO?",
+        answer="Paid time off",
+        documents=[{"id": "d1", "text": "PTO means paid time off"}],
+        external_id="turn-1",
+        metadata={"app": "hr"},
+    )
+    assert result["id"] == "live-1"
+    assert result["judge_status"] == "pending"
+    last = captured_requests[-1]
+    assert last.method == "POST"
+    assert str(last.url).endswith("/projects/proj-1/live-interactions")
+    body = json.loads(last.content.decode())
+    assert body["question"] == "What is PTO?"
+    assert body["documents"][0]["id"] == "d1"
+    assert body["external_id"] == "turn-1"

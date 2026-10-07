@@ -477,3 +477,62 @@ class AppConfigAliasResponse(BaseModel):
     app_config_id: uuid.UUID
     updated_at: datetime
     app_config: AppConfigSummaryResponse
+
+
+class SubmitLiveInteractionRequest(BaseModel):
+    question: str = Field(min_length=1)
+    answer: str = Field(min_length=1)
+    documents: list[dict[str, Any]] = Field(default_factory=list)
+    metadata: dict[str, Any] = Field(default_factory=dict)
+    external_id: str | None = Field(default=None, max_length=200)
+    metrics_set_id: uuid.UUID | None = None
+
+
+class LiveInteractionScoreResponse(BaseModel):
+    id: uuid.UUID
+    live_interaction_id: uuid.UUID
+    evaluator_id: uuid.UUID | None
+    kind: str
+    score: float | None
+    label: str | None
+    explanation: str | None
+    threshold: float | None
+    created_at: datetime
+
+
+class LiveReviewResponse(BaseModel):
+    id: uuid.UUID
+    live_interaction_id: uuid.UUID
+    verdict: str
+    note: str | None
+    reviewer: str | None
+    created_at: datetime
+
+
+class LiveInteractionResponse(BaseModel):
+    id: uuid.UUID
+    project_id: uuid.UUID
+    question: str
+    answer: str
+    documents: list[dict[str, Any]]
+    metadata: dict[str, Any]
+    external_id: str | None
+    judge_status: str
+    metrics_set_id: uuid.UUID | None
+    score_warning: str | None
+    error_message: str | None
+    created_at: datetime
+    scored_at: datetime | None
+    scores: list[LiveInteractionScoreResponse] = Field(default_factory=list)
+    review: LiveReviewResponse | None = None
+
+
+class UpsertLiveReviewRequest(BaseModel):
+    verdict: str = Field(min_length=1, max_length=32)
+    note: str | None = None
+    reviewer: str | None = Field(default=None, max_length=200)
+
+
+class PromoteLiveInteractionRequest(BaseModel):
+    dataset_id: uuid.UUID
+    expected_output: Any | None = None

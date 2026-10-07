@@ -65,6 +65,8 @@ Deliver:
 - comments
 - promote trace to dataset
 
+Partial delivery via **AI Eval Run** (`LiveInteraction`): SDK submit → background gold-less judge → Live runs UI with agree/disagree + promote to TestSet. Generic Review entity / assign-SLA workflow remains later.
+
 ## Phase 6 — production hardening
 
 Deliver:

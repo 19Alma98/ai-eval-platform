@@ -18,6 +18,12 @@ evaluators
 experiments
 evaluation_runs
 evaluation_results
+metrics_sets
+metrics_set_entries
+experiment_item_outputs
+live_interactions
+live_interaction_scores
+live_reviews
 release_policies
 reviews
 ```

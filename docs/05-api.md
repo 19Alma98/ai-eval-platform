@@ -198,6 +198,27 @@ POST /projects/{project_id}/metrics-pack/ensure
 
 These routes are aliases over the project **default metrics set** (same UUID as `GET .../metrics-pack`). `ensure` creates the default RAG set and links built-in evaluator entities (`hit_at_k`, `must_contain`, `groundedness`, `correctness`, `latency`). `PUT` returns 409 when an experiment pins that default set.
 
+## Live interactions (AI Eval Run)
+
+SDK-first prod hub. Ingest returns **202**; judge runs in background (gold-less metrics: `groundedness`, `answer_relevance`).
+
+```http
+POST /projects/{project_id}/live-interactions
+GET /projects/{project_id}/live-interactions
+GET /live-interactions/{interaction_id}
+POST /live-interactions/{interaction_id}/review
+POST /live-interactions/{interaction_id}/promote
+POST /live-interactions/{interaction_id}/rescore
+```
+
+`POST .../live-interactions` body: `question`, `answer`, optional `documents`, `metadata`, `external_id`, `metrics_set_id`.
+
+List query: `judge_status`, `search`, `failed_only`, `limit`.
+
+`POST .../review` body: `verdict` (`agree`|`disagree`), optional `note`, `reviewer`.
+
+`POST .../promote` body: `dataset_id`, optional `expected_output` → creates a dataset item.
+
 ## Comparison
 
 ```http

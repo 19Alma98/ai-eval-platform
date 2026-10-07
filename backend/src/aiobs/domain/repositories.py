@@ -10,6 +10,11 @@ from aiobs.domain.evaluation import EvaluationResultRecord, EvaluationRun
 from aiobs.domain.evaluator import Evaluator
 from aiobs.domain.experiment import Experiment
 from aiobs.domain.experiment_output import ExperimentItemOutput
+from aiobs.domain.live_interaction import (
+    LiveInteraction,
+    LiveInteractionScore,
+    LiveReview,
+)
 from aiobs.domain.metrics_set import MetricsSet
 from aiobs.domain.project import Project
 from aiobs.domain.trace import Trace
@@ -154,3 +159,34 @@ class ExperimentItemOutputRepository(Protocol):
     async def get(
         self, experiment_id: uuid.UUID, dataset_item_id: uuid.UUID
     ) -> ExperimentItemOutput | None: ...
+
+
+class LiveInteractionRepository(Protocol):
+    async def add(self, interaction: LiveInteraction) -> LiveInteraction: ...
+
+    async def update(self, interaction: LiveInteraction) -> LiveInteraction: ...
+
+    async def get_by_id(self, interaction_id: uuid.UUID) -> LiveInteraction | None: ...
+
+    async def get_by_external_id(
+        self, project_id: uuid.UUID, external_id: str
+    ) -> LiveInteraction | None: ...
+
+    async def list_by_project(
+        self,
+        project_id: uuid.UUID,
+        *,
+        judge_status: str | None = None,
+        search: str | None = None,
+        limit: int = 50,
+    ) -> list[LiveInteraction]: ...
+
+    async def replace_scores(
+        self, interaction_id: uuid.UUID, scores: list[LiveInteractionScore]
+    ) -> list[LiveInteractionScore]: ...
+
+    async def list_scores(self, interaction_id: uuid.UUID) -> list[LiveInteractionScore]: ...
+
+    async def upsert_review(self, review: LiveReview) -> LiveReview: ...
+
+    async def get_review(self, interaction_id: uuid.UUID) -> LiveReview | None: ...

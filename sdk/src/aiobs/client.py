@@ -308,6 +308,40 @@ class _MetricsPacksResource:
         return result
 
 
+class _LiveRunsResource:
+    def __init__(self, http: _HttpTransport) -> None:
+        self._http = http
+
+    def submit(
+        self,
+        project_id: str,
+        *,
+        question: str,
+        answer: str,
+        documents: builtins.list[dict[str, Any]] | None = None,
+        metadata: dict[str, Any] | None = None,
+        external_id: str | None = None,
+        metrics_set_id: str | None = None,
+    ) -> dict[str, Any]:
+        body: dict[str, Any] = {
+            "question": question,
+            "answer": answer,
+            "documents": list(documents or []),
+            "metadata": dict(metadata or {}),
+        }
+        if external_id is not None:
+            body["external_id"] = external_id
+        if metrics_set_id is not None:
+            body["metrics_set_id"] = metrics_set_id
+        result = self._http.request(
+            "POST",
+            f"/api/v1/projects/{project_id}/live-interactions",
+            body=body,
+        )
+        assert isinstance(result, dict)
+        return result
+
+
 class Client:
     """Platform control-plane client (projects, datasets, experiments, …)."""
 
@@ -325,6 +359,7 @@ class Client:
         self.datasets = _DatasetsResource(self._http)
         self.experiments = _ExperimentsResource(self._http)
         self.metrics_packs = _MetricsPacksResource(self._http)
+        self.live_runs = _LiveRunsResource(self._http)
         self.app_configs = AppConfigClient(resolved, timeout=timeout, transport=transport)
 
     def health(self) -> dict[str, Any]:

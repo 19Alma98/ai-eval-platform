@@ -237,9 +237,28 @@ regression:
 
 Legacy/custom evaluator names (for example `quality` with a `contains` evaluator) remain valid when those evaluators exist on the project.
 
+## LiveInteraction (AI Eval Run)
+
+Prod-like turn submitted for gold-less review (not a DatasetItem / Experiment).
+
+Fields:
+- id, project_id
+- question, answer
+- documents (normalized retrieval docs)
+- metadata, external_id (optional; unique per project)
+- judge_status: `pending` | `running` | `scored` | `error`
+- metrics_set_id, score_warning, error_message
+- created_at, scored_at
+
+Related:
+- **LiveInteractionScore** — per gold-less metric (`groundedness`, `answer_relevance`) outcome
+- **LiveReview** — light human verdict `agree` | `disagree` + optional note
+
+Promote creates a DatasetItem on a chosen dataset (does not delete the live interaction).
+
 ## Review
 
-Human judgement attached to a trace/span/evaluation result.
+Human judgement attached to a trace/span/evaluation result (generic Phase 5 model; LiveReview covers the Live Run MVP).
 
 Fields:
 - id

@@ -9,6 +9,7 @@ import {
   FlaskConical,
   LayoutDashboard,
   LineChart,
+  Radio,
   ShieldCheck,
 } from "lucide-react";
 import { ProjectSwitcher } from "@/components/project-switcher";
@@ -30,6 +31,7 @@ const NAV = [
   { href: "/metrics", label: "Metrics", icon: LineChart },
   { href: "/experiments", label: "Runs", icon: FlaskConical },
   { href: "/release", label: "Release", icon: ShieldCheck },
+  { href: "/live-runs", label: "Live runs", icon: Radio },
 ] as const;
 
 const projectsQuery = projectsQueryOptions();
