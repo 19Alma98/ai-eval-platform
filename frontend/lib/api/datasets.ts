@@ -1,4 +1,4 @@
-import { ApiError, apiGet, apiPost } from "./client";
+import { apiGet, apiPost, throwApiError } from "./client";
 import type {
   Dataset,
   DatasetDetail,
@@ -68,6 +68,6 @@ export async function importDatasetItems(
       body: form,
     },
   );
-  if (!res.ok) throw new ApiError(res.status, await res.text());
+  if (!res.ok) await throwApiError(res);
   return res.json() as Promise<ImportDatasetItemsResult>;
 }

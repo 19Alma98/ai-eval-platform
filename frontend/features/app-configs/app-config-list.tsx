@@ -9,7 +9,7 @@ import { ErrorState } from "@/components/error-state";
 import { LoadingBlock } from "@/components/loading-block";
 import { RefreshControl } from "@/components/refresh-control";
 import { RelativeTime } from "@/components/relative-time";
-import { ApiError } from "@/lib/api/client";
+import { formatErrorForUi } from "@/lib/api/client";
 import type { AppConfig } from "@/lib/api/types";
 import { useProjectId } from "@/lib/project-store";
 import {
@@ -142,12 +142,7 @@ export function AppConfigList() {
 
   if (error) {
     const err = error;
-    const message =
-      err instanceof ApiError
-        ? `${err.status}: ${err.message}`
-        : err instanceof Error
-          ? err.message
-          : "Unknown error";
+    const message = formatErrorForUi(err);
     return (
       <ErrorState
         title="Could not load app configs"

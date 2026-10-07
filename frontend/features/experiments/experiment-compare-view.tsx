@@ -19,7 +19,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { ApiError } from "@/lib/api/client";
+import { ApiError, formatErrorForUi } from "@/lib/api/client";
 import type { Experiment } from "@/lib/api/types";
 import { withProjectQuery } from "@/lib/project-href";
 import {
@@ -87,12 +87,7 @@ export function ExperimentCompareView({
 
   if (experimentQuery.isError) {
     const err = experimentQuery.error;
-    const message =
-      err instanceof ApiError
-        ? `${err.status}: ${err.message}`
-        : err instanceof Error
-          ? err.message
-          : "Unknown error";
+    const message = formatErrorForUi(err);
     return (
       <ErrorState
         title="Could not load experiment"
@@ -153,12 +148,7 @@ export function ExperimentCompareView({
 
   if (compareQuery.isError) {
     const err = compareQuery.error;
-    const rawMessage =
-      err instanceof ApiError
-        ? err.message
-        : err instanceof Error
-          ? err.message
-          : "Unknown error";
+    const rawMessage = formatErrorForUi(err);
     const isDatasetMismatch =
       err instanceof ApiError &&
       err.status === 400 &&
@@ -167,9 +157,7 @@ export function ExperimentCompareView({
       );
     const message = isDatasetMismatch
       ? "Runs must share the same dataset (test set version). Choose a baseline experiment created on the same dataset."
-      : err instanceof ApiError
-        ? `${err.status}: ${rawMessage}`
-        : rawMessage;
+      : rawMessage;
     return (
       <div className="flex flex-col gap-3">
         <CompareHeader

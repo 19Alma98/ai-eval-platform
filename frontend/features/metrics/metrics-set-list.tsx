@@ -23,7 +23,7 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { ApiError } from "@/lib/api/client";
+import { formatErrorForUi } from "@/lib/api/client";
 import { ensureMetricsPack } from "@/lib/api/metrics-packs";
 import { getMetricsSet, listMetricsSets } from "@/lib/api/metrics-sets";
 import type { MetricsSetEntryInput, MetricsSetSummary } from "@/lib/api/types";
@@ -126,12 +126,7 @@ export function MetricsSetList({ projectId }: { projectId: string }) {
 
   if (query.isError) {
     const err = query.error;
-    const message =
-      err instanceof ApiError
-        ? `${err.status}: ${err.message}`
-        : err instanceof Error
-          ? err.message
-          : "Unknown error";
+    const message = formatErrorForUi(err);
     return (
       <ErrorState
         title="Impossibile caricare i set metriche"
@@ -171,12 +166,7 @@ export function MetricsSetList({ projectId }: { projectId: string }) {
                 ensure.mutate(undefined, {
                   onSuccess: () => toast.success("Set metriche pronto"),
                   onError: (e) => {
-                    const message =
-                      e instanceof ApiError
-                        ? e.message
-                        : e instanceof Error
-                          ? e.message
-                          : "Creazione fallita";
+                    const message = formatErrorForUi(e);
                     toast.error(message);
                   },
                 });
@@ -231,12 +221,7 @@ function CreateMetricsSetDialog({
         setDescription("");
         onOpenChange(false);
       } catch (err) {
-        const message =
-          err instanceof ApiError
-            ? err.message
-            : err instanceof Error
-              ? err.message
-              : "Creazione fallita";
+        const message = formatErrorForUi(err);
         toast.error(message);
       }
     })();

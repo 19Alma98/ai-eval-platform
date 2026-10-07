@@ -21,7 +21,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { ApiError } from "@/lib/api/client";
+import { formatErrorForUi } from "@/lib/api/client";
 import { deleteAlias, setAlias } from "@/lib/api/app-configs";
 import type { AppConfig, AppConfigAlias } from "@/lib/api/types";
 import { withProjectQuery } from "@/lib/project-href";
@@ -124,12 +124,7 @@ export function AppConfigFamilyDetail({
       toast.success("Alias updated");
     },
     onError: (err) => {
-      const message =
-        err instanceof ApiError
-          ? err.message
-          : err instanceof Error
-            ? err.message
-            : "Update failed";
+      const message = formatErrorForUi(err);
       toast.error(message);
     },
   });
@@ -143,12 +138,7 @@ export function AppConfigFamilyDetail({
       toast.success("Alias removed");
     },
     onError: (err) => {
-      const message =
-        err instanceof ApiError
-          ? err.message
-          : err instanceof Error
-            ? err.message
-            : "Delete failed";
+      const message = formatErrorForUi(err);
       toast.error(message);
     },
   });
@@ -200,12 +190,7 @@ export function AppConfigFamilyDetail({
 
   if (error) {
     const err = error;
-    const message =
-      err instanceof ApiError
-        ? `${err.status}: ${err.message}`
-        : err instanceof Error
-          ? err.message
-          : "Unknown error";
+    const message = formatErrorForUi(err);
     return (
       <ErrorState
         title="Could not load config family"

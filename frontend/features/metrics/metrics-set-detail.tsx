@@ -14,7 +14,7 @@ import { RelativeTime } from "@/components/relative-time";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { ApiError } from "@/lib/api/client";
+import { ApiError, formatErrorForUi } from "@/lib/api/client";
 import type { MetricsSetEntry, MetricsSetEntryInput } from "@/lib/api/types";
 import { resolveLabel } from "@/lib/format";
 import { withProjectQuery } from "@/lib/project-href";
@@ -91,12 +91,7 @@ export function MetricsSetDetailView({
             setVersionLocked(true);
             return;
           }
-          const message =
-            err instanceof ApiError
-              ? err.message
-              : err instanceof Error
-                ? err.message
-                : "Aggiornamento fallito";
+          const message = formatErrorForUi(err);
           toast.error(message);
         },
       },
@@ -145,12 +140,7 @@ export function MetricsSetDetailView({
           setVersionLocked(true);
           return;
         }
-        const message =
-          err instanceof ApiError
-            ? err.message
-            : err instanceof Error
-              ? err.message
-              : "Eliminazione fallita";
+        const message = formatErrorForUi(err);
         toast.error(message);
       },
     });
@@ -271,12 +261,7 @@ export function MetricsSetDetailView({
 
   if (query.isError) {
     const err = query.error;
-    const message =
-      err instanceof ApiError
-        ? `${err.status}: ${err.message}`
-        : err instanceof Error
-          ? err.message
-          : "Unknown error";
+    const message = formatErrorForUi(err);
     return (
       <ErrorState
         title="Impossibile caricare il set metriche"
@@ -346,12 +331,7 @@ export function MetricsSetDetailView({
                   );
                 },
                 onError: (err) => {
-                  const message =
-                    err instanceof ApiError
-                      ? err.message
-                      : err instanceof Error
-                        ? err.message
-                        : "Versione fallita";
+                  const message = formatErrorForUi(err);
                   toast.error(message);
                 },
               });

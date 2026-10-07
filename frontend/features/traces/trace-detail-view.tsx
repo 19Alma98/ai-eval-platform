@@ -16,7 +16,7 @@ import {
   ResizablePanelGroup,
 } from "@/components/ui/resizable";
 import type { Layout } from "react-resizable-panels";
-import { ApiError } from "@/lib/api/client";
+import { formatErrorForUi } from "@/lib/api/client";
 import { getTrace } from "@/lib/api/traces";
 import { formatDurationMs } from "@/lib/format";
 import { SpanSidebar } from "./span-sidebar";
@@ -100,12 +100,7 @@ export function TraceDetailView({ projectId, traceId }: TraceDetailViewProps) {
 
   if (query.isError || !trace) {
     const err = query.error;
-    const message =
-      err instanceof ApiError
-        ? `${err.status}: ${err.message}`
-        : err instanceof Error
-          ? err.message
-          : "Unknown error";
+    const message = formatErrorForUi(err);
     return (
       <ErrorState
         title="Could not load trace"

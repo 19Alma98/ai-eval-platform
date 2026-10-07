@@ -10,7 +10,7 @@ import { LoadingBlock } from "@/components/loading-block";
 import { PageIntro } from "@/components/page-intro";
 import { RelativeTime } from "@/components/relative-time";
 import { Button } from "@/components/ui/button";
-import { ApiError } from "@/lib/api/client";
+import { formatErrorForUi } from "@/lib/api/client";
 import { deleteProject } from "@/lib/api/projects";
 import type { Project } from "@/lib/api/types";
 import { cn } from "@/lib/cn";
@@ -46,12 +46,7 @@ export function ProjectsPanel({
       setDeletingId(null);
     },
     onError: (err) => {
-      const message =
-        err instanceof ApiError
-          ? err.message
-          : err instanceof Error
-            ? err.message
-            : "Delete failed";
+      const message = formatErrorForUi(err);
       toast.error(message);
       setDeletingId(null);
     },
@@ -72,12 +67,7 @@ export function ProjectsPanel({
 
   if (query.isError) {
     const err = query.error;
-    const message =
-      err instanceof ApiError
-        ? `${err.status}: ${err.message}`
-        : err instanceof Error
-          ? err.message
-          : "Unknown error";
+    const message = formatErrorForUi(err);
     return (
       <ErrorState
         title="Could not load projects"

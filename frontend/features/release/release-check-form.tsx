@@ -7,7 +7,7 @@ import { ErrorState } from "@/components/error-state";
 import { LoadingBlock } from "@/components/loading-block";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import { ApiError } from "@/lib/api/client";
+import { formatErrorForUi } from "@/lib/api/client";
 import { cn } from "@/lib/cn";
 import { withProjectQuery } from "@/lib/project-href";
 import { useExperiments } from "@/features/experiments/use-experiments";
@@ -80,12 +80,7 @@ export function ReleaseCheckForm({
 
   if (experimentsQuery.isError) {
     const err = experimentsQuery.error;
-    const message =
-      err instanceof ApiError
-        ? `${err.status}: ${err.message}`
-        : err instanceof Error
-          ? err.message
-          : "Unknown error";
+    const message = formatErrorForUi(err);
     return (
       <ErrorState
         title="Could not load experiments"
@@ -188,13 +183,7 @@ export function ReleaseCheckForm({
       {releaseCheck.isError ? (
         <ErrorState
           title="Release check request failed"
-          message={
-            releaseCheck.error instanceof ApiError
-              ? `${releaseCheck.error.status}: ${releaseCheck.error.message}`
-              : releaseCheck.error instanceof Error
-                ? releaseCheck.error.message
-                : "Unknown error"
-          }
+          message={formatErrorForUi(releaseCheck.error)}
           onRetry={() => releaseCheck.reset()}
         />
       ) : null}

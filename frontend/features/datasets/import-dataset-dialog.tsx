@@ -15,7 +15,7 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
-import { ApiError } from "@/lib/api/client";
+import { formatErrorForUi } from "@/lib/api/client";
 import { importDatasetItems } from "@/lib/api/datasets";
 import { RAG_QA_TASK } from "./rag-qa";
 import { datasetQueryKey, datasetsQueryKey } from "./use-datasets";
@@ -74,12 +74,7 @@ export function ImportDatasetDialog({
       }
     },
     onError: (err) => {
-      const message =
-        err instanceof ApiError
-          ? err.message
-          : err instanceof Error
-            ? err.message
-            : "Import failed";
+      const message = formatErrorForUi(err);
       toast.error(message);
     },
   });

@@ -22,7 +22,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { ApiError } from "@/lib/api/client";
+import { formatErrorForUi } from "@/lib/api/client";
 import {
   addItemFromTrace,
   createDataset,
@@ -91,12 +91,7 @@ export function AddToDatasetDialog({
       setNewName("");
     },
     onError: (err) => {
-      const message =
-        err instanceof ApiError
-          ? err.message
-          : err instanceof Error
-            ? err.message
-            : "Could not add to dataset";
+      const message = formatErrorForUi(err);
       toast.error(message);
     },
   });

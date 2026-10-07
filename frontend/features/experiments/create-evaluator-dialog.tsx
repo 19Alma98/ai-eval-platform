@@ -20,7 +20,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { ApiError } from "@/lib/api/client";
+import { formatErrorForUi } from "@/lib/api/client";
 import { createEvaluator } from "@/lib/api/evaluators";
 import { evaluatorsQueryKey } from "./use-experiments";
 
@@ -84,12 +84,7 @@ export function CreateEvaluatorDialog({
       onOpenChange(false);
     },
     onError: (err) => {
-      const message =
-        err instanceof ApiError
-          ? err.message
-          : err instanceof Error
-            ? err.message
-            : "Create failed";
+      const message = formatErrorForUi(err);
       toast.error(message);
     },
   });

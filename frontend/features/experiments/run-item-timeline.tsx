@@ -8,7 +8,7 @@ import {
   ResizablePanel,
   ResizablePanelGroup,
 } from "@/components/ui/resizable";
-import { ApiError } from "@/lib/api/client";
+import { formatErrorForUi } from "@/lib/api/client";
 import { getTrace } from "@/lib/api/traces";
 import { SpanSidebar } from "@/features/traces/span-sidebar";
 import { TraceWaterfall } from "@/features/traces/trace-waterfall";
@@ -50,12 +50,7 @@ export function RunItemTimeline({ projectId, traceId }: RunItemTimelineProps) {
 
   if (query.isError || !trace) {
     const err = query.error;
-    const message =
-      err instanceof ApiError
-        ? err.message
-        : err instanceof Error
-          ? err.message
-          : "Could not load trace";
+    const message = formatErrorForUi(err);
     return (
       <p className="rounded-md border border-border bg-surface px-3 py-2 text-sm text-muted-foreground">
         Trace timeline unavailable: {message}

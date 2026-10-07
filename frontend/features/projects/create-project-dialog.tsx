@@ -15,7 +15,7 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
-import { ApiError } from "@/lib/api/client";
+import { formatErrorForUi } from "@/lib/api/client";
 import { createProject } from "@/lib/api/projects";
 import { useProjectId } from "@/lib/project-store";
 import { projectsQueryKey } from "@/lib/queries/projects";
@@ -49,12 +49,7 @@ export function CreateProjectDialog({
       onOpenChange(false);
     },
     onError: (err) => {
-      const message =
-        err instanceof ApiError
-          ? err.message
-          : err instanceof Error
-            ? err.message
-            : "Create failed";
+      const message = formatErrorForUi(err);
       toast.error(message);
     },
   });

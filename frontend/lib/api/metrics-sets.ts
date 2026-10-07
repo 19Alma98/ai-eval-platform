@@ -1,4 +1,4 @@
-import { ApiError, apiGet, apiPatch, apiPost } from "./client";
+import { apiGet, apiPatch, apiPost, throwApiError } from "./client";
 import type {
   CreateMetricsSetBody,
   MetricsSet,
@@ -48,6 +48,6 @@ export async function deleteMetricsSetEntry(
       headers: { Accept: "application/json" },
     },
   );
-  if (!res.ok) throw new ApiError(res.status, await res.text());
+  if (!res.ok) await throwApiError(res);
   return res.json() as Promise<MetricsSet>;
 }

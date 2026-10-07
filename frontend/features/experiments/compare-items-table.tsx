@@ -14,7 +14,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { ApiError } from "@/lib/api/client";
+import { ApiError, formatErrorForUi } from "@/lib/api/client";
 import type { ItemComparisonRow, MetricComparison } from "@/lib/api/types";
 import { resolveLabel } from "@/lib/format";
 import { withProjectQuery } from "@/lib/project-href";
@@ -373,12 +373,7 @@ function CompareItemsError({
   error: unknown;
   onRetry: () => void;
 }) {
-  const message =
-    error instanceof ApiError
-      ? error.message
-      : error instanceof Error
-        ? error.message
-        : "Unknown error";
+  const message = formatErrorForUi(error);
 
   const isDatasetMismatch =
     error instanceof ApiError &&
@@ -412,11 +407,7 @@ function CompareItemsError({
   return (
     <ErrorState
       title="Could not load item responses"
-      message={
-        error instanceof ApiError
-          ? `${error.status}: ${message}`
-          : message
-      }
+      message={message}
       onRetry={onRetry}
     />
   );

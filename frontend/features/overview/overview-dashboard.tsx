@@ -13,7 +13,7 @@ import { PageIntro } from "@/components/page-intro";
 import { RefreshControl } from "@/components/refresh-control";
 import { RelativeTime } from "@/components/relative-time";
 import { StatusBadge } from "@/components/status-badge";
-import { ApiError } from "@/lib/api/client";
+import { formatErrorForUi } from "@/lib/api/client";
 import type { Experiment, TraceSummary } from "@/lib/api/types";
 import { formatDurationMs } from "@/lib/format";
 import { withProjectQuery } from "@/lib/project-href";
@@ -429,12 +429,7 @@ export function OverviewDashboard() {
       datasetsQuery.error ??
       experimentsQuery.error ??
       evaluatorsQuery.error;
-    const message =
-      err instanceof ApiError
-        ? `${err.status}: ${err.message}`
-        : err instanceof Error
-          ? err.message
-          : "Unknown error";
+    const message = formatErrorForUi(err);
     return (
       <ErrorState
         title="Could not load overview"

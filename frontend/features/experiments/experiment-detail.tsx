@@ -36,9 +36,10 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { ApiError } from "@/lib/api/client";
+import { formatErrorForUi } from "@/lib/api/client";
 import { evaluateExperiment, evaluatePack } from "@/lib/api/experiments";
 import type { Dataset, EvaluatorSummary } from "@/lib/api/types";
+import { toastEvaluateOutcome } from "@/features/experiments/evaluate-outcome";
 import { evaluatePackBody } from "@/features/metrics/metrics-set-submit";
 import {
   useMetricsSet,
@@ -372,12 +373,7 @@ export function ExperimentDetailView({
 
   if (isError) {
     const err = experimentQuery.error ?? summaryQuery.error;
-    const message =
-      err instanceof ApiError
-        ? `${err.status}: ${err.message}`
-        : err instanceof Error
-          ? err.message
-          : "Unknown error";
+    const message = formatErrorForUi(err);
     return (
       <ErrorState
         title="Could not load experiment"
@@ -638,18 +634,15 @@ function ScorePackControls({
         description: "LLM judges can take a minute; keep this tab open.",
       });
     },
-    onSuccess: async () => {
+    onSuccess: async (data) => {
       await invalidate();
-      toast.success("Metrics pack scoring complete");
+      toastEvaluateOutcome(data, {
+        success: "Metrics pack scoring complete",
+        withErrors: "Metrics pack scoring finished with errors",
+      });
     },
     onError: (err) => {
-      const message =
-        err instanceof ApiError
-          ? err.message
-          : err instanceof Error
-            ? err.message
-            : "Score with metrics pack failed";
-      toast.error(message);
+      toast.error(formatErrorForUi(err));
     },
   });
 
@@ -720,19 +713,16 @@ function ScorePackOverrideDialog({
         experimentId,
         evaluatePackBody({ overrideSetId, saveAsDefault }),
       ),
-    onSuccess: async () => {
+    onSuccess: async (data) => {
       await invalidate();
-      toast.success("Metrics pack scoring started");
+      toastEvaluateOutcome(data, {
+        success: "Metrics pack scoring complete",
+        withErrors: "Metrics pack scoring finished with errors",
+      });
       onOpenChange(false);
     },
     onError: (err) => {
-      const message =
-        err instanceof ApiError
-          ? err.message
-          : err instanceof Error
-            ? err.message
-            : "Score with metrics pack failed";
-      toast.error(message);
+      toast.error(formatErrorForUi(err));
     },
   });
 
@@ -886,13 +876,7 @@ function RunItemsSection({
       ) : itemsError ? (
         <ErrorState
           title="Could not load run items"
-          message={
-            itemsError instanceof ApiError
-              ? itemsError.message
-              : itemsError instanceof Error
-                ? itemsError.message
-                : "Unknown error"
-          }
+          message={formatErrorForUi(itemsError)}
           onRetry={onRetryItems}
         />
       ) : runItems.length === 0 ? (
@@ -1003,7 +987,7 @@ function EvaluateDialog({
       evaluateExperiment(experimentId, {
         evaluator_ids: [...selectedIds],
       }),
-    onSuccess: async () => {
+    onSuccess: async (data) => {
       await queryClient.invalidateQueries({
         queryKey: experimentSummaryQueryKey(experimentId),
       });
@@ -1013,18 +997,15 @@ function EvaluateDialog({
       await queryClient.invalidateQueries({
         queryKey: experimentOutputsQueryKey(experimentId),
       });
-      toast.success("Evaluation started");
+      toastEvaluateOutcome(data, {
+        success: "Evaluation complete",
+        withErrors: "Evaluation finished with errors",
+      });
       setSelectedIds(new Set());
       onOpenChange(false);
     },
     onError: (err) => {
-      const message =
-        err instanceof ApiError
-          ? err.message
-          : err instanceof Error
-            ? err.message
-            : "Evaluate failed";
-      toast.error(message);
+      toast.error(formatErrorForUi(err));
     },
   });
 

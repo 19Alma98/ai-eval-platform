@@ -11,7 +11,7 @@ import { RefreshControl } from "@/components/refresh-control";
 import { RelativeTime } from "@/components/relative-time";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { ApiError } from "@/lib/api/client";
+import { formatErrorForUi } from "@/lib/api/client";
 import type { DatasetItem } from "@/lib/api/types";
 import { withProjectQuery } from "@/lib/project-href";
 import { ImportDatasetDialog } from "./import-dataset-dialog";
@@ -168,12 +168,7 @@ export function DatasetDetailView({
 
   if (query.isError) {
     const err = query.error;
-    const message =
-      err instanceof ApiError
-        ? `${err.status}: ${err.message}`
-        : err instanceof Error
-          ? err.message
-          : "Unknown error";
+    const message = formatErrorForUi(err);
     return (
       <ErrorState
         title="Could not load dataset"

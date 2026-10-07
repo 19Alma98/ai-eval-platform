@@ -23,7 +23,7 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { ApiError } from "@/lib/api/client";
+import { formatErrorForUi } from "@/lib/api/client";
 import { createDataset } from "@/lib/api/datasets";
 import type { Dataset } from "@/lib/api/types";
 import { useProjectId } from "@/lib/project-store";
@@ -99,12 +99,7 @@ export function DatasetList() {
 
   if (query.isError) {
     const err = query.error;
-    const message =
-      err instanceof ApiError
-        ? `${err.status}: ${err.message}`
-        : err instanceof Error
-          ? err.message
-          : "Unknown error";
+    const message = formatErrorForUi(err);
     return (
       <ErrorState
         title="Could not load test sets"
@@ -205,12 +200,7 @@ function CreateDatasetDialog({
       onOpenChange(false);
     },
     onError: (err) => {
-      const message =
-        err instanceof ApiError
-          ? err.message
-          : err instanceof Error
-            ? err.message
-            : "Create failed";
+      const message = formatErrorForUi(err);
       toast.error(message);
     },
   });

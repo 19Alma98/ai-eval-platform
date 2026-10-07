@@ -10,7 +10,7 @@ import { LoadingBlock } from "@/components/loading-block";
 import { RefreshControl } from "@/components/refresh-control";
 import { RelativeTime } from "@/components/relative-time";
 import { StatusBadge } from "@/components/status-badge";
-import { ApiError } from "@/lib/api/client";
+import { formatErrorForUi } from "@/lib/api/client";
 import type { Experiment } from "@/lib/api/types";
 import { resolveLabel } from "@/lib/format";
 import { withProjectQuery } from "@/lib/project-href";
@@ -131,12 +131,7 @@ export function ExperimentList() {
 
   if (query.isError) {
     const err = query.error;
-    const message =
-      err instanceof ApiError
-        ? `${err.status}: ${err.message}`
-        : err instanceof Error
-          ? err.message
-          : "Unknown error";
+    const message = formatErrorForUi(err);
     return (
       <ErrorState
         title="Could not load runs"

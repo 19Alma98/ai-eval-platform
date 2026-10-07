@@ -24,7 +24,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { ApiError } from "@/lib/api/client";
+import { formatErrorForUi } from "@/lib/api/client";
 import { createExperiment } from "@/lib/api/experiments";
 import { withProjectQuery } from "@/lib/project-href";
 import {
@@ -164,12 +164,7 @@ export function CreateExperimentDialog({
       );
     },
     onError: (err) => {
-      const message =
-        err instanceof ApiError
-          ? err.message
-          : err instanceof Error
-            ? err.message
-            : "Create failed";
+      const message = formatErrorForUi(err);
       toast.error(message);
     },
   });
