@@ -475,15 +475,17 @@ def get_evaluation_run(
 def get_summarize_experiment(
     experiments: SqlAlchemyExperimentRepository = Depends(get_experiment_repository),
     runs: SqlAlchemyEvaluationRunRepository = Depends(get_evaluation_run_repository),
+    evaluators: SqlAlchemyEvaluatorRepository = Depends(get_evaluator_repository),
 ) -> SummarizeExperiment:
-    return SummarizeExperiment(experiments, runs)
+    return SummarizeExperiment(experiments, runs, evaluators)
 
 
 def get_compare_experiments(
     experiments: SqlAlchemyExperimentRepository = Depends(get_experiment_repository),
     runs: SqlAlchemyEvaluationRunRepository = Depends(get_evaluation_run_repository),
+    evaluators: SqlAlchemyEvaluatorRepository = Depends(get_evaluator_repository),
 ) -> CompareExperiments:
-    return CompareExperiments(experiments, runs)
+    return CompareExperiments(experiments, runs, evaluators)
 
 
 def get_compare_experiment_items(

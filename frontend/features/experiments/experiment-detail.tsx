@@ -44,7 +44,7 @@ import {
   useMetricsSet,
   useMetricsSets,
 } from "@/features/metrics/use-metrics-sets";
-import { truncateId } from "@/lib/format";
+import { resolveLabel, truncateId } from "@/lib/format";
 import {
   experimentQueryOptions,
   experimentOutputsQueryKey,
@@ -174,6 +174,7 @@ export function ExperimentDetailView({
   const runQuery = useEvaluationRun(selectedRunId);
   const outputsQuery = useExperimentOutputs(experimentId);
   const datasetDetailQuery = useDataset(experiment?.dataset_id ?? null);
+  const evaluatorsRegistryQuery = useEvaluators(projectId);
 
   const datasetById = useMemo(() => {
     const map = new Map<string, Dataset>();
@@ -182,6 +183,14 @@ export function ExperimentDetailView({
     }
     return map;
   }, [datasetsQuery.data]);
+
+  const evaluatorNameById = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const ev of evaluatorsRegistryQuery.data ?? []) {
+      map.set(ev.id, ev.name);
+    }
+    return map;
+  }, [evaluatorsRegistryQuery.data]);
 
   const compareHref = useMemo(() => {
     let href = `/experiments/${encodeURIComponent(experimentId)}/compare`;
@@ -272,7 +281,11 @@ export function ExperimentDetailView({
         cell: (row) => (
           <span className="font-medium text-foreground">
             {row.evaluator_name?.trim() ||
-              truncateId(row.evaluator_id, 10)}
+              resolveLabel(
+                row.evaluator_id,
+                evaluatorNameById,
+                "Unknown evaluator",
+              )}
           </span>
         ),
       },
@@ -346,7 +359,7 @@ export function ExperimentDetailView({
         cell: (row) => row.n_items,
       },
     ],
-    [],
+    [evaluatorNameById],
   );
 
   const isLoading = experimentQuery.isLoading || summaryQuery.isLoading;
@@ -384,7 +397,8 @@ export function ExperimentDetailView({
 
   const dataset = datasetById.get(experiment.dataset_id);
   const datasetLabel =
-    dataset?.name ?? truncateId(experiment.dataset_id, 10);
+    dataset?.name?.trim() ||
+    resolveLabel(experiment.dataset_id, undefined, "Unknown dataset");
   const datasetHref = withProjectQuery(
     `/datasets/${encodeURIComponent(experiment.dataset_id)}`,
     projectId,
@@ -549,7 +563,11 @@ export function ExperimentDetailView({
           evaluatorName={
             selectedRunId
               ? evaluators[selectedIndex]?.evaluator_name?.trim() ||
-                truncateId(evaluators[selectedIndex]?.evaluator_id ?? "", 10)
+                resolveLabel(
+                  evaluators[selectedIndex]?.evaluator_id,
+                  evaluatorNameById,
+                  "Unknown evaluator",
+                )
               : null
           }
           runStatus={runQuery.data?.status}
@@ -614,9 +632,14 @@ function ScorePackControls({
 
   const scorePack = useMutation({
     mutationFn: () => evaluatePack(experimentId),
+    onMutate: () => {
+      toast.message("Scoring metrics pack…", {
+        description: "LLM judges can take a minute; keep this tab open.",
+      });
+    },
     onSuccess: async () => {
       await invalidate();
-      toast.success("Metrics pack scoring started");
+      toast.success("Metrics pack scoring complete");
     },
     onError: (err) => {
       const message =

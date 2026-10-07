@@ -5,7 +5,11 @@ from dataclasses import dataclass
 
 from aiobs.application.experiments import ExperimentNotFoundError
 from aiobs.domain.evaluation import EvaluationRun
-from aiobs.domain.repositories import EvaluationRunRepository, ExperimentRepository
+from aiobs.domain.repositories import (
+    EvaluationRunRepository,
+    EvaluatorRepository,
+    ExperimentRepository,
+)
 from aiobs.regression.aggregate import (
     Aggregates,
     MetricComparison,
@@ -44,9 +48,25 @@ class ExperimentComparison:
     unchanged: list[MetricComparison]
 
 
-def _evaluator_name(run: EvaluationRun) -> str | None:
+def _metadata_evaluator_name(run: EvaluationRun) -> str | None:
     name = run.metadata.get("evaluator_name")
-    return str(name) if name is not None else None
+    if name is None:
+        return None
+    cleaned = str(name).strip()
+    return cleaned or None
+
+
+async def _resolve_evaluator_names(
+    evaluators: EvaluatorRepository,
+    runs: list[EvaluationRun],
+) -> dict[uuid.UUID, str | None]:
+    ids = list({run.evaluator_id for run in runs})
+    entities = await evaluators.get_by_ids(ids) if ids else []
+    by_id = {entity.id: entity.name for entity in entities}
+    resolved: dict[uuid.UUID, str | None] = {}
+    for run in runs:
+        resolved[run.evaluator_id] = _metadata_evaluator_name(run) or by_id.get(run.evaluator_id)
+    return resolved
 
 
 class SummarizeExperiment:
@@ -54,9 +74,11 @@ class SummarizeExperiment:
         self,
         experiments: ExperimentRepository,
         runs: EvaluationRunRepository,
+        evaluators: EvaluatorRepository,
     ) -> None:
         self._experiments = experiments
         self._runs = runs
+        self._evaluators = evaluators
 
     async def execute(
         self,
@@ -82,13 +104,14 @@ class SummarizeExperiment:
         if not selected:
             return ExperimentSummary(experiment_id=experiment_id, evaluators=[])
 
+        names = await _resolve_evaluator_names(self._evaluators, selected)
         summaries: list[EvaluatorSummary] = []
         for run in sorted(selected, key=lambda r: str(r.evaluator_id)):
             results = await self._runs.list_results(run.id)
             summaries.append(
                 EvaluatorSummary(
                     evaluator_id=run.evaluator_id,
-                    evaluator_name=_evaluator_name(run),
+                    evaluator_name=names.get(run.evaluator_id),
                     run_id=run.id,
                     status=run.status,
                     aggregates=aggregate_results(results),
@@ -102,9 +125,11 @@ class CompareExperiments:
         self,
         experiments: ExperimentRepository,
         runs: EvaluationRunRepository,
+        evaluators: EvaluatorRepository,
     ) -> None:
         self._experiments = experiments
         self._runs = runs
+        self._evaluators = evaluators
 
     async def execute(
         self,
@@ -164,13 +189,17 @@ class CompareExperiments:
                 "No overlapping evaluators between candidate and baseline selections"
             )
 
+        names = await _resolve_evaluator_names(
+            self._evaluators,
+            [*selected_candidate, *selected_baseline],
+        )
         metrics: list[MetricComparison] = []
         for evaluator_id in shared:
             cand_run = candidate_by_eval[evaluator_id]
             base_run = baseline_by_eval[evaluator_id]
             cand_agg = aggregate_results(await self._runs.list_results(cand_run.id))
             base_agg = aggregate_results(await self._runs.list_results(base_run.id))
-            name = _evaluator_name(cand_run) or _evaluator_name(base_run)
+            name = names.get(evaluator_id)
             metrics.extend(
                 compare_evaluator_metrics(
                     evaluator_id=evaluator_id,

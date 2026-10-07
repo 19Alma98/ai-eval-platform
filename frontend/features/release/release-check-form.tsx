@@ -203,7 +203,21 @@ export function ReleaseCheckForm({
       !parseError &&
       !releaseCheck.isPending &&
       !releaseCheck.isError ? (
-        <ReleaseResult projectId={projectId} result={releaseCheck.data} />
+        <ReleaseResult
+          projectId={projectId}
+          result={releaseCheck.data}
+          experimentName={
+            experiments.find((e) => e.id === releaseCheck.data.experiment_id)
+              ?.name
+          }
+          baselineName={
+            releaseCheck.data.baseline_experiment_id
+              ? experiments.find(
+                  (e) => e.id === releaseCheck.data.baseline_experiment_id,
+                )?.name
+              : null
+          }
+        />
       ) : null}
     </div>
   );

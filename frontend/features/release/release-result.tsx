@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { cn } from "@/lib/cn";
 import type { ReleaseCheckResponse } from "@/lib/api/types";
-import { truncateId } from "@/lib/format";
+import { resolveLabel } from "@/lib/format";
 
 function formatValue(value: number | null): string {
   if (value === null || value === undefined) return "—";
@@ -17,11 +17,39 @@ function overallLabel(status: string): "PASS" | "FAIL" {
 type ReleaseResultProps = {
   projectId: string;
   result: ReleaseCheckResponse;
+  experimentName?: string | null;
+  baselineName?: string | null;
 };
 
-export function ReleaseResult({ projectId, result }: ReleaseResultProps) {
+export function ReleaseResult({
+  projectId,
+  result,
+  experimentName,
+  baselineName,
+}: ReleaseResultProps) {
   const label = overallLabel(result.status);
   const passed = label === "PASS";
+
+  const nameById = new Map<string, string>();
+  if (experimentName?.trim()) {
+    nameById.set(result.experiment_id, experimentName.trim());
+  }
+  if (result.baseline_experiment_id && baselineName?.trim()) {
+    nameById.set(result.baseline_experiment_id, baselineName.trim());
+  }
+
+  const experimentLabel = resolveLabel(
+    result.experiment_id,
+    nameById,
+    "Unknown experiment",
+  );
+  const baselineLabel = result.baseline_experiment_id
+    ? resolveLabel(
+        result.baseline_experiment_id,
+        nameById,
+        "Unknown experiment",
+      )
+    : null;
 
   const compareHref =
     result.baseline_experiment_id != null
@@ -47,16 +75,12 @@ export function ReleaseResult({ projectId, result }: ReleaseResultProps) {
         </p>
         <p className="text-sm text-muted-foreground">
           Experiment{" "}
-          <span className="font-mono text-xs text-foreground">
-            {truncateId(result.experiment_id, 12)}
-          </span>
-          {result.baseline_experiment_id ? (
+          <span className="font-medium text-foreground">{experimentLabel}</span>
+          {baselineLabel ? (
             <>
               {" "}
               · Baseline{" "}
-              <span className="font-mono text-xs text-foreground">
-                {truncateId(result.baseline_experiment_id, 12)}
-              </span>
+              <span className="font-medium text-foreground">{baselineLabel}</span>
             </>
           ) : null}
         </p>

@@ -32,3 +32,16 @@ export function truncateId(id: string, len = 8): string {
   if (id.length <= len) return id;
   return `${id.slice(0, len)}…`;
 }
+
+/** Prefer a denormalized or looked-up name; never use a raw UUID as the label. */
+export function resolveLabel(
+  id: string | null | undefined,
+  nameById?: Map<string, string> | null,
+  fallback = "Unknown",
+): string {
+  if (id) {
+    const lookedUp = nameById?.get(id)?.trim();
+    if (lookedUp) return lookedUp;
+  }
+  return fallback;
+}

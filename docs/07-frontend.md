@@ -61,7 +61,7 @@ Features:
 ### 4. Runs (experiments)
 
 Features:
-- run status and pack scoring (`evaluate-pack`)
+- run status and pack scoring (`evaluate-pack`; Next rewrite `proxyTimeout` raised so LLM judges are not cut off at 30s)
 - per-item results with outcome badges (`PASS` / `FAIL` / `SKIPPED` / `ERROR`) and always-visible explanations
 - evaluator summary shows run status and emphasizes error/skipped counts
 - bound trace timeline

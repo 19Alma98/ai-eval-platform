@@ -9,7 +9,7 @@ export function metricsSetBoundLabel(
   if (!id) return "Project default";
   const found = sets?.find((s) => s.id === id) ?? resolved;
   if (found) return `${found.name} v${found.version}`;
-  return id;
+  return "Unknown metrics set";
 }
 
 /** User-declared model label from experiment.model_config.model */

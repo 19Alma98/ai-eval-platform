@@ -4,6 +4,7 @@ import type { Experiment } from "@/lib/api/types";
 import {
   experimentAppConfigChip,
   experimentAppConfigSnapshot,
+  metricsSetBoundLabel,
 } from "./experiment-meta";
 
 function experiment(
@@ -24,6 +25,45 @@ function experiment(
     ...overrides,
   };
 }
+
+describe("metricsSetBoundLabel", () => {
+  it("returns project default when unbound", () => {
+    assert.equal(
+      metricsSetBoundLabel(experiment({ metrics_set_id: null }), []),
+      "Project default",
+    );
+  });
+
+  it("returns name and version when found", () => {
+    assert.equal(
+      metricsSetBoundLabel(
+        experiment({ metrics_set_id: "set-1" }),
+        [
+          {
+            id: "set-1",
+            project_id: "proj",
+            name: "rag",
+            version: 2,
+            description: null,
+            is_project_default: false,
+            created_at: "2026-10-07T00:00:00Z",
+            updated_at: "2026-10-07T00:00:00Z",
+            entry_count: 1,
+            enabled_count: 1,
+          },
+        ],
+      ),
+      "rag v2",
+    );
+  });
+
+  it("returns unknown label when set missing", () => {
+    assert.equal(
+      metricsSetBoundLabel(experiment({ metrics_set_id: "gone" }), []),
+      "Unknown metrics set",
+    );
+  });
+});
 
 describe("experimentAppConfigChip", () => {
   it("returns family@version from snapshot", () => {

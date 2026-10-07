@@ -12,7 +12,7 @@ import { RelativeTime } from "@/components/relative-time";
 import { StatusBadge } from "@/components/status-badge";
 import { ApiError } from "@/lib/api/client";
 import type { Experiment } from "@/lib/api/types";
-import { truncateId } from "@/lib/format";
+import { resolveLabel } from "@/lib/format";
 import { withProjectQuery } from "@/lib/project-href";
 import { useProjectId } from "@/lib/project-store";
 import { useDatasets } from "@/features/datasets/use-datasets";
@@ -75,16 +75,14 @@ export function ExperimentList() {
         header: "Dataset",
         headerClassName: "w-[160px]",
         cell: (row) => {
+          const label = resolveLabel(
+            row.dataset_id,
+            datasetNameById,
+            "Unknown dataset",
+          );
           if (!projectId) {
-            return (
-              <span className="font-mono text-xs text-muted-foreground">
-                {truncateId(row.dataset_id, 10)}
-              </span>
-            );
+            return <span className="text-sm text-muted-foreground">{label}</span>;
           }
-          const label =
-            datasetNameById.get(row.dataset_id) ??
-            truncateId(row.dataset_id, 10);
           return (
             <Link
               href={withProjectQuery(

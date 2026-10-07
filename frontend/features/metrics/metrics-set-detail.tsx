@@ -16,7 +16,9 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ApiError } from "@/lib/api/client";
 import type { MetricsSetEntry, MetricsSetEntryInput } from "@/lib/api/types";
+import { resolveLabel } from "@/lib/format";
 import { withProjectQuery } from "@/lib/project-href";
+import { useEvaluators } from "@/features/experiments/use-experiments";
 import {
   metricsSetQueryOptions,
   useDeleteMetricsSetEntry,
@@ -53,6 +55,7 @@ export function MetricsSetDetailView({
   const patch = usePatchMetricsSet(metricsSetId, projectId);
   const version = useVersionMetricsSet(metricsSetId, projectId);
   const removeEntry = useDeleteMetricsSetEntry(metricsSetId, projectId);
+  const evaluatorsQuery = useEvaluators(projectId);
   const queryOpts = metricsSetQueryOptions(metricsSetId);
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [thresholdDraft, setThresholdDraft] = useState<Record<string, string>>(
@@ -65,6 +68,14 @@ export function MetricsSetDetailView({
     () => metricsSet?.entries ?? [],
     [metricsSet?.entries],
   );
+
+  const evaluatorNameById = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const ev of evaluatorsQuery.data ?? []) {
+      map.set(ev.id, ev.name);
+    }
+    return map;
+  }, [evaluatorsQuery.data]);
 
   const editsBlocked = versionLocked || patch.isPending;
 
@@ -212,8 +223,14 @@ export function MetricsSetDetailView({
         id: "evaluator",
         header: "Evaluator",
         cell: (row) => (
-          <span className="font-mono text-xs text-muted-foreground">
-            {row.evaluator_id ?? "—"}
+          <span className="text-sm text-foreground">
+            {row.evaluator_id
+              ? resolveLabel(
+                  row.evaluator_id,
+                  evaluatorNameById,
+                  "Unknown evaluator",
+                )
+              : "—"}
           </span>
         ),
       },
@@ -239,7 +256,13 @@ export function MetricsSetDetailView({
           ),
       },
     ],
-    [thresholdDraft, editsBlocked, removeEntry.isPending, metricsSet],
+    [
+      thresholdDraft,
+      editsBlocked,
+      removeEntry.isPending,
+      metricsSet,
+      evaluatorNameById,
+    ],
   );
 
   if (query.isLoading) {

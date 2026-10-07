@@ -4,7 +4,8 @@ import { useMemo } from "react";
 import { DataTable, type DataTableColumn } from "@/components/data-table";
 import { cn } from "@/lib/cn";
 import type { MetricComparison } from "@/lib/api/types";
-import { truncateId } from "@/lib/format";
+import { resolveLabel } from "@/lib/format";
+import { useEvaluators } from "./use-experiments";
 import { sortMetricsForDisplay } from "./sort-metrics";
 
 export const METRIC_STATUS_STYLES: Record<string, string> = {
@@ -45,11 +46,21 @@ export function CompareStatusCell({ status }: { status: string }) {
 }
 
 type CompareTableProps = {
+  projectId: string;
   metrics: MetricComparison[];
 };
 
-export function CompareTable({ metrics }: CompareTableProps) {
+export function CompareTable({ projectId, metrics }: CompareTableProps) {
+  const evaluatorsQuery = useEvaluators(projectId);
   const rows = useMemo(() => sortMetricsForDisplay(metrics), [metrics]);
+
+  const evaluatorNameById = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const ev of evaluatorsQuery.data ?? []) {
+      map.set(ev.id, ev.name);
+    }
+    return map;
+  }, [evaluatorsQuery.data]);
 
   const columns: DataTableColumn<MetricComparison>[] = useMemo(
     () => [
@@ -59,7 +70,11 @@ export function CompareTable({ metrics }: CompareTableProps) {
         cell: (row) => (
           <span className="text-sm text-foreground">
             {row.evaluator_name?.trim() ||
-              truncateId(row.evaluator_id, 10)}
+              resolveLabel(
+                row.evaluator_id,
+                evaluatorNameById,
+                "Unknown evaluator",
+              )}
           </span>
         ),
       },
@@ -100,7 +115,7 @@ export function CompareTable({ metrics }: CompareTableProps) {
         cell: (row) => <CompareStatusCell status={row.status} />,
       },
     ],
-    [],
+    [evaluatorNameById],
   );
 
   if (rows.length === 0) {

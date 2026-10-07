@@ -16,7 +16,7 @@ import {
 } from "@/components/ui/select";
 import { ApiError } from "@/lib/api/client";
 import type { ItemComparisonRow, MetricComparison } from "@/lib/api/types";
-import { truncateId } from "@/lib/format";
+import { resolveLabel } from "@/lib/format";
 import { withProjectQuery } from "@/lib/project-href";
 import { CompareItemDetail } from "./compare-item-detail";
 import { CompareStatusCell } from "./compare-table";
@@ -86,6 +86,14 @@ export function CompareItemsTable({
   const [detailRow, setDetailRow] = useState<ItemComparisonRow | null>(null);
   const [detailOpen, setDetailOpen] = useState(false);
 
+  const evaluatorNameById = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const ev of evaluatorsQuery.data ?? []) {
+      map.set(ev.id, ev.name);
+    }
+    return map;
+  }, [evaluatorsQuery.data]);
+
   const evaluatorOptions: EvaluatorOption[] = useMemo(() => {
     const byId = new Map<string, string | null>();
     for (const m of metrics) {
@@ -94,13 +102,18 @@ export function CompareItemsTable({
       }
     }
     if (byId.size > 0) {
-      return [...byId.entries()].map(([id, name]) => ({ id, name }));
+      return [...byId.entries()].map(([id, name]) => ({
+        id,
+        name:
+          name?.trim() ||
+          resolveLabel(id, evaluatorNameById, "Unknown evaluator"),
+      }));
     }
     return (evaluatorsQuery.data ?? []).map((ev) => ({
       id: ev.id,
       name: ev.name,
     }));
-  }, [metrics, evaluatorsQuery.data]);
+  }, [metrics, evaluatorsQuery.data, evaluatorNameById]);
 
   const singleEvaluator = evaluatorOptions.length === 1;
   const needsExplicitEvaluator = evaluatorOptions.length > 1;
@@ -250,7 +263,7 @@ export function CompareItemsTable({
               <SelectContent>
                 {evaluatorOptions.map((opt) => (
                   <SelectItem key={opt.id} value={opt.id}>
-                    {opt.name?.trim() || truncateId(opt.id, 10)}
+                    {opt.name?.trim() || "Unknown evaluator"}
                   </SelectItem>
                 ))}
               </SelectContent>

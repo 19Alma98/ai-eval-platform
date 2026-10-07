@@ -21,7 +21,6 @@ import {
 } from "@/components/ui/select";
 import { ApiError } from "@/lib/api/client";
 import type { Experiment } from "@/lib/api/types";
-import { truncateId } from "@/lib/format";
 import { withProjectQuery } from "@/lib/project-href";
 import {
   experimentCompareQueryOptions,
@@ -238,7 +237,7 @@ export function ExperimentCompareView({
               </span>
             </span>
           </div>
-          <CompareTable metrics={comparison.metrics} />
+          <CompareTable projectId={projectId} metrics={comparison.metrics} />
           <CompareItemsTable
             projectId={projectId}
             experimentId={experimentId}
@@ -290,12 +289,7 @@ function BaselineSelect({
         <SelectContent>
           {candidates.map((exp) => (
             <SelectItem key={exp.id} value={exp.id}>
-              <span className="flex flex-col items-start gap-0.5">
-                <span>{exp.name}</span>
-                <span className="font-mono text-xs text-muted-foreground">
-                  {truncateId(exp.id, 12)}
-                </span>
-              </span>
+              {exp.name}
             </SelectItem>
           ))}
         </SelectContent>
@@ -365,10 +359,7 @@ function CompareHeader({
               experimentVersion(baselineExperiment)
                 ? " · "
                 : null}
-              <ExperimentMetaLine experiment={baselineExperiment} />{" "}
-              <span className="font-mono text-xs">
-                {truncateId(baselineExperiment.id, 12)}
-              </span>
+              <ExperimentMetaLine experiment={baselineExperiment} />
             </p>
           ) : null}
         </div>
