@@ -12,6 +12,14 @@ REVIEW_VERDICTS = frozenset({"agree", "disagree"})
 GOLDLESS_METRIC_KINDS = frozenset({"groundedness", "answer_relevance"})
 
 
+class DuplicateExternalIdError(Exception):
+    """Another interaction with the same (project_id, external_id) already exists."""
+
+    def __init__(self, external_id: str) -> None:
+        self.external_id = external_id
+        super().__init__(f"Live interaction external_id already exists: {external_id}")
+
+
 @dataclass(frozen=True, slots=True)
 class LiveInteraction:
     id: uuid.UUID

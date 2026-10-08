@@ -116,7 +116,7 @@ async def test_llm_judge_with_mock() -> None:
     judge = LlmJudgeEvaluator("correctness", {}, FakeLlm(), default_model=get_settings().llm_model)
     result = await judge.evaluate(_sample())
     assert result.score == 0.9
-    assert result.metadata["prompt_version"] == "correctness.v1"
+    assert result.metadata["prompt_version"] == "correctness.v2"
     assert result.metadata["model"] == get_settings().llm_model
 
 
@@ -196,7 +196,7 @@ async def test_runner_pass_threshold_fails_below_and_passes_at_or_above() -> Non
 
 
 @pytest.mark.asyncio
-async def test_runner_without_threshold_keeps_legacy_zero_fail() -> None:
+async def test_runner_without_threshold_fails_on_fail_label() -> None:
     class Partial:
         name = "partial"
 
@@ -210,7 +210,56 @@ async def test_runner_without_threshold_keeps_legacy_zero_fail() -> None:
     runner = EvaluationRunner(resolve_evaluator=lambda _e: Partial())
     run = EvaluationRun.create(uuid.uuid4(), entity.id)
     finished, _ = await runner.run_evaluator(run=run, evaluator_entity=entity, items=[item])
-    assert finished.status == "PASSED"
+    assert finished.status == "FAILED"
+
+
+@pytest.mark.asyncio
+async def test_runner_fail_label_above_threshold_fails() -> None:
+    class Judge:
+        name = "judge"
+
+        async def evaluate(self, sample):
+            from aiobs.evaluation.protocol import EvaluationResult
+
+            return EvaluationResult(score=0.9, label="FAIL", explanation="x", metadata={})
+
+    entity = Evaluator.create(uuid.uuid4(), "judge", "llm_judge", {"kind": "correctness"})
+    item = DatasetItem.create(uuid.uuid4(), input="x", expected_output="y", actual_output="y")
+    runner = EvaluationRunner(resolve_evaluator=lambda _e: Judge())
+    finished, results = await runner.run_evaluator(
+        run=EvaluationRun.create(uuid.uuid4(), entity.id),
+        evaluator_entity=entity,
+        items=[item],
+        pass_threshold=0.7,
+    )
+    assert finished.status == "FAILED"
+    assert results[0].label == "FAIL"
+
+
+@pytest.mark.asyncio
+async def test_runner_rewrites_pass_label_below_threshold() -> None:
+    class Judge:
+        name = "judge"
+
+        async def evaluate(self, sample):
+            from aiobs.evaluation.protocol import EvaluationResult
+
+            return EvaluationResult(score=0.5, label="PASS", explanation="x", metadata={"m": 1})
+
+    entity = Evaluator.create(uuid.uuid4(), "judge", "llm_judge", {"kind": "correctness"})
+    item = DatasetItem.create(uuid.uuid4(), input="x", expected_output="y", actual_output="y")
+    runner = EvaluationRunner(resolve_evaluator=lambda _e: Judge())
+    finished, results = await runner.run_evaluator(
+        run=EvaluationRun.create(uuid.uuid4(), entity.id),
+        evaluator_entity=entity,
+        items=[item],
+        pass_threshold=0.7,
+    )
+    assert finished.status == "FAILED"
+    # Stored label is the effective verdict so pass_rate agrees with the run status.
+    assert results[0].label == "FAIL"
+    assert results[0].metadata["judge_label"] == "PASS"
+    assert results[0].metadata["m"] == 1
 
 
 @pytest.mark.asyncio
@@ -357,11 +406,57 @@ def test_build_eval_context_includes_retrieval_documents() -> None:
         spans=(retriever, json_span),
     )
     ctx = build_eval_context_from_trace(trace)
-    assert ctx["documents"] == [
-        {"id": "doc-1", "title": "PTO", "text": "20 days paid time off."},
-        {"id": "doc-2", "title": "Holidays"},
-        {"id": "doc-3", "text": "Remote work policy."},
-    ]
+    # Same end_time: the later span in trace order is the final retrieval stage.
+    assert ctx["documents"] == [{"id": "doc-3", "text": "Remote work policy."}]
+
+
+def test_build_eval_context_uses_last_retrieval_stage() -> None:
+    t0 = datetime(2024, 1, 1, tzinfo=UTC)
+    t1 = datetime(2024, 1, 1, 0, 0, 1, tzinfo=UTC)
+    t2 = datetime(2024, 1, 1, 0, 0, 2, tzinfo=UTC)
+    rerank = Span(
+        id=uuid.uuid4(),
+        span_id="f" * 16,
+        parent_span_id=None,
+        name="rerank",
+        kind="RERANKER",
+        start_time=t1,
+        end_time=t2,
+        status="ok",
+        attributes={
+            "reranker.output_documents": [
+                {"id": "doc-7"},
+                {"id": "doc-2"},
+                {"id": "doc-7"},
+            ],
+        },
+    )
+    retrieve = Span(
+        id=uuid.uuid4(),
+        span_id="c" * 16,
+        parent_span_id=None,
+        name="retrieve",
+        kind="RETRIEVER",
+        start_time=t0,
+        end_time=t1,
+        status="ok",
+        attributes={
+            "retrieval.documents": [{"id": f"doc-{i}"} for i in range(1, 21)],
+        },
+    )
+    trace = Trace(
+        id=uuid.uuid4(),
+        project_id=uuid.uuid4(),
+        trace_id="e" * 32,
+        name="rag",
+        status="ok",
+        start_time=t0,
+        end_time=t2,
+        # Span order in the trace must not matter: end_time decides.
+        spans=(rerank, retrieve),
+    )
+    ctx = build_eval_context_from_trace(trace)
+    assert ctx["documents"] == [{"id": "doc-7"}, {"id": "doc-2"}]
 
 
 def test_build_eval_context_empty_retrieval_sets_documents_list() -> None:
@@ -463,3 +558,78 @@ async def test_groundedness_judge_payload_includes_document_texts() -> None:
     )
     payload = json.loads(captured["user"])
     assert payload["context"]["documents"][0]["text"] == "Policy excerpt for the judge."
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("kind", "expected_keys"),
+    [
+        ("answer_relevance", {"input", "actual_output"}),
+        ("groundedness", {"input", "actual_output", "context"}),
+        ("correctness", {"input", "expected_output", "actual_output"}),
+    ],
+)
+async def test_judge_payload_never_leaks_gold(kind: str, expected_keys: set[str]) -> None:
+    captured: dict[str, str] = {}
+
+    class FakeLlm:
+        async def complete_json(self, *, system: str, user: str, model: str | None = None):
+            captured["user"] = user
+            return {"score": 1.0, "label": "PASS", "explanation": "ok"}
+
+    judge = LlmJudgeEvaluator(kind, {}, FakeLlm(), default_model=get_settings().llm_model)
+    await judge.evaluate(
+        EvaluationSample(
+            input="q",
+            expected_output="GOLD-ANSWER",
+            actual_output="answer",
+            context={"documents": [{"id": "doc-1", "text": "t"}], "latency_ms": 12},
+            metadata={"expected_doc_ids": ["GOLD-DOC"]},
+        )
+    )
+    payload = json.loads(captured["user"])
+    assert set(payload) == expected_keys
+    assert "GOLD-DOC" not in captured["user"]
+    if kind != "correctness":
+        assert "GOLD-ANSWER" not in captured["user"]
+    if kind == "groundedness":
+        # Only documents reach the judge, not timing/cost context.
+        assert payload["context"] == {"documents": [{"id": "doc-1", "text": "t"}]}
+
+
+def test_build_eval_context_skips_stage_without_recorded_documents() -> None:
+    t0 = datetime(2024, 1, 1, tzinfo=UTC)
+    t1 = datetime(2024, 1, 1, 0, 0, 1, tzinfo=UTC)
+    retrieve = Span(
+        id=uuid.uuid4(),
+        span_id="c" * 16,
+        parent_span_id=None,
+        name="retrieve",
+        kind="RETRIEVER",
+        start_time=t0,
+        end_time=t0,
+        status="ok",
+        attributes={"retrieval.documents": [{"id": "doc-1"}]},
+    )
+    uninstrumented_rerank = Span(
+        id=uuid.uuid4(),
+        span_id="f" * 16,
+        parent_span_id=None,
+        name="rerank",
+        kind="RERANKER",
+        start_time=t0,
+        end_time=t1,
+        status="ok",
+        attributes={},
+    )
+    trace = Trace(
+        id=uuid.uuid4(),
+        project_id=uuid.uuid4(),
+        trace_id="e" * 32,
+        name="rag",
+        status="ok",
+        start_time=t0,
+        end_time=t1,
+        spans=(retrieve, uninstrumented_rerank),
+    )
+    assert build_eval_context_from_trace(trace)["documents"] == [{"id": "doc-1"}]

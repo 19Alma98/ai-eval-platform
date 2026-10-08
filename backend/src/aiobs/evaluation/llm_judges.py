@@ -22,9 +22,9 @@ def _groundedness_documents_missing_or_empty(context: Any) -> bool:
 
 
 PROMPT_VERSIONS = {
-    "answer_relevance": "answer_relevance.v1",
-    "groundedness": "groundedness.v1",
-    "correctness": "correctness.v1",
+    "answer_relevance": "answer_relevance.v2",
+    "groundedness": "groundedness.v2",
+    "correctness": "correctness.v2",
 }
 
 _SYSTEM_PROMPTS = {
@@ -46,14 +46,18 @@ _SYSTEM_PROMPTS = {
 }
 
 
-def _build_user_payload(sample: EvaluationSample) -> str:
-    payload = {
-        "input": sample.input,
-        "expected_output": sample.expected_output,
-        "actual_output": sample.actual_output,
-        "context": sample.context,
-        "metadata": sample.metadata,
-    }
+def _build_user_payload(kind: str, sample: EvaluationSample) -> str:
+    """Send each judge only what its rubric needs.
+
+    Gold (expected_output, metadata such as expected_doc_ids) never reaches the
+    gold-less judges, so offline and live scores stay comparable and unbiased.
+    """
+    payload: dict[str, Any] = {"input": sample.input, "actual_output": sample.actual_output}
+    if kind == "correctness":
+        payload["expected_output"] = sample.expected_output
+    elif kind == "groundedness":
+        documents = sample.context.get("documents") if isinstance(sample.context, dict) else None
+        payload["context"] = {"documents": documents}
     return json.dumps(payload, default=str)
 
 
@@ -88,7 +92,7 @@ class LlmJudgeEvaluator:
 
         raw = await self._llm.complete_json(
             system=_SYSTEM_PROMPTS[self._kind],
-            user=_build_user_payload(sample),
+            user=_build_user_payload(self._kind, sample),
             model=self._model,
         )
         score = raw.get("score")

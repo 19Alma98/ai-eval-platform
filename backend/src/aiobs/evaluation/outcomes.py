@@ -57,3 +57,26 @@ def pass_(
         explanation=explanation,
         metadata=dict(metadata or {}),
     )
+
+
+def item_verdict(score: float | None, label: str | None, threshold: float | None) -> str | None:
+    """Single PASS/FAIL rule shared by offline runs and live scoring.
+
+    Both signals must pass: a FAIL label fails even above the threshold, and a score
+    below the threshold fails even with a PASS label. ERROR/SKIPPED pass through.
+    Returns None when there is neither a label nor a score to judge.
+    """
+    normalized = (label or "").strip().upper() or None
+    if normalized in {"ERROR", "SKIPPED"}:
+        return normalized
+    if normalized == "FAIL":
+        return "FAIL"
+    if threshold is not None and score is not None and score < threshold:
+        return "FAIL"
+    if normalized == "PASS":
+        return "PASS"
+    if score is None:
+        return None
+    if threshold is not None:
+        return "PASS"
+    return "FAIL" if score == 0.0 else "PASS"

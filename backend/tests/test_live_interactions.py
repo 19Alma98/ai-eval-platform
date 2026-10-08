@@ -15,12 +15,14 @@ from aiobs.application.live_interactions import (
     SubmitLiveInteractionCommand,
     UpsertLiveReview,
     UpsertLiveReviewCommand,
+    score_is_failed,
 )
 from aiobs.application.metrics_sets import EnsureProjectDefaultMetricsSet
 from aiobs.domain.dataset import Dataset, DatasetItem
 from aiobs.domain.evaluator import Evaluator
 from aiobs.domain.live_interaction import (
     GOLDLESS_METRIC_KINDS,
+    DuplicateExternalIdError,
     LiveInteraction,
     LiveInteractionScore,
     LiveReview,
@@ -65,6 +67,13 @@ class InMemoryLiveRepository:
         self._reviews: dict[uuid.UUID, LiveReview] = {}
 
     async def add(self, interaction: LiveInteraction) -> LiveInteraction:
+        if interaction.external_id is not None:
+            for item in self._items.values():
+                if (
+                    item.project_id == interaction.project_id
+                    and item.external_id == interaction.external_id
+                ):
+                    raise DuplicateExternalIdError(interaction.external_id)
         self._items[interaction.id] = interaction
         return interaction
 
@@ -471,3 +480,146 @@ async def test_score_warns_when_no_goldless_metrics() -> None:
     assert await live.list_scores(scored.id) == []
 
     clear_registry()
+
+
+@pytest.mark.asyncio
+async def test_submit_concurrent_duplicate_external_id_returns_existing() -> None:
+    class RacingLiveRepository(InMemoryLiveRepository):
+        """The pre-insert lookup misses a row that a concurrent request just committed."""
+
+        def __init__(self) -> None:
+            super().__init__()
+            self.lookups = 0
+
+        async def get_by_external_id(
+            self, project_id: uuid.UUID, external_id: str
+        ) -> LiveInteraction | None:
+            self.lookups += 1
+            if self.lookups == 1:
+                return None
+            return await super().get_by_external_id(project_id, external_id)
+
+    projects = InMemoryProjectRepository()
+    live = RacingLiveRepository()
+    project = Project.create("Demo", slug="demo-race")
+    await projects.add(project)
+    winner = await InMemoryLiveRepository.add(
+        live, LiveInteraction.create(project.id, "q", "a", external_id="turn-9")
+    )
+
+    result = await SubmitLiveInteraction(projects, live, InMemoryMetricsSetRepository()).execute(
+        SubmitLiveInteractionCommand(
+            project_id=project.id, question="q", answer="a", external_id="turn-9"
+        )
+    )
+    assert result.created is False
+    assert result.interaction.id == winner.id
+
+
+def _goldless_entry(kind: str, threshold: float | None = 0.7) -> MetricsSetEntry:
+    return MetricsSetEntry(
+        id=uuid.uuid4(),
+        kind=kind,
+        enabled=True,
+        threshold=threshold,
+        config={},
+        evaluator_id=None,
+        is_default=False,
+    )
+
+
+async def _score_with(llm: object, entries: tuple[MetricsSetEntry, ...]):
+    clear_registry()
+    bootstrap_evaluators(llm)
+    projects = InMemoryProjectRepository()
+    live = InMemoryLiveRepository()
+    metrics = InMemoryMetricsSetRepository()
+    evaluators = InMemoryEvaluatorRepository()
+    project = Project.create("Demo", slug=f"demo-{uuid.uuid4().hex[:8]}")
+    await projects.add(project)
+    ms = await metrics.add(MetricsSet.create(project.id, "live", entries=entries))
+    create_eval = CreateEvaluator(evaluators, projects)
+    ensure = EnsureProjectDefaultMetricsSet(metrics, evaluators, projects, create_eval)
+    submitted = await SubmitLiveInteraction(projects, live, metrics).execute(
+        SubmitLiveInteractionCommand(
+            project_id=project.id,
+            question="q",
+            answer="a",
+            documents=[{"id": "d", "text": "t"}],
+            metrics_set_id=ms.id,
+        )
+    )
+    scorer = ScoreLiveInteraction(live, metrics, evaluators, create_eval, ensure)
+    scored = await scorer.execute(submitted.interaction.id)
+    scores = {s.kind: s for s in await live.list_scores(scored.id)}
+    clear_registry()
+    return scored, scores, live, scorer
+
+
+@pytest.mark.asyncio
+async def test_live_one_judge_error_keeps_other_scores() -> None:
+    class FlakyLlm:
+        async def complete_json(self, *, system: str, user: str, model: str | None = None) -> dict:
+            if "relevant" in system:
+                raise RuntimeError("provider timeout")
+            return {"score": 0.9, "label": "PASS", "explanation": "ok"}
+
+    scored, scores, _, _ = await _score_with(
+        FlakyLlm(), (_goldless_entry("groundedness"), _goldless_entry("answer_relevance"))
+    )
+    assert scored.judge_status == "scored"
+    assert scores["groundedness"].label == "PASS"
+    assert scores["groundedness"].score == 0.9
+    assert scores["answer_relevance"].label == "ERROR"
+    assert scores["answer_relevance"].score is None
+    assert "provider timeout" in (scores["answer_relevance"].explanation or "")
+    assert scored.score_warning is not None
+    assert "answer_relevance" in scored.score_warning
+
+
+@pytest.mark.asyncio
+async def test_live_all_judges_error_sets_error_status() -> None:
+    class DownLlm:
+        async def complete_json(self, *, system: str, user: str, model: str | None = None) -> dict:
+            raise RuntimeError("provider down")
+
+    scored, scores, _, _ = await _score_with(
+        DownLlm(), (_goldless_entry("groundedness"), _goldless_entry("answer_relevance"))
+    )
+    assert scored.judge_status == "error"
+    assert scored.error_message is not None
+    assert {s.label for s in scores.values()} == {"ERROR"}
+
+
+@pytest.mark.asyncio
+async def test_live_rescore_failure_clears_stale_scores() -> None:
+    scored, scores, live, scorer = await _score_with(FakeLlm(), (_goldless_entry("groundedness"),))
+    assert scores
+    # Metrics set disappears: the rescore fails before any judge runs.
+    await live.update(scored.with_status("scored", metrics_set_id=uuid.uuid4()))
+    clear_registry()
+    bootstrap_evaluators(FakeLlm())
+    rescored = await scorer.execute(scored.id)
+    clear_registry()
+    assert rescored.judge_status == "error"
+    assert await live.list_scores(scored.id) == []
+
+
+@pytest.mark.asyncio
+async def test_live_score_below_threshold_fails_despite_judge_pass() -> None:
+    class LenientLlm:
+        async def complete_json(self, *, system: str, user: str, model: str | None = None) -> dict:
+            return {"score": 0.5, "label": "PASS", "explanation": "meh"}
+
+    _, scores, _, _ = await _score_with(LenientLlm(), (_goldless_entry("groundedness", 0.7),))
+    g = scores["groundedness"]
+    assert g.label == "FAIL"
+    assert score_is_failed(g)
+    assert "judge label: PASS" in (g.explanation or "")
+
+
+def test_score_is_failed_fail_label_above_threshold() -> None:
+    score = LiveInteractionScore.create(
+        uuid.uuid4(), "groundedness", score=0.9, label="FAIL", threshold=0.7
+    )
+    assert score_is_failed(score)

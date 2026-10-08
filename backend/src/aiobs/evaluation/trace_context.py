@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from datetime import UTC, datetime
 from typing import Any
 
 from aiobs.domain.retrieval import normalize_documents
@@ -87,39 +88,59 @@ def build_eval_context_from_trace(
     if tool_calls:
         context["tool_calls"] = tool_calls
 
-    docs: list[dict[str, Any]] = []
-    saw_retriever = False
-    for span in spans:
-        if span.kind.upper() != "RETRIEVER":
-            continue
-        saw_retriever = True
-        attrs = span.attributes or {}
-        raw = attrs.get("retrieval.documents")
-        if raw is None:
-            raw = attrs.get("documents")
-        if isinstance(raw, list):
-            docs.extend(normalize_documents(raw))
-        elif isinstance(raw, str):
-            try:
-                parsed = json.loads(raw)
-            except json.JSONDecodeError:
-                continue
-            if isinstance(parsed, list):
-                docs.extend(normalize_documents(parsed))
-        elif raw is None:
-            # Explicit empty retrieval (document_count=0 without a documents payload).
-            count = attrs.get("retrieval.document_count")
-            if count is not None:
-                try:
-                    if int(count) == 0:
-                        continue
-                except (TypeError, ValueError):
-                    pass
-    # Always expose documents when a RETRIEVER span ran, including empty lists.
-    if saw_retriever:
-        context["documents"] = docs
+    # Use the final retrieval stage (e.g. reranker after retriever): those are the
+    # documents the model actually saw, so hit@k ranks against them. Stages that did
+    # not record documents are skipped; if none did, documents is an empty list.
+    stages = [s for s in spans if s.kind.upper() in _RETRIEVAL_KINDS]
+    if stages:
+        recorded = [
+            (_span_end(span), idx, docs)
+            for idx, span in enumerate(stages)
+            if (docs := _span_documents(span)) is not None
+        ]
+        final_docs = max(recorded, key=lambda row: (row[0], row[1]))[2] if recorded else []
+        context["documents"] = _dedupe_by_id(final_docs)
 
     return context
+
+
+_RETRIEVAL_KINDS = frozenset({"RETRIEVER", "RERANKER"})
+_DOCUMENT_KEYS = {
+    "RETRIEVER": ("retrieval.documents", "documents"),
+    "RERANKER": ("reranker.output_documents", "retrieval.documents", "documents"),
+}
+
+
+def _span_end(span: Span) -> datetime:
+    stamp = span.end_time or span.start_time
+    return stamp if stamp.tzinfo is not None else stamp.replace(tzinfo=UTC)
+
+
+def _span_documents(span: Span) -> list[dict[str, Any]] | None:
+    """Documents recorded on a retrieval span, or None if it recorded none."""
+    attrs = span.attributes or {}
+    for key in _DOCUMENT_KEYS[span.kind.upper()]:
+        raw = attrs.get(key)
+        if raw is None:
+            continue
+        if isinstance(raw, str):
+            try:
+                raw = json.loads(raw)
+            except json.JSONDecodeError:
+                return []
+        return normalize_documents(raw)
+    return None
+
+
+def _dedupe_by_id(docs: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    seen: set[str] = set()
+    out: list[dict[str, Any]] = []
+    for doc in docs:
+        if doc["id"] in seen:
+            continue
+        seen.add(doc["id"])
+        out.append(doc)
+    return out
 
 
 def _trace_latency_ms(trace: Trace) -> float | None:

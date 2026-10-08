@@ -13,6 +13,7 @@ from uuid import UUID
 from aiobs.domain.dataset import DatasetItem
 from aiobs.domain.evaluation import EvaluationResultRecord, EvaluationRun
 from aiobs.domain.evaluator import Evaluator as EvaluatorEntity
+from aiobs.evaluation.outcomes import item_verdict
 from aiobs.evaluation.protocol import Evaluator
 from aiobs.evaluation.registry import create_evaluator
 
@@ -50,6 +51,22 @@ def effective_entity(
 
 
 MISSING_OUTPUT_EXPLANATION = "no output recorded for this item in experiment"
+
+
+def _apply_verdict(
+    record: EvaluationResultRecord, pass_threshold: float | None
+) -> EvaluationResultRecord:
+    """Store the effective verdict as the label so pass_rate matches the run status.
+
+    The evaluator's own label is kept in ``metadata.judge_label`` when it differs.
+    """
+    verdict = item_verdict(record.score, record.label, pass_threshold)
+    if verdict is None or verdict == record.label:
+        return record
+    metadata = dict(record.metadata)
+    if record.label is not None:
+        metadata["judge_label"] = record.label
+    return replace(record, label=verdict, metadata=metadata)
 
 
 class EvaluationRunner:
@@ -97,21 +114,17 @@ class EvaluationRunner:
             async with semaphore:
                 return await self._evaluate_item(run.id, impl, item, kind)
 
-        results = list(await asyncio.gather(*[_one(item) for item in items]))
+        results = [
+            _apply_verdict(r, pass_threshold)
+            for r in await asyncio.gather(*[_one(item) for item in items])
+        ]
         finished = datetime.now(UTC)
         labels = {(r.label or "").strip().upper() for r in results}
         if "ERROR" in labels:
             status = "ERROR"
         elif results and labels <= {"SKIPPED"}:
             status = "SKIPPED"
-        elif pass_threshold is not None:
-            scored = [r.score for r in results if r.score is not None]
-            status = (
-                "PASSED"
-                if scored and all(score >= pass_threshold for score in scored)
-                else "FAILED"
-            )
-        elif any(r.score == 0.0 for r in results if r.score is not None):
+        elif "FAIL" in labels:
             status = "FAILED"
         else:
             status = "PASSED"

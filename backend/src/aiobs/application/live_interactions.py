@@ -16,6 +16,7 @@ from aiobs.application.projects import ProjectNotFoundError
 from aiobs.domain.dataset import DatasetItem
 from aiobs.domain.live_interaction import (
     GOLDLESS_METRIC_KINDS,
+    DuplicateExternalIdError,
     LiveInteraction,
     LiveInteractionScore,
     LiveReview,
@@ -30,6 +31,7 @@ from aiobs.domain.repositories import (
     ProjectRepository,
 )
 from aiobs.domain.retrieval import normalize_documents
+from aiobs.evaluation.outcomes import item_verdict
 from aiobs.evaluation.protocol import EvaluationSample
 from aiobs.evaluation.registry import create_evaluator
 
@@ -129,12 +131,17 @@ async def _ensure_goldless_evaluator_ids(
 
 
 def score_is_failed(score: LiveInteractionScore) -> bool:
-    label = (score.label or "").strip().upper()
-    if label == "FAIL":
-        return True
-    if score.threshold is not None and score.score is not None:
-        return score.score < score.threshold
-    return False
+    return item_verdict(score.score, score.label, score.threshold) == "FAIL"
+
+
+def _verdict_explanation(
+    explanation: str | None, judge_label: str | None, verdict: str
+) -> str | None:
+    """Keep the judge's own label visible when the threshold overrides it."""
+    if judge_label is None or judge_label.strip().upper() == verdict:
+        return explanation
+    note = f"[judge label: {judge_label}]"
+    return f"{explanation} {note}" if explanation else note
 
 
 class SubmitLiveInteraction:
@@ -175,7 +182,16 @@ class SubmitLiveInteraction:
             external_id=command.external_id,
             metrics_set_id=command.metrics_set_id,
         )
-        saved = await self._live.add(interaction)
+        try:
+            saved = await self._live.add(interaction)
+        except DuplicateExternalIdError:
+            # A concurrent submit with the same external_id won the insert race.
+            existing = await self._live.get_by_external_id(
+                command.project_id, interaction.external_id or ""
+            )
+            if existing is None:
+                raise
+            return SubmitLiveInteractionResult(interaction=existing, created=False)
         return SubmitLiveInteractionResult(interaction=saved, created=True)
 
 
@@ -238,6 +254,7 @@ class ScoreLiveInteraction:
                 metadata=dict(interaction.metadata),
             )
             scores: list[LiveInteractionScore] = []
+            failed_kinds: list[str] = []
             for entry in resolved_entries:
                 entity = await self._evaluators.get_by_id(entry.evaluator_id)  # type: ignore[arg-type]
                 if entity is None:
@@ -245,32 +262,68 @@ class ScoreLiveInteraction:
                 kind = str(entity.config.get("kind", entry.kind)).strip()
                 # Entry config (e.g. judge model) overrides the shared per-kind evaluator.
                 config = {**entity.config, **entry.config, "kind": kind}
-                evaluator = create_evaluator(kind, config)
-                result = await evaluator.evaluate(sample)
+                try:
+                    evaluator = create_evaluator(kind, config)
+                    result = await evaluator.evaluate(sample)
+                except Exception as exc:  # noqa: BLE001 — one judge must not sink the others
+                    logger.warning(
+                        "Live judge %s failed for %s: %s", entry.kind, interaction_id, exc
+                    )
+                    failed_kinds.append(entry.kind)
+                    scores.append(
+                        LiveInteractionScore.create(
+                            interaction.id,
+                            kind=entry.kind,
+                            evaluator_id=entity.id,
+                            label="ERROR",
+                            explanation=f"{type(exc).__name__}: {exc}"[:2000],
+                            threshold=entry.threshold,
+                        )
+                    )
+                    continue
+                verdict = item_verdict(result.score, result.label, entry.threshold)
                 scores.append(
                     LiveInteractionScore.create(
                         interaction.id,
                         kind=entry.kind,
                         evaluator_id=entity.id,
                         score=result.score,
-                        label=result.label,
-                        explanation=result.explanation,
+                        label=verdict if verdict is not None else result.label,
+                        explanation=(
+                            _verdict_explanation(result.explanation, result.label, verdict)
+                            if verdict is not None
+                            else result.explanation
+                        ),
                         threshold=entry.threshold,
                     )
                 )
 
             await self._live.replace_scores(interaction.id, scores)
+            if scores and len(failed_kinds) == len(scores):
+                return await self._live.update(
+                    interaction.with_status(
+                        "error",
+                        metrics_set_id=metrics_set.id,
+                        score_warning=None,
+                        error_message=f"All judges failed: {', '.join(failed_kinds)}",
+                        scored_at=datetime.now(UTC),
+                    )
+                )
             return await self._live.update(
                 interaction.with_status(
                     "scored",
                     metrics_set_id=metrics_set.id,
-                    score_warning=None,
+                    score_warning=(
+                        f"Judge errors: {', '.join(failed_kinds)}" if failed_kinds else None
+                    ),
                     error_message=None,
                     scored_at=datetime.now(UTC),
                 )
             )
         except Exception as exc:
             logger.exception("Live interaction scoring failed: %s", interaction_id)
+            # Drop scores from a previous run so they are not shown next to an error.
+            await self._live.replace_scores(interaction.id, [])
             return await self._live.update(
                 interaction.with_status(
                     "error",

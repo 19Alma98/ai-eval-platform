@@ -15,6 +15,7 @@ from aiobs.domain.evaluator import Evaluator
 from aiobs.domain.experiment import Experiment
 from aiobs.domain.experiment_output import ExperimentItemOutput
 from aiobs.domain.live_interaction import (
+    DuplicateExternalIdError,
     LiveInteraction,
     LiveInteractionScore,
     LiveReview,
@@ -1078,6 +1079,9 @@ def _live_review_to_domain(row: LiveReviewModel) -> LiveReview:
     )
 
 
+_EXTERNAL_ID_CONSTRAINT = "uq_live_interactions_project_external_id"
+
+
 class SqlAlchemyLiveInteractionRepository:
     def __init__(self, session: AsyncSession) -> None:
         self._session = session
@@ -1101,8 +1105,10 @@ class SqlAlchemyLiveInteractionRepository:
         self._session.add(row)
         try:
             await self._session.commit()
-        except IntegrityError:
+        except IntegrityError as exc:
             await self._session.rollback()
+            if interaction.external_id is not None and _EXTERNAL_ID_CONSTRAINT in str(exc.orig):
+                raise DuplicateExternalIdError(interaction.external_id) from exc
             raise
         await self._session.refresh(row)
         return _live_interaction_to_domain(row)

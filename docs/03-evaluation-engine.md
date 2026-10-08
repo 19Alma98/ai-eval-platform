@@ -63,7 +63,13 @@ Output resolution: once an experiment has any recorded outputs, every item is re
 
 Explicit `POST .../evaluate` with `evaluator_ids` bypasses set resolution.
 
-Groundedness reads retrieved chunk text from run `context.documents` (populated from SDK `set_retrieval_documents` or ingestion normalization).
+Groundedness reads retrieved chunk text from run `context.documents` (populated from SDK `set_retrieval_documents` or ingestion normalization). When a trace has several retrieval stages (`RETRIEVER` → `RERANKER`), `context.documents` comes from the last stage that recorded documents (by end time, deduplicated by id): the documents the model actually saw.
+
+PASS/FAIL rule (offline runs and live scoring): an item passes only if the evaluator label is not `FAIL` **and** the score meets the entry threshold. The stored label is that effective verdict; when it overrides the evaluator's own label, the original is kept in `metadata.judge_label` (live: appended to the explanation). A run is `FAILED` if any item fails.
+
+LLM judges only receive the fields their rubric needs: `answer_relevance` gets input + answer, `groundedness` adds `context.documents`, `correctness` adds `expected_output`. Item `metadata` (e.g. `expected_doc_ids`) is never sent to a judge. Prompt versions are `*.v2`.
+
+Live scoring: a failing judge records an `ERROR` score for its kind without discarding the others (`score_warning` lists the failed kinds; status is `error` only if every judge failed).
 
 ## Evaluator execution
 
