@@ -6,10 +6,6 @@ Open items from the RAG evaluation review (2026-10-08). Fixed items are in git h
 
 - [ ] **No frontend `test` script.** Unit tests use `node:test` and only run with
   `node --import tsx --test <files>`. Add `"test"` to `frontend/package.json` and run it in CI.
-- [ ] **Postgres-only paths not verified for the latest fixes.** Run the `*_postgres` suites with the
-  DB up, covering: live-interaction `offset` paging + `(created_at, id)` ordering, `escape_like` with
-  `ILIKE ... ESCAPE`, and the unique-violation recovery in `EnsureProjectDefaultMetricsSet` /
-  `find_or_create_evaluator_for_entry` (real `IntegrityError` + session rollback).
 
 ## Evaluation correctness
 
