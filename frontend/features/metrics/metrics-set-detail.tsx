@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { ArrowLeft, GitBranchPlus, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { DataTable, type DataTableColumn } from "@/components/data-table";
@@ -79,10 +79,69 @@ export function MetricsSetDetailView({
 
   const editsBlocked = versionLocked || patch.isPending;
 
-  function saveEntries(nextEntries: MetricsSetEntry[]) {
-    patch.mutate(
-      { entries: nextEntries.map(entryToInput) },
-      {
+  const saveEntries = useCallback(
+    (nextEntries: MetricsSetEntry[]) => {
+      patch.mutate(
+        { entries: nextEntries.map(entryToInput) },
+        {
+          onError: (err) => {
+            if (err instanceof ApiError && err.status === 409) {
+              toast.error(
+                "Set in uso: crea una nuova versione per modificare le voci.",
+              );
+              setVersionLocked(true);
+              return;
+            }
+            const message = formatErrorForUi(err);
+            toast.error(message);
+          },
+        },
+      );
+    },
+    [patch],
+  );
+
+  const toggleEnabled = useCallback(
+    (row: EntryRow, enabled: boolean) => {
+      if (!metricsSet || editsBlocked) return;
+      const next = metricsSet.entries.map((entry) =>
+        entry.id === row.id ? { ...entry, enabled } : entry,
+      );
+      saveEntries(next);
+    },
+    [metricsSet, editsBlocked, saveEntries],
+  );
+
+  const commitThreshold = useCallback(
+    (row: EntryRow) => {
+      if (!metricsSet || editsBlocked) return;
+      const draft = thresholdDraft[row.id];
+      const trimmed = draft?.trim() ?? "";
+      let threshold: number | null = null;
+      if (trimmed !== "") {
+        const parsed = Number.parseFloat(trimmed);
+        if (Number.isNaN(parsed)) {
+          toast.error("La soglia deve essere un numero");
+          return;
+        }
+        threshold = parsed;
+      }
+      const current = row.threshold;
+      if (current === threshold || (current == null && threshold == null)) {
+        return;
+      }
+      const next = metricsSet.entries.map((entry) =>
+        entry.id === row.id ? { ...entry, threshold } : entry,
+      );
+      saveEntries(next);
+    },
+    [metricsSet, editsBlocked, thresholdDraft, saveEntries],
+  );
+
+  const deleteEntry = useCallback(
+    (row: EntryRow) => {
+      if (!metricsSet || row.is_default || editsBlocked) return;
+      removeEntry.mutate(row.id, {
         onError: (err) => {
           if (err instanceof ApiError && err.status === 409) {
             toast.error(
@@ -94,57 +153,10 @@ export function MetricsSetDetailView({
           const message = formatErrorForUi(err);
           toast.error(message);
         },
-      },
-    );
-  }
-
-  function toggleEnabled(row: EntryRow, enabled: boolean) {
-    if (!metricsSet || editsBlocked) return;
-    const next = metricsSet.entries.map((entry) =>
-      entry.id === row.id ? { ...entry, enabled } : entry,
-    );
-    saveEntries(next);
-  }
-
-  function commitThreshold(row: EntryRow) {
-    if (!metricsSet || editsBlocked) return;
-    const draft = thresholdDraft[row.id];
-    const trimmed = draft?.trim() ?? "";
-    let threshold: number | null = null;
-    if (trimmed !== "") {
-      const parsed = Number.parseFloat(trimmed);
-      if (Number.isNaN(parsed)) {
-        toast.error("La soglia deve essere un numero");
-        return;
-      }
-      threshold = parsed;
-    }
-    const current = row.threshold;
-    if (current === threshold || (current == null && threshold == null)) {
-      return;
-    }
-    const next = metricsSet.entries.map((entry) =>
-      entry.id === row.id ? { ...entry, threshold } : entry,
-    );
-    saveEntries(next);
-  }
-
-  function deleteEntry(row: EntryRow) {
-    if (!metricsSet || row.is_default || editsBlocked) return;
-    removeEntry.mutate(row.id, {
-      onError: (err) => {
-        if (err instanceof ApiError && err.status === 409) {
-          toast.error(
-            "Set in uso: crea una nuova versione per modificare le voci.",
-          );
-          setVersionLocked(true);
-          return;
-        }
-        const message = formatErrorForUi(err);
-        toast.error(message);
-      },
-    });
-  }
+      });
+    },
+    [metricsSet, editsBlocked, removeEntry],
+  );
 
   const nextVersionLabel =
     metricsSet != null ? `Crea versione ${metricsSet.version + 1}` : "Crea versione";
@@ -250,8 +262,10 @@ export function MetricsSetDetailView({
       thresholdDraft,
       editsBlocked,
       removeEntry.isPending,
-      metricsSet,
       evaluatorNameById,
+      commitThreshold,
+      deleteEntry,
+      toggleEnabled,
     ],
   );
 

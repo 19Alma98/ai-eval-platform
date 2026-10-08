@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useMemo, useState, useSyncExternalStore } from "react";
 import Link from "next/link";
 import { useQuery } from "@tanstack/react-query";
 import { ArrowLeft } from "lucide-react";
@@ -60,26 +60,31 @@ export function TraceDetailView({ projectId, traceId }: TraceDetailViewProps) {
     queryFn: () => getTrace(projectId, traceId),
   });
 
-  const [selectedSpanId, setSelectedSpanId] = useState<string | null>(null);
-  const [defaultLayout, setDefaultLayout] = useState<Layout | null>(null);
-
-  useEffect(() => {
-    setDefaultLayout(readSplit());
-  }, []);
+  const defaultLayout = useSyncExternalStore(
+    () => () => {},
+    readSplit,
+    () => DEFAULT_SPLIT,
+  );
 
   const trace = query.data;
+
+  const [selectedSpanId, setSelectedSpanId] = useState<string | null>(null);
+  const [selectionTraceId, setSelectionTraceId] = useState<string | null>(null);
+
+  if (trace && trace.trace_id !== selectionTraceId) {
+    setSelectionTraceId(trace.trace_id);
+    if (trace.spans.length > 0) {
+      const root =
+        trace.spans.find((s) => s.parent_span_id == null) ?? trace.spans[0];
+      setSelectedSpanId(root.span_id);
+    } else {
+      setSelectedSpanId(null);
+    }
+  }
 
   const selectedSpan = useMemo(() => {
     if (!trace || !selectedSpanId) return null;
     return trace.spans.find((s) => s.span_id === selectedSpanId) ?? null;
-  }, [trace, selectedSpanId]);
-
-  useEffect(() => {
-    if (trace && trace.spans.length > 0 && !selectedSpanId) {
-      const root =
-        trace.spans.find((s) => s.parent_span_id == null) ?? trace.spans[0];
-      setSelectedSpanId(root.span_id);
-    }
   }, [trace, selectedSpanId]);
 
   const onLayoutChanged = useCallback((layout: Layout) => {
@@ -151,28 +156,24 @@ export function TraceDetailView({ projectId, traceId }: TraceDetailViewProps) {
         </div>
       </div>
 
-      {defaultLayout ? (
-        <ResizablePanelGroup
-          orientation="horizontal"
-          className="min-h-0 flex-1 rounded-lg border border-border"
-          onLayoutChanged={onLayoutChanged}
-          defaultLayout={defaultLayout}
-        >
-          <ResizablePanel id={PANEL_WATERFALL} minSize={35}>
-            <TraceWaterfall
-              trace={trace}
-              selectedSpanId={selectedSpanId}
-              onSelectSpan={setSelectedSpanId}
-            />
-          </ResizablePanel>
-          <ResizableHandle withHandle />
-          <ResizablePanel id={PANEL_SIDEBAR} minSize={25}>
-            <SpanSidebar span={selectedSpan} trace={trace} />
-          </ResizablePanel>
-        </ResizablePanelGroup>
-      ) : (
-        <LoadingBlock className="min-h-[240px] flex-1" />
-      )}
+      <ResizablePanelGroup
+        orientation="horizontal"
+        className="min-h-0 flex-1 rounded-lg border border-border"
+        onLayoutChanged={onLayoutChanged}
+        defaultLayout={defaultLayout}
+      >
+        <ResizablePanel id={PANEL_WATERFALL} minSize={35}>
+          <TraceWaterfall
+            trace={trace}
+            selectedSpanId={selectedSpanId}
+            onSelectSpan={setSelectedSpanId}
+          />
+        </ResizablePanel>
+        <ResizableHandle withHandle />
+        <ResizablePanel id={PANEL_SIDEBAR} minSize={25}>
+          <SpanSidebar span={selectedSpan} trace={trace} />
+        </ResizablePanel>
+      </ResizablePanelGroup>
     </div>
   );
 }

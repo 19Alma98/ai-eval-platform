@@ -169,9 +169,18 @@ export function OverviewDashboard() {
   const datasetsOpts = projectId ? datasetsQueryOptions(projectId) : null;
   const expOpts = projectId ? experimentsQueryOptions(projectId) : null;
 
-  const traces = tracesQuery.data?.items ?? [];
-  const datasets = datasetsQuery.data ?? [];
-  const experiments = experimentsQuery.data ?? [];
+  const traces = useMemo(
+    () => tracesQuery.data?.items ?? [],
+    [tracesQuery.data?.items],
+  );
+  const datasets = useMemo(
+    () => datasetsQuery.data ?? [],
+    [datasetsQuery.data],
+  );
+  const experiments = useMemo(
+    () => experimentsQuery.data ?? [],
+    [experimentsQuery.data],
+  );
 
   const projectQuery = projectId ? `?project=${encodeURIComponent(projectId)}` : "";
 
@@ -189,11 +198,15 @@ export function OverviewDashboard() {
       .filter((ms): ms is number => ms != null);
     const latencyP95 = percentile(durations, 0.95);
 
-    let rollingErrors = 0;
-    const errorSpark: SparkPoint[] = sorted.map((t, i) => {
-      if (isErroredTrace(t)) rollingErrors += 1;
-      return { i, v: total > 0 ? (rollingErrors / (i + 1)) * 100 : 0 };
-    });
+    const rollingErrorCounts = sorted.map((_, i) =>
+      sorted.slice(0, i + 1).filter(isErroredTrace).length,
+    );
+    const errorSpark: SparkPoint[] = rollingErrorCounts.map(
+      (rollingErrors, i) => ({
+        i,
+        v: total > 0 ? (rollingErrors / (i + 1)) * 100 : 0,
+      }),
+    );
 
     const latencySpark: SparkPoint[] = sorted
       .map((t, i) => ({ t, i }))

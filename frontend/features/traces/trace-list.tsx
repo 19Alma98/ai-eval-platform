@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { DataTable, type DataTableColumn } from "@/components/data-table";
 import { EmptyState } from "@/components/empty-state";
 import { ErrorState } from "@/components/error-state";
@@ -43,17 +43,11 @@ export function TraceList() {
   const searchParams = useSearchParams();
   const { projectId } = useProjectId();
   const { start, end } = useTimeRange();
-  const statusFromUrl = searchParams.get("status") ?? "";
-  const [statusFilter, setStatusFilter] = useState(statusFromUrl);
+  const statusFilter = searchParams.get("status") ?? "";
   const [selectedIndex, setSelectedIndex] = useState(0);
-
-  useEffect(() => {
-    setStatusFilter(statusFromUrl);
-  }, [statusFromUrl]);
 
   const onStatusChange = useCallback(
     (value: string) => {
-      setStatusFilter(value);
       setSelectedIndex(0);
       const params = new URLSearchParams(searchParams.toString());
       if (value) params.set("status", value);

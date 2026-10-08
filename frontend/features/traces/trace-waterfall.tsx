@@ -77,6 +77,10 @@ export function TraceWaterfall({
   const [collapsed, setCollapsed] = useState<Set<string>>(() => new Set());
   const [search, setSearch] = useState("");
   const [matchIndex, setMatchIndex] = useState(0);
+  const [matchIndexEpoch, setMatchIndexEpoch] = useState({
+    search,
+    matchCount: 0,
+  });
 
   const rows = useMemo(
     () => flattenVisible(tree, collapsed),
@@ -104,9 +108,13 @@ export function TraceWaterfall({
     });
   }, [tree, spanById, search]);
 
-  useEffect(() => {
+  if (
+    matchIndexEpoch.search !== search ||
+    matchIndexEpoch.matchCount !== matchIds.length
+  ) {
+    setMatchIndexEpoch({ search, matchCount: matchIds.length });
     setMatchIndex(0);
-  }, [search, matchIds.length]);
+  }
 
   const activeMatchId = matchIds[matchIndex] ?? null;
 
@@ -118,9 +126,12 @@ export function TraceWaterfall({
     return m;
   }, [trace.spans]);
 
-  useEffect(() => {
-    if (!activeMatchId) return;
-    onSelectSpan(activeMatchId);
+  const [expandedForMatchId, setExpandedForMatchId] = useState<string | null>(
+    null,
+  );
+
+  if (activeMatchId && activeMatchId !== expandedForMatchId) {
+    setExpandedForMatchId(activeMatchId);
     setCollapsed((prev) => {
       const next = new Set(prev);
       let id: string | undefined = activeMatchId;
@@ -131,7 +142,12 @@ export function TraceWaterfall({
       }
       return next;
     });
-  }, [activeMatchId, parentByChildId, onSelectSpan]);
+  }
+
+  useEffect(() => {
+    if (!activeMatchId) return;
+    onSelectSpan(activeMatchId);
+  }, [activeMatchId, onSelectSpan]);
 
   useEffect(() => {
     if (!activeMatchId) return;

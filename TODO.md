@@ -4,12 +4,6 @@ Open items from the RAG evaluation review (2026-10-08). Fixed items are in git h
 
 ## Tooling
 
-- [ ] **ESLint does not start.** `frontend/eslint.config.mjs` wraps `next/core-web-vitals` and
-  `next/typescript` in `FlatCompat.extends(...)`, but `eslint-config-next` 16 already ships flat
-  configs; ESLint crashes while validating the config ("property 'react' closes the circle"), so no
-  file is linted. Fix: import the flat configs directly
-  (`import nextVitals from "eslint-config-next/core-web-vitals"`, same for `typescript`) and drop
-  `FlatCompat`.
 - [ ] **No frontend `test` script.** Unit tests use `node:test` and only run with
   `node --import tsx --test <files>`. Add `"test"` to `frontend/package.json` and run it in CI.
 - [ ] **Postgres-only paths not verified for the latest fixes.** Run the `*_postgres` suites with the
@@ -28,8 +22,6 @@ Open items from the RAG evaluation review (2026-10-08). Fixed items are in git h
 - [ ] **Regression gate has no significance test.** `DELTA_THRESHOLD = 0.01`
   (`regression/aggregate.py`) is noise on small test sets. Add a minimum item count and/or a
   bootstrap confidence interval on the delta before calling it a regression.
-- [ ] **Legacy runs without `config_hash` are assumed comparable** in compare/release. Consider
-  flagging them as "config unknown" once enough runs carry the hash.
 
 ## Judge warnings
 

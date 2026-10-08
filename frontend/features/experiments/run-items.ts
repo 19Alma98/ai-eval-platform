@@ -4,9 +4,10 @@ import type {
   ExperimentItemOutput,
 } from "@/lib/api/types";
 
-export function shouldRenderRunItemsSection(_opts: {
+export function shouldRenderRunItemsSection(opts: {
   hasEvaluationRun: boolean;
 }): boolean {
+  void opts.hasEvaluationRun;
   return true;
 }
 

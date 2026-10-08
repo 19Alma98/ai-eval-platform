@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { LoadingBlock } from "@/components/loading-block";
 import {
@@ -27,22 +27,28 @@ export function RunItemTimeline({ projectId, traceId }: RunItemTimelineProps) {
   const [selectedSpanId, setSelectedSpanId] = useState<string | null>(null);
   const trace = query.data;
 
-  useEffect(() => {
+  const traceScopeKey = `${projectId}:${traceId}`;
+  const [prevTraceScopeKey, setPrevTraceScopeKey] = useState(traceScopeKey);
+  if (traceScopeKey !== prevTraceScopeKey) {
+    setPrevTraceScopeKey(traceScopeKey);
     setSelectedSpanId(null);
-  }, [projectId, traceId]);
+  }
+
+  const defaultSpanId = useMemo(() => {
+    if (!trace || trace.spans.length === 0) return null;
+    const root =
+      trace.spans.find((s) => s.parent_span_id == null) ?? trace.spans[0];
+    return root.span_id;
+  }, [trace]);
+
+  const effectiveSelectedSpanId = selectedSpanId ?? defaultSpanId;
 
   const selectedSpan = useMemo(() => {
-    if (!trace || !selectedSpanId) return null;
-    return trace.spans.find((s) => s.span_id === selectedSpanId) ?? null;
-  }, [trace, selectedSpanId]);
-
-  useEffect(() => {
-    if (trace && trace.spans.length > 0 && !selectedSpanId) {
-      const root =
-        trace.spans.find((s) => s.parent_span_id == null) ?? trace.spans[0];
-      setSelectedSpanId(root.span_id);
-    }
-  }, [trace, selectedSpanId]);
+    if (!trace || !effectiveSelectedSpanId) return null;
+    return (
+      trace.spans.find((s) => s.span_id === effectiveSelectedSpanId) ?? null
+    );
+  }, [trace, effectiveSelectedSpanId]);
 
   if (query.isLoading) {
     return <LoadingBlock className="h-[220px]" />;
@@ -71,7 +77,7 @@ export function RunItemTimeline({ projectId, traceId }: RunItemTimelineProps) {
         <ResizablePanel id="waterfall" minSize={30}>
           <TraceWaterfall
             trace={trace}
-            selectedSpanId={selectedSpanId}
+            selectedSpanId={effectiveSelectedSpanId}
             onSelectSpan={setSelectedSpanId}
           />
         </ResizablePanel>

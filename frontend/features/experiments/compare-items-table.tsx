@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { DataTable, type DataTableColumn } from "@/components/data-table";
 import { EmptyState } from "@/components/empty-state";
@@ -81,7 +81,7 @@ export function CompareItemsTable({
 }: CompareItemsTableProps) {
   const evaluatorsQuery = useEvaluators(projectId);
   const [regressionsOnly, setRegressionsOnly] = useState(false);
-  const [selectedEvaluatorId, setSelectedEvaluatorId] = useState<string>("");
+  const [userEvaluatorId, setUserEvaluatorId] = useState<string>("");
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [detailRow, setDetailRow] = useState<ItemComparisonRow | null>(null);
   const [detailOpen, setDetailOpen] = useState(false);
@@ -118,20 +118,17 @@ export function CompareItemsTable({
   const singleEvaluator = evaluatorOptions.length === 1;
   const needsExplicitEvaluator = evaluatorOptions.length > 1;
 
-  useEffect(() => {
-    if (evaluatorOptions.length === 0) {
-      setSelectedEvaluatorId("");
-      return;
+  const selectedEvaluatorId = useMemo(() => {
+    if (evaluatorOptions.length === 0) return "";
+    if (singleEvaluator) return evaluatorOptions[0].id;
+    if (
+      userEvaluatorId &&
+      evaluatorOptions.some((o) => o.id === userEvaluatorId)
+    ) {
+      return userEvaluatorId;
     }
-    if (singleEvaluator) {
-      setSelectedEvaluatorId(evaluatorOptions[0].id);
-      return;
-    }
-    setSelectedEvaluatorId((prev) => {
-      if (prev && evaluatorOptions.some((o) => o.id === prev)) return prev;
-      return evaluatorOptions[0]?.id ?? "";
-    });
-  }, [evaluatorOptions, singleEvaluator]);
+    return evaluatorOptions[0]?.id ?? "";
+  }, [evaluatorOptions, singleEvaluator, userEvaluatorId]);
 
   const queryReady =
     evaluatorOptions.length === 0 ||
@@ -160,9 +157,13 @@ export function CompareItemsTable({
 
   const rows = itemsQuery.data?.items ?? [];
 
-  useEffect(() => {
+  const itemsListResetKey = `${rows.length}:${regressionsOnly}:${selectedEvaluatorId}`;
+  const [prevItemsListResetKey, setPrevItemsListResetKey] =
+    useState(itemsListResetKey);
+  if (itemsListResetKey !== prevItemsListResetKey) {
+    setPrevItemsListResetKey(itemsListResetKey);
     setSelectedIndex(0);
-  }, [rows.length, regressionsOnly, selectedEvaluatorId]);
+  }
 
   const columns: DataTableColumn<ItemComparisonRow>[] = useMemo(
     () => [
@@ -250,7 +251,7 @@ export function CompareItemsTable({
             <Select
               value={selectedEvaluatorId}
               onValueChange={(v) => {
-                if (v) setSelectedEvaluatorId(v);
+                if (v) setUserEvaluatorId(v);
               }}
               disabled={evaluatorsQuery.isLoading && evaluatorOptions.length === 0}
             >

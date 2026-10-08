@@ -20,21 +20,21 @@ export function useProjectId(): {
   const searchParams = useSearchParams();
   const paramProject = searchParams.get("project");
 
-  const [projectId, setProjectIdState] = useState<string | null>(() => {
-    if (paramProject) return paramProject;
-    return readStoredProjectId();
-  });
+  const [storedProjectId, setStoredProjectId] = useState<string | null>(() =>
+    readStoredProjectId(),
+  );
+
+  const projectId = paramProject ?? storedProjectId;
 
   useEffect(() => {
-    if (paramProject && paramProject !== projectId) {
-      setProjectIdState(paramProject);
+    if (paramProject) {
       localStorage.setItem(STORAGE_KEY, paramProject);
     }
-  }, [paramProject, projectId]);
+  }, [paramProject]);
 
   const setProjectId = useCallback(
     (id: string) => {
-      setProjectIdState(id);
+      setStoredProjectId(id);
       localStorage.setItem(STORAGE_KEY, id);
       const params = new URLSearchParams(searchParams.toString());
       params.set("project", id);
@@ -44,7 +44,7 @@ export function useProjectId(): {
   );
 
   const clearProjectId = useCallback(() => {
-    setProjectIdState(null);
+    setStoredProjectId(null);
     localStorage.removeItem(STORAGE_KEY);
     const params = new URLSearchParams(searchParams.toString());
     params.delete("project");

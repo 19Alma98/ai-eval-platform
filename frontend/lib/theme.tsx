@@ -6,6 +6,7 @@ import {
   useContext,
   useEffect,
   useState,
+  useSyncExternalStore,
   type ReactNode,
 } from "react";
 
@@ -38,17 +39,25 @@ type ThemeContextValue = {
 
 const ThemeContext = createContext<ThemeContextValue | null>(null);
 
+function readResolvedTheme(): Theme {
+  return readStoredTheme() ?? systemTheme();
+}
+
 export function ThemeProvider({ children }: { children: ReactNode }) {
-  const [theme, setThemeState] = useState<Theme>("light");
+  const themeFromSystem = useSyncExternalStore(
+    () => () => {},
+    readResolvedTheme,
+    () => "light" as Theme,
+  );
+  const [userTheme, setUserTheme] = useState<Theme | null>(null);
+  const theme = userTheme ?? themeFromSystem;
 
   useEffect(() => {
-    const initial = readStoredTheme() ?? systemTheme();
-    setThemeState(initial);
-    applyTheme(initial);
-  }, []);
+    applyTheme(theme);
+  }, [theme]);
 
   const setTheme = useCallback((t: Theme) => {
-    setThemeState(t);
+    setUserTheme(t);
     localStorage.setItem(STORAGE_KEY, t);
     applyTheme(t);
   }, []);

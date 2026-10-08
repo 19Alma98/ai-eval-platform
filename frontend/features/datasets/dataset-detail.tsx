@@ -65,7 +65,7 @@ export function DatasetDetailView({
   const [importOpen, setImportOpen] = useState(false);
 
   const dataset = query.data;
-  const items = dataset?.items ?? [];
+  const items = useMemo(() => dataset?.items ?? [], [dataset?.items]);
 
   const filteredItems = useMemo(() => {
     const q = inputFilter.trim().toLowerCase();

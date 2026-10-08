@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { useEffect, useMemo, useState, type SubmitEvent, type ReactNode } from "react";
+import { useMemo, useState, type SubmitEvent, type ReactNode } from "react";
 import { formatConfigValue } from "@/features/app-configs/format-config-value";
 import { RAG_RECOMMENDED_EVALUATOR_KINDS } from "@/features/datasets/rag-qa";
 import { useDatasets, useDataset } from "@/features/datasets/use-datasets";
@@ -106,7 +106,8 @@ function runContextWithoutDocuments(context: unknown): unknown {
   if (typeof context !== "object" || context === null || Array.isArray(context)) {
     return context;
   }
-  const { documents: _documents, ...rest } = context as Record<string, unknown>;
+  const rest = { ...(context as Record<string, unknown>) };
+  delete rest.documents;
   return rest;
 }
 
@@ -202,7 +203,7 @@ export function ExperimentDetailView({
       href += `?baseline=${encodeURIComponent(experiment.baseline_experiment_id)}`;
     }
     return withProjectQuery(href, projectId);
-  }, [experiment?.baseline_experiment_id, experimentId, projectId]);
+  }, [experiment, experimentId, projectId]);
 
   const releaseHref = withProjectQuery(
     `/release?experiment=${encodeURIComponent(experimentId)}`,
@@ -216,9 +217,13 @@ export function ExperimentDetailView({
     return buildRunItemViews(items, outputs, results);
   }, [datasetDetailQuery.data?.items, outputsQuery.data, runQuery.data?.results]);
 
-  useEffect(() => {
+  const runItemsResetKey = `${selectedRunId ?? ""}:${runItemViews.length}`;
+  const [prevRunItemsResetKey, setPrevRunItemsResetKey] =
+    useState(runItemsResetKey);
+  if (runItemsResetKey !== prevRunItemsResetKey) {
+    setPrevRunItemsResetKey(runItemsResetKey);
     setSelectedItemIndex(0);
-  }, [selectedRunId, runItemViews.length]);
+  }
 
   const itemColumns: DataTableColumn<RunItemView>[] = useMemo(
     () => [
@@ -695,20 +700,24 @@ function ScorePackOverrideDialog({
 }) {
   const metricsSetsQuery = useMetricsSets(projectId);
   const invalidate = useInvalidateExperimentScoring(experimentId);
-  const metricsSets = metricsSetsQuery.data ?? [];
+  const metricsSets = useMemo(
+    () => metricsSetsQuery.data ?? [],
+    [metricsSetsQuery.data],
+  );
   const [overrideSetId, setOverrideSetId] = useState("");
   const [saveAsDefault, setSaveAsDefault] = useState(false);
 
-  useEffect(() => {
+  const [prevDialogOpen, setPrevDialogOpen] = useState(open);
+  if (open !== prevDialogOpen) {
+    setPrevDialogOpen(open);
     if (!open) {
       setOverrideSetId("");
       setSaveAsDefault(false);
-      return;
     }
-    if (!overrideSetId && metricsSets.length > 0) {
-      setOverrideSetId(metricsSets[0].id);
-    }
-  }, [open, metricsSets, overrideSetId]);
+  }
+  if (open && !overrideSetId && metricsSets.length > 0) {
+    setOverrideSetId(metricsSets[0].id);
+  }
 
   const overrideScore = useMutation({
     mutationFn: () =>
@@ -1056,7 +1065,10 @@ function EvaluateDialog({
     evaluate.mutate();
   }
 
-  const evaluators = evaluatorsQuery.data ?? [];
+  const evaluators = useMemo(
+    () => evaluatorsQuery.data ?? [],
+    [evaluatorsQuery.data],
+  );
   const sortedEvaluators = useMemo(() => {
     return [...evaluators].sort((a, b) => {
       const aRec = recommendedSet.has(evaluatorKind(a) ?? "") ? 0 : 1;
