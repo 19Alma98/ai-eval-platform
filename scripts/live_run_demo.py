@@ -241,7 +241,12 @@ def main() -> int:
         f"/api/v1/projects/{project_id}/live-interactions",
         query={"limit": "20"},
     )
-    n = len(listed) if isinstance(listed, list) else 0
+    if isinstance(listed, dict) and isinstance(listed.get("items"), list):
+        n = len(listed["items"])
+    elif isinstance(listed, list):
+        n = len(listed)
+    else:
+        n = 0
     print(f"\nLive interactions in project: {n}")
     print(f"Open UI: http://localhost:3000/live-runs?project={project_id}")
     print("Nav: Live runs — inspect scores, Agree/Disagree, Promote to TestSet")

@@ -132,4 +132,7 @@ async def test_release_check_still_fails_real_regression() -> None:
         )
     )
     assert result.status == "failed"
-    assert any(c.metric == "regression.quality.mean_score" and c.status == "failed" for c in result.checks.checks)
+    assert any(
+        c.metric == "regression.quality.mean_score" and c.status == "failed"
+        for c in result.checks.checks
+    )

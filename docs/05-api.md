@@ -215,7 +215,7 @@ POST /live-interactions/{interaction_id}/rescore
 
 `POST .../live-interactions` body: `question`, `answer`, optional `documents`, `metadata`, `external_id`, `metrics_set_id`.
 
-List query: `judge_status`, `search`, `failed_only`, `limit`. Each score may include nested `review` (per-score human review).
+List query: `judge_status`, `search`, `failed_only`, `limit`. Response shape: `{ items, judge_warnings }`. Each score may include nested `review` (per-score human review). `judge_warnings` is computed server-side over the last 50 live scores per kind (unfiltered by list query params); entries use the same `warnings` / `warning_detail` contract as offline runs when `judge_output_invalid` exceeds 20%.
 
 `GET .../calibration` — judge/human agreement by `kind` × judge `model` (also `method`, `prompt_version`). Optional query `since` (ISO datetime; default last 90 days). Rows include `n_reviewed`, `n_agree`, `n_disagree`, `agreement_rate`, `n_explanation_edits`, `explanation_edit_rate`. Excludes score labels `ERROR` / `SKIPPED`.
 
@@ -244,6 +244,7 @@ Response includes:
 - aggregate metric deltas (`mean_score`, `pass_rate`)
 - status per metric: `regression` | `improved` | `unchanged` | `unavailable` | `config_mismatch` | `insufficient_n`
 - `regressions`, `improved`, `unchanged`, `config_mismatches`, `insufficient_n` subsets
+- `candidate_runs` / `baseline_runs`: per shared evaluator `{ evaluator_id, run_id, metadata }` (includes run-level `warnings` / `warning_detail` when the judge model was unsuitable)
 
 Classification uses higher-is-better with `|delta| < 0.01` treated as unchanged. When either side has fewer than 5 applicable items (`n_applicable`), aggregate metrics use status `insufficient_n` instead of regression/improved/unchanged.
 

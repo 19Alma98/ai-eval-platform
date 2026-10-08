@@ -11,6 +11,7 @@ import { EmptyState } from "@/components/empty-state";
 import { ErrorState } from "@/components/error-state";
 import { LoadingBlock } from "@/components/loading-block";
 import { RefreshControl } from "@/components/refresh-control";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   Select,
@@ -19,8 +20,9 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { runJudgeWarning } from "@/features/judges/judge-metadata";
 import { ApiError, formatErrorForUi } from "@/lib/api/client";
-import type { Experiment } from "@/lib/api/types";
+import type { CompareRunRef, Experiment } from "@/lib/api/types";
 import { withProjectQuery } from "@/lib/project-href";
 import {
   experimentCompareQueryOptions,
@@ -29,6 +31,16 @@ import {
   useExperiments,
 } from "./use-experiments";
 import { experimentModel, experimentVersion } from "./experiment-meta";
+
+function judgeWarningsFromRuns(runs: CompareRunRef[] | undefined): string[] {
+  if (!runs?.length) return [];
+  const messages: string[] = [];
+  for (const run of runs) {
+    const message = runJudgeWarning(run.metadata);
+    if (message) messages.push(message);
+  }
+  return messages;
+}
 
 type ExperimentCompareViewProps = {
   projectId: string;
@@ -182,6 +194,13 @@ export function ExperimentCompareView({
     comparison?.metrics.filter((m) => m.status === "unavailable").length ?? 0;
   const configMismatchCount = comparison?.config_mismatches?.length ?? 0;
   const insufficientNCount = comparison?.insufficient_n?.length ?? 0;
+  const candidateJudgeWarnings = judgeWarningsFromRuns(comparison?.candidate_runs);
+  const baselineJudgeWarnings = judgeWarningsFromRuns(comparison?.baseline_runs);
+  const judgeWarningTitle = [...candidateJudgeWarnings, ...baselineJudgeWarnings].join(
+    "\n",
+  );
+  const hasJudgeUnsuitable =
+    candidateJudgeWarnings.length > 0 || baselineJudgeWarnings.length > 0;
 
   return (
     <div className="flex flex-col gap-3">
@@ -241,6 +260,15 @@ export function ExperimentCompareView({
                   {insufficientNCount}
                 </span>
               </span>
+            ) : null}
+            {hasJudgeUnsuitable ? (
+              <Badge
+                variant="outline"
+                className="border-status-warn text-status-warn"
+                title={judgeWarningTitle || "Judge model unsuitable"}
+              >
+                Judge model unsuitable
+              </Badge>
             ) : null}
           </div>
           <CompareTable projectId={projectId} metrics={comparison.metrics} />

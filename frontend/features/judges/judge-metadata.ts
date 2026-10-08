@@ -1,5 +1,3 @@
-import type { LiveInteraction } from "@/lib/api/types";
-
 export type JudgeClaim = {
   text: string;
   verdict: string;
@@ -11,7 +9,6 @@ export type JudgeClaim = {
 export type VerdictTone = "ok" | "warn" | "fail";
 
 export const JUDGE_MODEL_UNSUITABLE = "judge_model_unsuitable";
-export const LIVE_UNSUITABLE_RATE = 0.2;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -61,16 +58,13 @@ export function runJudgeWarning(
   return (isRecord(detail) && optionalString(detail.message)) || "Judge model unsuitable";
 }
 
-export function liveUnsuitableRate(rows: LiveInteraction[]): number {
-  let total = 0;
-  let invalid = 0;
-  for (const row of rows) {
-    for (const score of row.scores) {
-      if (typeof score.metadata?.judge_kind !== "string") continue;
-      if ((score.label ?? "").trim().toUpperCase() === "SKIPPED") continue;
-      total += 1;
-      if (score.metadata?.error_type === "judge_output_invalid") invalid += 1;
-    }
-  }
-  return total === 0 ? 0 : invalid / total;
+export function liveJudgeWarningMessage(
+  warnings: { warning_detail?: Record<string, unknown> }[] | undefined,
+): string | null {
+  if (!warnings?.length) return null;
+  const messages = warnings
+    .map((w) => (isRecord(w.warning_detail) ? optionalString(w.warning_detail.message) : null))
+    .filter((m): m is string => Boolean(m));
+  if (messages.length > 0) return messages.join(" ");
+  return "Judge model unsuitable";
 }

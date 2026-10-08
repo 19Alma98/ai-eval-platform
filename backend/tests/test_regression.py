@@ -9,8 +9,8 @@ import pytest
 from aiobs.domain.evaluation import EvaluationResultRecord, EvaluationRun
 from aiobs.regression.aggregate import (
     DELTA_THRESHOLD,
-    Aggregates,
     MIN_APPLICABLE_ITEMS,
+    Aggregates,
     aggregate_results,
     classify_delta,
     compare_evaluator_metrics,

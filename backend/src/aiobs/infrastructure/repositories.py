@@ -1233,6 +1233,48 @@ class SqlAlchemyLiveInteractionRepository:
         )
         return [_live_score_to_domain(row) for row in result.scalars().all()]
 
+    async def list_recent_scores_by_kind(
+        self,
+        project_id: uuid.UUID,
+        *,
+        limit_per_kind: int = 50,
+    ) -> dict[str, list[LiveInteractionScore]]:
+        limit = max(1, min(limit_per_kind, 200))
+        ranked = (
+            select(
+                LiveInteractionScoreModel.id.label("score_id"),
+                func.row_number()
+                .over(
+                    partition_by=LiveInteractionScoreModel.kind,
+                    order_by=(
+                        LiveInteractionScoreModel.created_at.desc(),
+                        LiveInteractionScoreModel.id.desc(),
+                    ),
+                )
+                .label("rn"),
+            )
+            .join(
+                LiveInteractionModel,
+                LiveInteractionModel.id == LiveInteractionScoreModel.live_interaction_id,
+            )
+            .where(LiveInteractionModel.project_id == project_id)
+        ).subquery()
+        result = await self._session.execute(
+            select(LiveInteractionScoreModel)
+            .join(ranked, LiveInteractionScoreModel.id == ranked.c.score_id)
+            .where(ranked.c.rn <= limit)
+            .order_by(
+                LiveInteractionScoreModel.kind.asc(),
+                LiveInteractionScoreModel.created_at.desc(),
+                LiveInteractionScoreModel.id.desc(),
+            )
+        )
+        by_kind: dict[str, list[LiveInteractionScore]] = {}
+        for row in result.scalars().all():
+            score = _live_score_to_domain(row)
+            by_kind.setdefault(score.kind, []).append(score)
+        return by_kind
+
     async def get_score(self, score_id: uuid.UUID) -> LiveInteractionScore | None:
         row = await self._session.get(LiveInteractionScoreModel, score_id)
         return _live_score_to_domain(row) if row is not None else None

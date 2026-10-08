@@ -19,8 +19,10 @@ from aiobs.api.deps import (
 from aiobs.api.schemas import (
     DatasetItemResponse,
     JudgeCalibrationBucketResponse,
+    ListLiveInteractionsResponse,
     LiveInteractionResponse,
     LiveInteractionScoreResponse,
+    LiveJudgeWarningResponse,
     LiveReviewResponse,
     LiveScoreReviewResponse,
     PromoteLiveInteractionRequest,
@@ -32,8 +34,10 @@ from aiobs.application.datasets import DatasetNotFoundError
 from aiobs.application.live_interactions import (
     GetLiveInteraction,
     ListLiveInteractions,
+    ListLiveInteractionsResult,
     LiveInteractionDetail,
     LiveInteractionNotFoundError,
+    LiveJudgeWarning,
     LiveScoreNotFoundError,
     PromoteLiveInteraction,
     PromoteLiveInteractionCommand,
@@ -236,9 +240,32 @@ async def live_judge_calibration(
     return [_calibration_response(b) for b in buckets]
 
 
+def _judge_warning_response(warning: LiveJudgeWarning) -> LiveJudgeWarningResponse:
+    return LiveJudgeWarningResponse(
+        kind=warning.kind,
+        warnings=list(warning.warnings),
+        warning_detail=dict(warning.warning_detail),
+    )
+
+
+def _list_response(result: ListLiveInteractionsResult) -> ListLiveInteractionsResponse:
+    return ListLiveInteractionsResponse(
+        items=[
+            _interaction_response(
+                interaction,
+                scores=scores,
+                review=review,
+                score_reviews=score_reviews,
+            )
+            for interaction, scores, review, score_reviews in result.items
+        ],
+        judge_warnings=[_judge_warning_response(w) for w in result.judge_warnings],
+    )
+
+
 @router.get(
     "/api/v1/projects/{project_id}/live-interactions",
-    response_model=list[LiveInteractionResponse],
+    response_model=ListLiveInteractionsResponse,
 )
 async def list_live_interactions(
     project_id: uuid.UUID,
@@ -247,23 +274,15 @@ async def list_live_interactions(
     failed_only: bool = Query(default=False),
     limit: int = Query(default=50, ge=1, le=200),
     use_case: ListLiveInteractions = Depends(get_list_live_interactions),
-) -> list[LiveInteractionResponse]:
-    rows = await use_case.execute(
+) -> ListLiveInteractionsResponse:
+    result = await use_case.execute(
         project_id,
         judge_status=judge_status,
         search=search,
         failed_only=failed_only,
         limit=limit,
     )
-    return [
-        _interaction_response(
-            interaction,
-            scores=scores,
-            review=review,
-            score_reviews=score_reviews,
-        )
-        for interaction, scores, review, score_reviews in rows
-    ]
+    return _list_response(result)
 
 
 @router.get(

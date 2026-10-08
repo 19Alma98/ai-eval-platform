@@ -130,11 +130,7 @@ class ReleaseCheck:
                 )
 
         policy_for_eval = policy
-        if (
-            policy.regression is not None
-            and not regression_deltas
-            and saw_insufficient_n
-        ):
+        if policy.regression is not None and not regression_deltas and saw_insufficient_n:
             policy_for_eval = replace(policy, regression=None)
 
         evaluation = evaluate_policy(

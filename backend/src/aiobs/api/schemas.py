@@ -360,6 +360,12 @@ class MetricComparisonResponse(BaseModel):
     status: str
 
 
+class CompareRunRefResponse(BaseModel):
+    evaluator_id: uuid.UUID
+    run_id: uuid.UUID
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+
 class ExperimentCompareResponse(BaseModel):
     experiment_id: uuid.UUID
     baseline_experiment_id: uuid.UUID
@@ -370,6 +376,8 @@ class ExperimentCompareResponse(BaseModel):
     # Evaluators whose candidate and baseline runs used different effective configs.
     config_mismatches: list[MetricComparisonResponse] = []
     insufficient_n: list[MetricComparisonResponse] = []
+    candidate_runs: list[CompareRunRefResponse] = []
+    baseline_runs: list[CompareRunRefResponse] = []
 
 
 class ReleaseCheckRequest(BaseModel):
@@ -541,6 +549,17 @@ class LiveInteractionResponse(BaseModel):
     scored_at: datetime | None
     scores: list[LiveInteractionScoreResponse] = Field(default_factory=list)
     review: LiveReviewResponse | None = None
+
+
+class LiveJudgeWarningResponse(BaseModel):
+    kind: str
+    warnings: list[str]
+    warning_detail: dict[str, Any]
+
+
+class ListLiveInteractionsResponse(BaseModel):
+    items: list[LiveInteractionResponse]
+    judge_warnings: list[LiveJudgeWarningResponse] = Field(default_factory=list)
 
 
 class UpsertLiveReviewRequest(BaseModel):

@@ -109,6 +109,23 @@ class InMemoryLiveRepository:
     async def list_scores(self, interaction_id: uuid.UUID) -> list[LiveInteractionScore]:
         return list(self._scores.get(interaction_id, []))
 
+    async def list_recent_scores_by_kind(
+        self,
+        project_id: uuid.UUID,
+        *,
+        limit_per_kind: int = 50,
+    ) -> dict[str, list[LiveInteractionScore]]:
+        by_kind: dict[str, list[LiveInteractionScore]] = {}
+        for interaction in self._items.values():
+            if interaction.project_id != project_id:
+                continue
+            for score in self._scores.get(interaction.id, []):
+                by_kind.setdefault(score.kind, []).append(score)
+        for kind, scores in by_kind.items():
+            scores.sort(key=lambda s: (s.created_at, s.id), reverse=True)
+            by_kind[kind] = scores[: max(1, limit_per_kind)]
+        return by_kind
+
     async def get_score(self, score_id: uuid.UUID) -> LiveInteractionScore | None:
         for scores in self._scores.values():
             for score in scores:
@@ -284,7 +301,11 @@ async def test_submit_rescore_review_promote(client: AsyncClient) -> None:
 
     listed = await client.get(f"/api/v1/projects/{project_id}/live-interactions")
     assert listed.status_code == 200
-    assert len(listed.json()) == 1
+    listed_body = listed.json()
+    assert "items" in listed_body
+    assert "judge_warnings" in listed_body
+    assert len(listed_body["items"]) == 1
+    assert listed_body["judge_warnings"] == []
 
 
 @pytest.mark.asyncio

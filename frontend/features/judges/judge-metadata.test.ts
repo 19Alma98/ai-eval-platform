@@ -1,8 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import type { LiveInteraction } from "@/lib/api/types";
 import {
-  liveUnsuitableRate,
+  liveJudgeWarningMessage,
   parseJudgeClaims,
   runJudgeWarning,
   verdictTone,
@@ -51,42 +50,23 @@ describe("runJudgeWarning", () => {
   });
 });
 
-function row(errorTypes: (string | null)[]): LiveInteraction {
-  return {
-    scores: errorTypes.map((t, i) => ({
-      id: String(i),
-      live_interaction_id: "x",
-      evaluator_id: null,
-      kind: "groundedness",
-      score: null,
-      label: t ? "ERROR" : "PASS",
-      explanation: null,
-      threshold: null,
-      created_at: "",
-      metadata: t
-        ? { judge_kind: "groundedness", error_type: t }
-        : { judge_kind: "groundedness" },
-    })),
-  } as unknown as LiveInteraction;
-}
-
-describe("liveUnsuitableRate", () => {
-  it("is the share of judge scores with invalid output", () => {
-    const rows = [row(["judge_output_invalid", null]), row([null, "llm_unavailable"])];
-    assert.equal(liveUnsuitableRate(rows), 0.25);
-    assert.equal(liveUnsuitableRate([]), 0);
+describe("liveJudgeWarningMessage", () => {
+  it("returns null when there are no warnings", () => {
+    assert.equal(liveJudgeWarningMessage(undefined), null);
+    assert.equal(liveJudgeWarningMessage([]), null);
   });
 
-  it("excludes deterministic and SKIPPED scores from the denominator", () => {
-    const mixed = {
-      scores: [
-        { label: "PASS", metadata: {} },
-        { label: "PASS" },
-        { label: " skipped ", metadata: { judge_kind: "groundedness" } },
-        { label: "ERROR", metadata: { judge_kind: "groundedness", error_type: "judge_output_invalid" } },
-        { label: "PASS", metadata: { judge_kind: "groundedness" } },
-      ],
-    } as unknown as LiveInteraction;
-    assert.equal(liveUnsuitableRate([mixed]), 0.5);
+  it("joins warning_detail messages from the list response", () => {
+    assert.equal(
+      liveJudgeWarningMessage([
+        { warning_detail: { message: "groundedness: use rubric." } },
+        { warning_detail: { message: "answer_relevance: use rubric." } },
+      ]),
+      "groundedness: use rubric. answer_relevance: use rubric.",
+    );
+  });
+
+  it("falls back when messages are missing", () => {
+    assert.equal(liveJudgeWarningMessage([{ warning_detail: {} }]), "Judge model unsuitable");
   });
 });

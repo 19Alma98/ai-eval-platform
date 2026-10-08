@@ -34,12 +34,34 @@ from aiobs.domain.repositories import (
 )
 from aiobs.domain.retrieval import normalize_documents
 from aiobs.evaluation.judges.errors import JUDGE_OUTPUT_INVALID
-from aiobs.evaluation.judges.warnings import JUDGE_MODEL_UNSUITABLE
+from aiobs.evaluation.judges.warnings import JUDGE_MODEL_UNSUITABLE, unsuitable_model_warning
 from aiobs.evaluation.outcomes import item_verdict
 from aiobs.evaluation.protocol import EvaluationSample
 from aiobs.evaluation.registry import create_evaluator
 
 logger = logging.getLogger(__name__)
+
+LIVE_UNSUITABLE_WINDOW = 50
+
+
+@dataclass(frozen=True, slots=True)
+class LiveJudgeWarning:
+    kind: str
+    warnings: list[str]
+    warning_detail: dict[str, Any]
+
+
+@dataclass(frozen=True, slots=True)
+class ListLiveInteractionsResult:
+    items: list[
+        tuple[
+            LiveInteraction,
+            list[LiveInteractionScore],
+            LiveReview | None,
+            dict[uuid.UUID, LiveScoreReview],
+        ]
+    ]
+    judge_warnings: list[LiveJudgeWarning]
 
 
 class LiveInteractionNotFoundError(Exception):
@@ -369,14 +391,7 @@ class ListLiveInteractions:
         search: str | None = None,
         failed_only: bool = False,
         limit: int = 50,
-    ) -> list[
-        tuple[
-            LiveInteraction,
-            list[LiveInteractionScore],
-            LiveReview | None,
-            dict[uuid.UUID, LiveScoreReview],
-        ]
-    ]:
+    ) -> ListLiveInteractionsResult:
         # failed_only filters after loading scores, so page through until enough
         # failures are found instead of scanning a fixed window.
         page_size = min(max(limit, 50), 200) if failed_only else limit
@@ -407,10 +422,31 @@ class ListLiveInteractions:
                 )
                 out.append((item, scores, review, score_reviews))
                 if len(out) >= limit:
-                    return out
-            if not failed_only or len(items) < page_size:
-                return out
-            offset += page_size
+                    break
+            else:
+                if not failed_only or len(items) < page_size:
+                    break
+                offset += page_size
+                continue
+            break
+
+        recent_by_kind = await self._live.list_recent_scores_by_kind(
+            project_id,
+            limit_per_kind=LIVE_UNSUITABLE_WINDOW,
+        )
+        judge_warnings: list[LiveJudgeWarning] = []
+        for kind in sorted(recent_by_kind):
+            detail = unsuitable_model_warning(recent_by_kind[kind])
+            if detail is None:
+                continue
+            judge_warnings.append(
+                LiveJudgeWarning(
+                    kind=kind,
+                    warnings=[JUDGE_MODEL_UNSUITABLE],
+                    warning_detail=detail,
+                )
+            )
+        return ListLiveInteractionsResult(items=out, judge_warnings=judge_warnings)
 
 
 class GetLiveInteraction:

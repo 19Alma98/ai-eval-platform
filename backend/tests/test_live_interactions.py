@@ -122,6 +122,23 @@ class InMemoryLiveRepository:
     async def list_scores(self, interaction_id: uuid.UUID) -> list[LiveInteractionScore]:
         return list(self._scores.get(interaction_id, []))
 
+    async def list_recent_scores_by_kind(
+        self,
+        project_id: uuid.UUID,
+        *,
+        limit_per_kind: int = 50,
+    ) -> dict[str, list[LiveInteractionScore]]:
+        by_kind: dict[str, list[LiveInteractionScore]] = {}
+        for interaction in self._items.values():
+            if interaction.project_id != project_id:
+                continue
+            for score in self._scores.get(interaction.id, []):
+                by_kind.setdefault(score.kind, []).append(score)
+        for kind, scores in by_kind.items():
+            scores.sort(key=lambda s: (s.created_at, s.id), reverse=True)
+            by_kind[kind] = scores[: max(1, limit_per_kind)]
+        return by_kind
+
     async def get_score(self, score_id: uuid.UUID) -> LiveInteractionScore | None:
         for scores in self._scores.values():
             for score in scores:
@@ -687,9 +704,9 @@ async def test_failed_only_pages_past_recent_passing_interactions() -> None:
         if failed:
             failed_ids.append(interaction.id)
 
-    rows = await ListLiveInteractions(live).execute(project_id, failed_only=True, limit=10)
+    result = await ListLiveInteractions(live).execute(project_id, failed_only=True, limit=10)
 
-    assert [row[0].id for row in rows] == list(reversed(failed_ids))
+    assert [row[0].id for row in result.items] == list(reversed(failed_ids))
 
 
 @pytest.mark.asyncio
@@ -708,9 +725,66 @@ async def test_failed_only_stops_at_limit() -> None:
             [LiveInteractionScore.create(interaction.id, "groundedness", score=0.1, label="FAIL")],
         )
 
-    rows = await ListLiveInteractions(live).execute(project_id, failed_only=True, limit=5)
+    result = await ListLiveInteractions(live).execute(project_id, failed_only=True, limit=5)
 
-    assert [row[0].question for row in rows] == ["q79", "q78", "q77", "q76", "q75"]
+    assert [row[0].question for row in result.items] == ["q79", "q78", "q77", "q76", "q75"]
+
+
+@pytest.mark.asyncio
+async def test_list_judge_warnings_use_unfiltered_per_kind_window() -> None:
+    from aiobs.evaluation.judges.errors import JUDGE_OUTPUT_INVALID
+    from aiobs.evaluation.judges.warnings import JUDGE_MODEL_UNSUITABLE
+
+    live = InMemoryLiveRepository()
+    project_id = uuid.uuid4()
+    base = datetime(2026, 1, 1, tzinfo=UTC)
+
+    async def _seed(kind: str, *, n: int, n_invalid: int, hour: int) -> None:
+        for i in range(n):
+            interaction = replace(
+                LiveInteraction.create(project_id, f"{kind}-{i}", "a"),
+                created_at=base + timedelta(hours=hour, minutes=i),
+                judge_status="scored",
+            )
+            await live.add(interaction)
+            # Most recent scores are the highest i; put invalids at the end of the window.
+            invalid = i >= n - n_invalid
+            score = replace(
+                LiveInteractionScore.create(
+                    interaction.id,
+                    kind,
+                    score=0.1 if invalid else 0.9,
+                    label="FAIL" if invalid else "PASS",
+                    threshold=0.7,
+                    metadata={
+                        "judge_kind": kind,
+                        "model": "tiny",
+                        "method": "claims",
+                        **({"error_type": JUDGE_OUTPUT_INVALID} if invalid else {}),
+                    },
+                ),
+                created_at=base + timedelta(hours=hour, minutes=i),
+            )
+            await live.replace_scores(interaction.id, [score])
+
+    # Last 50 groundedness: 11 invalid → 22% → warn.
+    await _seed("groundedness", n=50, n_invalid=11, hour=0)
+    # Last 50 answer_relevance: 10 invalid → 20% → no warn (strictly above 20%).
+    await _seed("answer_relevance", n=50, n_invalid=10, hour=2)
+
+    filtered = await ListLiveInteractions(live).execute(project_id, failed_only=True, limit=50)
+    # failed_only page is only failures (would inflate a client-side rate).
+    assert filtered.items
+    assert all(any(score_is_failed(s) for s in scores) for _, scores, _, _ in filtered.items)
+    assert len(filtered.judge_warnings) == 1
+    warning = filtered.judge_warnings[0]
+    assert warning.kind == "groundedness"
+    assert warning.warnings == [JUDGE_MODEL_UNSUITABLE]
+    assert warning.warning_detail["failure_rate"] == pytest.approx(0.22)
+
+    unfiltered = await ListLiveInteractions(live).execute(project_id, limit=1)
+    kinds = {w.kind for w in unfiltered.judge_warnings}
+    assert kinds == {"groundedness"}
 
 
 @pytest.mark.asyncio

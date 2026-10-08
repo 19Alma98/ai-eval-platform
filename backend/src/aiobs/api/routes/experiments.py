@@ -21,6 +21,7 @@ from aiobs.api.deps import (
     get_evaluation_run as get_evaluation_run_use_case,
 )
 from aiobs.api.schemas import (
+    CompareRunRefResponse,
     CreateExperimentRequest,
     EvaluatePackRequest,
     EvaluateRequest,
@@ -43,6 +44,7 @@ from aiobs.api.schemas import (
 from aiobs.application.app_configs import AppConfigNotFoundError
 from aiobs.application.compare import (
     CompareExperiments,
+    CompareRunRef,
     ExperimentComparison,
     ExperimentSummary,
     InvalidCompareSelectionError,
@@ -192,6 +194,14 @@ def _upsert_output_item(entry: UpsertExperimentOutputItemRequest) -> UpsertOutpu
     )
 
 
+def _compare_run_ref_response(ref: CompareRunRef) -> CompareRunRefResponse:
+    return CompareRunRefResponse(
+        evaluator_id=ref.evaluator_id,
+        run_id=ref.run_id,
+        metadata=dict(ref.metadata),
+    )
+
+
 def _compare_response(comparison: ExperimentComparison) -> ExperimentCompareResponse:
     return ExperimentCompareResponse(
         experiment_id=comparison.experiment_id,
@@ -202,6 +212,8 @@ def _compare_response(comparison: ExperimentComparison) -> ExperimentCompareResp
         unchanged=[_metric_response(m) for m in comparison.unchanged],
         config_mismatches=[_metric_response(m) for m in comparison.config_mismatches],
         insufficient_n=[_metric_response(m) for m in comparison.insufficient_n],
+        candidate_runs=[_compare_run_ref_response(r) for r in comparison.candidate_runs],
+        baseline_runs=[_compare_run_ref_response(r) for r in comparison.baseline_runs],
     )
 
 

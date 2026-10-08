@@ -131,7 +131,7 @@ Every step parses tolerantly (code fences, JSON wrapped in prose), validates aga
 ### Unsuitable-model warning
 
 - **Offline:** when `judge_output_invalid` items exceed 20% of evaluated items (SKIPPED and missing-output items excluded; the other error types do not count as format failures), the run gets `metadata.warnings = ["judge_model_unsuitable"]` and `metadata.warning_detail` (`model`, `method`, `failure_rate`, `message`). The remedy is `method: rubric` or a stronger judge model.
-- **Live:** an interaction whose judge result is `judge_output_invalid` gets a `judge_model_unsuitable` `score_warning`. The rolling unsuitable rate is computed in the UI from the live interactions list (only evaluated judge scores count).
+- **Live:** an interaction whose judge result is `judge_output_invalid` gets a `judge_model_unsuitable` `score_warning`. The list endpoint also returns `judge_warnings` computed over the last 50 live scores per kind (unfiltered by list query params), using the same >20% rule as offline runs.
 
 ### Manual smoke test
 

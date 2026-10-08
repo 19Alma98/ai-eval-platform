@@ -189,6 +189,13 @@ class LiveInteractionRepository(Protocol):
 
     async def list_scores(self, interaction_id: uuid.UUID) -> list[LiveInteractionScore]: ...
 
+    async def list_recent_scores_by_kind(
+        self,
+        project_id: uuid.UUID,
+        *,
+        limit_per_kind: int = 50,
+    ) -> dict[str, list[LiveInteractionScore]]: ...
+
     async def get_score(self, score_id: uuid.UUID) -> LiveInteractionScore | None: ...
 
     async def upsert_review(self, review: LiveReview) -> LiveReview: ...

@@ -195,7 +195,7 @@ class InMemoryExperimentItemOutputRepository:
 
 
 @pytest.fixture
-async def client() -> AsyncIterator[AsyncClient]:
+async def compare_env() -> AsyncIterator[tuple[AsyncClient, InMemoryEvaluationRunRepository]]:
     import os
 
     from aiobs.config import get_settings
@@ -224,11 +224,18 @@ async def client() -> AsyncIterator[AsyncClient]:
 
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as ac:
-        yield ac
+        yield ac, runs
 
     app.dependency_overrides.clear()
     os.environ.pop("CONTENT_CAPTURE_ENABLED", None)
     get_settings.cache_clear()
+
+
+@pytest.fixture
+async def client(
+    compare_env: tuple[AsyncClient, InMemoryEvaluationRunRepository],
+) -> AsyncIterator[AsyncClient]:
+    yield compare_env[0]
 
 
 async def _seed_dataset_and_evaluator(client: AsyncClient) -> tuple[str, str, str]:
@@ -339,6 +346,79 @@ async def test_summary_and_compare_experiments(client: AsyncClient) -> None:
     assert len(cmp["regressions"]) == 2
     assert cmp["improved"] == []
     assert cmp["unchanged"] == []
+    assert len(cmp["candidate_runs"]) == 1
+    assert len(cmp["baseline_runs"]) == 1
+    assert cmp["candidate_runs"][0]["evaluator_id"] == evaluator_id
+    assert cmp["baseline_runs"][0]["evaluator_id"] == evaluator_id
+    assert "run_id" in cmp["candidate_runs"][0]
+    assert "metadata" in cmp["candidate_runs"][0]
+
+
+@pytest.mark.asyncio
+async def test_compare_exposes_run_judge_warnings(
+    compare_env: tuple[AsyncClient, InMemoryEvaluationRunRepository],
+) -> None:
+    client, runs = compare_env
+    project_id, dataset_id, evaluator_id = await _seed_dataset_and_evaluator(client)
+
+    for idx in range(2, 6):
+        item = await client.post(
+            f"/api/v1/datasets/{dataset_id}/items",
+            json={
+                "input": f"hi{idx}",
+                "expected_output": "hello",
+                "actual_output": "hello",
+            },
+        )
+        assert item.status_code == 201
+
+    baseline = await client.post(
+        f"/api/v1/projects/{project_id}/experiments",
+        json={"name": "baseline", "dataset_id": dataset_id},
+    )
+    baseline_id = baseline.json()["id"]
+    candidate = await client.post(
+        f"/api/v1/projects/{project_id}/experiments",
+        json={
+            "name": "candidate",
+            "dataset_id": dataset_id,
+            "baseline_experiment_id": baseline_id,
+        },
+    )
+    candidate_id = candidate.json()["id"]
+
+    for experiment_id in (baseline_id, candidate_id):
+        evaluated = await client.post(
+            f"/api/v1/experiments/{experiment_id}/evaluate",
+            json={"evaluator_ids": [evaluator_id]},
+        )
+        assert evaluated.status_code == 200, evaluated.text
+
+    cand_run = next(r for r in runs._runs.values() if r.experiment_id == uuid.UUID(candidate_id))
+    updated = cand_run.with_status(
+        cand_run.status,
+        metadata={
+            **cand_run.metadata,
+            "warnings": ["judge_model_unsuitable"],
+            "warning_detail": {
+                "model": "tiny",
+                "method": "claims",
+                "failure_rate": 0.3,
+                "message": "Judge model tiny returned unusable output.",
+            },
+        },
+    )
+    await runs.update_run(updated)
+
+    compare = await client.get(f"/api/v1/experiments/{candidate_id}/compare/{baseline_id}")
+    assert compare.status_code == 200, compare.text
+    cmp = compare.json()
+    assert cmp["candidate_runs"][0]["metadata"]["warnings"] == ["judge_model_unsuitable"]
+    assert (
+        cmp["candidate_runs"][0]["metadata"]["warning_detail"]["message"]
+        == "Judge model tiny returned unusable output."
+    )
+    assert "warnings" not in cmp["baseline_runs"][0]["metadata"]
 
 
 @pytest.mark.asyncio

@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 import uuid
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from typing import Any
 
 from aiobs.application.experiments import ExperimentNotFoundError
 from aiobs.domain.evaluation import EvaluationRun
@@ -40,6 +41,13 @@ class ExperimentSummary:
 
 
 @dataclass(frozen=True, slots=True)
+class CompareRunRef:
+    evaluator_id: uuid.UUID
+    run_id: uuid.UUID
+    metadata: dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass(frozen=True, slots=True)
 class ExperimentComparison:
     experiment_id: uuid.UUID
     baseline_experiment_id: uuid.UUID
@@ -49,6 +57,8 @@ class ExperimentComparison:
     unchanged: list[MetricComparison]
     config_mismatches: list[MetricComparison]
     insufficient_n: list[MetricComparison]
+    candidate_runs: list[CompareRunRef] = field(default_factory=list)
+    baseline_runs: list[CompareRunRef] = field(default_factory=list)
 
 
 def _metadata_evaluator_name(run: EvaluationRun) -> str | None:
@@ -197,6 +207,8 @@ class CompareExperiments:
             [*selected_candidate, *selected_baseline],
         )
         metrics: list[MetricComparison] = []
+        candidate_run_refs: list[CompareRunRef] = []
+        baseline_run_refs: list[CompareRunRef] = []
         for evaluator_id in shared:
             cand_run = candidate_by_eval[evaluator_id]
             base_run = baseline_by_eval[evaluator_id]
@@ -210,6 +222,20 @@ class CompareExperiments:
                     candidate=cand_agg,
                     baseline=base_agg,
                     config_mismatch=runs_config_mismatch(cand_run, base_run),
+                )
+            )
+            candidate_run_refs.append(
+                CompareRunRef(
+                    evaluator_id=evaluator_id,
+                    run_id=cand_run.id,
+                    metadata=dict(cand_run.metadata),
+                )
+            )
+            baseline_run_refs.append(
+                CompareRunRef(
+                    evaluator_id=evaluator_id,
+                    run_id=base_run.id,
+                    metadata=dict(base_run.metadata),
                 )
             )
 
@@ -227,4 +253,6 @@ class CompareExperiments:
             unchanged=unchanged,
             config_mismatches=config_mismatches,
             insufficient_n=insufficient_n,
+            candidate_runs=candidate_run_refs,
+            baseline_runs=baseline_run_refs,
         )

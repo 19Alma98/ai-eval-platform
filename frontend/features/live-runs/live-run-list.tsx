@@ -11,10 +11,7 @@ import { StatusBadge } from "@/components/status-badge";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import {
-  LIVE_UNSUITABLE_RATE,
-  liveUnsuitableRate,
-} from "@/features/judges/judge-metadata";
+import { liveJudgeWarningMessage } from "@/features/judges/judge-metadata";
 import type { JudgeCalibrationBucket, LiveInteraction } from "@/lib/api/types";
 import { withProjectQuery } from "@/lib/project-href";
 import { useProjectId } from "@/lib/project-store";
@@ -55,8 +52,8 @@ export function LiveRunList() {
   });
   const calibration = useLiveJudgeCalibration(projectId);
 
-  const rows = query.data ?? [];
-  const unsuitableRate = liveUnsuitableRate(rows);
+  const rows = query.data?.items ?? [];
+  const unsuitableMessage = liveJudgeWarningMessage(query.data?.judge_warnings);
   const calibrationRows = calibration.data ?? [];
 
   const calibrationColumns: DataTableColumn<JudgeCalibrationBucket>[] = useMemo(
@@ -157,11 +154,9 @@ export function LiveRunList() {
 
   return (
     <div className="space-y-3">
-      {unsuitableRate > LIVE_UNSUITABLE_RATE ? (
+      {unsuitableMessage ? (
         <div className="rounded-md border border-status-warn bg-status-warn-bg px-3 py-2 text-sm text-status-warn">
-          The judge model returned unusable output on {Math.round(unsuitableRate * 100)}% of
-          the scores shown. Set <code>method: rubric</code> on the metrics set entries or use
-          a stronger judge model.
+          {unsuitableMessage}
         </div>
       ) : null}
       {calibrationRows.length > 0 ? (

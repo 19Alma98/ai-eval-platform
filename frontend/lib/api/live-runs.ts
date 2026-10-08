@@ -2,6 +2,7 @@ import { apiGet, apiPost } from "./client";
 import type {
   DatasetItem,
   JudgeCalibrationBucket,
+  ListLiveInteractionsResponse,
   LiveInteraction,
   LiveReview,
   LiveScoreReview,
@@ -22,7 +23,7 @@ export function listLiveInteractions(
   if (opts?.failedOnly) params.set("failed_only", "true");
   if (opts?.limit != null) params.set("limit", String(opts.limit));
   const qs = params.toString();
-  return apiGet<LiveInteraction[]>(
+  return apiGet<ListLiveInteractionsResponse>(
     `/api/v1/projects/${projectId}/live-interactions${qs ? `?${qs}` : ""}`,
   );
 }

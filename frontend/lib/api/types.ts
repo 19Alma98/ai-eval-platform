@@ -208,6 +208,12 @@ export type MetricComparison = {
   status: string;
 };
 
+export type CompareRunRef = {
+  evaluator_id: string;
+  run_id: string;
+  metadata: Record<string, unknown>;
+};
+
 export type ExperimentCompareResponse = {
   experiment_id: string;
   baseline_experiment_id: string;
@@ -217,6 +223,8 @@ export type ExperimentCompareResponse = {
   unchanged: MetricComparison[];
   config_mismatches?: MetricComparison[];
   insufficient_n?: MetricComparison[];
+  candidate_runs?: CompareRunRef[];
+  baseline_runs?: CompareRunRef[];
 };
 
 export type ItemSide = {
@@ -385,4 +393,15 @@ export type LiveInteraction = {
   scored_at: string | null;
   scores: LiveInteractionScore[];
   review: LiveReview | null;
+};
+
+export type LiveJudgeWarning = {
+  kind: string;
+  warnings: string[];
+  warning_detail: Record<string, unknown>;
+};
+
+export type ListLiveInteractionsResponse = {
+  items: LiveInteraction[];
+  judge_warnings: LiveJudgeWarning[];
 };
