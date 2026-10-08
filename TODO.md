@@ -7,10 +7,6 @@ Open items from the RAG evaluation review (2026-10-08). Fixed items are in git h
 - [ ] **No frontend `test` script.** Unit tests use `node:test` and only run with
   `node --import tsx --test <files>`. Add `"test"` to `frontend/package.json` and run it in CI.
 
-## Evaluation correctness
-
-- [x] **Regression gate minimum N.** `MIN_APPLICABLE_ITEMS = 5` → status `insufficient_n`
-  (aggregate compare + release soft-skip). Bootstrap CI on the delta still deferred.
 
 ## Judge warnings
 
