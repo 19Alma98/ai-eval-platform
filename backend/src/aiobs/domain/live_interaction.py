@@ -110,6 +110,7 @@ class LiveInteractionScore:
     explanation: str | None
     threshold: float | None
     created_at: datetime = field(default_factory=lambda: datetime.now(UTC))
+    metadata: dict[str, Any] = field(default_factory=dict)
 
     @classmethod
     def create(
@@ -122,6 +123,7 @@ class LiveInteractionScore:
         label: str | None = None,
         explanation: str | None = None,
         threshold: float | None = None,
+        metadata: dict[str, Any] | None = None,
     ) -> LiveInteractionScore:
         cleaned = kind.strip()
         if not cleaned:
@@ -136,6 +138,7 @@ class LiveInteractionScore:
             explanation=explanation,
             threshold=threshold,
             created_at=datetime.now(UTC),
+            metadata=dict(metadata or {}),
         )
 
 

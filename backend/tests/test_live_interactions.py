@@ -670,3 +670,23 @@ async def test_failed_only_stops_at_limit() -> None:
     rows = await ListLiveInteractions(live).execute(project_id, failed_only=True, limit=5)
 
     assert [row[0].question for row in rows] == ["q79", "q78", "q77", "q76", "q75"]
+
+
+@pytest.mark.asyncio
+async def test_live_score_keeps_claim_metadata() -> None:
+    _, scores, _, _ = await _score_with(ScriptedJudgeLlm(), (_goldless_entry("groundedness"),))
+    meta = scores["groundedness"].metadata
+    assert meta["method"] == "claims"
+    assert meta["claims"][0]["verdict"] == "supported"
+
+
+@pytest.mark.asyncio
+async def test_live_invalid_judge_output_sets_unsuitable_warning() -> None:
+    llm = ScriptedJudgeLlm({"rubric_answer_relevance": ["bad", "bad"]})
+    scored, scores, _, _ = await _score_with(
+        llm, (_goldless_entry("groundedness"), _goldless_entry("answer_relevance"))
+    )
+    assert scores["answer_relevance"].metadata["error_type"] == "judge_output_invalid"
+    assert scored.score_warning is not None
+    assert "judge_model_unsuitable" in scored.score_warning
+    assert "answer_relevance" in scored.score_warning

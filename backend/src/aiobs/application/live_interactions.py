@@ -32,6 +32,8 @@ from aiobs.domain.repositories import (
     ProjectRepository,
 )
 from aiobs.domain.retrieval import normalize_documents
+from aiobs.evaluation.judges.errors import JUDGE_OUTPUT_INVALID
+from aiobs.evaluation.judges.warnings import JUDGE_MODEL_UNSUITABLE
 from aiobs.evaluation.outcomes import item_verdict
 from aiobs.evaluation.protocol import EvaluationSample
 from aiobs.evaluation.registry import create_evaluator
@@ -123,6 +125,18 @@ def _verdict_explanation(
         return explanation
     note = f"[judge label: {judge_label}]"
     return f"{explanation} {note}" if explanation else note
+
+
+def _live_score_warning(failed_kinds: list[str], unsuitable: list[str]) -> str | None:
+    parts: list[str] = []
+    if failed_kinds:
+        parts.append(f"Judge errors: {', '.join(failed_kinds)}")
+    if unsuitable:
+        parts.append(
+            f"{JUDGE_MODEL_UNSUITABLE}: unusable judge output for {', '.join(unsuitable)}; "
+            "use method: rubric or a stronger judge model"
+        )
+    return ". ".join(parts) or None
 
 
 class SubmitLiveInteraction:
@@ -236,6 +250,7 @@ class ScoreLiveInteraction:
             )
             scores: list[LiveInteractionScore] = []
             failed_kinds: list[str] = []
+            unsuitable: list[str] = []
             for entry in resolved_entries:
                 entity = await self._evaluators.get_by_id(entry.evaluator_id)  # type: ignore[arg-type]
                 if entity is None:
@@ -265,6 +280,8 @@ class ScoreLiveInteraction:
                 verdict = item_verdict(result.score, result.label, entry.threshold)
                 if verdict == "ERROR":
                     failed_kinds.append(entry.kind)
+                    if result.metadata.get("error_type") == JUDGE_OUTPUT_INVALID:
+                        unsuitable.append(f"{entry.kind} ({result.metadata.get('method')})")
                 scores.append(
                     LiveInteractionScore.create(
                         interaction.id,
@@ -278,6 +295,7 @@ class ScoreLiveInteraction:
                             else result.explanation
                         ),
                         threshold=entry.threshold,
+                        metadata=dict(result.metadata),
                     )
                 )
 
@@ -296,9 +314,7 @@ class ScoreLiveInteraction:
                 interaction.with_status(
                     "scored",
                     metrics_set_id=metrics_set.id,
-                    score_warning=(
-                        f"Judge errors: {', '.join(failed_kinds)}" if failed_kinds else None
-                    ),
+                    score_warning=_live_score_warning(failed_kinds, unsuitable),
                     error_message=None,
                     scored_at=datetime.now(UTC),
                 )

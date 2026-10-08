@@ -213,6 +213,7 @@ async def test_submit_rescore_review_promote(client: AsyncClient) -> None:
     scored_body = scored.json()
     assert scored_body["judge_status"] == "scored"
     assert any(s["kind"] == "groundedness" for s in scored_body["scores"])
+    assert "metadata" in scored_body["scores"][0]
 
     review = await client.post(
         f"/api/v1/live-interactions/{interaction_id}/review",

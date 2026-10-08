@@ -57,6 +57,7 @@ def _score_response(score: LiveInteractionScore) -> LiveInteractionScoreResponse
             "explanation": score.explanation,
             "threshold": score.threshold,
             "created_at": score.created_at,
+            "metadata": score.metadata,
         }
     )
 

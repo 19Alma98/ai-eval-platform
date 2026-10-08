@@ -500,6 +500,7 @@ class LiveInteractionScoreResponse(BaseModel):
     explanation: str | None
     threshold: float | None
     created_at: datetime
+    metadata: dict[str, Any] = Field(default_factory=dict)
 
 
 class LiveReviewResponse(BaseModel):

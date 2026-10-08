@@ -1074,6 +1074,7 @@ def _live_score_to_domain(row: LiveInteractionScoreModel) -> LiveInteractionScor
         explanation=row.explanation,
         threshold=row.threshold,
         created_at=row.created_at,
+        metadata=dict(row.metadata_json or {}),
     )
 
 
@@ -1203,6 +1204,7 @@ class SqlAlchemyLiveInteractionRepository:
                 explanation=score.explanation,
                 threshold=score.threshold,
                 created_at=score.created_at,
+                metadata_json=dict(score.metadata),
             )
             self._session.add(row)
             saved.append(score)
