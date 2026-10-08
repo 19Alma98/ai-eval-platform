@@ -33,3 +33,13 @@ def test_skips_invalid_candidate_and_finds_next_object() -> None:
 def test_rejects_non_objects(text: str) -> None:
     with pytest.raises(ValueError):
         extract_json_object(text)
+
+
+def test_invalid_fence_falls_back_to_object_outside_it() -> None:
+    text = '```\nuse {x} here\n```\n{"level": 2}'
+    assert extract_json_object(text) == {"level": 2}
+
+
+def test_bare_fence_without_json_tag() -> None:
+    text = 'Result:\n```\n{"level": 1}\n```'
+    assert extract_json_object(text) == {"level": 1}

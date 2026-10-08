@@ -19,12 +19,19 @@ def extract_json_object(text: str) -> dict[str, Any]:
     try:
         data = json.loads(stripped)
     except json.JSONDecodeError:
-        fenced = _FENCE_RE.search(stripped)
-        candidate = fenced.group(1).strip() if fenced else stripped
-        data = _first_balanced_object(candidate)
+        data = _search_fences_then_text(stripped)
     if not isinstance(data, dict):
         raise ValueError("response must be a JSON object")
     return data
+
+
+def _search_fences_then_text(text: str) -> Any:
+    for fenced in _FENCE_RE.finditer(text):
+        try:
+            return _first_balanced_object(fenced.group(1).strip())
+        except ValueError:
+            continue
+    return _first_balanced_object(text)
 
 
 def _first_balanced_object(text: str) -> Any:
