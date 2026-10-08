@@ -13,6 +13,7 @@ from uuid import UUID
 from aiobs.domain.dataset import DatasetItem
 from aiobs.domain.evaluation import EvaluationResultRecord, EvaluationRun
 from aiobs.domain.evaluator import Evaluator as EvaluatorEntity
+from aiobs.evaluation.judges.warnings import JUDGE_MODEL_UNSUITABLE, unsuitable_model_warning
 from aiobs.evaluation.outcomes import item_verdict
 from aiobs.evaluation.protocol import Evaluator
 from aiobs.evaluation.registry import create_evaluator
@@ -136,6 +137,13 @@ class EvaluationRunner:
             "evaluator_kind": kind,
             "config_hash": config_hash(evaluator_entity.config),
         }
+        prompt_version = getattr(impl, "prompt_version", None)
+        if prompt_version is not None:
+            meta["prompt_version"] = prompt_version
+        warning = unsuitable_model_warning(results)
+        if warning is not None:
+            meta["warnings"] = [JUDGE_MODEL_UNSUITABLE]
+            meta["warning_detail"] = warning
         if config_override:
             meta["config_override"] = {k: v for k, v in config_override.items() if k != "kind"}
         run = run.with_status(status, finished_at=finished, metadata=meta)
