@@ -1,9 +1,12 @@
 from __future__ import annotations
 
+import logging
 import uuid
 from datetime import datetime
+from typing import Any
 
 from sqlalchemy import func, select
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -33,6 +36,7 @@ from aiobs.infrastructure.models import (
     EvaluatorModel,
     ExperimentItemOutputModel,
     ExperimentModel,
+    JudgeClaimCacheModel,
     LiveInteractionModel,
     LiveInteractionScoreModel,
     LiveReviewModel,
@@ -1247,3 +1251,46 @@ class SqlAlchemyLiveInteractionRepository:
         )
         row = result.scalar_one_or_none()
         return _live_review_to_domain(row) if row is not None else None
+
+
+_cache_logger = logging.getLogger(__name__ + ".judge_claim_cache")
+
+
+class SqlJudgeClaimCache:
+    """Database-backed gold-claim cache.
+
+    Opens a short session per call so it can live in the global evaluator registry.
+    The cache is an optimisation: database errors are logged and treated as a miss.
+    """
+
+    def __init__(self, session_factory: Any | None = None) -> None:
+        self._session_factory = session_factory
+
+    def _factory(self) -> Any:
+        if self._session_factory is not None:
+            return self._session_factory
+        from aiobs.infrastructure.db import get_session_factory
+
+        return get_session_factory()
+
+    async def get(self, key: str) -> list[str] | None:
+        try:
+            async with self._factory()() as session:
+                row = await session.get(JudgeClaimCacheModel, key)
+                return list(row.claims) if row is not None else None
+        except Exception:  # noqa: BLE001
+            _cache_logger.warning("judge claim cache read failed", exc_info=True)
+            return None
+
+    async def put(self, key: str, *, prompt_version: str, model: str, claims: list[str]) -> None:
+        try:
+            async with self._factory()() as session:
+                stmt = (
+                    pg_insert(JudgeClaimCacheModel)
+                    .values(key=key, prompt_version=prompt_version, model=model, claims=claims)
+                    .on_conflict_do_nothing(index_elements=["key"])
+                )
+                await session.execute(stmt)
+                await session.commit()
+        except Exception:  # noqa: BLE001
+            _cache_logger.warning("judge claim cache write failed", exc_info=True)

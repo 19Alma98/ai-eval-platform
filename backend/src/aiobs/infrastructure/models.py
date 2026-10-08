@@ -529,6 +529,9 @@ class LiveInteractionScoreModel(Base):
     label: Mapped[str | None] = mapped_column(String(64), nullable=True)
     explanation: Mapped[str | None] = mapped_column(Text, nullable=True)
     threshold: Mapped[float | None] = mapped_column(Float, nullable=True)
+    metadata_json: Mapped[dict[str, Any]] = mapped_column(
+        "metadata", JSONB, nullable=False, server_default="{}", default=dict
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         nullable=False,
@@ -565,4 +568,18 @@ class LiveReviewModel(Base):
     live_interaction: Mapped[LiveInteractionModel] = relationship(
         "LiveInteractionModel",
         back_populates="review",
+    )
+
+
+class JudgeClaimCacheModel(Base):
+    __tablename__ = "judge_claim_cache"
+
+    key: Mapped[str] = mapped_column(String(64), primary_key=True)
+    prompt_version: Mapped[str] = mapped_column(String(128), nullable=False)
+    model: Mapped[str] = mapped_column(String(200), nullable=False)
+    claims: Mapped[list[str]] = mapped_column(JSONB, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
     )

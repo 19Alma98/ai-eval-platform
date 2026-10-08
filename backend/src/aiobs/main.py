@@ -10,12 +10,17 @@ from aiobs.evaluation import bootstrap_evaluators
 from aiobs.evaluation.registry import clear_registry
 from aiobs.infrastructure.db import dispose_db, init_db
 from aiobs.infrastructure.llm import LiteLlmClient
+from aiobs.infrastructure.repositories import SqlJudgeClaimCache
 
 
 def _ensure_evaluators_registered() -> None:
     settings = get_settings()
     clear_registry()
-    bootstrap_evaluators(LiteLlmClient(settings), default_model=settings.llm_model)
+    bootstrap_evaluators(
+        LiteLlmClient(settings),
+        default_model=settings.llm_model,
+        claim_cache=SqlJudgeClaimCache(),
+    )
 
 
 @asynccontextmanager
