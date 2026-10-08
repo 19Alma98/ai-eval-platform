@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from aiobs.regression.aggregate import (
     DELTA_THRESHOLD,
+    MIN_APPLICABLE_ITEMS,
     Aggregates,
     MetricComparison,
     aggregate_results,
@@ -25,6 +26,7 @@ from aiobs.regression.policy import (
 
 __all__ = [
     "DELTA_THRESHOLD",
+    "MIN_APPLICABLE_ITEMS",
     "Aggregates",
     "EvaluatorMetricInput",
     "InvalidPolicyError",

@@ -9,8 +9,11 @@ from typing import Literal
 from aiobs.domain.evaluation import EvaluationResultRecord, EvaluationRun
 
 DELTA_THRESHOLD = 0.01
+MIN_APPLICABLE_ITEMS = 5
 
-MetricStatus = Literal["regression", "improved", "unchanged", "unavailable", "config_mismatch"]
+MetricStatus = Literal[
+    "regression", "improved", "unchanged", "unavailable", "config_mismatch", "insufficient_n"
+]
 MetricName = Literal["mean_score", "pass_rate"]
 
 _EPOCH = datetime.min.replace(tzinfo=UTC)
@@ -22,6 +25,7 @@ class Aggregates:
     n_scored: int
     n_error: int
     n_skipped: int
+    n_applicable: int
     mean_score: float | None
     pass_rate: float | None
 
@@ -104,6 +108,7 @@ def aggregate_results(results: Iterable[EvaluationResultRecord]) -> Aggregates:
         n_scored=len(scores),
         n_error=n_error,
         n_skipped=n_skipped,
+        n_applicable=len(applicable),
         mean_score=mean_score,
         pass_rate=pass_rate,
     )
@@ -163,6 +168,11 @@ def compare_evaluator_metrics(
             delta, status = None, "config_mismatch"
         else:
             delta, status = classify_delta(cand_value, base_value, threshold=threshold)
+            if (
+                status in ("regression", "improved", "unchanged")
+                and min(candidate.n_applicable, baseline.n_applicable) < MIN_APPLICABLE_ITEMS
+            ):
+                status = "insufficient_n"
         rows.append(
             MetricComparison(
                 evaluator_id=evaluator_id,

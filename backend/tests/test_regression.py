@@ -10,6 +10,7 @@ from aiobs.domain.evaluation import EvaluationResultRecord, EvaluationRun
 from aiobs.regression.aggregate import (
     DELTA_THRESHOLD,
     Aggregates,
+    MIN_APPLICABLE_ITEMS,
     aggregate_results,
     classify_delta,
     compare_evaluator_metrics,
@@ -158,10 +159,59 @@ def test_classify_delta_threshold_and_directions() -> None:
     assert classify_delta(0.5, None) == (None, "unavailable")
 
 
+def test_aggregate_exposes_n_applicable() -> None:
+    aggregates = aggregate_results(
+        [
+            _result(score=1.0, label="PASS"),
+            _result(score=0.0, label="FAIL"),
+            _result(score=None, label="SKIPPED"),
+            _result(score=None, label="ERROR"),
+        ]
+    )
+    assert aggregates.n_applicable == 3  # PASS + FAIL + ERROR; not SKIPPED
+
+
+def test_compare_insufficient_n_when_either_side_below_min() -> None:
+    evaluator_id = uuid.uuid4()
+    candidate = Aggregates(4, 4, 0, 0, 4, 0.5, 0.5)
+    baseline = Aggregates(10, 10, 0, 0, 10, 0.9, 0.9)
+    assert MIN_APPLICABLE_ITEMS == 5
+    rows = compare_evaluator_metrics(
+        evaluator_id=evaluator_id,
+        evaluator_name="quality",
+        candidate=candidate,
+        baseline=baseline,
+    )
+    assert all(r.status == "insufficient_n" for r in rows)
+    assert all(r.delta == pytest.approx(-0.4) for r in rows)
+
+
+def test_compare_regression_when_both_sides_meet_min_n() -> None:
+    rows = compare_evaluator_metrics(
+        evaluator_id=uuid.uuid4(),
+        evaluator_name="quality",
+        candidate=Aggregates(5, 5, 0, 0, 5, 0.5, 0.5),
+        baseline=Aggregates(5, 5, 0, 0, 5, 0.9, 0.9),
+    )
+    assert all(r.status == "regression" for r in rows)
+
+
+def test_compare_config_mismatch_beats_insufficient_n() -> None:
+    rows = compare_evaluator_metrics(
+        evaluator_id=uuid.uuid4(),
+        evaluator_name="quality",
+        candidate=Aggregates(2, 2, 0, 0, 2, 0.5, 0.5),
+        baseline=Aggregates(2, 2, 0, 0, 2, 0.9, 0.9),
+        config_mismatch=True,
+    )
+    assert all(r.status == "config_mismatch" for r in rows)
+    assert all(r.delta is None for r in rows)
+
+
 def test_compare_evaluator_metrics_emits_both_metrics() -> None:
     evaluator_id = uuid.uuid4()
-    candidate = Aggregates(10, 10, 0, 0, 0.7, 0.7)
-    baseline = Aggregates(10, 10, 0, 0, 0.9, 0.9)
+    candidate = Aggregates(10, 10, 0, 0, 10, 0.7, 0.7)
+    baseline = Aggregates(10, 10, 0, 0, 10, 0.9, 0.9)
     rows = compare_evaluator_metrics(
         evaluator_id=evaluator_id,
         evaluator_name="exact",
@@ -200,8 +250,8 @@ def test_compare_evaluator_metrics_config_mismatch_has_no_delta() -> None:
     rows = compare_evaluator_metrics(
         evaluator_id=uuid.uuid4(),
         evaluator_name="hit_at_k",
-        candidate=Aggregates(10, 10, 0, 0, 0.7, 0.7),
-        baseline=Aggregates(10, 10, 0, 0, 0.9, 0.9),
+        candidate=Aggregates(10, 10, 0, 0, 10, 0.7, 0.7),
+        baseline=Aggregates(10, 10, 0, 0, 10, 0.9, 0.9),
         config_mismatch=True,
     )
     assert all(r.status == "config_mismatch" for r in rows)
