@@ -77,7 +77,7 @@ def test_select_runs_unknown_id_raises() -> None:
         select_runs([_run()], run_ids=[missing])
 
 
-def test_aggregate_mean_and_pass_rate_include_skipped_error_as_zero() -> None:
+def test_aggregate_excludes_skipped_and_counts_error_as_zero() -> None:
     aggregates = aggregate_results(
         [
             _result(score=1.0, label="PASS"),
@@ -90,8 +90,32 @@ def test_aggregate_mean_and_pass_rate_include_skipped_error_as_zero() -> None:
     assert aggregates.n_scored == 2
     assert aggregates.n_skipped == 1
     assert aggregates.n_error == 1
-    assert aggregates.mean_score == 0.25
-    assert aggregates.pass_rate == 0.25
+    assert aggregates.mean_score == pytest.approx(1 / 3)
+    assert aggregates.pass_rate == pytest.approx(1 / 3)
+
+
+def test_aggregate_skipped_does_not_lower_mean() -> None:
+    aggregates = aggregate_results(
+        [
+            _result(score=1.0, label="PASS"),
+            _result(score=None, label="SKIPPED"),
+            _result(score=None, label="skipped"),
+        ]
+    )
+    assert aggregates.mean_score == 1.0
+    assert aggregates.pass_rate == 1.0
+
+
+def test_aggregate_all_skipped_is_null() -> None:
+    aggregates = aggregate_results(
+        [
+            _result(score=None, label="SKIPPED"),
+            _result(score=None, label="SKIPPED"),
+        ]
+    )
+    assert aggregates.n_skipped == 2
+    assert aggregates.mean_score is None
+    assert aggregates.pass_rate is None
 
 
 def test_aggregate_pass_rate_normalizes_label_casing() -> None:
@@ -105,7 +129,7 @@ def test_aggregate_pass_rate_normalizes_label_casing() -> None:
     assert aggregates.mean_score == 0.5
 
 
-def test_aggregate_all_skipped_or_error_counts_as_zero() -> None:
+def test_aggregate_skipped_plus_error_counts_error_as_zero() -> None:
     aggregates = aggregate_results(
         [
             _result(score=None, label="SKIPPED"),

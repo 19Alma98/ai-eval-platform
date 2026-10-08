@@ -92,10 +92,13 @@ def aggregate_results(results: Iterable[EvaluationResultRecord]) -> Aggregates:
     n_error = sum(1 for label in labels if label == "ERROR")
     n_skipped = sum(1 for label in labels if label == "SKIPPED")
     n_pass = sum(1 for label in labels if label == "PASS")
-    # Coverage-aware: missing scores (SKIPPED/ERROR) count as 0.0 in the mean.
-    covered_scores = [r.score if r.score is not None else 0.0 for r in items]
+    # SKIPPED means the metric does not apply to the item (e.g. no must_contain gold),
+    # so it is excluded from the denominator. ERROR still counts as 0.0 so evaluator
+    # or infra failures cannot inflate the mean.
+    applicable = [r for r, label in zip(items, labels, strict=True) if label != "SKIPPED"]
+    covered_scores = [r.score if r.score is not None else 0.0 for r in applicable]
     mean_score = sum(covered_scores) / len(covered_scores) if covered_scores else None
-    pass_rate = (n_pass / len(items)) if items else None
+    pass_rate = (n_pass / len(applicable)) if applicable else None
     return Aggregates(
         n_items=len(items),
         n_scored=len(scores),
