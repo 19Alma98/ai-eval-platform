@@ -216,6 +216,7 @@ export type ExperimentCompareResponse = {
   improved: MetricComparison[];
   unchanged: MetricComparison[];
   config_mismatches?: MetricComparison[];
+  insufficient_n?: MetricComparison[];
 };
 
 export type ItemSide = {

@@ -28,6 +28,7 @@ const STATUS_LABELS: Record<string, string> = {
   unchanged: "Unchanged",
   unavailable: "Unavailable",
   config_mismatch: "Config mismatch",
+  insufficient_n: "Insufficient n",
   unset: "Unset",
 };
 
@@ -51,7 +52,7 @@ export function statusTone(status: string): string {
   }
   if (s === "fail" || s === "failed") return "fail";
   if (s === "error") return "error";
-  if (s === "skipped") return "warn";
+  if (s === "skipped" || s === "insufficient_n") return "warn";
   return "unset";
 }
 

@@ -15,6 +15,7 @@ export const METRIC_STATUS_STYLES: Record<string, string> = {
   unchanged: "bg-status-unset-bg text-status-unset",
   unavailable: "bg-status-warn-bg text-status-warn",
   config_mismatch: "bg-status-warn-bg text-status-warn",
+  insufficient_n: "bg-status-warn-bg text-status-warn",
 };
 
 function formatMetricValue(value: number | null): string {

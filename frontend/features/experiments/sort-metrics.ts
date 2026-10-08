@@ -3,6 +3,7 @@ export function sortMetricsForDisplay<T extends { status: string }>(metrics: T[]
     regression: 0,
     config_mismatch: 1,
     unavailable: 1,
+    insufficient_n: 1,
     unchanged: 2,
     improved: 3,
   };

@@ -181,6 +181,7 @@ export function ExperimentCompareView({
   const unavailableCount =
     comparison?.metrics.filter((m) => m.status === "unavailable").length ?? 0;
   const configMismatchCount = comparison?.config_mismatches?.length ?? 0;
+  const insufficientNCount = comparison?.insufficient_n?.length ?? 0;
 
   return (
     <div className="flex flex-col gap-3">
@@ -230,6 +231,14 @@ export function ExperimentCompareView({
                 Config mismatch{" "}
                 <span className="font-mono tabular-nums text-status-warn">
                   {configMismatchCount}
+                </span>
+              </span>
+            ) : null}
+            {insufficientNCount > 0 ? (
+              <span title="Sample too small (n < 5 applicable items) to call a regression">
+                Insufficient n{" "}
+                <span className="font-mono tabular-nums text-status-warn">
+                  {insufficientNCount}
                 </span>
               </span>
             ) : null}

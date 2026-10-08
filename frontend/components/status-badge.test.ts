@@ -21,6 +21,10 @@ describe("statusTone", () => {
     assert.equal(statusTone("SKIPPED"), "warn");
   });
 
+  it("maps insufficient_n to warn", () => {
+    assert.equal(statusTone("insufficient_n"), "warn");
+  });
+
   it("falls back to unset", () => {
     assert.equal(statusTone("PENDING"), "unset");
   });
@@ -37,6 +41,7 @@ describe("formatStatusLabel", () => {
     assert.equal(formatStatusLabel("improved"), "Improved");
     assert.equal(formatStatusLabel("unchanged"), "Unchanged");
     assert.equal(formatStatusLabel("unavailable"), "Unavailable");
+    assert.equal(formatStatusLabel("insufficient_n"), "Insufficient n");
     assert.equal(formatStatusLabel("pass"), "Passed");
     assert.equal(formatStatusLabel("passed"), "Passed");
     assert.equal(formatStatusLabel("unset"), "Unset");
