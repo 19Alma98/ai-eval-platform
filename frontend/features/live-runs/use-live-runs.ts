@@ -1,7 +1,11 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
-import { getLiveInteraction, listLiveInteractions } from "@/lib/api/live-runs";
+import {
+  getLiveInteraction,
+  getLiveJudgeCalibration,
+  listLiveInteractions,
+} from "@/lib/api/live-runs";
 
 export function liveRunsQueryKey(
   projectId: string,
@@ -31,6 +35,19 @@ export function useLiveRuns(
       }),
     enabled: Boolean(projectId),
     refetchInterval: 5000,
+  });
+}
+
+export function liveCalibrationQueryKey(projectId: string) {
+  return ["live-calibration", projectId] as const;
+}
+
+export function useLiveJudgeCalibration(projectId: string | null) {
+  const key = projectId ?? "";
+  return useQuery({
+    queryKey: liveCalibrationQueryKey(key),
+    queryFn: () => getLiveJudgeCalibration(key),
+    enabled: Boolean(projectId),
   });
 }
 

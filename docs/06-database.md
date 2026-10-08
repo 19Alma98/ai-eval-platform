@@ -23,6 +23,7 @@ metrics_set_entries
 experiment_item_outputs
 live_interactions
 live_interaction_scores
+live_score_reviews
 live_reviews
 release_policies
 reviews

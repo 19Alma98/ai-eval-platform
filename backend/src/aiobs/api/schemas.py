@@ -491,6 +491,16 @@ class SubmitLiveInteractionRequest(BaseModel):
     metrics_set_id: uuid.UUID | None = None
 
 
+class LiveScoreReviewResponse(BaseModel):
+    id: uuid.UUID
+    live_interaction_score_id: uuid.UUID
+    verdict: str
+    corrected_explanation: str | None
+    note: str | None
+    reviewer: str | None
+    created_at: datetime
+
+
 class LiveInteractionScoreResponse(BaseModel):
     id: uuid.UUID
     live_interaction_id: uuid.UUID
@@ -502,6 +512,7 @@ class LiveInteractionScoreResponse(BaseModel):
     threshold: float | None
     created_at: datetime
     metadata: dict[str, Any] = Field(default_factory=dict)
+    review: LiveScoreReviewResponse | None = None
 
 
 class LiveReviewResponse(BaseModel):
@@ -535,6 +546,26 @@ class UpsertLiveReviewRequest(BaseModel):
     verdict: str = Field(min_length=1, max_length=32)
     note: str | None = None
     reviewer: str | None = Field(default=None, max_length=200)
+
+
+class UpsertLiveScoreReviewRequest(BaseModel):
+    verdict: str = Field(min_length=1, max_length=32)
+    corrected_explanation: str | None = None
+    note: str | None = None
+    reviewer: str | None = Field(default=None, max_length=200)
+
+
+class JudgeCalibrationBucketResponse(BaseModel):
+    kind: str
+    model: str | None
+    method: str | None
+    prompt_version: str | None
+    n_reviewed: int
+    n_agree: int
+    n_disagree: int
+    agreement_rate: float
+    n_explanation_edits: int
+    explanation_edit_rate: float
 
 
 class PromoteLiveInteractionRequest(BaseModel):

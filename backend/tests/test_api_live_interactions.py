@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import uuid
 from collections.abc import AsyncIterator
+from datetime import datetime
 
 import pytest
 from httpx import ASGITransport, AsyncClient
@@ -18,6 +19,7 @@ from aiobs.domain.live_interaction import (
     LiveInteraction,
     LiveInteractionScore,
     LiveReview,
+    LiveScoreReview,
 )
 from aiobs.domain.project import Project
 from aiobs.evaluation import bootstrap_evaluators
@@ -58,6 +60,7 @@ class InMemoryLiveRepository:
         self._items: dict[uuid.UUID, LiveInteraction] = {}
         self._scores: dict[uuid.UUID, list[LiveInteractionScore]] = {}
         self._reviews: dict[uuid.UUID, LiveReview] = {}
+        self._score_reviews: dict[uuid.UUID, LiveScoreReview] = {}
 
     async def add(self, interaction: LiveInteraction) -> LiveInteraction:
         self._items[interaction.id] = interaction
@@ -98,11 +101,20 @@ class InMemoryLiveRepository:
     async def replace_scores(
         self, interaction_id: uuid.UUID, scores: list[LiveInteractionScore]
     ) -> list[LiveInteractionScore]:
+        for old in self._scores.get(interaction_id, []):
+            self._score_reviews.pop(old.id, None)
         self._scores[interaction_id] = list(scores)
         return list(scores)
 
     async def list_scores(self, interaction_id: uuid.UUID) -> list[LiveInteractionScore]:
         return list(self._scores.get(interaction_id, []))
+
+    async def get_score(self, score_id: uuid.UUID) -> LiveInteractionScore | None:
+        for scores in self._scores.values():
+            for score in scores:
+                if score.id == score_id:
+                    return score
+        return None
 
     async def upsert_review(self, review: LiveReview) -> LiveReview:
         self._reviews[review.live_interaction_id] = review
@@ -110,6 +122,40 @@ class InMemoryLiveRepository:
 
     async def get_review(self, interaction_id: uuid.UUID) -> LiveReview | None:
         return self._reviews.get(interaction_id)
+
+    async def upsert_score_review(self, review: LiveScoreReview) -> LiveScoreReview:
+        self._score_reviews[review.live_interaction_score_id] = review
+        return review
+
+    async def get_score_review(self, score_id: uuid.UUID) -> LiveScoreReview | None:
+        return self._score_reviews.get(score_id)
+
+    async def list_score_reviews_by_score_ids(
+        self, score_ids: list[uuid.UUID]
+    ) -> dict[uuid.UUID, LiveScoreReview]:
+        return {
+            sid: self._score_reviews[sid]
+            for sid in score_ids
+            if sid in self._score_reviews
+        }
+
+    async def list_calibration_rows(
+        self,
+        project_id: uuid.UUID,
+        *,
+        since: datetime,
+    ) -> list[tuple[LiveInteractionScore, LiveScoreReview]]:
+        out: list[tuple[LiveInteractionScore, LiveScoreReview]] = []
+        for interaction in self._items.values():
+            if interaction.project_id != project_id:
+                continue
+            for score in self._scores.get(interaction.id, []):
+                review = self._score_reviews.get(score.id)
+                if review is None or review.created_at < since:
+                    continue
+                out.append((score, review))
+        out.sort(key=lambda pair: pair[1].created_at, reverse=True)
+        return out
 
 
 class InMemoryDatasetRepository:
@@ -243,3 +289,78 @@ async def test_submit_rescore_review_promote(client: AsyncClient) -> None:
     listed = await client.get(f"/api/v1/projects/{project_id}/live-interactions")
     assert listed.status_code == 200
     assert len(listed.json()) == 1
+
+
+@pytest.mark.asyncio
+async def test_score_review_and_calibration(client: AsyncClient) -> None:
+    proj = await client.post(
+        "/api/v1/projects", json={"name": "Calib", "slug": "calib"}
+    )
+    assert proj.status_code == 201
+    project_id = proj.json()["id"]
+
+    ensure = await client.post(f"/api/v1/projects/{project_id}/metrics-pack/ensure")
+    assert ensure.status_code == 200, ensure.text
+
+    submit = await client.post(
+        f"/api/v1/projects/{project_id}/live-interactions",
+        json={
+            "question": "What is PTO?",
+            "answer": "Paid time off",
+            "documents": [{"id": "doc-1", "text": "PTO means paid time off"}],
+        },
+    )
+    assert submit.status_code == 202
+    interaction_id = submit.json()["id"]
+
+    scored = await client.post(f"/api/v1/live-interactions/{interaction_id}/rescore")
+    assert scored.status_code == 200
+    scores = scored.json()["scores"]
+    assert scores
+    score_id = scores[0]["id"]
+    old_score_ids = {s["id"] for s in scores}
+
+    review = await client.post(
+        f"/api/v1/live-interaction-scores/{score_id}/review",
+        json={
+            "verdict": "agree",
+            "corrected_explanation": "Clear and grounded in the doc.",
+        },
+    )
+    assert review.status_code == 200
+    assert review.json()["verdict"] == "agree"
+    assert review.json()["corrected_explanation"] == "Clear and grounded in the doc."
+
+    detail = await client.get(f"/api/v1/live-interactions/{interaction_id}")
+    assert detail.status_code == 200
+    nested = next(s for s in detail.json()["scores"] if s["id"] == score_id)
+    assert nested["review"]["verdict"] == "agree"
+
+    calib = await client.get(
+        f"/api/v1/projects/{project_id}/live-interactions/calibration"
+    )
+    assert calib.status_code == 200
+    buckets = calib.json()
+    assert len(buckets) >= 1
+    bucket = next(b for b in buckets if b["kind"] == scores[0]["kind"])
+    assert bucket["n_reviewed"] == 1
+    assert bucket["n_agree"] == 1
+    assert bucket["agreement_rate"] == 1.0
+    assert bucket["n_explanation_edits"] == 1
+
+    rescored = await client.post(f"/api/v1/live-interactions/{interaction_id}/rescore")
+    assert rescored.status_code == 200
+    new_ids = {s["id"] for s in rescored.json()["scores"]}
+    assert old_score_ids.isdisjoint(new_ids)
+
+    missing = await client.post(
+        f"/api/v1/live-interaction-scores/{score_id}/review",
+        json={"verdict": "disagree"},
+    )
+    assert missing.status_code == 404
+
+    empty_calib = await client.get(
+        f"/api/v1/projects/{project_id}/live-interactions/calibration"
+    )
+    assert empty_calib.status_code == 200
+    assert empty_calib.json() == []

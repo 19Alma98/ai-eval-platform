@@ -542,6 +542,41 @@ class LiveInteractionScoreModel(Base):
         "LiveInteractionModel",
         back_populates="scores",
     )
+    score_review: Mapped[LiveScoreReviewModel | None] = relationship(
+        "LiveScoreReviewModel",
+        back_populates="score",
+        uselist=False,
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+    )
+
+
+class LiveScoreReviewModel(Base):
+    __tablename__ = "live_score_reviews"
+    __table_args__ = (
+        UniqueConstraint("live_interaction_score_id", name="uq_live_score_reviews_score_id"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True)
+    live_interaction_score_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey("live_interaction_scores.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    verdict: Mapped[str] = mapped_column(String(32), nullable=False)
+    corrected_explanation: Mapped[str | None] = mapped_column(Text, nullable=True)
+    note: Mapped[str | None] = mapped_column(Text, nullable=True)
+    reviewer: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+    )
+
+    score: Mapped[LiveInteractionScoreModel] = relationship(
+        "LiveInteractionScoreModel",
+        back_populates="score_review",
+    )
 
 
 class LiveReviewModel(Base):

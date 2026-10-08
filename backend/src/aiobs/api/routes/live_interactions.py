@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import uuid
+from datetime import datetime
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, status
 from fastapi.responses import JSONResponse
@@ -11,16 +12,21 @@ from aiobs.api.deps import (
     get_promote_live_interaction,
     get_score_live_interaction,
     get_submit_live_interaction,
+    get_summarize_live_judge_calibration,
     get_upsert_live_review,
+    get_upsert_live_score_review,
 )
 from aiobs.api.schemas import (
     DatasetItemResponse,
+    JudgeCalibrationBucketResponse,
     LiveInteractionResponse,
     LiveInteractionScoreResponse,
     LiveReviewResponse,
+    LiveScoreReviewResponse,
     PromoteLiveInteractionRequest,
     SubmitLiveInteractionRequest,
     UpsertLiveReviewRequest,
+    UpsertLiveScoreReviewRequest,
 )
 from aiobs.application.datasets import DatasetNotFoundError
 from aiobs.application.live_interactions import (
@@ -28,6 +34,7 @@ from aiobs.application.live_interactions import (
     ListLiveInteractions,
     LiveInteractionDetail,
     LiveInteractionNotFoundError,
+    LiveScoreNotFoundError,
     PromoteLiveInteraction,
     PromoteLiveInteractionCommand,
     ScoreLiveInteraction,
@@ -35,17 +42,46 @@ from aiobs.application.live_interactions import (
     SubmitLiveInteractionCommand,
     UpsertLiveReview,
     UpsertLiveReviewCommand,
+    UpsertLiveScoreReview,
+    UpsertLiveScoreReviewCommand,
     schedule_live_score,
+)
+from aiobs.application.live_judge_calibration import (
+    JudgeCalibrationBucket,
+    SummarizeLiveJudgeCalibration,
 )
 from aiobs.application.metrics_sets import MetricsSetNotFoundError
 from aiobs.application.projects import ProjectNotFoundError
 from aiobs.domain.dataset import DatasetItem
-from aiobs.domain.live_interaction import LiveInteraction, LiveInteractionScore, LiveReview
+from aiobs.domain.live_interaction import (
+    LiveInteraction,
+    LiveInteractionScore,
+    LiveReview,
+    LiveScoreReview,
+)
 
 router = APIRouter(tags=["live-interactions"])
 
 
-def _score_response(score: LiveInteractionScore) -> LiveInteractionScoreResponse:
+def _score_review_response(review: LiveScoreReview) -> LiveScoreReviewResponse:
+    return LiveScoreReviewResponse.model_validate(
+        {
+            "id": review.id,
+            "live_interaction_score_id": review.live_interaction_score_id,
+            "verdict": review.verdict,
+            "corrected_explanation": review.corrected_explanation,
+            "note": review.note,
+            "reviewer": review.reviewer,
+            "created_at": review.created_at,
+        }
+    )
+
+
+def _score_response(
+    score: LiveInteractionScore,
+    *,
+    review: LiveScoreReview | None = None,
+) -> LiveInteractionScoreResponse:
     return LiveInteractionScoreResponse.model_validate(
         {
             "id": score.id,
@@ -58,6 +94,7 @@ def _score_response(score: LiveInteractionScore) -> LiveInteractionScoreResponse
             "threshold": score.threshold,
             "created_at": score.created_at,
             "metadata": score.metadata,
+            "review": _score_review_response(review) if review is not None else None,
         }
     )
 
@@ -80,7 +117,9 @@ def _interaction_response(
     *,
     scores: list[LiveInteractionScore] | None = None,
     review: LiveReview | None = None,
+    score_reviews: dict[uuid.UUID, LiveScoreReview] | None = None,
 ) -> LiveInteractionResponse:
+    reviews = score_reviews or {}
     return LiveInteractionResponse.model_validate(
         {
             "id": interaction.id,
@@ -96,7 +135,9 @@ def _interaction_response(
             "error_message": interaction.error_message,
             "created_at": interaction.created_at,
             "scored_at": interaction.scored_at,
-            "scores": [_score_response(s) for s in (scores or [])],
+            "scores": [
+                _score_response(s, review=reviews.get(s.id)) for s in (scores or [])
+            ],
             "review": _review_response(review) if review is not None else None,
         }
     )
@@ -107,6 +148,7 @@ def _detail_response(detail: LiveInteractionDetail) -> LiveInteractionResponse:
         detail.interaction,
         scores=detail.scores,
         review=detail.review,
+        score_reviews=detail.score_reviews,
     )
 
 
@@ -122,6 +164,23 @@ def _item_response(item: DatasetItem) -> DatasetItemResponse:
             "metadata": item.metadata,
             "source_trace_id": item.source_trace_id,
             "source_span_id": item.source_span_id,
+        }
+    )
+
+
+def _calibration_response(bucket: JudgeCalibrationBucket) -> JudgeCalibrationBucketResponse:
+    return JudgeCalibrationBucketResponse.model_validate(
+        {
+            "kind": bucket.kind,
+            "model": bucket.model,
+            "method": bucket.method,
+            "prompt_version": bucket.prompt_version,
+            "n_reviewed": bucket.n_reviewed,
+            "n_agree": bucket.n_agree,
+            "n_disagree": bucket.n_disagree,
+            "agreement_rate": bucket.agreement_rate,
+            "n_explanation_edits": bucket.n_explanation_edits,
+            "explanation_edit_rate": bucket.explanation_edit_rate,
         }
     )
 
@@ -164,6 +223,24 @@ async def submit_live_interaction(
 
 
 @router.get(
+    "/api/v1/projects/{project_id}/live-interactions/calibration",
+    response_model=list[JudgeCalibrationBucketResponse],
+)
+async def live_judge_calibration(
+    project_id: uuid.UUID,
+    since: datetime | None = Query(default=None),
+    use_case: SummarizeLiveJudgeCalibration = Depends(
+        get_summarize_live_judge_calibration
+    ),
+) -> list[JudgeCalibrationBucketResponse]:
+    try:
+        buckets = await use_case.execute(project_id, since=since)
+    except ProjectNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    return [_calibration_response(b) for b in buckets]
+
+
+@router.get(
     "/api/v1/projects/{project_id}/live-interactions",
     response_model=list[LiveInteractionResponse],
 )
@@ -183,8 +260,13 @@ async def list_live_interactions(
         limit=limit,
     )
     return [
-        _interaction_response(interaction, scores=scores, review=review)
-        for interaction, scores, review in rows
+        _interaction_response(
+            interaction,
+            scores=scores,
+            review=review,
+            score_reviews=score_reviews,
+        )
+        for interaction, scores, review, score_reviews in rows
     ]
 
 
@@ -226,6 +308,32 @@ async def upsert_live_review(
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     return _review_response(review)
+
+
+@router.post(
+    "/api/v1/live-interaction-scores/{score_id}/review",
+    response_model=LiveScoreReviewResponse,
+)
+async def upsert_live_score_review(
+    score_id: uuid.UUID,
+    body: UpsertLiveScoreReviewRequest,
+    use_case: UpsertLiveScoreReview = Depends(get_upsert_live_score_review),
+) -> LiveScoreReviewResponse:
+    try:
+        review = await use_case.execute(
+            UpsertLiveScoreReviewCommand(
+                score_id=score_id,
+                verdict=body.verdict,
+                corrected_explanation=body.corrected_explanation,
+                note=body.note,
+                reviewer=body.reviewer,
+            )
+        )
+    except LiveScoreNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    return _score_review_response(review)
 
 
 @router.post(

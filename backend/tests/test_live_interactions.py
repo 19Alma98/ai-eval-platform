@@ -28,6 +28,7 @@ from aiobs.domain.live_interaction import (
     LiveInteraction,
     LiveInteractionScore,
     LiveReview,
+    LiveScoreReview,
     filter_goldless_entries,
 )
 from aiobs.domain.metrics_set import MetricsSet, MetricsSetEntry
@@ -65,6 +66,7 @@ class InMemoryLiveRepository:
         self._items: dict[uuid.UUID, LiveInteraction] = {}
         self._scores: dict[uuid.UUID, list[LiveInteractionScore]] = {}
         self._reviews: dict[uuid.UUID, LiveReview] = {}
+        self._score_reviews: dict[uuid.UUID, LiveScoreReview] = {}
 
     async def add(self, interaction: LiveInteraction) -> LiveInteraction:
         if interaction.external_id is not None:
@@ -112,11 +114,20 @@ class InMemoryLiveRepository:
     async def replace_scores(
         self, interaction_id: uuid.UUID, scores: list[LiveInteractionScore]
     ) -> list[LiveInteractionScore]:
+        for old in self._scores.get(interaction_id, []):
+            self._score_reviews.pop(old.id, None)
         self._scores[interaction_id] = list(scores)
         return list(scores)
 
     async def list_scores(self, interaction_id: uuid.UUID) -> list[LiveInteractionScore]:
         return list(self._scores.get(interaction_id, []))
+
+    async def get_score(self, score_id: uuid.UUID) -> LiveInteractionScore | None:
+        for scores in self._scores.values():
+            for score in scores:
+                if score.id == score_id:
+                    return score
+        return None
 
     async def upsert_review(self, review: LiveReview) -> LiveReview:
         self._reviews[review.live_interaction_id] = review
@@ -124,6 +135,40 @@ class InMemoryLiveRepository:
 
     async def get_review(self, interaction_id: uuid.UUID) -> LiveReview | None:
         return self._reviews.get(interaction_id)
+
+    async def upsert_score_review(self, review: LiveScoreReview) -> LiveScoreReview:
+        self._score_reviews[review.live_interaction_score_id] = review
+        return review
+
+    async def get_score_review(self, score_id: uuid.UUID) -> LiveScoreReview | None:
+        return self._score_reviews.get(score_id)
+
+    async def list_score_reviews_by_score_ids(
+        self, score_ids: list[uuid.UUID]
+    ) -> dict[uuid.UUID, LiveScoreReview]:
+        return {
+            sid: self._score_reviews[sid]
+            for sid in score_ids
+            if sid in self._score_reviews
+        }
+
+    async def list_calibration_rows(
+        self,
+        project_id: uuid.UUID,
+        *,
+        since: datetime,
+    ) -> list[tuple[LiveInteractionScore, LiveScoreReview]]:
+        out: list[tuple[LiveInteractionScore, LiveScoreReview]] = []
+        for interaction in self._items.values():
+            if interaction.project_id != project_id:
+                continue
+            for score in self._scores.get(interaction.id, []):
+                review = self._score_reviews.get(score.id)
+                if review is None or review.created_at < since:
+                    continue
+                out.append((score, review))
+        out.sort(key=lambda pair: pair[1].created_at, reverse=True)
+        return out
 
 
 class InMemoryMetricsSetRepository:

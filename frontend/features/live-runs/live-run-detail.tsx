@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { useMemo, useState, type SubmitEvent } from "react";
+import { useEffect, useMemo, useState, type SubmitEvent } from "react";
 import { ArrowLeft } from "lucide-react";
 import { toast } from "sonner";
 import { useDatasets } from "@/features/datasets/use-datasets";
@@ -27,18 +27,106 @@ import { formatErrorForUi } from "@/lib/api/client";
 import {
   promoteLiveInteraction,
   rescoreLiveInteraction,
-  reviewLiveInteraction,
+  reviewLiveScore,
 } from "@/lib/api/live-runs";
+import type { LiveInteractionScore } from "@/lib/api/types";
 import { withProjectQuery } from "@/lib/project-href";
 import { useProjectId } from "@/lib/project-store";
 import { liveRunQueryKey, useLiveRun } from "./use-live-runs";
+
+function ScoreReviewControls({
+  score,
+  interactionId,
+}: {
+  score: LiveInteractionScore;
+  interactionId: string;
+}) {
+  const queryClient = useQueryClient();
+  const judgeExplanation = score.explanation ?? "";
+  const existing = score.review;
+  const [explanation, setExplanation] = useState(
+    existing?.corrected_explanation ?? judgeExplanation,
+  );
+  const [note, setNote] = useState(existing?.note ?? "");
+
+  useEffect(() => {
+    setExplanation(existing?.corrected_explanation ?? judgeExplanation);
+    setNote(existing?.note ?? "");
+  }, [existing?.corrected_explanation, existing?.note, judgeExplanation, score.id]);
+
+  const mutation = useMutation({
+    mutationFn: (verdict: "agree" | "disagree") => {
+      const trimmed = explanation.trim();
+      const changed =
+        trimmed.length > 0 && trimmed !== judgeExplanation.trim();
+      return reviewLiveScore(score.id, {
+        verdict,
+        corrected_explanation: changed ? trimmed : undefined,
+        note: note.trim() || undefined,
+      });
+    },
+    onSuccess: async () => {
+      toast.success(`Review saved for ${score.kind}`);
+      await queryClient.invalidateQueries({
+        queryKey: liveRunQueryKey(interactionId),
+      });
+    },
+    onError: (err) => toast.error(formatErrorForUi(err)),
+  });
+
+  return (
+    <div className="mt-3 space-y-2 border-t border-border pt-3">
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="text-xs font-medium text-muted-foreground">
+          Human review
+        </span>
+        {existing ? (
+          <Badge variant="outline">{existing.verdict}</Badge>
+        ) : null}
+      </div>
+      <label className="block text-xs text-muted-foreground">
+        Explanation (edit if incomplete)
+        <Textarea
+          className="mt-1"
+          value={explanation}
+          onChange={(e) => setExplanation(e.target.value)}
+          rows={3}
+        />
+      </label>
+      <Textarea
+        placeholder="Optional note"
+        value={note}
+        onChange={(e) => setNote(e.target.value)}
+        rows={2}
+      />
+      <div className="flex flex-wrap gap-2">
+        <Button
+          type="button"
+          size="sm"
+          disabled={mutation.isPending}
+          onClick={() => mutation.mutate("agree")}
+        >
+          Agree
+        </Button>
+        <Button
+          type="button"
+          size="sm"
+          variant="outline"
+          disabled={mutation.isPending}
+          onClick={() => mutation.mutate("disagree")}
+        >
+          Disagree
+        </Button>
+      </div>
+    </div>
+  );
+}
 
 export function LiveRunDetail({ interactionId }: { interactionId: string }) {
   const { projectId } = useProjectId();
   const queryClient = useQueryClient();
   const query = useLiveRun(interactionId);
   const datasets = useDatasets(projectId);
-  const [note, setNote] = useState("");
   const [promoteOpen, setPromoteOpen] = useState(false);
   const [datasetId, setDatasetId] = useState("");
   const [expectedOutput, setExpectedOutput] = useState("");
@@ -46,21 +134,6 @@ export function LiveRunDetail({ interactionId }: { interactionId: string }) {
   const [extraDocIds, setExtraDocIds] = useState("");
 
   const row = query.data;
-
-  const reviewMutation = useMutation({
-    mutationFn: (verdict: "agree" | "disagree") =>
-      reviewLiveInteraction(interactionId, {
-        verdict,
-        note: note.trim() || undefined,
-      }),
-    onSuccess: async () => {
-      toast.success("Review saved");
-      await queryClient.invalidateQueries({
-        queryKey: liveRunQueryKey(interactionId),
-      });
-    },
-    onError: (err) => toast.error(formatErrorForUi(err)),
-  });
 
   const rescoreMutation = useMutation({
     mutationFn: () => rescoreLiveInteraction(interactionId),
@@ -87,7 +160,6 @@ export function LiveRunDetail({ interactionId }: { interactionId: string }) {
       setExpectedDocIds([]);
       setExtraDocIds("");
       if (projectId) {
-        // leave toast; user can navigate via datasets
         void item;
       }
     },
@@ -112,6 +184,8 @@ export function LiveRunDetail({ interactionId }: { interactionId: string }) {
         .filter(Boolean),
     ]),
   );
+
+  const reviewedKinds = (row?.scores ?? []).filter((s) => s.review).length;
 
   if (query.isLoading) return <LoadingBlock />;
   if (query.isError || !row) {
@@ -145,8 +219,10 @@ export function LiveRunDetail({ interactionId }: { interactionId: string }) {
         <span className="text-sm text-muted-foreground">
           <RelativeTime date={row.created_at} />
         </span>
-        {row.review ? (
-          <Badge variant="outline">review: {row.review.verdict}</Badge>
+        {reviewedKinds > 0 ? (
+          <Badge variant="outline">
+            reviewed {reviewedKinds}/{row.scores.length}
+          </Badge>
         ) : null}
         <div className="flex-1" />
         <Button
@@ -158,6 +234,97 @@ export function LiveRunDetail({ interactionId }: { interactionId: string }) {
         >
           Rescore
         </Button>
+        <Dialog open={promoteOpen} onOpenChange={setPromoteOpen}>
+          <DialogTrigger
+            render={
+              <Button type="button" size="sm" variant="secondary">
+                Promote to TestSet
+              </Button>
+            }
+          />
+          <DialogContent>
+            <form onSubmit={onPromote}>
+              <DialogHeader>
+                <DialogTitle>Promote to test set</DialogTitle>
+                <DialogDescription>
+                  Creates a dataset item from this question. Gold must be
+                  written by you: the production answer and retrieved docs
+                  are what is being evaluated, so they are never copied in.
+                </DialogDescription>
+              </DialogHeader>
+              <div className="space-y-3 py-3">
+                <label className="block text-sm">
+                  Dataset
+                  <select
+                    className="mt-1 h-9 w-full rounded-md border border-border bg-background px-2 text-sm"
+                    value={datasetId}
+                    onChange={(e) => setDatasetId(e.target.value)}
+                    required
+                  >
+                    <option value="">Select…</option>
+                    {(datasets.data ?? []).map((ds) => (
+                      <option key={ds.id} value={ds.id}>
+                        {ds.name} v{ds.version}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className="block text-sm">
+                  Expected output (gold)
+                  <Textarea
+                    className="mt-1"
+                    value={expectedOutput}
+                    onChange={(e) => setExpectedOutput(e.target.value)}
+                    placeholder={`Production answer: ${row.answer}`}
+                    required
+                  />
+                </label>
+                {docPreview.length > 0 ? (
+                  <fieldset className="text-sm">
+                    <legend>Expected doc ids (check only truly relevant)</legend>
+                    <div className="mt-1 space-y-1">
+                      {docPreview.map((d) => (
+                        <label key={d.id} className="flex items-center gap-2">
+                          <input
+                            type="checkbox"
+                            checked={expectedDocIds.includes(d.id)}
+                            onChange={(e) =>
+                              setExpectedDocIds((prev) =>
+                                e.target.checked
+                                  ? [...prev, d.id]
+                                  : prev.filter((x) => x !== d.id),
+                              )
+                            }
+                          />
+                          <span className="font-mono">{d.id}</span>
+                          {d.title ? (
+                            <span className="text-muted-foreground">
+                              {d.title}
+                            </span>
+                          ) : null}
+                        </label>
+                      ))}
+                    </div>
+                  </fieldset>
+                ) : null}
+                <label className="block text-sm">
+                  Other expected doc ids (not retrieved, comma-separated)
+                  <input
+                    className="mt-1 h-9 w-full rounded-md border border-border bg-background px-2 text-sm"
+                    value={extraDocIds}
+                    onChange={(e) => setExtraDocIds(e.target.value)}
+                    placeholder="e.g. pto-policy, benefits-faq"
+                  />
+                </label>
+              </div>
+              <DialogFooter>
+                <Button type="submit" disabled={promoteMutation.isPending}>
+                  Promote
+                </Button>
+              </DialogFooter>
+            </form>
+          </DialogContent>
+        </Dialog>
       </div>
 
       {row.score_warning ? (
@@ -207,6 +374,10 @@ export function LiveRunDetail({ interactionId }: { interactionId: string }) {
 
       <section className="space-y-2">
         <h2 className="text-sm font-medium text-foreground">Judge scores</h2>
+        <p className="text-xs text-muted-foreground">
+          Agree or disagree with each judge label. Edit the explanation when the
+          rationale is incomplete; the original judge text is kept on the score.
+        </p>
         {row.scores.length === 0 ? (
           <p className="text-sm text-muted-foreground">No scores yet</p>
         ) : (
@@ -231,141 +402,25 @@ export function LiveRunDetail({ interactionId }: { interactionId: string }) {
                     {score.explanation}
                   </p>
                 ) : null}
+                {score.review?.corrected_explanation ? (
+                  <p className="mt-2 text-foreground">
+                    <span className="text-xs font-medium text-muted-foreground">
+                      Corrected explanation:{" "}
+                    </span>
+                    {score.review.corrected_explanation}
+                  </p>
+                ) : null}
                 <div className="mt-2">
                   <JudgeClaimsTable metadata={score.metadata} />
                 </div>
+                <ScoreReviewControls
+                  score={score}
+                  interactionId={interactionId}
+                />
               </div>
             ))}
           </div>
         )}
-      </section>
-
-      <section className="space-y-3">
-        <h2 className="text-sm font-medium text-foreground">Human review</h2>
-        <Textarea
-          placeholder="Optional note"
-          value={note}
-          onChange={(e) => setNote(e.target.value)}
-        />
-        <div className="flex flex-wrap gap-2">
-          <Button
-            type="button"
-            size="sm"
-            disabled={reviewMutation.isPending}
-            onClick={() => reviewMutation.mutate("agree")}
-          >
-            Agree
-          </Button>
-          <Button
-            type="button"
-            size="sm"
-            variant="outline"
-            disabled={reviewMutation.isPending}
-            onClick={() => reviewMutation.mutate("disagree")}
-          >
-            Disagree
-          </Button>
-
-          <Dialog open={promoteOpen} onOpenChange={setPromoteOpen}>
-            <DialogTrigger
-              render={
-                <Button type="button" size="sm" variant="secondary">
-                  Promote to TestSet
-                </Button>
-              }
-            />
-            <DialogContent>
-              <form onSubmit={onPromote}>
-                <DialogHeader>
-                  <DialogTitle>Promote to test set</DialogTitle>
-                  <DialogDescription>
-                    Creates a dataset item from this question. Gold must be
-                    written by you: the production answer and retrieved docs
-                    are what is being evaluated, so they are never copied in.
-                  </DialogDescription>
-                </DialogHeader>
-                <div className="space-y-3 py-3">
-                  <label className="block text-sm">
-                    Dataset
-                    <select
-                      className="mt-1 h-9 w-full rounded-md border border-border bg-background px-2 text-sm"
-                      value={datasetId}
-                      onChange={(e) => setDatasetId(e.target.value)}
-                      required
-                    >
-                      <option value="">Select…</option>
-                      {(datasets.data ?? []).map((ds) => (
-                        <option key={ds.id} value={ds.id}>
-                          {ds.name} v{ds.version}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                  <label className="block text-sm">
-                    Expected output (gold)
-                    <Textarea
-                      className="mt-1"
-                      value={expectedOutput}
-                      onChange={(e) => setExpectedOutput(e.target.value)}
-                      placeholder={`Production answer: ${row.answer}`}
-                      required
-                    />
-                  </label>
-                  {docPreview.length > 0 ? (
-                    <fieldset className="text-sm">
-                      <legend>Expected doc ids (check only truly relevant)</legend>
-                      <div className="mt-1 space-y-1">
-                        {docPreview.map((d) => (
-                          <label key={d.id} className="flex items-center gap-2">
-                            <input
-                              type="checkbox"
-                              checked={expectedDocIds.includes(d.id)}
-                              onChange={(e) =>
-                                setExpectedDocIds((prev) =>
-                                  e.target.checked
-                                    ? [...prev, d.id]
-                                    : prev.filter((x) => x !== d.id),
-                                )
-                              }
-                            />
-                            <span className="font-mono">{d.id}</span>
-                            {d.title ? (
-                              <span className="text-muted-foreground">
-                                {d.title}
-                              </span>
-                            ) : null}
-                          </label>
-                        ))}
-                      </div>
-                    </fieldset>
-                  ) : null}
-                  <label className="block text-sm">
-                    Other expected doc ids (not retrieved, comma-separated)
-                    <input
-                      className="mt-1 h-9 w-full rounded-md border border-border bg-background px-2 text-sm"
-                      value={extraDocIds}
-                      onChange={(e) => setExtraDocIds(e.target.value)}
-                      placeholder="e.g. pto-policy, benefits-faq"
-                    />
-                  </label>
-                </div>
-                <DialogFooter>
-                  <Button
-                    type="submit"
-                    disabled={promoteMutation.isPending}
-                  >
-                    Promote
-                  </Button>
-                </DialogFooter>
-              </form>
-            </DialogContent>
-          </Dialog>
-        </div>
-        {row.review?.note ? (
-          <p className="text-sm text-muted-foreground">
-            Last note: {row.review.note}
-          </p>
-        ) : null}
       </section>
     </div>
   );

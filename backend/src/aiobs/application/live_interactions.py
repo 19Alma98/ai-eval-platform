@@ -21,6 +21,7 @@ from aiobs.domain.live_interaction import (
     LiveInteraction,
     LiveInteractionScore,
     LiveReview,
+    LiveScoreReview,
     filter_goldless_entries,
 )
 from aiobs.domain.metrics_set import MetricsSet, MetricsSetEntry
@@ -47,6 +48,12 @@ class LiveInteractionNotFoundError(Exception):
         super().__init__(f"Live interaction not found: {interaction_id}")
 
 
+class LiveScoreNotFoundError(Exception):
+    def __init__(self, score_id: uuid.UUID) -> None:
+        self.score_id = score_id
+        super().__init__(f"Live interaction score not found: {score_id}")
+
+
 @dataclass(frozen=True, slots=True)
 class SubmitLiveInteractionCommand:
     project_id: uuid.UUID
@@ -69,6 +76,16 @@ class LiveInteractionDetail:
     interaction: LiveInteraction
     scores: list[LiveInteractionScore]
     review: LiveReview | None
+    score_reviews: dict[uuid.UUID, LiveScoreReview]
+
+
+@dataclass(frozen=True, slots=True)
+class UpsertLiveScoreReviewCommand:
+    score_id: uuid.UUID
+    verdict: str
+    corrected_explanation: str | None = None
+    note: str | None = None
+    reviewer: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -352,12 +369,26 @@ class ListLiveInteractions:
         search: str | None = None,
         failed_only: bool = False,
         limit: int = 50,
-    ) -> list[tuple[LiveInteraction, list[LiveInteractionScore], LiveReview | None]]:
+    ) -> list[
+        tuple[
+            LiveInteraction,
+            list[LiveInteractionScore],
+            LiveReview | None,
+            dict[uuid.UUID, LiveScoreReview],
+        ]
+    ]:
         # failed_only filters after loading scores, so page through until enough
         # failures are found instead of scanning a fixed window.
         page_size = min(max(limit, 50), 200) if failed_only else limit
         offset = 0
-        out: list[tuple[LiveInteraction, list[LiveInteractionScore], LiveReview | None]] = []
+        out: list[
+            tuple[
+                LiveInteraction,
+                list[LiveInteractionScore],
+                LiveReview | None,
+                dict[uuid.UUID, LiveScoreReview],
+            ]
+        ] = []
         while True:
             items = await self._live.list_by_project(
                 project_id,
@@ -371,7 +402,10 @@ class ListLiveInteractions:
                 if failed_only and not any(score_is_failed(s) for s in scores):
                     continue
                 review = await self._live.get_review(item.id)
-                out.append((item, scores, review))
+                score_reviews = await self._live.list_score_reviews_by_score_ids(
+                    [s.id for s in scores]
+                )
+                out.append((item, scores, review, score_reviews))
                 if len(out) >= limit:
                     return out
             if not failed_only or len(items) < page_size:
@@ -389,10 +423,14 @@ class GetLiveInteraction:
             raise LiveInteractionNotFoundError(interaction_id)
         scores = await self._live.list_scores(interaction_id)
         review = await self._live.get_review(interaction_id)
+        score_reviews = await self._live.list_score_reviews_by_score_ids(
+            [s.id for s in scores]
+        )
         return LiveInteractionDetail(
             interaction=interaction,
             scores=scores,
             review=review,
+            score_reviews=score_reviews,
         )
 
 
@@ -411,6 +449,24 @@ class UpsertLiveReview:
             reviewer=command.reviewer,
         )
         return await self._live.upsert_review(review)
+
+
+class UpsertLiveScoreReview:
+    def __init__(self, live: LiveInteractionRepository) -> None:
+        self._live = live
+
+    async def execute(self, command: UpsertLiveScoreReviewCommand) -> LiveScoreReview:
+        score = await self._live.get_score(command.score_id)
+        if score is None:
+            raise LiveScoreNotFoundError(command.score_id)
+        review = LiveScoreReview.create(
+            command.score_id,
+            command.verdict,
+            corrected_explanation=command.corrected_explanation,
+            note=command.note,
+            reviewer=command.reviewer,
+        )
+        return await self._live.upsert_score_review(review)
 
 
 class PromoteLiveInteraction:

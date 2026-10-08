@@ -14,6 +14,7 @@ from aiobs.domain.live_interaction import (
     LiveInteraction,
     LiveInteractionScore,
     LiveReview,
+    LiveScoreReview,
 )
 from aiobs.domain.metrics_set import MetricsSet
 from aiobs.domain.project import Project
@@ -188,9 +189,26 @@ class LiveInteractionRepository(Protocol):
 
     async def list_scores(self, interaction_id: uuid.UUID) -> list[LiveInteractionScore]: ...
 
+    async def get_score(self, score_id: uuid.UUID) -> LiveInteractionScore | None: ...
+
     async def upsert_review(self, review: LiveReview) -> LiveReview: ...
 
     async def get_review(self, interaction_id: uuid.UUID) -> LiveReview | None: ...
+
+    async def upsert_score_review(self, review: LiveScoreReview) -> LiveScoreReview: ...
+
+    async def get_score_review(self, score_id: uuid.UUID) -> LiveScoreReview | None: ...
+
+    async def list_score_reviews_by_score_ids(
+        self, score_ids: list[uuid.UUID]
+    ) -> dict[uuid.UUID, LiveScoreReview]: ...
+
+    async def list_calibration_rows(
+        self,
+        project_id: uuid.UUID,
+        *,
+        since: datetime,
+    ) -> list[tuple[LiveInteractionScore, LiveScoreReview]]: ...
 
 
 class JudgeClaimCacheRepository(Protocol):

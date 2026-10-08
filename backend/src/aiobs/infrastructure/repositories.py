@@ -22,6 +22,7 @@ from aiobs.domain.live_interaction import (
     LiveInteraction,
     LiveInteractionScore,
     LiveReview,
+    LiveScoreReview,
 )
 from aiobs.domain.metrics_set import MetricsSet, MetricsSetEntry
 from aiobs.domain.project import Project
@@ -40,6 +41,7 @@ from aiobs.infrastructure.models import (
     LiveInteractionModel,
     LiveInteractionScoreModel,
     LiveReviewModel,
+    LiveScoreReviewModel,
     MetricsSetEntryModel,
     MetricsSetModel,
     ProjectModel,
@@ -1089,6 +1091,18 @@ def _live_review_to_domain(row: LiveReviewModel) -> LiveReview:
     )
 
 
+def _live_score_review_to_domain(row: LiveScoreReviewModel) -> LiveScoreReview:
+    return LiveScoreReview(
+        id=row.id,
+        live_interaction_score_id=row.live_interaction_score_id,
+        verdict=row.verdict,
+        corrected_explanation=row.corrected_explanation,
+        note=row.note,
+        reviewer=row.reviewer,
+        created_at=row.created_at,
+    )
+
+
 _EXTERNAL_ID_CONSTRAINT = "uq_live_interactions_project_external_id"
 
 
@@ -1219,6 +1233,10 @@ class SqlAlchemyLiveInteractionRepository:
         )
         return [_live_score_to_domain(row) for row in result.scalars().all()]
 
+    async def get_score(self, score_id: uuid.UUID) -> LiveInteractionScore | None:
+        row = await self._session.get(LiveInteractionScoreModel, score_id)
+        return _live_score_to_domain(row) if row is not None else None
+
     async def upsert_review(self, review: LiveReview) -> LiveReview:
         result = await self._session.execute(
             select(LiveReviewModel).where(
@@ -1253,6 +1271,90 @@ class SqlAlchemyLiveInteractionRepository:
         )
         row = result.scalar_one_or_none()
         return _live_review_to_domain(row) if row is not None else None
+
+    async def upsert_score_review(self, review: LiveScoreReview) -> LiveScoreReview:
+        result = await self._session.execute(
+            select(LiveScoreReviewModel).where(
+                LiveScoreReviewModel.live_interaction_score_id
+                == review.live_interaction_score_id
+            )
+        )
+        existing = result.scalar_one_or_none()
+        if existing is None:
+            row = LiveScoreReviewModel(
+                id=review.id,
+                live_interaction_score_id=review.live_interaction_score_id,
+                verdict=review.verdict,
+                corrected_explanation=review.corrected_explanation,
+                note=review.note,
+                reviewer=review.reviewer,
+                created_at=review.created_at,
+            )
+            self._session.add(row)
+            await self._session.commit()
+            await self._session.refresh(row)
+            return _live_score_review_to_domain(row)
+        existing.verdict = review.verdict
+        existing.corrected_explanation = review.corrected_explanation
+        existing.note = review.note
+        existing.reviewer = review.reviewer
+        existing.created_at = review.created_at
+        await self._session.commit()
+        await self._session.refresh(existing)
+        return _live_score_review_to_domain(existing)
+
+    async def get_score_review(self, score_id: uuid.UUID) -> LiveScoreReview | None:
+        result = await self._session.execute(
+            select(LiveScoreReviewModel).where(
+                LiveScoreReviewModel.live_interaction_score_id == score_id
+            )
+        )
+        row = result.scalar_one_or_none()
+        return _live_score_review_to_domain(row) if row is not None else None
+
+    async def list_score_reviews_by_score_ids(
+        self, score_ids: list[uuid.UUID]
+    ) -> dict[uuid.UUID, LiveScoreReview]:
+        if not score_ids:
+            return {}
+        result = await self._session.execute(
+            select(LiveScoreReviewModel).where(
+                LiveScoreReviewModel.live_interaction_score_id.in_(score_ids)
+            )
+        )
+        return {
+            row.live_interaction_score_id: _live_score_review_to_domain(row)
+            for row in result.scalars().all()
+        }
+
+    async def list_calibration_rows(
+        self,
+        project_id: uuid.UUID,
+        *,
+        since: datetime,
+    ) -> list[tuple[LiveInteractionScore, LiveScoreReview]]:
+        result = await self._session.execute(
+            select(LiveInteractionScoreModel, LiveScoreReviewModel)
+            .join(
+                LiveScoreReviewModel,
+                LiveScoreReviewModel.live_interaction_score_id
+                == LiveInteractionScoreModel.id,
+            )
+            .join(
+                LiveInteractionModel,
+                LiveInteractionModel.id
+                == LiveInteractionScoreModel.live_interaction_id,
+            )
+            .where(
+                LiveInteractionModel.project_id == project_id,
+                LiveScoreReviewModel.created_at >= since,
+            )
+            .order_by(LiveScoreReviewModel.created_at.desc())
+        )
+        return [
+            (_live_score_to_domain(score_row), _live_score_review_to_domain(review_row))
+            for score_row, review_row in result.all()
+        ]
 
 
 _cache_logger = logging.getLogger(__name__ + ".judge_claim_cache")

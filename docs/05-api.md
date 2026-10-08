@@ -205,17 +205,23 @@ SDK-first prod hub. Ingest returns **202**; judge runs in background (gold-less 
 ```http
 POST /projects/{project_id}/live-interactions
 GET /projects/{project_id}/live-interactions
+GET /projects/{project_id}/live-interactions/calibration
 GET /live-interactions/{interaction_id}
 POST /live-interactions/{interaction_id}/review
+POST /live-interaction-scores/{score_id}/review
 POST /live-interactions/{interaction_id}/promote
 POST /live-interactions/{interaction_id}/rescore
 ```
 
 `POST .../live-interactions` body: `question`, `answer`, optional `documents`, `metadata`, `external_id`, `metrics_set_id`.
 
-List query: `judge_status`, `search`, `failed_only`, `limit`.
+List query: `judge_status`, `search`, `failed_only`, `limit`. Each score may include nested `review` (per-score human review).
 
-`POST .../review` body: `verdict` (`agree`|`disagree`), optional `note`, `reviewer`.
+`GET .../calibration` — judge/human agreement by `kind` × judge `model` (also `method`, `prompt_version`). Optional query `since` (ISO datetime; default last 90 days). Rows include `n_reviewed`, `n_agree`, `n_disagree`, `agreement_rate`, `n_explanation_edits`, `explanation_edit_rate`. Excludes score labels `ERROR` / `SKIPPED`.
+
+`POST .../live-interactions/{id}/review` body: `verdict` (`agree`|`disagree`), optional `note`, `reviewer` (legacy interaction-level review; kept for compatibility).
+
+`POST .../live-interaction-scores/{score_id}/review` body: `verdict` (`agree`|`disagree`), optional `corrected_explanation`, `note`, `reviewer`. Confirms or rejects that score’s PASS/FAIL; optional corrected explanation leaves the judge `explanation` unchanged. Rescore deletes score reviews (cascade).
 
 `POST .../promote` body: `dataset_id`, required `expected_output` (reviewer-written gold; the production answer is never used as default), optional `expected_doc_ids` (required for `rag_qa` datasets) → creates a dataset item. Retrieved doc ids are stored as `metadata.retrieved_doc_ids_at_promotion` for reference only; they are never copied into `expected_doc_ids`.
 

@@ -15,10 +15,10 @@ import {
   LIVE_UNSUITABLE_RATE,
   liveUnsuitableRate,
 } from "@/features/judges/judge-metadata";
-import type { LiveInteraction } from "@/lib/api/types";
+import type { JudgeCalibrationBucket, LiveInteraction } from "@/lib/api/types";
 import { withProjectQuery } from "@/lib/project-href";
 import { useProjectId } from "@/lib/project-store";
-import { useLiveRuns } from "./use-live-runs";
+import { useLiveJudgeCalibration, useLiveRuns } from "./use-live-runs";
 
 function primaryScore(row: LiveInteraction): string {
   const grounded = row.scores.find((s) => s.kind === "groundedness");
@@ -27,10 +27,24 @@ function primaryScore(row: LiveInteraction): string {
   return score.score.toFixed(2);
 }
 
+function reviewSummary(row: LiveInteraction): string {
+  const reviewed = row.scores.filter((s) => s.review);
+  if (reviewed.length === 0) {
+    return row.review?.verdict ?? "—";
+  }
+  const agrees = reviewed.filter((s) => s.review?.verdict === "agree").length;
+  return `${agrees}/${reviewed.length} agree`;
+}
+
+function pct(rate: number): string {
+  return `${Math.round(rate * 100)}%`;
+}
+
 export function LiveRunList() {
   const router = useRouter();
   const { projectId } = useProjectId();
   const [selectedIndex, setSelectedIndex] = useState(0);
+  const [calibrationIndex, setCalibrationIndex] = useState(0);
   const [judgeStatus, setJudgeStatus] = useState<string>("");
   const [failedOnly, setFailedOnly] = useState(false);
   const [search, setSearch] = useState("");
@@ -39,9 +53,48 @@ export function LiveRunList() {
     failedOnly: failedOnly || undefined,
     search: search.trim() || undefined,
   });
+  const calibration = useLiveJudgeCalibration(projectId);
 
   const rows = query.data ?? [];
   const unsuitableRate = liveUnsuitableRate(rows);
+  const calibrationRows = calibration.data ?? [];
+
+  const calibrationColumns: DataTableColumn<JudgeCalibrationBucket>[] = useMemo(
+    () => [
+      {
+        id: "kind",
+        header: "Kind",
+        cell: (row) => row.kind,
+      },
+      {
+        id: "model",
+        header: "Model",
+        cell: (row) => row.model ?? "—",
+      },
+      {
+        id: "n",
+        header: "n",
+        headerClassName: "w-[64px]",
+        className: "font-mono tabular-nums",
+        cell: (row) => String(row.n_reviewed),
+      },
+      {
+        id: "agreement",
+        header: "Agreement",
+        headerClassName: "w-[100px]",
+        className: "font-mono tabular-nums",
+        cell: (row) => pct(row.agreement_rate),
+      },
+      {
+        id: "edits",
+        header: "Expl. edits",
+        headerClassName: "w-[100px]",
+        className: "font-mono tabular-nums",
+        cell: (row) => pct(row.explanation_edit_rate),
+      },
+    ],
+    [],
+  );
 
   const onRowActivate = useCallback(
     (row: LiveInteraction) => {
@@ -84,13 +137,14 @@ export function LiveRunList() {
       {
         id: "review",
         header: "Review",
-        headerClassName: "w-[100px]",
-        cell: (row) =>
-          row.review ? (
-            <Badge variant="outline">{row.review.verdict}</Badge>
-          ) : (
-            <span className="text-muted-foreground">—</span>
-          ),
+        headerClassName: "w-[120px]",
+        cell: (row) => {
+          const summary = reviewSummary(row);
+          if (summary === "—") {
+            return <span className="text-muted-foreground">—</span>;
+          }
+          return <Badge variant="outline">{summary}</Badge>;
+        },
       },
     ],
     [],
@@ -109,6 +163,28 @@ export function LiveRunList() {
           the scores shown. Set <code>method: rubric</code> on the metrics set entries or use
           a stronger judge model.
         </div>
+      ) : null}
+      {calibrationRows.length > 0 ? (
+        <section className="space-y-2">
+          <h2 className="text-sm font-medium text-foreground">
+            Judge calibration
+          </h2>
+          <p className="text-xs text-muted-foreground">
+            Human agree/disagree with judge PASS/FAIL, by kind and model (last
+            90 days).
+          </p>
+          <DataTable
+            rows={calibrationRows}
+            columns={calibrationColumns}
+            getRowKey={(row) =>
+              `${row.kind}|${row.model ?? ""}|${row.method ?? ""}|${row.prompt_version ?? ""}`
+            }
+            selectedIndex={calibrationIndex}
+            onSelectedIndexChange={setCalibrationIndex}
+            onRowActivate={() => undefined}
+            aria-label="Judge calibration"
+          />
+        </section>
       ) : null}
       <div className="flex flex-wrap items-center gap-2">
         <Input

@@ -252,9 +252,14 @@ Fields:
 
 Related:
 - **LiveInteractionScore** — per gold-less metric (`groundedness`, `answer_relevance`) outcome
-- **LiveReview** — light human verdict `agree` | `disagree` + optional note
+- **LiveScoreReview** — per-score human verdict `agree` | `disagree` with the judge label, optional `corrected_explanation` / note (source for judge calibration)
+- **LiveReview** — legacy interaction-level `agree` | `disagree` + optional note (kept for compatibility)
 
 Promote creates a DatasetItem on a chosen dataset (does not delete the live interaction).
+
+### LiveScoreReview
+
+Fields: `id`, `live_interaction_score_id` (unique), `verdict`, `corrected_explanation`, `note`, `reviewer`, `created_at`. Deleted when the score is replaced on rescore.
 
 ## Review
 

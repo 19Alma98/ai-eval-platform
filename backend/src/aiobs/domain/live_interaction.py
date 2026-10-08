@@ -174,6 +174,46 @@ class LiveReview:
         )
 
 
+@dataclass(frozen=True, slots=True)
+class LiveScoreReview:
+    """Per-score human review: agree/disagree with judge label + optional explanation edit."""
+
+    id: uuid.UUID
+    live_interaction_score_id: uuid.UUID
+    verdict: str
+    corrected_explanation: str | None
+    note: str | None
+    reviewer: str | None
+    created_at: datetime
+
+    @classmethod
+    def create(
+        cls,
+        live_interaction_score_id: uuid.UUID,
+        verdict: str,
+        *,
+        corrected_explanation: str | None = None,
+        note: str | None = None,
+        reviewer: str | None = None,
+    ) -> LiveScoreReview:
+        v = verdict.strip().lower()
+        if v not in REVIEW_VERDICTS:
+            raise ValueError(f"verdict must be one of: {', '.join(sorted(REVIEW_VERDICTS))}")
+        cleaned_explanation = (
+            corrected_explanation.strip() if corrected_explanation else None
+        )
+        cleaned_note = note.strip() if note else None
+        return cls(
+            id=uuid.uuid4(),
+            live_interaction_score_id=live_interaction_score_id,
+            verdict=v,
+            corrected_explanation=cleaned_explanation or None,
+            note=cleaned_note or None,
+            reviewer=reviewer.strip() if reviewer else None,
+            created_at=datetime.now(UTC),
+        )
+
+
 def filter_goldless_entries(entries: list[Any]) -> list[Any]:
     """Keep enabled metrics-set entries whose kind is in GOLDLESS_METRIC_KINDS."""
     out = []

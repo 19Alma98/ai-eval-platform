@@ -322,6 +322,16 @@ export type AppConfigAlias = {
   app_config: AppConfigSummary;
 };
 
+export type LiveScoreReview = {
+  id: string;
+  live_interaction_score_id: string;
+  verdict: string;
+  corrected_explanation: string | null;
+  note: string | null;
+  reviewer: string | null;
+  created_at: string;
+};
+
 export type LiveInteractionScore = {
   id: string;
   live_interaction_id: string;
@@ -333,6 +343,7 @@ export type LiveInteractionScore = {
   threshold: number | null;
   created_at: string;
   metadata?: Record<string, unknown>;
+  review?: LiveScoreReview | null;
 };
 
 export type LiveReview = {
@@ -342,6 +353,19 @@ export type LiveReview = {
   note: string | null;
   reviewer: string | null;
   created_at: string;
+};
+
+export type JudgeCalibrationBucket = {
+  kind: string;
+  model: string | null;
+  method: string | null;
+  prompt_version: string | null;
+  n_reviewed: number;
+  n_agree: number;
+  n_disagree: number;
+  agreement_rate: number;
+  n_explanation_edits: number;
+  explanation_edit_rate: number;
 };
 
 export type LiveInteraction = {

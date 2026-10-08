@@ -45,7 +45,9 @@ from aiobs.application.live_interactions import (
     ScoreLiveInteraction,
     SubmitLiveInteraction,
     UpsertLiveReview,
+    UpsertLiveScoreReview,
 )
+from aiobs.application.live_judge_calibration import SummarizeLiveJudgeCalibration
 from aiobs.application.metrics_packs import (
     EnsureMetricsPack,
     GetMetricsPack,
@@ -578,6 +580,19 @@ def get_upsert_live_review(
     live: SqlAlchemyLiveInteractionRepository = Depends(get_live_interaction_repository),
 ) -> UpsertLiveReview:
     return UpsertLiveReview(live)
+
+
+def get_upsert_live_score_review(
+    live: SqlAlchemyLiveInteractionRepository = Depends(get_live_interaction_repository),
+) -> UpsertLiveScoreReview:
+    return UpsertLiveScoreReview(live)
+
+
+def get_summarize_live_judge_calibration(
+    projects: SqlAlchemyProjectRepository = Depends(get_project_repository),
+    live: SqlAlchemyLiveInteractionRepository = Depends(get_live_interaction_repository),
+) -> SummarizeLiveJudgeCalibration:
+    return SummarizeLiveJudgeCalibration(projects, live)
 
 
 def get_promote_live_interaction(

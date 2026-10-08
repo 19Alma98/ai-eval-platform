@@ -1,5 +1,11 @@
 import { apiGet, apiPost } from "./client";
-import type { DatasetItem, LiveInteraction, LiveReview } from "./types";
+import type {
+  DatasetItem,
+  JudgeCalibrationBucket,
+  LiveInteraction,
+  LiveReview,
+  LiveScoreReview,
+} from "./types";
 
 export function listLiveInteractions(
   projectId: string,
@@ -21,6 +27,15 @@ export function listLiveInteractions(
   );
 }
 
+export function getLiveJudgeCalibration(projectId: string, since?: string) {
+  const params = new URLSearchParams();
+  if (since) params.set("since", since);
+  const qs = params.toString();
+  return apiGet<JudgeCalibrationBucket[]>(
+    `/api/v1/projects/${projectId}/live-interactions/calibration${qs ? `?${qs}` : ""}`,
+  );
+}
+
 export function getLiveInteraction(id: string) {
   return apiGet<LiveInteraction>(`/api/v1/live-interactions/${id}`);
 }
@@ -30,6 +45,21 @@ export function reviewLiveInteraction(
   body: { verdict: string; note?: string; reviewer?: string },
 ) {
   return apiPost<LiveReview>(`/api/v1/live-interactions/${id}/review`, body);
+}
+
+export function reviewLiveScore(
+  scoreId: string,
+  body: {
+    verdict: string;
+    corrected_explanation?: string;
+    note?: string;
+    reviewer?: string;
+  },
+) {
+  return apiPost<LiveScoreReview>(
+    `/api/v1/live-interaction-scores/${scoreId}/review`,
+    body,
+  );
 }
 
 export function promoteLiveInteraction(
