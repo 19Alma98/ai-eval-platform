@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import uuid
 from collections.abc import AsyncIterator
-from datetime import UTC, datetime
 
 import pytest
 from httpx import ASGITransport, AsyncClient
@@ -127,59 +126,3 @@ async def test_rag_qa_item_requires_expected_doc_ids(client: AsyncClient) -> Non
     )
     assert ok.status_code == 201
     assert ok.json()["metadata"]["expected_doc_ids"] == ["doc-1"]
-
-
-@pytest.mark.asyncio
-async def test_rag_qa_from_trace_requires_expected_doc_ids(client: AsyncClient) -> None:
-    import os
-
-    from aiobs.config import get_settings
-
-    os.environ["CONTENT_CAPTURE_ENABLED"] = "true"
-    get_settings.cache_clear()
-
-    proj = (await client.post("/api/v1/projects", json={"name": "P", "slug": "p-rag-trace"})).json()
-    project_id = proj["id"]
-    start = datetime(2024, 1, 1, tzinfo=UTC).isoformat()
-    end = datetime(2024, 1, 1, 0, 0, 1, tzinfo=UTC).isoformat()
-    trace_id = "ab" * 16
-    create_trace = await client.post(
-        f"/api/v1/projects/{project_id}/traces",
-        json={
-            "trace_id": trace_id,
-            "name": "rag",
-            "status": "ok",
-            "start_time": start,
-            "end_time": end,
-            "input": "What is the policy?",
-            "output": "Remote work is allowed.",
-        },
-    )
-    assert create_trace.status_code in {200, 201}, create_trace.text
-
-    ds = (
-        await client.post(
-            f"/api/v1/projects/{project_id}/datasets",
-            json={"name": "faq-trace", "task_type": "rag_qa"},
-        )
-    ).json()
-
-    bad = await client.post(
-        f"/api/v1/datasets/{ds['id']}/items/from-trace",
-        json={"trace_id": trace_id, "expected_output": "Remote work is allowed."},
-    )
-    assert bad.status_code == 422
-
-    ok = await client.post(
-        f"/api/v1/datasets/{ds['id']}/items/from-trace",
-        json={
-            "trace_id": trace_id,
-            "expected_output": "Remote work is allowed.",
-            "metadata": {"expected_doc_ids": ["doc-hr-1"]},
-        },
-    )
-    assert ok.status_code == 201
-    assert ok.json()["metadata"]["expected_doc_ids"] == ["doc-hr-1"]
-
-    os.environ.pop("CONTENT_CAPTURE_ENABLED", None)
-    get_settings.cache_clear()

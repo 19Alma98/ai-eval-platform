@@ -66,8 +66,8 @@ evaluators + thresholds, this platform will not invent that definition for you.
 ## Goals
 
 1. Accept AI application telemetry through an open standard.
-2. Explore traces and AI-specific operations.
-3. Turn traces into reusable evaluation examples.
+2. Ingest AI application telemetry (OTLP) and inspect bound traces on experiment runs.
+3. Build curated datasets and live-run review flows (promote to test set) rather than browsing a trace catalog.
 4. Execute deterministic and LLM-based evaluators.
 5. Compare experiments against baselines.
 6. Express release-quality policies as code.

@@ -2,7 +2,7 @@
 
 import { useParams } from "next/navigation";
 import { MetricsSetDetailView } from "@/features/metrics/metrics-set-detail";
-import { ProjectRequired } from "@/features/traces/project-required";
+import { ProjectRequired } from "@/components/project-required";
 import { useProjectId } from "@/lib/project-store";
 
 export default function MetricsSetDetailPage() {

@@ -5,20 +5,6 @@ export type Project = {
   created_at: string;
 };
 
-export type TraceSummary = {
-  trace_id: string;
-  name: string;
-  status: string;
-  start_time: string;
-  end_time: string | null;
-  span_count: number;
-};
-
-export type TraceListResponse = {
-  items: TraceSummary[];
-  next_cursor: string | null;
-};
-
 export type Span = {
   span_id: string;
   parent_span_id: string | null;

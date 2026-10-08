@@ -7,14 +7,12 @@ from sqlalchemy.exc import IntegrityError
 
 from aiobs.api.deps import (
     get_add_dataset_item,
-    get_add_dataset_item_from_trace,
     get_create_dataset,
     get_get_dataset,
     get_import_dataset_items,
     get_list_datasets,
 )
 from aiobs.api.schemas import (
-    CreateDatasetItemFromTraceRequest,
     CreateDatasetItemRequest,
     CreateDatasetRequest,
     DatasetDetailResponse,
@@ -27,8 +25,6 @@ from aiobs.api.schemas import (
 from aiobs.application.datasets import (
     AddDatasetItem,
     AddDatasetItemCommand,
-    AddDatasetItemFromTrace,
-    AddDatasetItemFromTraceCommand,
     CreateDataset,
     CreateDatasetCommand,
     DatasetConflictError,
@@ -38,7 +34,6 @@ from aiobs.application.datasets import (
     ImportDatasetItemsCommand,
     ImportDatasetTaskTypeError,
     ListDatasets,
-    TraceNotFoundForDatasetError,
 )
 from aiobs.application.projects import ProjectNotFoundError
 from aiobs.domain.dataset import Dataset, DatasetItem
@@ -219,34 +214,3 @@ async def import_dataset_items(
             ImportDatasetItemErrorResponse(row=e.row, message=e.message) for e in result.errors
         ],
     )
-
-
-@router.post(
-    "/api/v1/datasets/{dataset_id}/items/from-trace",
-    response_model=DatasetItemResponse,
-    status_code=status.HTTP_201_CREATED,
-)
-async def add_dataset_item_from_trace(
-    dataset_id: uuid.UUID,
-    body: CreateDatasetItemFromTraceRequest,
-    use_case: AddDatasetItemFromTrace = Depends(get_add_dataset_item_from_trace),
-) -> DatasetItemResponse:
-    try:
-        item = await use_case.execute(
-            AddDatasetItemFromTraceCommand(
-                dataset_id=dataset_id,
-                trace_id=body.trace_id,
-                expected_output=body.expected_output,
-                source_span_id=body.source_span_id,
-                metadata=body.metadata,
-            )
-        )
-    except DatasetNotFoundError as exc:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
-    except TraceNotFoundForDatasetError as exc:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
-    except ValueError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(exc)
-        ) from exc
-    return _item_response(item)

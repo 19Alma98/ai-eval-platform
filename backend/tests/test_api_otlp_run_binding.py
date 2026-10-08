@@ -186,9 +186,8 @@ async def test_otlp_bind_attrs_upsert_experiment_outputs(client: AsyncClient) ->
     assert docs[0]["text"] == "Remote OK."
     assert "latency_ms" in rows[0]["context"]
 
-    traces = await client.get(f"/api/v1/projects/{project_id}/traces")
-    assert traces.status_code == 200
-    assert len(traces.json()["items"]) == 1
+    detail = await client.get(f"/api/v1/projects/{project_id}/traces/{'aa' * 16}")
+    assert detail.status_code == 200
 
 
 @pytest.mark.asyncio
@@ -207,8 +206,8 @@ async def test_otlp_unknown_experiment_still_stores_trace(client: AsyncClient) -
     )
     assert otlp.status_code == 200
 
-    traces = await client.get(f"/api/v1/projects/{project_id}/traces")
-    assert len(traces.json()["items"]) == 1
+    detail = await client.get(f"/api/v1/projects/{project_id}/traces/{'aa' * 16}")
+    assert detail.status_code == 200
 
 
 class _FailingBindOtlpTraces:
@@ -234,9 +233,8 @@ async def test_otlp_bind_failure_still_stores_trace(client: AsyncClient) -> None
     )
     assert otlp.status_code == 200
 
-    traces = await client.get(f"/api/v1/projects/{project_id}/traces")
-    assert traces.status_code == 200
-    assert len(traces.json()["items"]) == 1
+    detail = await client.get(f"/api/v1/projects/{project_id}/traces/{'aa' * 16}")
+    assert detail.status_code == 200
 
 
 @pytest.mark.asyncio
@@ -295,8 +293,8 @@ async def test_otlp_foreign_dataset_item_still_stores_trace(client: AsyncClient)
     assert listed.status_code == 200
     assert listed.json() == []
 
-    traces = await client.get(f"/api/v1/projects/{project_id}/traces")
-    assert len(traces.json()["items"]) == 1
+    detail = await client.get(f"/api/v1/projects/{project_id}/traces/{'aa' * 16}")
+    assert detail.status_code == 200
 
 
 @pytest.mark.asyncio
@@ -321,10 +319,10 @@ async def test_otlp_cross_project_experiment_does_not_bind(client: AsyncClient) 
     assert listed.status_code == 200
     assert listed.json() == []
 
-    traces_b = await client.get(f"/api/v1/projects/{project_b_id}/traces")
-    assert len(traces_b.json()["items"]) == 1
-    traces_a = await client.get(f"/api/v1/projects/{project_a}/traces")
-    assert traces_a.json()["items"] == []
+    detail_b = await client.get(f"/api/v1/projects/{project_b_id}/traces/{'aa' * 16}")
+    assert detail_b.status_code == 200
+    detail_a = await client.get(f"/api/v1/projects/{project_a}/traces/{'aa' * 16}")
+    assert detail_a.status_code == 404
 
 
 @pytest.mark.asyncio

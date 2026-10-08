@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import uuid
-from datetime import UTC, datetime
 
 import pytest
 from httpx import AsyncClient
@@ -57,50 +56,3 @@ async def test_evaluate_persisted(client: AsyncClient) -> None:
     assert detail.status_code == 200
     assert detail.json()["results"][0]["score"] == 1.0
     assert uuid.UUID(detail.json()["id"])
-
-
-@pytest.mark.asyncio
-async def test_from_trace_persisted(client: AsyncClient) -> None:
-    project = await client.post("/api/v1/projects", json={"name": "Trace DS"})
-    project_id = project.json()["id"]
-
-    start = datetime(2024, 1, 1, tzinfo=UTC).isoformat()
-    end = datetime(2024, 1, 1, 0, 0, 1, tzinfo=UTC).isoformat()
-    create_trace = await client.post(
-        f"/api/v1/projects/{project_id}/traces",
-        json={
-            "trace_id": "11" * 16,
-            "name": "chat",
-            "status": "ok",
-            "start_time": start,
-            "end_time": end,
-            "input": {"q": "hi"},
-            "output": {"a": "yo"},
-            "spans": [
-                {
-                    "span_id": "22" * 8,
-                    "name": "llm",
-                    "kind": "LLM",
-                    "start_time": start,
-                    "end_time": end,
-                    "status": "ok",
-                    "attributes": {"gen_ai.usage.total_tokens": 7},
-                }
-            ],
-        },
-    )
-    assert create_trace.status_code in {200, 201}, create_trace.text
-
-    dataset = await client.post(
-        f"/api/v1/projects/{project_id}/datasets",
-        json={"name": "from-trace-pg", "task_type": "classification"},
-    )
-    dataset_id = dataset.json()["id"]
-
-    item = await client.post(
-        f"/api/v1/datasets/{dataset_id}/items/from-trace",
-        json={"trace_id": "11" * 16},
-    )
-    assert item.status_code == 201
-    assert item.json()["actual_output"] == {"a": "yo"}
-    assert item.json()["context"]["total_tokens"] == 7

@@ -16,7 +16,6 @@ from aiobs.application.compare import CompareExperiments, SummarizeExperiment
 from aiobs.application.compare_items import CompareExperimentItems
 from aiobs.application.datasets import (
     AddDatasetItem,
-    AddDatasetItemFromTrace,
     CreateDataset,
     GetDataset,
     ImportDatasetItems,
@@ -71,13 +70,7 @@ from aiobs.application.projects import (
     ListProjects,
 )
 from aiobs.application.release_check import ReleaseCheck
-from aiobs.application.traces import (
-    CreateTrace,
-    GetTrace,
-    IngestNormalizedTraces,
-    ListTraces,
-    ResolveProject,
-)
+from aiobs.application.traces import GetTrace, IngestNormalizedTraces, ResolveProject
 from aiobs.config import Settings, get_settings
 from aiobs.evaluation.runner import EvaluationRunner
 from aiobs.infrastructure.db import get_session
@@ -195,18 +188,6 @@ def get_bind_otlp_traces(
     return BindOtlpTracesToExperimentOutputs(experiments, datasets, outputs)
 
 
-def get_create_trace(
-    repository: SqlAlchemyTraceRepository = Depends(get_trace_repository),
-) -> CreateTrace:
-    return CreateTrace(repository)
-
-
-def get_list_traces(
-    repository: SqlAlchemyTraceRepository = Depends(get_trace_repository),
-) -> ListTraces:
-    return ListTraces(repository)
-
-
 def get_get_trace(
     repository: SqlAlchemyTraceRepository = Depends(get_trace_repository),
     projects: SqlAlchemyProjectRepository = Depends(get_project_repository),
@@ -285,13 +266,6 @@ def get_import_dataset_items(
     datasets: SqlAlchemyDatasetRepository = Depends(get_dataset_repository),
 ) -> ImportDatasetItems:
     return ImportDatasetItems(datasets)
-
-
-def get_add_dataset_item_from_trace(
-    datasets: SqlAlchemyDatasetRepository = Depends(get_dataset_repository),
-    traces: SqlAlchemyTraceRepository = Depends(get_trace_repository),
-) -> AddDatasetItemFromTrace:
-    return AddDatasetItemFromTrace(datasets, traces)
 
 
 def get_create_evaluator(

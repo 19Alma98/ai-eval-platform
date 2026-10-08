@@ -3,7 +3,7 @@
 import { useParams } from "next/navigation";
 import { PageIntro } from "@/components/page-intro";
 import { LiveRunDetail } from "@/features/live-runs/live-run-detail";
-import { ProjectRequired } from "@/features/traces/project-required";
+import { ProjectRequired } from "@/components/project-required";
 import { useProjectId } from "@/lib/project-store";
 
 export default function LiveRunDetailPage() {

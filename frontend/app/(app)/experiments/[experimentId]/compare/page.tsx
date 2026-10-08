@@ -3,7 +3,7 @@
 import { useParams } from "next/navigation";
 import { PageIntro } from "@/components/page-intro";
 import { ExperimentCompareView } from "@/features/experiments/experiment-compare-view";
-import { ProjectRequired } from "@/features/traces/project-required";
+import { ProjectRequired } from "@/components/project-required";
 import { useProjectId } from "@/lib/project-store";
 
 export default function ExperimentComparePage() {

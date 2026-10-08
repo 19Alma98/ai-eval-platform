@@ -2,7 +2,6 @@ import { apiGet, apiPost, throwApiError } from "./client";
 import type {
   Dataset,
   DatasetDetail,
-  DatasetItem,
   ImportDatasetItemsResult,
   TaskType,
 } from "./types";
@@ -33,21 +32,6 @@ export function createDataset(
   },
 ) {
   return apiPost<Dataset>(`/api/v1/projects/${projectId}/datasets`, body);
-}
-
-export function addItemFromTrace(
-  datasetId: string,
-  body: {
-    trace_id: string;
-    source_span_id?: string;
-    expected_output?: unknown;
-    metadata?: Record<string, unknown>;
-  },
-) {
-  return apiPost<DatasetItem>(
-    `/api/v1/datasets/${datasetId}/items/from-trace`,
-    body,
-  );
 }
 
 export async function importDatasetItems(

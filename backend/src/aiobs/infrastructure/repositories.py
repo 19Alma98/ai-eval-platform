@@ -309,7 +309,7 @@ class SqlAlchemyTraceRepository:
             .group_by(SpanModel.trace_pk)
         )
         counts = {trace_pk: count for trace_pk, count in count_result.all()}
-        # Attach counts via temporary metadata key consumed by ListTraces
+        # Attach span counts via temporary metadata key on list results
         return [
             Trace(
                 id=t.id,

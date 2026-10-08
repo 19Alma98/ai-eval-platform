@@ -2,7 +2,7 @@
 
 import { PageIntro } from "@/components/page-intro";
 import { MetricsSetList } from "@/features/metrics/metrics-set-list";
-import { ProjectRequired } from "@/features/traces/project-required";
+import { ProjectRequired } from "@/components/project-required";
 import { useProjectId } from "@/lib/project-store";
 
 export default function MetricsPage() {

@@ -25,33 +25,6 @@ class HealthResponse(BaseModel):
     status: str
 
 
-class SpanCreate(BaseModel):
-    span_id: str = Field(min_length=1, max_length=16)
-    parent_span_id: str | None = Field(default=None, max_length=16)
-    name: str = Field(min_length=1, max_length=512)
-    kind: str = Field(default="SPAN", max_length=64)
-    start_time: datetime
-    end_time: datetime | None = None
-    status: str = Field(default="unset", max_length=32)
-    attributes: dict[str, Any] = Field(default_factory=dict)
-    events: list[dict[str, Any]] = Field(default_factory=list)
-
-
-class CreateTraceRequest(BaseModel):
-    trace_id: str = Field(min_length=1, max_length=32)
-    name: str = Field(min_length=1, max_length=512)
-    status: str = Field(default="unset", max_length=32)
-    start_time: datetime
-    end_time: datetime | None = None
-    input: Any | None = None
-    output: Any | None = None
-    metadata: dict[str, Any] = Field(default_factory=dict)
-    environment: str | None = None
-    user_id: str | None = None
-    session_id: str | None = None
-    spans: list[SpanCreate] = Field(default_factory=list)
-
-
 class SpanResponse(BaseModel):
     span_id: str
     parent_span_id: str | None
@@ -62,20 +35,6 @@ class SpanResponse(BaseModel):
     status: str
     attributes: dict[str, Any]
     events: list[dict[str, Any]]
-
-
-class TraceSummaryResponse(BaseModel):
-    trace_id: str
-    name: str
-    status: str
-    start_time: datetime
-    end_time: datetime | None
-    span_count: int
-
-
-class TraceListResponse(BaseModel):
-    items: list[TraceSummaryResponse]
-    next_cursor: str | None = None
 
 
 class TraceDetailResponse(BaseModel):
@@ -150,13 +109,6 @@ class CreateDatasetItemRequest(BaseModel):
     metadata: dict[str, Any] = Field(default_factory=dict)
     source_trace_id: str | None = None
     source_span_id: str | None = None
-
-
-class CreateDatasetItemFromTraceRequest(BaseModel):
-    trace_id: str = Field(min_length=1, max_length=32)
-    expected_output: Any | None = None
-    source_span_id: str | None = Field(default=None, max_length=16)
-    metadata: dict[str, Any] = Field(default_factory=dict)
 
 
 class ImportDatasetItemErrorResponse(BaseModel):

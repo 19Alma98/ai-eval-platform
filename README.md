@@ -80,10 +80,11 @@ cd sdk && uv sync --extra openai && cd ..
 
 Package docs: [`sdk/README.md`](sdk/README.md).
 
-### List / get traces
+### Get trace by id
+
+After OTLP ingest, fetch one trace (e.g. for Run timeline binding):
 
 ```bash
-curl "http://localhost:8000/api/v1/projects/<project-uuid>/traces"
 curl "http://localhost:8000/api/v1/projects/<project-uuid>/traces/<otel-trace-id-hex>"
 ```
 

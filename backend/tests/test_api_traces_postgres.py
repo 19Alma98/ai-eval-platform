@@ -1,8 +1,5 @@
 from __future__ import annotations
 
-import uuid
-from datetime import UTC, datetime
-
 import pytest
 from httpx import AsyncClient
 
@@ -10,7 +7,7 @@ pytestmark = pytest.mark.integration
 
 
 @pytest.mark.asyncio
-async def test_otlp_persist_list_get(client: AsyncClient) -> None:
+async def test_otlp_persist_and_get(client: AsyncClient) -> None:
     create_project = await client.post("/api/v1/projects", json={"name": "Trace Demo"})
     assert create_project.status_code == 201
     project_id = create_project.json()["id"]
@@ -69,10 +66,19 @@ async def test_otlp_persist_list_get(client: AsyncClient) -> None:
     assert otlp.status_code == 200
 
     listed = await client.get(f"/api/v1/projects/{project_id}/traces")
-    assert listed.status_code == 200
-    items = listed.json()["items"]
-    assert len(items) == 1
-    assert items[0]["span_count"] == 2
+    assert listed.status_code == 404
+
+    created = await client.post(
+        f"/api/v1/projects/{project_id}/traces",
+        json={
+            "trace_id": "ab" * 16,
+            "name": "manual",
+            "status": "ok",
+            "start_time": "2024-01-01T00:00:00Z",
+            "spans": [],
+        },
+    )
+    assert created.status_code == 404
 
     detail = await client.get(f"/api/v1/projects/{project_id}/traces/{'11' * 16}")
     assert detail.status_code == 200
@@ -122,7 +128,7 @@ async def test_otlp_persist_list_get(client: AsyncClient) -> None:
 
 
 @pytest.mark.asyncio
-async def test_rest_create_persisted(client: AsyncClient) -> None:
+async def test_rest_create_rejected(client: AsyncClient) -> None:
     create_project = await client.post("/api/v1/projects", json={"name": "REST Trace"})
     project_id = create_project.json()["id"]
     create = await client.post(
@@ -131,14 +137,11 @@ async def test_rest_create_persisted(client: AsyncClient) -> None:
             "trace_id": "ab" * 16,
             "name": "manual",
             "status": "ok",
-            "start_time": datetime.now(UTC).isoformat(),
+            "start_time": "2024-01-01T00:00:00Z",
             "spans": [],
         },
     )
-    assert create.status_code == 201
-    got = await client.get(f"/api/v1/projects/{project_id}/traces/{'ab' * 16}")
-    assert got.status_code == 200
-    assert uuid.UUID(got.json()["id"])
+    assert create.status_code == 404
 
 
 @pytest.mark.asyncio

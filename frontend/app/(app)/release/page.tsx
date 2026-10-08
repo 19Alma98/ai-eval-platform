@@ -5,7 +5,7 @@ import { useSearchParams } from "next/navigation";
 import { PageIntro } from "@/components/page-intro";
 import { LoadingBlock } from "@/components/loading-block";
 import { ReleaseCheckForm } from "@/features/release/release-check-form";
-import { ProjectRequired } from "@/features/traces/project-required";
+import { ProjectRequired } from "@/components/project-required";
 import { useProjectId } from "@/lib/project-store";
 
 function ReleasePageContent() {

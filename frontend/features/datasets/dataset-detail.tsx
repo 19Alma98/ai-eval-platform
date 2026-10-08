@@ -144,22 +144,15 @@ export function DatasetDetailView({
         headerClassName: "w-[112px]",
         cell: (row) =>
           row.source_trace_id ? (
-            <Link
-              href={withProjectQuery(
-                `/traces/${encodeURIComponent(row.source_trace_id)}`,
-                projectId,
-              )}
-              className="text-xs font-medium text-primary hover:underline"
-              onClick={(e) => e.stopPropagation()}
-            >
-              View trace
-            </Link>
+            <span className="font-mono text-xs text-muted-foreground">
+              {row.source_trace_id.slice(0, 8)}…
+            </span>
           ) : (
             <span className="text-muted-foreground">—</span>
           ),
       },
     ],
-    [filteredItems, projectId],
+    [filteredItems],
   );
 
   if (query.isLoading) {
@@ -266,13 +259,13 @@ export function DatasetDetailView({
       {items.length === 0 ? (
         <EmptyState
           title="No items in this dataset"
-          description="Promote a production or demo trace into an evaluation example."
+          description="Promote a live run into an evaluation example, or import CSV/JSON."
           action={
             <Link
-              href={withProjectQuery("/traces", projectId)}
+              href={withProjectQuery("/live-runs", projectId)}
               className="text-sm font-medium text-foreground underline-offset-4 hover:underline"
             >
-              Open traces
+              Open live runs
             </Link>
           }
         />

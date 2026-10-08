@@ -2,7 +2,7 @@
 
 import { useParams } from "next/navigation";
 import { ExperimentDetailView } from "@/features/experiments/experiment-detail";
-import { ProjectRequired } from "@/features/traces/project-required";
+import { ProjectRequired } from "@/components/project-required";
 import { useProjectId } from "@/lib/project-store";
 
 export default function ExperimentDetailPage() {

@@ -35,30 +35,19 @@ Navigation strip for RAG projects:
 - **Runs** — experiments pinned to a dataset version; per-item scores and execution detail (retrieve/generate timeline from bound traces).
 - **Confronta** / **Release** — compare runs on the same dataset+version; CI gate uses pack metric names.
 
-Traces remain available for debugging but are not the primary loop step.
+Traces are ingest/storage plumbing (OTLP) plus read-only detail on **Run** item timelines (waterfall, span attributes). The console does not expose a trace list or catalog route in v0.1.
 
 ### 1. Overview
 
-Setup checklist: test set present, metrics pack configured, at least one scored run. Aggregate metrics reflect pack evaluators where available.
+Setup checklist: test set present, metrics pack configured, at least one scored run. Aggregate metrics reflect pack evaluators where available. **Live runs** KPI, recent live interactions, and latest experiment runs surface prod-like traffic alongside offline eval.
 
-### 2. Trace Explorer
-
-Features:
-- waterfall
-- span tree
-- attributes
-- input/output with redaction indicators
-- token/cost metrics
-- evaluation results
-
-### 3. Test set (datasets)
+### 2. Test set (datasets)
 
 Features:
 - `rag_qa` gold fields and import (CSV/JSON)
 - item list with expected doc ids
-- add-from-trace (secondary; not the RAG primary path)
 
-### 4b. Live runs
+### 3. Live runs
 
 - `/live-runs` — list of prod-like interactions (`judge_status`, scores, review badge); filters for status / failed-only
 - `/live-runs/[id]` — Q/A/documents, judge explanations, agree/disagree + note, promote to Test set, rescore

@@ -9,8 +9,7 @@ from aiobs.application.metrics_packs import EnsureMetricsPack
 from aiobs.application.projects import ProjectNotFoundError
 from aiobs.domain.dataset import Dataset, DatasetItem
 from aiobs.domain.rag_qa import validate_rag_qa_item
-from aiobs.domain.repositories import DatasetRepository, ProjectRepository, TraceRepository
-from aiobs.evaluation.trace_context import build_eval_context_from_trace
+from aiobs.domain.repositories import DatasetRepository, ProjectRepository
 
 
 class DatasetNotFoundError(Exception):
@@ -24,13 +23,6 @@ class DatasetConflictError(Exception):
         self.name = name
         self.version = version
         super().__init__(f"Dataset already exists: {name} v{version}")
-
-
-class TraceNotFoundForDatasetError(Exception):
-    def __init__(self, project_id: uuid.UUID, trace_id: str) -> None:
-        self.project_id = project_id
-        self.trace_id = trace_id
-        super().__init__(f"Trace not found: {trace_id} in project {project_id}")
 
 
 @dataclass(frozen=True, slots=True)
@@ -78,15 +70,6 @@ class ImportDatasetTaskTypeError(Exception):
     def __init__(self, task_type: str | None) -> None:
         self.task_type = task_type
         super().__init__(f"Import is only supported for rag_qa datasets (got {task_type!r})")
-
-
-@dataclass(frozen=True, slots=True)
-class AddDatasetItemFromTraceCommand:
-    dataset_id: uuid.UUID
-    trace_id: str
-    expected_output: Any | None = None
-    source_span_id: str | None = None
-    metadata: dict[str, Any] | None = None
 
 
 class CreateDataset:
@@ -222,42 +205,3 @@ class ImportDatasetItems:
             except ValueError as exc:
                 errors.append(ImportDatasetItemError(row=row_num, message=str(exc)))
         return ImportDatasetItemsResult(created=created, errors=errors)
-
-
-class AddDatasetItemFromTrace:
-    def __init__(
-        self,
-        datasets: DatasetRepository,
-        traces: TraceRepository,
-    ) -> None:
-        self._datasets = datasets
-        self._traces = traces
-
-    async def execute(self, command: AddDatasetItemFromTraceCommand) -> DatasetItem:
-        dataset = await self._datasets.get_by_id(command.dataset_id)
-        if dataset is None:
-            raise DatasetNotFoundError(command.dataset_id)
-        trace = await self._traces.get_by_trace_id(dataset.project_id, command.trace_id)
-        if trace is None:
-            raise TraceNotFoundForDatasetError(dataset.project_id, command.trace_id)
-
-        context = build_eval_context_from_trace(trace, source_span_id=command.source_span_id)
-        trace_input = trace.input if trace.input is not None else {}
-        metadata = command.metadata
-        if dataset.task_type == "rag_qa":
-            metadata = validate_rag_qa_item(
-                input=trace_input,
-                expected_output=command.expected_output,
-                metadata=dict(command.metadata or {}),
-            )
-        item = DatasetItem.create(
-            command.dataset_id,
-            trace_input,
-            expected_output=command.expected_output,
-            actual_output=trace.output,
-            context=context or None,
-            metadata=metadata,
-            source_trace_id=trace.trace_id,
-            source_span_id=command.source_span_id,
-        )
-        return await self._datasets.add_item(item)

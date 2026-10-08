@@ -171,18 +171,15 @@ async def test_otlp_json_ingest_and_get(client: AsyncClient) -> None:
     )
     assert otlp.status_code == 200
 
-    listed = await client.get(f"/api/v1/projects/{project_id}/traces")
-    assert listed.status_code == 200
-    body = listed.json()
-    assert len(body["items"]) == 1
-    assert body["items"][0]["trace_id"] == "aa" * 16
-    assert body["items"][0]["span_count"] == 1
-
     detail = await client.get(f"/api/v1/projects/{project_id}/traces/{'aa' * 16}")
     assert detail.status_code == 200
     detail_body = detail.json()
+    assert detail_body["trace_id"] == "aa" * 16
     assert detail_body["spans"][0]["kind"] == "CHAIN"
     assert "input.value" not in detail_body["spans"][0]["attributes"]
+
+    listed = await client.get(f"/api/v1/projects/{project_id}/traces")
+    assert listed.status_code == 404
 
 
 @pytest.mark.asyncio
@@ -210,7 +207,7 @@ async def test_otlp_unknown_project(client: AsyncClient) -> None:
 
 
 @pytest.mark.asyncio
-async def test_rest_create_trace(client: AsyncClient) -> None:
+async def test_rest_create_trace_rejected(client: AsyncClient) -> None:
     project = await _create_project(client)
     project_id = project["id"]
     create = await client.post(
@@ -234,8 +231,4 @@ async def test_rest_create_trace(client: AsyncClient) -> None:
             ],
         },
     )
-    assert create.status_code == 201
-    body = create.json()
-    assert body["trace_id"] == "cc" * 16
-    assert body["spans"][0]["kind"] == "LLM"
-    assert "gen_ai.input.messages" not in body["spans"][0]["attributes"]
+    assert create.status_code == 404

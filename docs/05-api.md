@@ -27,22 +27,19 @@ DELETE /projects/{project_id}
 
 ## Traces
 
+Ingest via OTLP/HTTP (outside `/api/v1` prefix):
+
 ```http
-GET /projects/{project_id}/traces
-GET /projects/{project_id}/traces/{trace_id}
-POST /projects/{project_id}/traces
+POST /v1/traces
 ```
 
-Filters:
-- time range
-- status
-- service
-- model
-- user/session
-- tag
+Headers: exactly one of `X-Project-Id` or `X-Project-Slug`. Accepts OTLP JSON or protobuf.
 
-Pagination:
-- cursor-based
+Fetch a stored trace by OpenTelemetry trace id (hex) for bound **Run** item timelines and debugging:
+
+```http
+GET /projects/{project_id}/traces/{trace_id}
+```
 
 ## Datasets
 
@@ -52,7 +49,6 @@ POST /projects/{project_id}/datasets
 GET /datasets/{dataset_id}
 POST /datasets/{dataset_id}/items
 POST /datasets/{dataset_id}/items/import
-POST /datasets/{dataset_id}/items/from-trace
 ```
 
 `rag_qa` items require non-empty `metadata.expected_doc_ids` on create/import. CSV columns: `question`, `expected_answer`, `expected_doc_ids` (pipe-separated ids).

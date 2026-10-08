@@ -3,7 +3,6 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
-  Activity,
   Database,
   FileCode,
   FlaskConical,
@@ -16,7 +15,6 @@ import { ProjectSwitcher } from "@/components/project-switcher";
 import { QualityLoopStrip } from "@/components/quality-loop-strip";
 import { RefreshControl } from "@/components/refresh-control";
 import { ThemeToggle } from "@/components/theme-toggle";
-import { TimeRangePicker } from "@/components/time-range-picker";
 import { Separator } from "@/components/ui/separator";
 import { cn } from "@/lib/cn";
 import { withProjectQuery } from "@/lib/project-href";
@@ -25,7 +23,6 @@ import { projectsQueryOptions } from "@/lib/queries/projects";
 
 const NAV = [
   { href: "/overview", label: "Overview", icon: LayoutDashboard },
-  { href: "/traces", label: "Traces", icon: Activity },
   { href: "/datasets", label: "Test set", icon: Database },
   { href: "/app-configs", label: "App configs", icon: FileCode },
   { href: "/metrics", label: "Metrics", icon: LineChart },
@@ -39,8 +36,6 @@ const projectsQuery = projectsQueryOptions();
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const { projectId } = useProjectId();
-  const showTimeRange =
-    pathname.startsWith("/overview") || pathname.startsWith("/traces");
 
   return (
     <div className="flex min-h-screen bg-background">
@@ -74,7 +69,6 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         <header className="flex h-12 shrink-0 items-center gap-3 border-b border-border bg-surface px-4">
           <ProjectSwitcher />
           <Separator orientation="vertical" className="h-5" />
-          {showTimeRange ? <TimeRangePicker /> : null}
           <div className="flex-1" />
           <RefreshControl
             queryKey={projectsQuery.queryKey}

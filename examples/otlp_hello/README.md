@@ -35,7 +35,10 @@ python main.py
 
 ## Inspect
 
+After OTLP ingest, fetch the trace by OpenTelemetry trace id (hex):
+
 ```bash
-curl "http://localhost:8000/api/v1/projects/<project-uuid>/traces"
-curl "http://localhost:8000/api/v1/projects/<project-uuid>/traces/<trace-id>"
+curl "http://localhost:8000/api/v1/projects/<project-uuid>/traces/<otel-trace-id-hex>"
 ```
+
+Same as root [`README.md`](../../README.md#get-trace-by-id) and [`docs/05-api.md`](../../docs/05-api.md).

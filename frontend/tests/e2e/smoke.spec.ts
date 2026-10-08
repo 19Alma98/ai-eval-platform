@@ -2,20 +2,19 @@ import { test, expect } from "@playwright/test";
 
 const API = process.env.API_ORIGIN ?? "http://localhost:8000";
 
-test("trace list and release page render", async ({ page, request }) => {
+test("overview live runs and release page render", async ({ page, request }) => {
   const proj = await request.post(`${API}/api/v1/projects`, {
     data: { name: "E2E", slug: `e2e-${Date.now()}` },
   });
   expect(proj.ok()).toBeTruthy();
   const { id } = await proj.json();
 
-  await page.goto(`/traces?project=${id}`);
-  await expect(page.getByRole("heading", { name: "Traces" })).toBeVisible();
+  await page.goto(`/overview?project=${id}`);
+  await expect(page.getByRole("heading", { name: "Overview" })).toBeVisible();
+  await expect(page.getByRole("link", { name: "Traces" })).toHaveCount(0);
 
-  const main = page.locator("main");
-  const emptyTraces = main.getByText("No traces yet");
-  const tracesTable = main.getByRole("region", { name: "Traces" });
-  await expect(emptyTraces.or(tracesTable)).toBeVisible();
+  await page.goto(`/live-runs?project=${id}`);
+  await expect(page.getByRole("heading", { name: "Live runs" })).toBeVisible();
 
   await page.goto(`/release?project=${id}`);
   await expect(page.getByRole("heading", { name: "Release" })).toBeVisible();
@@ -33,12 +32,6 @@ test("quality loop strip and glossaries render", async ({ page, request }) => {
   await page.goto(`/overview?project=${id}`);
   await expect(page.getByRole("navigation", { name: "Quality loop" })).toBeVisible();
   await expect(page.getByText(/quality loop/i).first()).toBeVisible();
-
-  await page.goto(`/traces?project=${id}&status=error`);
-  await expect(page.getByRole("button", { name: "Error" })).toHaveAttribute(
-    "aria-pressed",
-    "true",
-  );
 
   await page.goto(`/experiments?project=${id}`);
   await expect(page.getByRole("heading", { name: "Runs" })).toBeVisible();

@@ -4,7 +4,6 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useMemo, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { Area, AreaChart, ResponsiveContainer } from "recharts";
 import { DataTable, type DataTableColumn } from "@/components/data-table";
 import { EmptyState } from "@/components/empty-state";
 import { ErrorState } from "@/components/error-state";
@@ -14,79 +13,37 @@ import { RefreshControl } from "@/components/refresh-control";
 import { RelativeTime } from "@/components/relative-time";
 import { StatusBadge } from "@/components/status-badge";
 import { formatErrorForUi } from "@/lib/api/client";
-import type { Experiment, TraceSummary } from "@/lib/api/types";
-import { formatDurationMs } from "@/lib/format";
+import type { Experiment, LiveInteraction } from "@/lib/api/types";
 import { withProjectQuery } from "@/lib/project-href";
 import { useProjectId } from "@/lib/project-store";
-import { useTimeRange } from "@/lib/time-range-context";
 import { cn } from "@/lib/cn";
 import {
   evaluatorsQueryKey,
   experimentsQueryKey,
-  experimentsQueryOptions,
   useEvaluators,
   useExperiments,
 } from "@/features/experiments/use-experiments";
 import {
   datasetsQueryKey,
-  datasetsQueryOptions,
   useDatasets,
 } from "@/features/datasets/use-datasets";
 import {
-  tracesQueryKey,
-  tracesQueryOptions,
-  useTraces,
-} from "@/features/traces/use-traces";
+  liveRunsQueryKey,
+  useLiveRuns,
+} from "@/features/live-runs/use-live-runs";
 import { LoopProgress } from "@/features/overview/loop-progress";
 
-function traceDurationMs(trace: TraceSummary): number | null {
-  if (!trace.end_time) return null;
-  return (
-    new Date(trace.end_time).getTime() - new Date(trace.start_time).getTime()
+function isFailedLiveRun(row: LiveInteraction): boolean {
+  return row.scores.some(
+    (s) =>
+      s.label === "FAIL" ||
+      (s.threshold != null && s.score != null && s.score < s.threshold),
   );
 }
 
-function isErroredTrace(trace: TraceSummary): boolean {
-  const s = trace.status.toLowerCase();
-  return s === "error" || s === "fail" || s === "failed";
-}
-
-function percentile(values: number[], p: number): number | null {
-  if (values.length === 0) return null;
-  const sorted = [...values].sort((a, b) => a - b);
-  const idx = Math.ceil(p * sorted.length) - 1;
-  return sorted[Math.max(0, idx)];
-}
-
-type SparkPoint = { i: number; v: number };
-
-function MiniSparkline({
-  data,
-  colorVar,
-  ariaLabel,
-}: {
-  data: SparkPoint[];
-  colorVar: string;
-  ariaLabel: string;
-}) {
-  if (data.length < 5) return null;
-  return (
-    <div className="mt-2 h-8 w-full" aria-label={ariaLabel}>
-      <ResponsiveContainer width="100%" height="100%">
-        <AreaChart data={data} margin={{ top: 0, right: 0, left: 0, bottom: 0 }}>
-          <Area
-            type="monotone"
-            dataKey="v"
-            stroke={`hsl(var(${colorVar}))`}
-            fill={`hsl(var(${colorVar}) / 0.15)`}
-            strokeWidth={1.5}
-            isAnimationActive={false}
-            dot={false}
-          />
-        </AreaChart>
-      </ResponsiveContainer>
-    </div>
-  );
+function truncateQuestion(question: string, maxLen = 80): string {
+  if (question.length <= maxLen) return question;
+  return `${question.slice(0, maxLen)}…`;
 }
 
 function KpiStrip({
@@ -94,14 +51,12 @@ function KpiStrip({
   value,
   href,
   subLink,
-  sparkline,
   className,
 }: {
   label: string;
   value: React.ReactNode;
   href?: string;
   subLink?: { label: string; href: string };
-  sparkline?: React.ReactNode;
   className?: string;
 }) {
   const inner = (
@@ -119,7 +74,6 @@ function KpiStrip({
           {subLink.label}
         </Link>
       ) : null}
-      {sparkline}
     </>
   );
 
@@ -144,34 +98,18 @@ export function OverviewDashboard() {
   const router = useRouter();
   const queryClient = useQueryClient();
   const { projectId } = useProjectId();
-  const { start, end } = useTimeRange();
 
-  const traceFilters = useMemo(
-    () => ({
-      start: start.toISOString(),
-      end: end.toISOString(),
-      limit: 100,
-    }),
-    [start, end],
-  );
-
-  const [traceSelectedIndex, setTraceSelectedIndex] = useState(0);
+  const [liveSelectedIndex, setLiveSelectedIndex] = useState(0);
   const [experimentSelectedIndex, setExperimentSelectedIndex] = useState(0);
 
-  const tracesQuery = useTraces(projectId, traceFilters);
+  const liveQuery = useLiveRuns(projectId);
   const datasetsQuery = useDatasets(projectId);
   const experimentsQuery = useExperiments(projectId);
   const evaluatorsQuery = useEvaluators(projectId);
 
-  const traceOpts = projectId
-    ? tracesQueryOptions(projectId, traceFilters)
-    : null;
-  const datasetsOpts = projectId ? datasetsQueryOptions(projectId) : null;
-  const expOpts = projectId ? experimentsQueryOptions(projectId) : null;
-
-  const traces = useMemo(
-    () => tracesQuery.data?.items ?? [],
-    [tracesQuery.data?.items],
+  const liveItems = useMemo(
+    () => liveQuery.data?.items ?? [],
+    [liveQuery.data?.items],
   );
   const datasets = useMemo(
     () => datasetsQuery.data ?? [],
@@ -184,53 +122,28 @@ export function OverviewDashboard() {
 
   const projectQuery = projectId ? `?project=${encodeURIComponent(projectId)}` : "";
 
-  const metrics = useMemo(() => {
-    const sorted = [...traces].sort(
-      (a, b) =>
-        new Date(a.start_time).getTime() - new Date(b.start_time).getTime(),
-    );
-    const total = sorted.length;
-    const errored = sorted.filter(isErroredTrace).length;
-    const errorRate = total > 0 ? errored / total : null;
-
-    const durations = sorted
-      .map(traceDurationMs)
-      .filter((ms): ms is number => ms != null);
-    const latencyP95 = percentile(durations, 0.95);
-
-    const rollingErrorCounts = sorted.map((_, i) =>
-      sorted.slice(0, i + 1).filter(isErroredTrace).length,
-    );
-    const errorSpark: SparkPoint[] = rollingErrorCounts.map(
-      (rollingErrors, i) => ({
-        i,
-        v: total > 0 ? (rollingErrors / (i + 1)) * 100 : 0,
-      }),
-    );
-
-    const latencySpark: SparkPoint[] = sorted
-      .map((t, i) => ({ t, i }))
-      .filter(({ t }) => traceDurationMs(t) != null)
-      .map(({ t, i }) => ({ i, v: traceDurationMs(t)! }));
-
-    return {
-      errorRate,
-      latencyP95,
-      errorSpark,
-      latencySpark,
-      total,
-    };
-  }, [traces]);
-
-  const recentTraces = useMemo(
+  const liveTotal = liveItems.length;
+  const livePending = useMemo(
     () =>
-      [...traces]
+      liveItems.filter(
+        (r) => r.judge_status === "pending" || r.judge_status === "running",
+      ).length,
+    [liveItems],
+  );
+  const liveFailed = useMemo(
+    () => liveItems.filter(isFailedLiveRun).length,
+    [liveItems],
+  );
+
+  const recentLiveRuns = useMemo(
+    () =>
+      [...liveItems]
         .sort(
           (a, b) =>
-            new Date(b.start_time).getTime() - new Date(a.start_time).getTime(),
+            new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
         )
         .slice(0, 10),
-    [traces],
+    [liveItems],
   );
 
   const latestExperiments = useMemo(
@@ -318,7 +231,7 @@ export function OverviewDashboard() {
   ]);
 
   const dataUpdatedAt = Math.max(
-    tracesQuery.dataUpdatedAt ?? 0,
+    liveQuery.dataUpdatedAt ?? 0,
     datasetsQuery.dataUpdatedAt ?? 0,
     experimentsQuery.dataUpdatedAt ?? 0,
     evaluatorsQuery.dataUpdatedAt ?? 0,
@@ -328,7 +241,7 @@ export function OverviewDashboard() {
     if (!projectId) return;
     await Promise.all([
       queryClient.refetchQueries({
-        queryKey: tracesQueryKey(projectId, traceFilters),
+        queryKey: liveRunsQueryKey(projectId),
       }),
       queryClient.refetchQueries({
         queryKey: datasetsQueryKey(projectId),
@@ -340,38 +253,30 @@ export function OverviewDashboard() {
         queryKey: evaluatorsQueryKey(projectId),
       }),
     ]);
-  }, [projectId, queryClient, traceFilters]);
+  }, [projectId, queryClient]);
 
-  const traceColumns: DataTableColumn<TraceSummary>[] = useMemo(
+  const liveColumns: DataTableColumn<LiveInteraction>[] = useMemo(
     () => [
       {
-        id: "time",
-        header: "Time",
-        headerClassName: "w-[100px]",
-        cell: (row) => <RelativeTime date={row.start_time} />,
-      },
-      {
-        id: "name",
-        header: "Name",
+        id: "question",
+        header: "Question",
         cell: (row) => (
-          <span className="font-medium text-foreground">{row.name}</span>
+          <span className="font-medium text-foreground">
+            {truncateQuestion(row.question)}
+          </span>
         ),
       },
       {
         id: "status",
-        header: "Status",
-        headerClassName: "w-[88px]",
-        cell: (row) => <StatusBadge status={row.status} />,
+        header: "Judge",
+        headerClassName: "w-[100px]",
+        cell: (row) => <StatusBadge status={row.judge_status} />,
       },
       {
-        id: "duration",
-        header: "Duration",
-        headerClassName: "w-[88px]",
-        className: "font-mono tabular-nums text-muted-foreground",
-        cell: (row) => {
-          const ms = traceDurationMs(row);
-          return ms == null ? "—" : formatDurationMs(ms);
-        },
+        id: "created_at",
+        header: "Created",
+        headerClassName: "w-[120px]",
+        cell: (row) => <RelativeTime date={row.created_at} />,
       },
     ],
     [],
@@ -402,14 +307,14 @@ export function OverviewDashboard() {
     [],
   );
 
-  const onTraceActivate = useCallback(
-    (trace: TraceSummary) => {
+  const onLiveActivate = useCallback(
+    (row: LiveInteraction) => {
       if (!projectId) return;
       router.push(
-        `/traces/${encodeURIComponent(trace.trace_id)}${projectQuery}`,
+        withProjectQuery(`/live-runs/${encodeURIComponent(row.id)}`, projectId),
       );
     },
-    [projectId, projectQuery, router],
+    [projectId, router],
   );
 
   const onExperimentActivate = useCallback(
@@ -423,7 +328,7 @@ export function OverviewDashboard() {
   );
 
   if (
-    tracesQuery.isLoading ||
+    liveQuery.isLoading ||
     datasetsQuery.isLoading ||
     experimentsQuery.isLoading ||
     evaluatorsQuery.isLoading
@@ -432,13 +337,13 @@ export function OverviewDashboard() {
   }
 
   if (
-    tracesQuery.isError ||
+    liveQuery.isError ||
     datasetsQuery.isError ||
     experimentsQuery.isError ||
     evaluatorsQuery.isError
   ) {
     const err =
-      tracesQuery.error ??
+      liveQuery.error ??
       datasetsQuery.error ??
       experimentsQuery.error ??
       evaluatorsQuery.error;
@@ -448,7 +353,7 @@ export function OverviewDashboard() {
         title="Could not load overview"
         message={message}
         onRetry={() => {
-          void tracesQuery.refetch();
+          void liveQuery.refetch();
           void datasetsQuery.refetch();
           void experimentsQuery.refetch();
           void evaluatorsQuery.refetch();
@@ -457,24 +362,14 @@ export function OverviewDashboard() {
     );
   }
 
-  const errorRateDisplay =
-    metrics.errorRate != null
-      ? `${(metrics.errorRate * 100).toFixed(1)}%`
-      : "—";
-
-  const latencyDisplay =
-    metrics.latencyP95 != null
-      ? formatDurationMs(metrics.latencyP95)
-      : "—";
-
-  const errorTracesHref = projectId
-    ? withProjectQuery("/traces?status=error", projectId)
-    : "/traces?status=error";
+  const liveRunsHref = projectId
+    ? withProjectQuery("/live-runs", projectId)
+    : "/live-runs";
 
   return (
     <div className="flex flex-col gap-6">
       <div className="sticky top-0 z-20 -mx-1 flex flex-wrap items-center justify-end gap-3 border-b border-border bg-background px-1 pb-3">
-        {traceOpts && datasetsOpts && expOpts ? (
+        {projectId ? (
           <RefreshControl
             dataUpdatedAt={dataUpdatedAt}
             onRefresh={onRefresh}
@@ -502,70 +397,61 @@ export function OverviewDashboard() {
       ) : null}
 
       <section className="flex flex-col gap-2">
-        <h2 className="text-sm font-semibold text-foreground">
-          From traces (telemetry)
-        </h2>
+        <h2 className="text-sm font-semibold text-foreground">Live runs</h2>
         <div
-          className="grid gap-2 sm:grid-cols-2"
+          className="grid gap-2 sm:grid-cols-3"
           style={{ gap: "var(--grid-gap, 8px)" }}
         >
+          <KpiStrip label="Total" value={liveTotal} href={liveRunsHref} />
+          <KpiStrip label="Failed" value={liveFailed} href={liveRunsHref} />
           <KpiStrip
-            label="Error rate"
-            value={errorRateDisplay}
-            href={errorTracesHref}
-            sparkline={
-              <MiniSparkline
-                data={metrics.errorSpark}
-                colorVar="--chart-3"
-                ariaLabel="Error rate trend from recent traces"
-              />
-            }
-          />
-          <KpiStrip
-            label="Latency (p95)"
-            value={latencyDisplay}
-            href={withProjectQuery("/traces", projectId)}
-            sparkline={
-              <MiniSparkline
-                data={metrics.latencySpark}
-                colorVar="--chart-1"
-                ariaLabel="Latency trend from recent traces"
-              />
-            }
+            label="In progress"
+            value={livePending}
+            href={liveRunsHref}
           />
         </div>
       </section>
 
-      {metrics.total === 0 ? (
+      {liveTotal === 0 ? (
         <EmptyState
-          title="No traces yet"
-          description="No traces yet. Run the OTLP example or `docker compose` demo."
+          title="No live runs yet"
+          description="Live interactions scored by judges will show up here."
+          action={
+            <Link
+              href={liveRunsHref}
+              className="text-sm text-primary hover:underline"
+            >
+              Open live runs
+            </Link>
+          }
         />
       ) : null}
 
       <section className="flex flex-col gap-2">
         <div className="flex items-baseline justify-between gap-2">
           <h2 className="text-sm font-semibold text-foreground">
-            Recent traces
+            Recent live runs
           </h2>
           <Link
-            href={`/traces${projectQuery}`}
+            href={`/live-runs${projectQuery}`}
             className="text-xs text-primary hover:underline"
           >
             View all
           </Link>
         </div>
-        {recentTraces.length === 0 ? (
-          <p className="text-sm text-muted-foreground">No traces in window.</p>
+        {recentLiveRuns.length === 0 ? (
+          liveTotal === 0 ? null : (
+            <p className="text-sm text-muted-foreground">No live runs yet.</p>
+          )
         ) : (
           <DataTable
-            rows={recentTraces}
-            columns={traceColumns}
-            getRowKey={(row) => row.trace_id}
-            selectedIndex={traceSelectedIndex}
-            onSelectedIndexChange={setTraceSelectedIndex}
-            onRowActivate={onTraceActivate}
-            aria-label="Recent traces"
+            rows={recentLiveRuns}
+            columns={liveColumns}
+            getRowKey={(row) => row.id}
+            selectedIndex={liveSelectedIndex}
+            onSelectedIndexChange={setLiveSelectedIndex}
+            onRowActivate={onLiveActivate}
+            aria-label="Recent live runs"
           />
         )}
       </section>

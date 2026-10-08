@@ -363,56 +363,6 @@ async def test_evaluate_uses_experiment_output_not_legacy_actual(
     assert evaluated.json()["runs"][0]["results"][0]["score"] == 1.0
 
 
-@pytest.mark.asyncio
-async def test_from_trace_item(client: AsyncClient) -> None:
-    project = await client.post("/api/v1/projects", json={"name": "From Trace"})
-    project_id = project.json()["id"]
-
-    start = datetime(2024, 1, 1, tzinfo=UTC).isoformat()
-    end = datetime(2024, 1, 1, 0, 0, 2, tzinfo=UTC).isoformat()
-    create_trace = await client.post(
-        f"/api/v1/projects/{project_id}/traces",
-        json={
-            "trace_id": "ab" * 16,
-            "name": "chat",
-            "status": "ok",
-            "start_time": start,
-            "end_time": end,
-            "input": {"q": "hi"},
-            "output": {"a": "hello"},
-            "spans": [
-                {
-                    "span_id": "cd" * 8,
-                    "name": "llm",
-                    "kind": "LLM",
-                    "start_time": start,
-                    "end_time": end,
-                    "status": "ok",
-                    "attributes": {"gen_ai.usage.total_tokens": 10},
-                }
-            ],
-        },
-    )
-    assert create_trace.status_code in {200, 201}, create_trace.text
-
-    dataset = await client.post(
-        f"/api/v1/projects/{project_id}/datasets",
-        json={"name": "from-trace", "task_type": "classification"},
-    )
-    dataset_id = dataset.json()["id"]
-
-    item = await client.post(
-        f"/api/v1/datasets/{dataset_id}/items/from-trace",
-        json={"trace_id": "ab" * 16, "expected_output": {"a": "hello"}},
-    )
-    assert item.status_code == 201, item.text
-    body = item.json()
-    assert body["input"] == {"q": "hi"}
-    assert body["actual_output"] == {"a": "hello"}
-    assert body["context"]["latency_ms"] == 2000.0
-    assert body["context"]["total_tokens"] == 10
-
-
 _DEFAULT_PACK_KINDS = (
     "hit_at_k",
     "recall_at_k",
