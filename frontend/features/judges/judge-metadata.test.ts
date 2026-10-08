@@ -63,7 +63,9 @@ function row(errorTypes: (string | null)[]): LiveInteraction {
       explanation: null,
       threshold: null,
       created_at: "",
-      metadata: t ? { error_type: t } : {},
+      metadata: t
+        ? { judge_kind: "groundedness", error_type: t }
+        : { judge_kind: "groundedness" },
     })),
   } as unknown as LiveInteraction;
 }
@@ -73,5 +75,18 @@ describe("liveUnsuitableRate", () => {
     const rows = [row(["judge_output_invalid", null]), row([null, "llm_unavailable"])];
     assert.equal(liveUnsuitableRate(rows), 0.25);
     assert.equal(liveUnsuitableRate([]), 0);
+  });
+
+  it("excludes deterministic and SKIPPED scores from the denominator", () => {
+    const mixed = {
+      scores: [
+        { label: "PASS", metadata: {} },
+        { label: "PASS" },
+        { label: " skipped ", metadata: { judge_kind: "groundedness" } },
+        { label: "ERROR", metadata: { judge_kind: "groundedness", error_type: "judge_output_invalid" } },
+        { label: "PASS", metadata: { judge_kind: "groundedness" } },
+      ],
+    } as unknown as LiveInteraction;
+    assert.equal(liveUnsuitableRate([mixed]), 0.5);
   });
 });

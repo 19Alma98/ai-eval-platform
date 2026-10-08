@@ -66,6 +66,8 @@ export function liveUnsuitableRate(rows: LiveInteraction[]): number {
   let invalid = 0;
   for (const row of rows) {
     for (const score of row.scores) {
+      if (typeof score.metadata?.judge_kind !== "string") continue;
+      if ((score.label ?? "").trim().toUpperCase() === "SKIPPED") continue;
       total += 1;
       if (score.metadata?.error_type === "judge_output_invalid") invalid += 1;
     }
