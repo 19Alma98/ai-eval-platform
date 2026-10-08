@@ -51,7 +51,7 @@ class Evaluator(Protocol):
 - groundedness
 - correctness
 
-LLM judges must return structured output and be versioned by evaluator configuration.
+LLM judges return structured, validated output and are versioned by `prompt_version` (see [LLM judges (v3)](#llm-judges-v3)).
 
 ## RAG metrics sets and pack scoring
 
@@ -65,11 +65,80 @@ Explicit `POST .../evaluate` with `evaluator_ids` bypasses set resolution.
 
 Groundedness reads retrieved chunk text from run `context.documents` (populated from SDK `set_retrieval_documents` or ingestion normalization). When a trace has several retrieval stages (`RETRIEVER` → `RERANKER`), `context.documents` comes from the last stage that recorded documents (by end time, deduplicated by id): the documents the model actually saw.
 
-PASS/FAIL rule (offline runs and live scoring): an item passes only if the evaluator label is not `FAIL` **and** the score meets the entry threshold. The stored label is that effective verdict; when it overrides the evaluator's own label, the original is kept in `metadata.judge_label` (live: appended to the explanation). A run is `FAILED` if any item fails.
+PASS/FAIL rule (offline runs and live scoring): an item passes only if the evaluator label is not `FAIL` **and** the score meets the entry threshold. The stored label is that effective verdict; when it overrides the evaluator's own label, the original is kept in `metadata.judge_label` (live: appended to the explanation). LLM judges never emit a label, so for them the verdict comes from the threshold alone. A run is `FAILED` if any item fails.
 
-LLM judges only receive the fields their rubric needs: `answer_relevance` gets input + answer, `groundedness` adds `context.documents`, `correctness` adds `expected_output`. Item `metadata` (e.g. `expected_doc_ids`) is never sent to a judge. Prompt versions are `*.v2`.
+LLM judges only receive the fields their rubric needs: `answer_relevance` gets input + answer, `groundedness` adds `context.documents`, `correctness` adds `expected_output`. Item `metadata` (e.g. `expected_doc_ids`) is never sent to a judge. Prompt versions are `{kind}.{method}.v3`.
 
 Live scoring: a failing judge records an `ERROR` score for its kind without discarding the others (`score_warning` lists the failed kinds; status is `error` only if every judge failed).
+
+## LLM judges (v3)
+
+Code: `aiobs.evaluation.judges` (`prompts`, `parsing`, `claims`, `rubric`, `evaluators`, `cache`, `warnings`). Judges return `label=None`; `explanation` is a short human-readable summary and structured details go into `metadata`.
+
+### Methods and config
+
+| Kind | `method` | Notes |
+|---|---|---|
+| `groundedness` | `claims` (default), `rubric` | claims: extract answer claims, verify each against `context.documents` (2 calls) |
+| `correctness` | `claims` (default), `rubric` | claims: extract gold claims from `expected_output`, check coverage in the answer (2 calls, 3 with `scoring: f1`) |
+| `answer_relevance` | `rubric` (only value) | one call, anchored 1-5 level |
+
+`rubric` for groundedness/correctness is a single holistic call intended for small local models; it is never selected as a silent fallback.
+
+Entry config keys (part of `config_hash`). Invalid values raise `ValueError` when the evaluator is built.
+
+| key | values | default | applies to |
+|---|---|---|---|
+| `method` | `claims` \| `rubric` | `claims` (groundedness, correctness), `rubric` (answer_relevance) | all judges |
+| `scoring` | `recall` \| `f1` | `recall` | correctness with `method=claims` |
+| `max_claims` | integer >= 1 | 30 | `method=claims`; extra claims are dropped and `claims_truncated=true` |
+| `model` | LiteLLM model id | `LLM_MODEL` | all |
+| `temperature` | finite float | `LLM_TEMPERATURE` | all |
+
+### Scoring
+
+- **Groundedness (claims):** `supported / claims`. Each claim is `supported`, `contradicted` or `not_supported`. Zero claims (refusal, "I don't know") is `SKIPPED` (`no_factual_claims`). Missing `context` is `SKIPPED`; empty `context.documents` is a minimum-score `FAIL`.
+- **Correctness (claims):** recall `= covered / gold claims`; any `contradicted` gold claim gives `0.0`. `scoring: f1` adds a call that checks the answer's own claims against `expected_output` (`precision = supported / answer claims`, score is F1, still `0.0` on any contradiction). Zero gold claims is `SKIPPED` (`no_gold_claims`). Extra non-contradicting statements are not penalized by recall.
+- **Rubric:** `{reasoning, level}` with `level` 1-5 and `score = (level - 1) / 4`.
+- Missing `actual_output` is `SKIPPED` for every judge; correctness also needs `expected_output`.
+- PASS/FAIL comes only from the entry threshold.
+
+### Determinism and versioning
+
+- `LLM_TEMPERATURE` (default `0.0`) and `LLM_SEED` (default `42`) are sent on every judge call; `LiteLlmClient` passes `drop_params=True` so providers without `seed` ignore it. Entry `temperature` / `model` override them per entry.
+- `prompt_version = "{kind}.{method}.v3"` (e.g. `groundedness.claims.v3`) is stored in each result's metadata and in `run.metadata.prompt_version`. Compare flags a `prompt_version` mismatch between candidate and baseline as a config mismatch (flagged, not blocked); runs from before v3 carry none and count as a different version.
+- Result metadata: `method`, `prompt_version`, `model`, `claims` (per claim `text` and `verdict`, plus `doc_ids`/`quote`/`reasoning` where applicable), counts (`n_claims`, `n_supported`, `n_contradicted`; correctness: `n_gold`, `n_covered`, `n_missing`, `recall`, and `precision` for f1), `claims_truncated`, `llm_calls`, `cache_hit`. Rubric results store `level` and `reasoning`.
+- Explanations are capped at 1000 characters (claim lists are abbreviated).
+
+### Gold-claim cache
+
+Gold claims extracted from `expected_output` are stored in `judge_claim_cache` (migration `0011_judge_claim_cache`), keyed by a SHA-256 of question + expected output + `prompt_version` + model. A hit skips the extract call, so candidate and baseline experiments are scored against identical gold claims. Entries are written only after the extract output passed validation.
+
+### Output validation and errors
+
+Every step parses tolerantly (code fences, JSON wrapped in prose), validates against a schema (enum verdicts, `level` 1-5, one verdict per claim sent) and gets one repair retry in the same conversation. Failures produce an `ERROR` result with `metadata.error_type`:
+
+- `judge_output_invalid`: the model did not follow the format after repair; `metadata.raw_output` holds the first 2000 characters.
+- `llm_unavailable`: timeout, connection, rate-limit or provider 5xx after LiteLLM retries.
+- `context_overflow`: context window exceeded. Documents are never truncated silently.
+- `llm_error`: any other provider error.
+
+### Unsuitable-model warning
+
+- **Offline:** when `judge_output_invalid` items exceed 20% of evaluated items (SKIPPED and missing-output items excluded; the other error types do not count as format failures), the run gets `metadata.warnings = ["judge_model_unsuitable"]` and `metadata.warning_detail` (`model`, `method`, `failure_rate`, `message`). The remedy is `method: rubric` or a stronger judge model.
+- **Live:** an interaction whose judge result is `judge_output_invalid` gets a `judge_model_unsuitable` `score_warning`. The rolling unsuitable rate is computed in the UI from the live interactions list (only evaluated judge scores count).
+
+### Manual smoke test
+
+`scripts/judge_smoke.py` runs all three judges on a fixed sample against a real model (not part of CI):
+
+```bash
+cd backend
+LLM_MODEL=ollama/gemma4:e2b LLM_API_BASE=http://localhost:11434 \
+  uv run python ../scripts/judge_smoke.py [--method rubric]
+```
+
+A capable model should give groundedness about 0.5, correctness about 0.5 and answer_relevance 1.0.
 
 ## Evaluator execution
 

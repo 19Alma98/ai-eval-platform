@@ -23,8 +23,6 @@ Open items from the RAG evaluation review (2026-10-08). Fixed items are in git h
   `HitAtKEvaluator`). An empty gold set should be SKIPPED, not a retrieval failure.
 - [ ] **Judge is not calibrated.** Live reviews (agree/disagree) are stored but never used. Report
   judge/human agreement (per kind, per judge model) so judge scores can be trusted or tuned.
-- [ ] **Judge determinism.** `infrastructure/llm.py` does not set `temperature=0`; reruns of the same
-  item can score differently and show up as fake regressions.
 - [ ] **Retrieval metrics are binary only.** Add recall@k and MRR (and optionally context
   precision); hit@k hides partial recall.
 - [ ] **Regression gate has no significance test.** `DELTA_THRESHOLD = 0.01`
