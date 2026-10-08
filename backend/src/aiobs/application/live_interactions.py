@@ -525,7 +525,7 @@ async def schedule_live_score(interaction_id: uuid.UUID) -> None:
     """BackgroundTasks entrypoint — opens a dedicated DB session."""
     from aiobs.application.evaluators import CreateEvaluator
     from aiobs.application.metrics_sets import EnsureProjectDefaultMetricsSet
-    from aiobs.infrastructure.db import get_session_factory
+    from aiobs.infrastructure.db import try_get_session_factory
     from aiobs.infrastructure.repositories import (
         SqlAlchemyEvaluatorRepository,
         SqlAlchemyLiveInteractionRepository,
@@ -533,9 +533,8 @@ async def schedule_live_score(interaction_id: uuid.UUID) -> None:
         SqlAlchemyProjectRepository,
     )
 
-    try:
-        factory = get_session_factory()
-    except RuntimeError:
+    factory = try_get_session_factory()
+    if factory is None:
         logger.warning(
             "Skipping background live score; DB session factory not initialized (%s)",
             interaction_id,

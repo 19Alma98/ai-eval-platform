@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import os
 import re
 from collections.abc import AsyncIterator
@@ -9,6 +10,7 @@ from httpx import ASGITransport, AsyncClient
 from sqlalchemy import text
 from sqlalchemy.engine.url import make_url
 from sqlalchemy.ext.asyncio import create_async_engine
+from sqlalchemy.pool import NullPool
 
 from aiobs.infrastructure.db import dispose_db, init_db
 from aiobs.infrastructure.models import Base
@@ -49,6 +51,7 @@ async def _ensure_database(url: str) -> None:
     engine = create_async_engine(
         admin_url.render_as_string(hide_password=False),
         isolation_level="AUTOCOMMIT",
+        poolclass=NullPool,
     )
     try:
         async with engine.connect() as conn:
@@ -60,10 +63,11 @@ async def _ensure_database(url: str) -> None:
                 await conn.execute(text(f'CREATE DATABASE "{db_name}"'))
     finally:
         await engine.dispose()
+        await asyncio.sleep(0)
 
 
 async def _reset_schema(url: str) -> None:
-    engine = create_async_engine(url, pool_pre_ping=True)
+    engine = create_async_engine(url, pool_pre_ping=True, poolclass=NullPool)
     try:
         async with engine.begin() as conn:
             await conn.execute(text("DROP SCHEMA public CASCADE"))
@@ -71,6 +75,7 @@ async def _reset_schema(url: str) -> None:
             await conn.run_sync(Base.metadata.create_all)
     finally:
         await engine.dispose()
+        await asyncio.sleep(0)
 
 
 @pytest.fixture
