@@ -245,6 +245,18 @@ async def test_correctness_skips_without_expected_or_gold_claims() -> None:
     assert no_gold.explanation.startswith("no_gold_claims")
 
 
+@pytest.mark.asyncio
+@pytest.mark.parametrize("config", [{}, {"scoring": "f1"}])
+async def test_correctness_never_sees_documents_or_gold_doc_ids(config: dict[str, Any]) -> None:
+    llm = ScriptedJudgeLlm()
+    result = await _judge("correctness", llm, config).evaluate(_sample())
+    assert result.label != "ERROR"
+    assert llm.calls
+    for call in llm.calls:
+        assert "Full-time staff" not in call["user"]
+        assert "GOLD-DOC" not in call["user"]
+
+
 # --- answer relevance ------------------------------------------------------------
 
 
@@ -258,6 +270,7 @@ async def test_answer_relevance_rubric_never_sees_gold_or_documents() -> None:
     user = llm.calls[0]["user"]
     assert "GOLD-ANSWER-TEXT" not in user
     assert "Full-time staff" not in user
+    assert "GOLD-DOC" not in user
 
 
 # --- errors ----------------------------------------------------------------------
