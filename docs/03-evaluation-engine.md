@@ -80,7 +80,7 @@ Code: `aiobs.evaluation.judges` (`prompts`, `parsing`, `claims`, `rubric`, `eval
 | Kind | `method` | Notes |
 |---|---|---|
 | `groundedness` | `claims` (default), `rubric` | claims: extract answer claims, verify each against `context.documents` (2 calls) |
-| `correctness` | `claims` (default), `rubric` | claims: extract gold claims from `expected_output`, check coverage in the answer (2 calls, 3 with `scoring: f1`) |
+| `correctness` | `claims` (default), `rubric` | claims: extract gold claims from `expected_output`, check coverage in the answer (2 calls, 4 with `scoring: f1`; one fewer on a gold-claim cache hit) |
 | `answer_relevance` | `rubric` (only value) | one call, anchored 1-5 level |
 
 `rubric` for groundedness/correctness is a single holistic call intended for small local models; it is never selected as a silent fallback.
@@ -98,7 +98,7 @@ Entry config keys (part of `config_hash`). Invalid values raise `ValueError` whe
 ### Scoring
 
 - **Groundedness (claims):** `supported / claims`. Each claim is `supported`, `contradicted` or `not_supported`. Zero claims (refusal, "I don't know") is `SKIPPED` (`no_factual_claims`). Missing `context` is `SKIPPED`; empty `context.documents` is a minimum-score `FAIL`.
-- **Correctness (claims):** recall `= covered / gold claims`; any `contradicted` gold claim gives `0.0`. `scoring: f1` adds a call that checks the answer's own claims against `expected_output` (`precision = supported / answer claims`, score is F1, still `0.0` on any contradiction). Zero gold claims is `SKIPPED` (`no_gold_claims`). Extra non-contradicting statements are not penalized by recall.
+- **Correctness (claims):** recall `= covered / gold claims`; any `contradicted` gold claim gives `0.0`. `scoring: f1` adds two calls: extract the answer's own claims, then check them against `expected_output` (`precision = supported / answer claims`, score is F1, still `0.0` on any contradiction). Zero gold claims is `SKIPPED` (`no_gold_claims`). Extra non-contradicting statements are not penalized by recall.
 - **Rubric:** `{reasoning, level}` with `level` 1-5 and `score = (level - 1) / 4`.
 - Missing `actual_output` is `SKIPPED` for every judge; correctness also needs `expected_output`.
 - PASS/FAIL comes only from the entry threshold.
