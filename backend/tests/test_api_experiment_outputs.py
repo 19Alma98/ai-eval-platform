@@ -8,6 +8,7 @@ import pytest
 from httpx import ASGITransport, AsyncClient
 
 from aiobs.api.deps import (
+    get_app_config_repository,
     get_dataset_repository,
     get_evaluation_run_repository,
     get_evaluator_repository,
@@ -25,7 +26,7 @@ from aiobs.domain.experiment_output import ExperimentItemOutput
 from aiobs.domain.project import Project
 from aiobs.domain.trace import Trace
 from aiobs.main import create_app
-from tests.support.repositories import InMemoryMetricsSetRepository
+from tests.support.repositories import InMemoryAppConfigRepository, InMemoryMetricsSetRepository
 
 
 class InMemoryProjectRepository:
@@ -211,6 +212,7 @@ async def client() -> AsyncIterator[AsyncClient]:
     runs = InMemoryEvaluationRunRepository()
     outputs = InMemoryExperimentItemOutputRepository()
     metrics_sets = InMemoryMetricsSetRepository()
+    app_configs = InMemoryAppConfigRepository()
 
     app = create_app()
     app.dependency_overrides[get_project_repository] = lambda: projects
@@ -221,6 +223,7 @@ async def client() -> AsyncIterator[AsyncClient]:
     app.dependency_overrides[get_evaluation_run_repository] = lambda: runs
     app.dependency_overrides[get_experiment_item_output_repository] = lambda: outputs
     app.dependency_overrides[get_metrics_set_repository] = lambda: metrics_sets
+    app.dependency_overrides[get_app_config_repository] = lambda: app_configs
 
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as ac:

@@ -1367,16 +1367,19 @@ class SqlJudgeClaimCache:
     def __init__(self, session_factory: Any | None = None) -> None:
         self._session_factory = session_factory
 
-    def _factory(self) -> Any:
+    def _factory(self) -> Any | None:
         if self._session_factory is not None:
             return self._session_factory
-        from aiobs.infrastructure.db import get_session_factory
+        from aiobs.infrastructure.db import try_get_session_factory
 
-        return get_session_factory()
+        return try_get_session_factory()
 
     async def get(self, key: str) -> list[str] | None:
+        factory = self._factory()
+        if factory is None:
+            return None
         try:
-            async with self._factory()() as session:
+            async with factory() as session:
                 row = await session.get(JudgeClaimCacheModel, key)
                 return list(row.claims) if row is not None else None
         except Exception:  # noqa: BLE001
@@ -1384,8 +1387,11 @@ class SqlJudgeClaimCache:
             return None
 
     async def put(self, key: str, *, prompt_version: str, model: str, claims: list[str]) -> None:
+        factory = self._factory()
+        if factory is None:
+            return
         try:
-            async with self._factory()() as session:
+            async with factory() as session:
                 stmt = (
                     pg_insert(JudgeClaimCacheModel)
                     .values(key=key, prompt_version=prompt_version, model=model, claims=claims)
