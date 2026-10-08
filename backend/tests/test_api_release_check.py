@@ -309,6 +309,20 @@ async def test_release_check_fails_quality_and_regression(
     client, _ = release_env
     project_id, dataset_id, evaluator_id, item_id = await _seed_quality(client)
 
+    second_item_id = item_id
+    for idx in range(2, 6):
+        item = await client.post(
+            f"/api/v1/datasets/{dataset_id}/items",
+            json={
+                "input": f"hi{idx}",
+                "expected_output": "hello",
+                "actual_output": "hello",
+            },
+        )
+        assert item.status_code == 201
+        if idx == 2:
+            second_item_id = item.json()["id"]
+
     baseline = await client.post(
         f"/api/v1/projects/{project_id}/experiments",
         json={"name": "baseline", "dataset_id": dataset_id},
@@ -326,7 +340,7 @@ async def test_release_check_fails_quality_and_regression(
 
     put = await client.put(
         f"/api/v1/experiments/{candidate_id}/outputs",
-        json={"items": [{"dataset_item_id": item_id, "actual_output": "nope"}]},
+        json={"items": [{"dataset_item_id": second_item_id, "actual_output": "nope"}]},
     )
     assert put.status_code == 200
 

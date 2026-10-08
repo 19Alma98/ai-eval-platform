@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import uuid
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Any
 
 from aiobs.application.compare import (
@@ -20,6 +20,7 @@ from aiobs.regression.aggregate import aggregate_results, select_runs
 from aiobs.regression.policy import (
     EvaluatorMetricInput,
     InvalidPolicyError,
+    PolicyCheck,
     PolicyEvaluation,
     RegressionDeltaInput,
     evaluate_policy,
@@ -105,6 +106,7 @@ class ReleaseCheck:
 
         baseline_id: uuid.UUID | None = None
         regression_deltas: list[RegressionDeltaInput] = []
+        saw_insufficient_n = False
         if policy.regression is not None:
             baseline_id = command.baseline_experiment_id or experiment.baseline_experiment_id
             if baseline_id is None:
@@ -116,6 +118,9 @@ class ReleaseCheck:
             for metric in comparison.metrics:
                 if metric.metric != "mean_score":
                     continue
+                if metric.status == "insufficient_n":
+                    saw_insufficient_n = True
+                    continue
                 name = metric.evaluator_name or str(metric.evaluator_id)
                 regression_deltas.append(
                     RegressionDeltaInput(
@@ -124,11 +129,36 @@ class ReleaseCheck:
                     )
                 )
 
+        policy_for_eval = policy
+        if (
+            policy.regression is not None
+            and not regression_deltas
+            and saw_insufficient_n
+        ):
+            policy_for_eval = replace(policy, regression=None)
+
         evaluation = evaluate_policy(
-            policy,
+            policy_for_eval,
             candidate=candidate,
             regression_deltas=regression_deltas,
         )
+        if (
+            policy.regression is not None
+            and not regression_deltas
+            and saw_insufficient_n
+            and not evaluation.checks
+        ):
+            evaluation = PolicyEvaluation(
+                status="passed",
+                checks=(
+                    PolicyCheck(
+                        metric="regression.max_delta",
+                        actual=None,
+                        threshold=policy.regression.max_delta,
+                        status="passed",
+                    ),
+                ),
+            )
         return ReleaseCheckResult(
             status=evaluation.status,
             experiment_id=command.experiment_id,
