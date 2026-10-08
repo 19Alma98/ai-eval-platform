@@ -1,8 +1,20 @@
 from __future__ import annotations
 
-import pytest
+from typing import Literal
 
-from aiobs.evaluation.judges.parsing import extract_json_object
+import pytest
+from pydantic import BaseModel
+
+from aiobs.evaluation.judges.errors import (
+    CONTEXT_OVERFLOW,
+    LLM_ERROR,
+    LLM_UNAVAILABLE,
+    JudgeOutputError,
+    classify_llm_error,
+)
+from aiobs.evaluation.judges.parsing import CallOptions, call_structured, extract_json_object
+from aiobs.evaluation.judges.schemas import CoverageVerifyOut, RubricOut, SupportVerifyOut
+from support.fake_llm import ScriptedJudgeLlm
 
 
 def test_plain_json() -> None:
@@ -43,3 +55,86 @@ def test_invalid_fence_falls_back_to_object_outside_it() -> None:
 def test_bare_fence_without_json_tag() -> None:
     text = 'Result:\n```\n{"level": 1}\n```'
     assert extract_json_object(text) == {"level": 1}
+
+
+_OPTS = CallOptions(model="judge-m", temperature=None)
+_SYSTEM = "STEP: rubric_test\nRate it."
+
+
+class _Pick(BaseModel):
+    choice: Literal["a", "b"]
+
+
+@pytest.mark.asyncio
+async def test_call_structured_first_try() -> None:
+    llm = ScriptedJudgeLlm({"rubric_test": {"choice": "a"}})
+    result = await call_structured(llm, system=_SYSTEM, user="u", schema=_Pick, options=_OPTS)
+    assert result.value.choice == "a"
+    assert result.calls == 1
+    assert llm.calls[0]["model"] == "judge-m"
+
+
+@pytest.mark.asyncio
+async def test_call_structured_repairs_once_with_validation_error() -> None:
+    llm = ScriptedJudgeLlm({"rubric_test": [{"choice": "zzz"}, {"choice": "b"}]})
+    result = await call_structured(llm, system=_SYSTEM, user="u", schema=_Pick, options=_OPTS)
+    assert result.value.choice == "b"
+    assert result.calls == 2
+    history = llm.calls[1]["history"]
+    assert history[0] == {"role": "assistant", "content": '{"choice": "zzz"}'}
+    assert history[1]["role"] == "user"
+    assert "choice" in history[1]["content"]
+
+
+@pytest.mark.asyncio
+async def test_call_structured_raises_after_second_failure() -> None:
+    llm = ScriptedJudgeLlm({"rubric_test": ["not json", "still not json"]})
+    with pytest.raises(JudgeOutputError) as exc_info:
+        await call_structured(llm, system=_SYSTEM, user="u", schema=_Pick, options=_OPTS)
+    assert exc_info.value.raw == "still not json"
+    assert len(llm.calls) == 2
+
+
+@pytest.mark.asyncio
+async def test_call_structured_check_failure_triggers_repair() -> None:
+    def check(value: _Pick) -> None:
+        if value.choice != "b":
+            raise ValueError("must pick b")
+
+    llm = ScriptedJudgeLlm({"rubric_test": [{"choice": "a"}, {"choice": "b"}]})
+    result = await call_structured(
+        llm, system=_SYSTEM, user="u", schema=_Pick, options=_OPTS, check=check
+    )
+    assert result.calls == 2
+    assert "must pick b" in llm.calls[1]["history"][1]["content"]
+
+
+def test_schemas_normalize_lenient_model_output() -> None:
+    support = SupportVerifyOut.model_validate(
+        {"verdicts": [{"verdict": " Not Supported ", "doc_ids": [12, "kb-1"], "reasoning": None}]}
+    )
+    assert support.verdicts[0].verdict == "not_supported"
+    assert support.verdicts[0].doc_ids == ["12", "kb-1"]
+    coverage = CoverageVerifyOut.model_validate({"verdicts": [{"verdict": "COVERED"}]})
+    assert coverage.verdicts[0].verdict == "covered"
+    assert RubricOut.model_validate({"level": "4"}).level == 4
+
+
+def test_rubric_level_out_of_range_is_rejected() -> None:
+    with pytest.raises(ValueError):
+        RubricOut.model_validate({"level": 7})
+
+
+def test_classify_llm_error() -> None:
+    from litellm import exceptions as llm_exc
+
+    def bare(cls: type[BaseException]) -> BaseException:
+        # Constructor signatures differ across LiteLLM versions; isinstance is all we need.
+        return cls.__new__(cls)
+
+    assert classify_llm_error(bare(llm_exc.ContextWindowExceededError)) == CONTEXT_OVERFLOW
+    assert classify_llm_error(bare(llm_exc.Timeout)) == LLM_UNAVAILABLE
+    assert classify_llm_error(bare(llm_exc.RateLimitError)) == LLM_UNAVAILABLE
+    assert classify_llm_error(bare(llm_exc.APIConnectionError)) == LLM_UNAVAILABLE
+    assert classify_llm_error(TimeoutError()) == LLM_UNAVAILABLE
+    assert classify_llm_error(RuntimeError("boom")) == LLM_ERROR
