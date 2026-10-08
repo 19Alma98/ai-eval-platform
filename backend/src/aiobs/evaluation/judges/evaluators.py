@@ -390,6 +390,12 @@ class CorrectnessJudge(_LlmJudge):
             await self._cache.put(
                 key, prompt_version=self.prompt_version, model=model, claims=extracted.claims
             )
+            # Writes are first-wins: a concurrent run may have stored different claims.
+            # Re-read so every run is judged against the same gold; keep ours if the
+            # re-read finds nothing (e.g. cache errors are treated as a miss).
+            stored = await self._cache.get(key)
+            if stored:
+                return ExtractedClaims(claims=stored, calls=extracted.calls, cache_hit=False)
         return extracted
 
 

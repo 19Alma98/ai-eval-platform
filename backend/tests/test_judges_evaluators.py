@@ -223,6 +223,40 @@ async def test_correctness_reuses_cached_gold_claims() -> None:
     assert "[C1] 26 days" in second_llm.calls[0]["user"]
 
 
+class _RacingCache(InMemoryJudgeClaimCache):
+    """Misses on the first get; another writer stores its claims just before our put."""
+
+    def __init__(self, other_claims: list[str]) -> None:
+        super().__init__()
+        self._other_claims = other_claims
+        self._gets = 0
+
+    async def get(self, key: str) -> list[str] | None:
+        self._gets += 1
+        return None if self._gets == 1 else await super().get(key)
+
+    async def put(self, key: str, *, prompt_version: str, model: str, claims: list[str]) -> None:
+        await super().put(
+            key, prompt_version=prompt_version, model=model, claims=self._other_claims
+        )
+        await super().put(key, prompt_version=prompt_version, model=model, claims=claims)
+
+
+@pytest.mark.asyncio
+async def test_correctness_scores_against_stored_claims_after_concurrent_write() -> None:
+    cache = _RacingCache(["other gold claim"])
+    llm = ScriptedJudgeLlm({"extract_reference_claims": {"claims": ["my own claim"]}})
+    result = await _judge("correctness", llm, cache=cache).evaluate(_sample())
+
+    coverage_prompts = [c["user"] for c in llm.calls if c["step"] == "verify_reference_coverage"]
+    assert len(coverage_prompts) == 1
+    assert "other gold claim" in coverage_prompts[0]
+    assert "my own claim" not in coverage_prompts[0]
+    assert result.metadata["n_gold"] == 1
+    assert [c["text"] for c in result.metadata["claims"]] == ["other gold claim"]
+    assert result.metadata["cache_hit"] is False
+
+
 @pytest.mark.asyncio
 async def test_correctness_invalid_extract_is_not_cached() -> None:
     cache = InMemoryJudgeClaimCache()
