@@ -9,9 +9,8 @@ Open items from the RAG evaluation review (2026-10-08). Fixed items are in git h
 
 ## Evaluation correctness
 
-- [ ] **Regression gate has no significance test.** `DELTA_THRESHOLD = 0.01`
-  (`regression/aggregate.py`) is noise on small test sets. Add a minimum item count and/or a
-  bootstrap confidence interval on the delta before calling it a regression.
+- [x] **Regression gate minimum N.** `MIN_APPLICABLE_ITEMS = 5` → status `insufficient_n`
+  (aggregate compare + release soft-skip). Bootstrap CI on the delta still deferred.
 
 ## Judge warnings
 
