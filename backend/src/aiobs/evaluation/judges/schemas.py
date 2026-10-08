@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from typing import Literal
 
 from pydantic import BaseModel, Field, field_validator
@@ -7,8 +8,19 @@ from pydantic import BaseModel, Field, field_validator
 
 def _normalize_verdict(value: object) -> object:
     if isinstance(value, str):
-        return value.strip().lower().replace(" ", "_").replace("-", "_")
+        return re.sub(r"[\s\-]+", "_", value.strip().strip(".:").strip().lower())
     return value
+
+
+def _claim_text(item: object) -> str:
+    if isinstance(item, dict):
+        inner = next(iter(item.values())) if len(item) == 1 else None
+        if not isinstance(inner, str):
+            raise ValueError("a claim object must hold exactly one string value")
+        item = inner
+    if not isinstance(item, str):
+        raise ValueError("each claim must be a string")
+    return item.strip()
 
 
 class ExtractOut(BaseModel):
@@ -19,7 +31,7 @@ class ExtractOut(BaseModel):
     def _clean(cls, value: object) -> object:
         if not isinstance(value, list):
             return value
-        return [str(c).strip() for c in value if c is not None and str(c).strip()]
+        return [text for text in (_claim_text(c) for c in value if c is not None) if text]
 
 
 class SupportVerdict(BaseModel):
@@ -40,6 +52,8 @@ class SupportVerdict(BaseModel):
             return []
         if isinstance(value, list):
             return [str(v) for v in value if v is not None]
+        if isinstance(value, str | int):
+            return [str(value)]
         return value
 
 

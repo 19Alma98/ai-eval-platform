@@ -13,7 +13,12 @@ from aiobs.evaluation.judges.errors import (
     classify_llm_error,
 )
 from aiobs.evaluation.judges.parsing import CallOptions, call_structured, extract_json_object
-from aiobs.evaluation.judges.schemas import CoverageVerifyOut, RubricOut, SupportVerifyOut
+from aiobs.evaluation.judges.schemas import (
+    CoverageVerifyOut,
+    ExtractOut,
+    RubricOut,
+    SupportVerifyOut,
+)
 from support.fake_llm import ScriptedJudgeLlm
 
 
@@ -138,3 +143,49 @@ def test_classify_llm_error() -> None:
     assert classify_llm_error(bare(llm_exc.APIConnectionError)) == LLM_UNAVAILABLE
     assert classify_llm_error(TimeoutError()) == LLM_UNAVAILABLE
     assert classify_llm_error(RuntimeError("boom")) == LLM_ERROR
+
+
+def test_extract_claims_unwraps_single_string_dict() -> None:
+    out = ExtractOut.model_validate(
+        {"claims": [{"claim": " x "}, " y ", "", "  ", None, {"a": " "}]}
+    )
+    assert out.claims == ["x", "y"]
+
+
+@pytest.mark.parametrize(
+    "claims",
+    [[1, 2], [["a"]], [{"a": "x", "b": "y"}], [{"a": 1}]],
+)
+def test_extract_claims_rejects_other_item_types(claims: object) -> None:
+    with pytest.raises(ValueError):
+        ExtractOut.model_validate({"claims": claims})
+
+
+def test_verdict_normalization_collapses_separators_and_punctuation() -> None:
+    support = SupportVerifyOut.model_validate(
+        {"verdicts": [{"verdict": "Not  supported"}, {"verdict": "supported."}]}
+    )
+    assert [v.verdict for v in support.verdicts] == ["not_supported", "supported"]
+    coverage = CoverageVerifyOut.model_validate({"verdicts": [{"verdict": "Covered:"}]})
+    assert coverage.verdicts[0].verdict == "covered"
+
+
+def test_doc_ids_bare_value_becomes_list() -> None:
+    support = SupportVerifyOut.model_validate(
+        {
+            "verdicts": [
+                {"verdict": "supported", "doc_ids": "kb-1"},
+                {"verdict": "supported", "doc_ids": 7},
+            ]
+        }
+    )
+    assert support.verdicts[0].doc_ids == ["kb-1"]
+    assert support.verdicts[1].doc_ids == ["7"]
+
+
+@pytest.mark.asyncio
+async def test_call_structured_empty_first_reply_uses_placeholder_in_history() -> None:
+    llm = ScriptedJudgeLlm({"rubric_test": ["  ", {"choice": "a"}]})
+    result = await call_structured(llm, system=_SYSTEM, user="u", schema=_Pick, options=_OPTS)
+    assert result.calls == 2
+    assert llm.calls[1]["history"][0] == {"role": "assistant", "content": "(empty reply)"}

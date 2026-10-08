@@ -118,7 +118,7 @@ async def call_structured[T: BaseModel](
         first_error = _describe(exc)
 
     history = [
-        {"role": "assistant", "content": raw},
+        {"role": "assistant", "content": raw if raw.strip() else "(empty reply)"},
         {"role": "user", "content": REPAIR_INSTRUCTION.format(error=first_error)},
     ]
     repaired = await llm.complete(
