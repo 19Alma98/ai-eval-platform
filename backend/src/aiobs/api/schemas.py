@@ -369,6 +369,7 @@ class ExperimentCompareResponse(BaseModel):
     unchanged: list[MetricComparisonResponse]
     # Evaluators whose candidate and baseline runs used different effective configs.
     config_mismatches: list[MetricComparisonResponse] = []
+    insufficient_n: list[MetricComparisonResponse] = []
 
 
 class ReleaseCheckRequest(BaseModel):

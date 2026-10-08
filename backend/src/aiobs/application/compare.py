@@ -48,6 +48,7 @@ class ExperimentComparison:
     improved: list[MetricComparison]
     unchanged: list[MetricComparison]
     config_mismatches: list[MetricComparison]
+    insufficient_n: list[MetricComparison]
 
 
 def _metadata_evaluator_name(run: EvaluationRun) -> str | None:
@@ -216,6 +217,7 @@ class CompareExperiments:
         improved = [m for m in metrics if m.status == "improved"]
         unchanged = [m for m in metrics if m.status == "unchanged"]
         config_mismatches = [m for m in metrics if m.status == "config_mismatch"]
+        insufficient_n = [m for m in metrics if m.status == "insufficient_n"]
         return ExperimentComparison(
             experiment_id=experiment_id,
             baseline_experiment_id=baseline_id,
@@ -224,4 +226,5 @@ class CompareExperiments:
             improved=improved,
             unchanged=unchanged,
             config_mismatches=config_mismatches,
+            insufficient_n=insufficient_n,
         )

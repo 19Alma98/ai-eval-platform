@@ -242,10 +242,10 @@ Default run selection: latest run per `evaluator_id` on each side. Comparison us
 Response includes:
 
 - aggregate metric deltas (`mean_score`, `pass_rate`)
-- status per metric: `regression` | `improved` | `unchanged` | `unavailable`
-- `regressions`, `improved`, `unchanged` subsets
+- status per metric: `regression` | `improved` | `unchanged` | `unavailable` | `config_mismatch` | `insufficient_n`
+- `regressions`, `improved`, `unchanged`, `config_mismatches`, `insufficient_n` subsets
 
-Classification uses higher-is-better with `|delta| < 0.01` treated as unchanged.
+Classification uses higher-is-better with `|delta| < 0.01` treated as unchanged. When either side has fewer than 5 applicable items (`n_applicable`), aggregate metrics use status `insufficient_n` instead of regression/improved/unchanged.
 
 ### Item-level compare
 

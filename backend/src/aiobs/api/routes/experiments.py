@@ -201,6 +201,7 @@ def _compare_response(comparison: ExperimentComparison) -> ExperimentCompareResp
         improved=[_metric_response(m) for m in comparison.improved],
         unchanged=[_metric_response(m) for m in comparison.unchanged],
         config_mismatches=[_metric_response(m) for m in comparison.config_mismatches],
+        insufficient_n=[_metric_response(m) for m in comparison.insufficient_n],
     )
 
 
