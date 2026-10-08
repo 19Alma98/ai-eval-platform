@@ -46,6 +46,8 @@ import {
   useMetricsSets,
 } from "@/features/metrics/use-metrics-sets";
 import { CopyTechnicalId } from "@/components/copy-technical-id";
+import { JudgeClaimsTable } from "@/components/judge-claims-table";
+import { runJudgeWarning } from "@/features/judges/judge-metadata";
 import { resolveLabel } from "@/lib/format";
 import {
   experimentQueryOptions,
@@ -568,6 +570,7 @@ export function ExperimentDetailView({
               : null
           }
           runStatus={runQuery.data?.status}
+          runWarning={runJudgeWarning(runQuery.data?.metadata)}
           itemsLoading={
             (selectedRunId ? runQuery.isLoading : false) ||
             outputsQuery.isLoading ||
@@ -819,6 +822,7 @@ function RunItemsSection({
   runId,
   evaluatorName,
   runStatus,
+  runWarning,
   itemsLoading,
   itemsError,
   onRetryItems,
@@ -831,6 +835,7 @@ function RunItemsSection({
   runId: string | null;
   evaluatorName: string | null;
   runStatus?: string;
+  runWarning?: string | null;
   itemsLoading: boolean;
   itemsError: unknown;
   onRetryItems: () => void;
@@ -861,6 +866,15 @@ function RunItemsSection({
                 </span>
               </span>
               {runStatus ? <StatusBadge status={runStatus} /> : null}
+              {runWarning ? (
+                <Badge
+                  variant="outline"
+                  className="border-status-warn text-status-warn"
+                  title={runWarning}
+                >
+                  Judge model unsuitable
+                </Badge>
+              ) : null}
               <CopyTechnicalId id={runId} label="Copy run ID" />
             </>
           ) : (
@@ -944,6 +958,12 @@ function RunItemsSection({
                     ? `\n\n${selectedItem.explanation.trim()}`
                     : ""}
                 </DetailBlock>
+                <JudgeClaimsTable metadata={selectedItem.resultMetadata} />
+                <JudgeClaimsTable
+                  metadata={selectedItem.resultMetadata}
+                  claimsKey="answer_claims"
+                  title="Answer claims (vs reference)"
+                />
                 {selectedItem.sourceTraceId ? (
                   <RunItemTimeline
                     projectId={projectId}

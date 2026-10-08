@@ -367,6 +367,8 @@ class ExperimentCompareResponse(BaseModel):
     regressions: list[MetricComparisonResponse]
     improved: list[MetricComparisonResponse]
     unchanged: list[MetricComparisonResponse]
+    # Evaluators whose candidate and baseline runs used different effective configs.
+    config_mismatches: list[MetricComparisonResponse] = []
 
 
 class ReleaseCheckRequest(BaseModel):
@@ -421,6 +423,7 @@ class ItemSideResponse(BaseModel):
     score: float | None = None
     label: str | None = None
     explanation: str | None = None
+    metadata: dict[str, Any] = Field(default_factory=dict)
     run_id: uuid.UUID | None = None
 
 
@@ -498,6 +501,7 @@ class LiveInteractionScoreResponse(BaseModel):
     explanation: str | None
     threshold: float | None
     created_at: datetime
+    metadata: dict[str, Any] = Field(default_factory=dict)
 
 
 class LiveReviewResponse(BaseModel):
@@ -535,4 +539,5 @@ class UpsertLiveReviewRequest(BaseModel):
 
 class PromoteLiveInteractionRequest(BaseModel):
     dataset_id: uuid.UUID
-    expected_output: Any | None = None
+    expected_output: Any
+    expected_doc_ids: list[str] | None = None

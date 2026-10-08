@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import uuid
+from dataclasses import replace
 from datetime import UTC, datetime
 
 import pytest
@@ -12,6 +13,7 @@ from aiobs.regression.aggregate import (
     aggregate_results,
     classify_delta,
     compare_evaluator_metrics,
+    runs_config_mismatch,
     select_latest_runs,
     select_runs,
 )
@@ -77,7 +79,7 @@ def test_select_runs_unknown_id_raises() -> None:
         select_runs([_run()], run_ids=[missing])
 
 
-def test_aggregate_mean_and_pass_rate_include_skipped_error_as_zero() -> None:
+def test_aggregate_excludes_skipped_and_counts_error_as_zero() -> None:
     aggregates = aggregate_results(
         [
             _result(score=1.0, label="PASS"),
@@ -90,8 +92,32 @@ def test_aggregate_mean_and_pass_rate_include_skipped_error_as_zero() -> None:
     assert aggregates.n_scored == 2
     assert aggregates.n_skipped == 1
     assert aggregates.n_error == 1
-    assert aggregates.mean_score == 0.25
-    assert aggregates.pass_rate == 0.25
+    assert aggregates.mean_score == pytest.approx(1 / 3)
+    assert aggregates.pass_rate == pytest.approx(1 / 3)
+
+
+def test_aggregate_skipped_does_not_lower_mean() -> None:
+    aggregates = aggregate_results(
+        [
+            _result(score=1.0, label="PASS"),
+            _result(score=None, label="SKIPPED"),
+            _result(score=None, label="skipped"),
+        ]
+    )
+    assert aggregates.mean_score == 1.0
+    assert aggregates.pass_rate == 1.0
+
+
+def test_aggregate_all_skipped_is_null() -> None:
+    aggregates = aggregate_results(
+        [
+            _result(score=None, label="SKIPPED"),
+            _result(score=None, label="SKIPPED"),
+        ]
+    )
+    assert aggregates.n_skipped == 2
+    assert aggregates.mean_score is None
+    assert aggregates.pass_rate is None
 
 
 def test_aggregate_pass_rate_normalizes_label_casing() -> None:
@@ -105,7 +131,7 @@ def test_aggregate_pass_rate_normalizes_label_casing() -> None:
     assert aggregates.mean_score == 0.5
 
 
-def test_aggregate_all_skipped_or_error_counts_as_zero() -> None:
+def test_aggregate_skipped_plus_error_counts_error_as_zero() -> None:
     aggregates = aggregate_results(
         [
             _result(score=None, label="SKIPPED"),
@@ -145,3 +171,55 @@ def test_compare_evaluator_metrics_emits_both_metrics() -> None:
     )
     assert [r.metric for r in rows] == ["mean_score", "pass_rate"]
     assert all(r.status == "regression" for r in rows)
+
+
+def _run_with_hash(config_hash: str | None) -> EvaluationRun:
+    run = _run()
+    if config_hash is None:
+        return run
+    return EvaluationRun(
+        id=run.id,
+        experiment_id=run.experiment_id,
+        evaluator_id=run.evaluator_id,
+        status=run.status,
+        started_at=run.started_at,
+        finished_at=run.finished_at,
+        metadata={"config_hash": config_hash},
+    )
+
+
+def test_runs_config_mismatch_only_when_both_hashes_differ() -> None:
+    assert runs_config_mismatch(_run_with_hash("aaa"), _run_with_hash("bbb"))
+    assert not runs_config_mismatch(_run_with_hash("aaa"), _run_with_hash("aaa"))
+    # Legacy runs without a hash stay comparable.
+    assert not runs_config_mismatch(_run_with_hash("aaa"), _run_with_hash(None))
+    assert not runs_config_mismatch(None, _run_with_hash("aaa"))
+
+
+def test_compare_evaluator_metrics_config_mismatch_has_no_delta() -> None:
+    rows = compare_evaluator_metrics(
+        evaluator_id=uuid.uuid4(),
+        evaluator_name="hit_at_k",
+        candidate=Aggregates(10, 10, 0, 0, 0.7, 0.7),
+        baseline=Aggregates(10, 10, 0, 0, 0.9, 0.9),
+        config_mismatch=True,
+    )
+    assert all(r.status == "config_mismatch" for r in rows)
+    assert all(r.delta is None for r in rows)
+    # Raw values stay visible so the user can see what was measured.
+    assert rows[0].candidate == 0.7 and rows[0].baseline == 0.9
+
+
+def _run_with_meta(**metadata: object) -> EvaluationRun:
+    run = _run_with_hash("aaa")
+    return replace(run, metadata={**run.metadata, **metadata})
+
+
+def test_runs_config_mismatch_on_prompt_version() -> None:
+    v3 = _run_with_meta(prompt_version="groundedness.claims.v3")
+    rubric = _run_with_meta(prompt_version="groundedness.rubric.v3")
+    legacy = _run_with_meta()  # judge run scored before prompt versions were recorded
+    assert runs_config_mismatch(v3, rubric)
+    assert runs_config_mismatch(v3, legacy)
+    assert not runs_config_mismatch(v3, _run_with_meta(prompt_version="groundedness.claims.v3"))
+    assert not runs_config_mismatch(legacy, _run_with_meta())

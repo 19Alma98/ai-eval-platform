@@ -12,6 +12,14 @@ REVIEW_VERDICTS = frozenset({"agree", "disagree"})
 GOLDLESS_METRIC_KINDS = frozenset({"groundedness", "answer_relevance"})
 
 
+class DuplicateExternalIdError(Exception):
+    """Another interaction with the same (project_id, external_id) already exists."""
+
+    def __init__(self, external_id: str) -> None:
+        self.external_id = external_id
+        super().__init__(f"Live interaction external_id already exists: {external_id}")
+
+
 @dataclass(frozen=True, slots=True)
 class LiveInteraction:
     id: uuid.UUID
@@ -102,6 +110,7 @@ class LiveInteractionScore:
     explanation: str | None
     threshold: float | None
     created_at: datetime = field(default_factory=lambda: datetime.now(UTC))
+    metadata: dict[str, Any] = field(default_factory=dict)
 
     @classmethod
     def create(
@@ -114,6 +123,7 @@ class LiveInteractionScore:
         label: str | None = None,
         explanation: str | None = None,
         threshold: float | None = None,
+        metadata: dict[str, Any] | None = None,
     ) -> LiveInteractionScore:
         cleaned = kind.strip()
         if not cleaned:
@@ -128,6 +138,7 @@ class LiveInteractionScore:
             explanation=explanation,
             threshold=threshold,
             created_at=datetime.now(UTC),
+            metadata=dict(metadata or {}),
         )
 
 

@@ -221,10 +221,15 @@ def main() -> int:
             description="Promoted from live_run_demo",
             task_type="rag_qa",
         )
+        # Gold is written by a reviewer, never copied from the prod answer/retrieval.
         item = api_post(
             client,
             f"/api/v1/live-interactions/{target['id']}/promote",
-            {"dataset_id": dataset["id"]},
+            {
+                "dataset_id": dataset["id"],
+                "expected_output": "Full-time employees get 20 PTO days per calendar year.",
+                "expected_doc_ids": ["pto"],
+            },
         )
         print(
             f"\npromoted [{target['_label']}] → dataset {dataset['name']} "

@@ -2,13 +2,15 @@ from __future__ import annotations
 
 import uuid
 from dataclasses import dataclass
+from typing import Any
 
 from aiobs.application.evaluators import EvaluatorNotFoundError
 from aiobs.application.experiment_outputs import merge_dataset_item
 from aiobs.application.experiments import ExperimentNotFoundError
-from aiobs.application.metrics_sets import ResolveMetricsSetForScore
+from aiobs.application.metrics_sets import MetricsSetValidationError, ResolveMetricsSetForScore
 from aiobs.domain.evaluation import EvaluationResultRecord, EvaluationRun
 from aiobs.domain.experiment import Experiment
+from aiobs.domain.metrics_set import assert_unique_evaluator_ids
 from aiobs.domain.repositories import (
     DatasetRepository,
     EvaluationRunRepository,
@@ -29,6 +31,7 @@ class EvaluateExperimentCommand:
     experiment_id: uuid.UUID
     evaluator_ids: list[uuid.UUID]
     pass_thresholds: dict[uuid.UUID, float | None] | None = None
+    config_overrides: dict[uuid.UUID, dict[str, Any]] | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -66,7 +69,20 @@ class EvaluateExperiment:
         items = await self._datasets.list_items(experiment.dataset_id)
         output_rows = await self._outputs.list_by_experiment(experiment.id)
         by_item = {o.dataset_item_id: o for o in output_rows}
-        merged_items = [merge_dataset_item(item, by_item.get(item.id)) for item in items]
+        # Once an experiment records its own outputs, dataset-level actual_output/context
+        # belong to some other run: never fall back to them. Items without an output are
+        # failures of this experiment. Experiments with no outputs at all keep the legacy
+        # inline-dataset behavior (e.g. datasets built from traces).
+        has_outputs = bool(output_rows)
+        merged_items = [
+            merge_dataset_item(item, by_item.get(item.id), fallback_to_item=not has_outputs)
+            for item in items
+        ]
+        missing_output_item_ids = (
+            frozenset(item.id for item in items if item.id not in by_item)
+            if has_outputs
+            else frozenset()
+        )
         evaluator_entities = await self._evaluators.get_by_ids(command.evaluator_ids)
         by_id = {e.id: e for e in evaluator_entities}
         missing = [eid for eid in command.evaluator_ids if eid not in by_id]
@@ -103,11 +119,18 @@ class EvaluateExperiment:
                 if command.pass_thresholds is None
                 else command.pass_thresholds.get(evaluator_id)
             )
+            config_override = (
+                None
+                if command.config_overrides is None
+                else command.config_overrides.get(evaluator_id)
+            )
             run, results = await self._runner.run_evaluator(
                 run=run,
                 evaluator_entity=entity,
                 items=merged_items,
                 pass_threshold=pass_threshold,
+                config_override=config_override,
+                missing_output_item_ids=missing_output_item_ids,
             )
             run = await self._runs.update_run(run)
             if results:
@@ -169,18 +192,31 @@ class ScoreExperimentFromPack:
             save_as_default=command.save_as_default,
         )
 
+        enabled = [e for e in resolved.entries if e.enabled and e.evaluator_id is not None]
+        try:
+            # Guards sets saved before the invariant existed: thresholds and overrides
+            # below are keyed by evaluator, so a shared evaluator would mix two entries.
+            assert_unique_evaluator_ids(tuple(enabled))
+        except ValueError as exc:
+            raise MetricsSetValidationError(str(exc)) from exc
+
         evaluator_ids: list[uuid.UUID] = []
         pass_thresholds: dict[uuid.UUID, float | None] = {}
-        for entry in resolved.entries:
-            if not entry.enabled or entry.evaluator_id is None:
+        config_overrides: dict[uuid.UUID, dict[str, Any]] = {}
+        for entry in enabled:
+            if entry.evaluator_id is None:
                 continue
             evaluator_ids.append(entry.evaluator_id)
             pass_thresholds[entry.evaluator_id] = entry.threshold
+            # Evaluators are shared per kind across metrics sets; the entry config
+            # (k, max_ms, model, ...) is what this metrics set asks for.
+            config_overrides[entry.evaluator_id] = dict(entry.config)
         return await self._evaluate_experiment.execute(
             EvaluateExperimentCommand(
                 experiment_id=command.experiment_id,
                 evaluator_ids=evaluator_ids,
                 pass_thresholds=pass_thresholds,
+                config_overrides=config_overrides,
             )
         )
 

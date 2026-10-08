@@ -13,6 +13,7 @@ from aiobs.application.evaluate import (
     ScoreExperimentFromPack,
     ScoreExperimentFromPackCommand,
 )
+from aiobs.application.metrics_sets import MetricsSetValidationError
 from aiobs.domain.dataset import DatasetItem
 from aiobs.domain.evaluation import EvaluationRun
 from aiobs.domain.evaluator import Evaluator
@@ -81,6 +82,7 @@ class SpyRunner:
         evaluator_entity: Evaluator,
         items: list[DatasetItem],
         pass_threshold: float | None = None,
+        **_kwargs: object,
     ) -> tuple[EvaluationRun, list]:
         self.thresholds.append(pass_threshold)
         finished = run.with_status("PASSED", finished_at=datetime.now(UTC))
@@ -137,7 +139,7 @@ async def test_score_from_pack_builds_pass_thresholds_map() -> None:
                 kind="latency",
                 enabled=True,
                 threshold=None,
-                config={},
+                config={"max_ms": 1200},
                 evaluator_id=e2,
                 is_default=False,
             ),
@@ -178,3 +180,43 @@ async def test_score_from_pack_builds_pass_thresholds_map() -> None:
     assert capture.command is not None
     assert capture.command.evaluator_ids == [e1, e2]
     assert capture.command.pass_thresholds == {e1: 0.7, e2: None}
+    assert capture.command.config_overrides == {e1: {}, e2: {"max_ms": 1200}}
+
+
+@pytest.mark.asyncio
+async def test_score_from_pack_rejects_entries_sharing_an_evaluator() -> None:
+    project_id = uuid.uuid4()
+    experiment = Experiment.create(project_id, "exp", uuid.uuid4(), model_config={})
+    shared = uuid.uuid4()
+    # Built with replace() to mimic a set saved before the invariant existed.
+    legacy = replace(
+        MetricsSet.create(project_id, "legacy"),
+        entries=tuple(
+            MetricsSetEntry(
+                id=uuid.uuid4(),
+                kind=kind,
+                enabled=True,
+                threshold=0.5,
+                config={"k": k},
+                evaluator_id=shared,
+                is_default=False,
+            )
+            for kind, k in (("hit_at_k", 5), ("hit_at_1", 1))
+        ),
+    )
+
+    class FakeResolve:
+        async def execute(self, **kwargs):
+            return legacy
+
+    class FailingEvaluate:
+        async def execute(self, command: EvaluateExperimentCommand) -> EvaluateExperimentResult:
+            raise AssertionError("must not score a set with shared evaluators")
+
+    use_case = ScoreExperimentFromPack(
+        FakeExperimentRepository({experiment.id: experiment}),
+        FakeResolve(),  # type: ignore[arg-type]
+        FailingEvaluate(),  # type: ignore[arg-type]
+    )
+    with pytest.raises(MetricsSetValidationError, match="hit_at_k, hit_at_1"):
+        await use_case.execute(ScoreExperimentFromPackCommand(experiment_id=experiment.id))

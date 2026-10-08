@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
+from aiobs.domain.repositories import JudgeClaimCacheRepository
 from aiobs.evaluation.deterministic import register_deterministic_evaluators
-from aiobs.evaluation.llm_judges import make_llm_judge_factory
+from aiobs.evaluation.judges import JUDGE_KINDS, make_llm_judge_factory
 from aiobs.evaluation.protocol import (
     EvaluationResult,
     EvaluationSample,
@@ -22,14 +23,17 @@ def bootstrap_evaluators(
     llm: LlmClient | None = None,
     *,
     default_model: str | None = None,
+    claim_cache: JudgeClaimCacheRepository | None = None,
 ) -> None:
     """Register built-in deterministic and (optionally) LLM judge evaluators."""
     register_deterministic_evaluators()
     if llm is not None:
-        for kind in ("answer_relevance", "groundedness", "correctness"):
+        for kind in JUDGE_KINDS:
             register_evaluator(
                 kind,
-                make_llm_judge_factory(kind, llm, default_model=default_model),
+                make_llm_judge_factory(
+                    kind, llm, default_model=default_model, claim_cache=claim_cache
+                ),
             )
 
 

@@ -5,7 +5,7 @@ from dataclasses import dataclass, field
 
 import pytest
 
-from aiobs.application.evaluators import CreateEvaluatorCommand
+from aiobs.application.evaluators import CreateEvaluatorCommand, EvaluatorConflictError
 from aiobs.application.metrics_sets import (
     CreateMetricsSet,
     CreateMetricsSetCommand,
@@ -17,6 +17,7 @@ from aiobs.application.metrics_sets import (
     MetricsSetNotFoundError,
     MetricsSetProtectedError,
     MetricsSetReferencedError,
+    MetricsSetValidationError,
     PatchMetricsSet,
     PatchMetricsSetCommand,
     ResolveMetricsSetForScore,
@@ -26,6 +27,7 @@ from aiobs.application.metrics_sets import (
 from aiobs.application.projects import ProjectNotFoundError
 from aiobs.domain.evaluator import Evaluator
 from aiobs.domain.experiment import Experiment
+from aiobs.domain.metrics_set import MetricsSet
 from aiobs.domain.project import Project
 from aiobs.evaluation.deterministic import register_deterministic_evaluators
 from aiobs.evaluation.registry import clear_registry
@@ -370,6 +372,163 @@ async def test_save_as_default_persists_experiment_when_body_set_id() -> None:
     updated = await experiments.get_by_id(experiment.id)
     assert updated is not None
     assert updated.metrics_set_id == custom.id
+
+
+class RacingMetricsSetRepository(InMemoryMetricsSetRepository):
+    """Simulates another worker creating the project default between get and add."""
+
+    async def add(self, metrics_set: MetricsSet) -> MetricsSet:
+        if metrics_set.is_project_default:
+            winner = MetricsSet.create_project_default(metrics_set.project_id)
+            await super().add(winner)
+            raise RuntimeError("duplicate key value violates unique constraint")
+        return await super().add(metrics_set)
+
+
+class RacingEvaluatorRepository(InMemoryEvaluatorRepository):
+    """Simulates another worker creating the same evaluator between find and add."""
+
+    async def add(self, evaluator: Evaluator) -> Evaluator:
+        winner = Evaluator.create(
+            evaluator.project_id, evaluator.name, evaluator.type, evaluator.config
+        )
+        await super().add(winner)
+        raise RuntimeError("duplicate key value violates unique constraint")
+
+
+@dataclass
+class ConflictMappingCreateEvaluator(StubCreateEvaluator):
+    """Maps unique violations to EvaluatorConflictError like CreateEvaluator does."""
+
+    async def execute(self, command: CreateEvaluatorCommand):
+        try:
+            return await super().execute(command)
+        except RuntimeError as exc:
+            raise EvaluatorConflictError(command.name, command.version) from exc
+
+
+@pytest.mark.asyncio
+async def test_ensure_default_reuses_concurrently_created_default() -> None:
+    projects = InMemoryProjectRepository()
+    project = await _seed_project(projects)
+    sets = RacingMetricsSetRepository()
+    evaluators = InMemoryEvaluatorRepository()
+
+    result = await EnsureProjectDefaultMetricsSet(
+        sets, evaluators, projects, StubCreateEvaluator(evaluators)
+    ).execute(project.id)
+
+    defaults = [s for s in await sets.list_by_project(project.id) if s.is_project_default]
+    assert len(defaults) == 1
+    assert result.id == defaults[0].id
+    assert all(e.evaluator_id is not None for e in result.entries)
+
+
+@pytest.mark.asyncio
+async def test_ensure_default_reuses_concurrently_created_evaluators() -> None:
+    projects = InMemoryProjectRepository()
+    project = await _seed_project(projects)
+    sets = InMemoryMetricsSetRepository()
+    evaluators = RacingEvaluatorRepository()
+
+    result = await EnsureProjectDefaultMetricsSet(
+        sets, evaluators, projects, ConflictMappingCreateEvaluator(evaluators)
+    ).execute(project.id)
+
+    stored = {e.id for e in await evaluators.list_by_project(project.id)}
+    assert len(stored) == len(result.entries)
+    assert {e.evaluator_id for e in result.entries} == stored
+
+
+@pytest.mark.asyncio
+async def test_create_rejects_entries_sharing_an_evaluator() -> None:
+    projects = InMemoryProjectRepository()
+    project = await _seed_project(projects)
+    evaluators = InMemoryEvaluatorRepository()
+    ev = await evaluators.add(
+        Evaluator.create(project.id, "hit_at_k", "deterministic", {"kind": "hit_at_k", "k": 5})
+    )
+
+    with pytest.raises(MetricsSetValidationError, match="hit_at_k, hit_at_1"):
+        await CreateMetricsSet(InMemoryMetricsSetRepository(), evaluators, projects).execute(
+            CreateMetricsSetCommand(
+                project_id=project.id,
+                name="Dup",
+                description=None,
+                entries=[
+                    MetricsSetEntryInput("hit_at_k", True, 0.8, {"k": 5}, ev.id),
+                    MetricsSetEntryInput("hit_at_1", True, 0.8, {"k": 1}, ev.id),
+                ],
+            )
+        )
+
+
+@pytest.mark.asyncio
+async def test_patch_rejects_custom_entry_reusing_default_entry_evaluator() -> None:
+    projects = InMemoryProjectRepository()
+    project = await _seed_project(projects)
+    sets = InMemoryMetricsSetRepository()
+    evaluators = InMemoryEvaluatorRepository()
+    default = await EnsureProjectDefaultMetricsSet(
+        sets, evaluators, projects, StubCreateEvaluator(evaluators)
+    ).execute(project.id)
+    hit_eval = next(e.evaluator_id for e in default.entries if e.kind == "hit_at_k")
+    entries = [
+        MetricsSetEntryInput(e.kind, e.enabled, e.threshold, dict(e.config))
+        for e in default.entries
+    ]
+    entries.append(MetricsSetEntryInput("hit_at_1", True, 0.8, {"k": 1}, hit_eval))
+
+    with pytest.raises(MetricsSetValidationError):
+        await PatchMetricsSet(sets, evaluators, InMemoryExperimentRepository()).execute(
+            PatchMetricsSetCommand(metrics_set_id=default.id, entries=entries)
+        )
+
+
+@pytest.mark.asyncio
+async def test_auto_assign_creates_new_evaluator_version_when_kind_evaluator_is_taken() -> None:
+    projects = InMemoryProjectRepository()
+    project = await _seed_project(projects)
+    sets = InMemoryMetricsSetRepository()
+    evaluators = InMemoryEvaluatorRepository()
+    create_eval = StubCreateEvaluator(evaluators)
+    # The kind's canonical evaluator already backs a custom "hit_at_1" entry.
+    canonical = await evaluators.add(
+        Evaluator.create(project.id, "hit_at_k", "deterministic", {"kind": "hit_at_k", "k": 5})
+    )
+    custom = await CreateMetricsSet(sets, evaluators, projects).execute(
+        CreateMetricsSetCommand(
+            project_id=project.id,
+            name="Two ks",
+            description=None,
+            entries=[
+                MetricsSetEntryInput("hit_at_1", True, 0.8, {"k": 1}, canonical.id),
+                MetricsSetEntryInput("hit_at_k", True, 0.8, {"k": 5}),
+            ],
+        )
+    )
+    experiment = Experiment.create(project.id, "run", uuid.uuid4(), metrics_set_id=custom.id)
+    experiments = InMemoryExperimentRepository()
+    await experiments.add(experiment)
+    resolve = ResolveMetricsSetForScore(
+        sets,
+        experiments,
+        evaluators,
+        create_eval,
+        EnsureProjectDefaultMetricsSet(sets, evaluators, projects, create_eval),
+    )
+
+    resolved = await resolve.execute(
+        experiment=experiment, metrics_set_id=None, save_as_default=False
+    )
+
+    by_kind = {e.kind: e.evaluator_id for e in resolved.entries}
+    assert by_kind["hit_at_1"] == canonical.id
+    assert by_kind["hit_at_k"] not in (None, canonical.id)
+    new_eval = await evaluators.get_by_id(by_kind["hit_at_k"])  # type: ignore[arg-type]
+    assert new_eval is not None
+    assert new_eval.name == "hit_at_k"
+    assert new_eval.version == 2
 
 
 @pytest.mark.asyncio

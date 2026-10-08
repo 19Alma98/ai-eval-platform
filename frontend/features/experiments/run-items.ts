@@ -21,6 +21,7 @@ export type RunItemView = {
   score: number | null;
   label: string | null;
   explanation: string | null;
+  resultMetadata: Record<string, unknown>;
   sourceTraceId: string | null;
 };
 
@@ -103,6 +104,7 @@ export function buildRunItemViews(
       score: result?.score ?? null,
       label: result?.label ?? null,
       explanation: result?.explanation ?? null,
+      resultMetadata: result?.metadata ?? {},
       sourceTraceId: resolveSourceTraceId(item, output),
     };
   });

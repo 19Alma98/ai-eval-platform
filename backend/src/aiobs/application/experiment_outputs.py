@@ -32,8 +32,20 @@ class UpsertOutputItem:
 
 
 def resolve_item_fields(
-    item: DatasetItem, output: ExperimentItemOutput | None
+    item: DatasetItem,
+    output: ExperimentItemOutput | None,
+    *,
+    fallback_to_item: bool = True,
 ) -> tuple[Any | None, Any | None]:
+    """Resolve actual_output/context for an item within one experiment.
+
+    ``fallback_to_item`` must be False when the experiment has recorded outputs:
+    dataset-level fields then belong to another run and would leak across experiments.
+    """
+    if not fallback_to_item:
+        if output is None:
+            return None, None
+        return output.actual_output, output.context
     if output is None:
         return item.actual_output, item.context
     actual = item.actual_output if output.actual_output is None else output.actual_output
@@ -41,8 +53,15 @@ def resolve_item_fields(
     return actual, context
 
 
-def merge_dataset_item(item: DatasetItem, output: ExperimentItemOutput | None) -> DatasetItem:
-    actual_output, context = resolve_item_fields(item, output)
+def merge_dataset_item(
+    item: DatasetItem,
+    output: ExperimentItemOutput | None,
+    *,
+    fallback_to_item: bool = True,
+) -> DatasetItem:
+    actual_output, context = resolve_item_fields(item, output, fallback_to_item=fallback_to_item)
+    # Item metadata holds the gold labels, so it wins over run-level output metadata.
+    metadata = {**(output.metadata if output is not None else {}), **item.metadata}
     return DatasetItem(
         id=item.id,
         dataset_id=item.dataset_id,
@@ -50,7 +69,7 @@ def merge_dataset_item(item: DatasetItem, output: ExperimentItemOutput | None) -
         expected_output=item.expected_output,
         actual_output=actual_output,
         context=context,
-        metadata=dict(item.metadata),
+        metadata=metadata,
         source_trace_id=item.source_trace_id,
         source_span_id=item.source_span_id,
     )

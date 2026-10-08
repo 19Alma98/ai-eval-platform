@@ -27,6 +27,7 @@ const STATUS_LABELS: Record<string, string> = {
   improved: "Improved",
   unchanged: "Unchanged",
   unavailable: "Unavailable",
+  config_mismatch: "Config mismatch",
   unset: "Unset",
 };
 

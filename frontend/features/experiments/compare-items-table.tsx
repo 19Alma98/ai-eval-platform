@@ -344,6 +344,13 @@ export function CompareItemsTable({
               </Link>
             </p>
           ) : null}
+          {rows.some((r) => r.status === "config_mismatch") ? (
+            <p className="text-sm text-status-warn">
+              Candidate and baseline were scored with different configs for this
+              evaluator (e.g. k, max_ms, judge model): per-item deltas are not
+              comparable. Re-run evaluate with the same metrics set on both.
+            </p>
+          ) : null}
           <DataTable
             rows={rows}
             columns={columns}

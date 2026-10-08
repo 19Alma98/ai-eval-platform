@@ -179,6 +179,7 @@ class LiveInteractionRepository(Protocol):
         judge_status: str | None = None,
         search: str | None = None,
         limit: int = 50,
+        offset: int = 0,
     ) -> list[LiveInteraction]: ...
 
     async def replace_scores(
@@ -190,3 +191,13 @@ class LiveInteractionRepository(Protocol):
     async def upsert_review(self, review: LiveReview) -> LiveReview: ...
 
     async def get_review(self, interaction_id: uuid.UUID) -> LiveReview | None: ...
+
+
+class JudgeClaimCacheRepository(Protocol):
+    """Extracted reference claims, keyed by reference + prompt version + judge model."""
+
+    async def get(self, key: str) -> list[str] | None: ...
+
+    async def put(
+        self, key: str, *, prompt_version: str, model: str, claims: list[str]
+    ) -> None: ...

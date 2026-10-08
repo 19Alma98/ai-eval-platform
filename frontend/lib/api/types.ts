@@ -215,6 +215,7 @@ export type ExperimentCompareResponse = {
   regressions: MetricComparison[];
   improved: MetricComparison[];
   unchanged: MetricComparison[];
+  config_mismatches?: MetricComparison[];
 };
 
 export type ItemSide = {
@@ -223,6 +224,7 @@ export type ItemSide = {
   score: number | null;
   label: string | null;
   explanation: string | null;
+  metadata?: Record<string, unknown>;
   run_id: string | null;
 };
 
@@ -233,7 +235,7 @@ export type ItemComparisonRow = {
   baseline: ItemSide;
   candidate: ItemSide;
   delta: number | null;
-  status: "regression" | "improved" | "unchanged" | "unavailable";
+  status: "regression" | "improved" | "unchanged" | "unavailable" | "config_mismatch";
 };
 
 export type ItemComparisonResponse = {
@@ -330,6 +332,7 @@ export type LiveInteractionScore = {
   explanation: string | null;
   threshold: number | null;
   created_at: string;
+  metadata?: Record<string, unknown>;
 };
 
 export type LiveReview = {

@@ -10,7 +10,7 @@ from aiobs.domain.evaluation import EvaluationResultRecord, EvaluationRun
 
 DELTA_THRESHOLD = 0.01
 
-MetricStatus = Literal["regression", "improved", "unchanged", "unavailable"]
+MetricStatus = Literal["regression", "improved", "unchanged", "unavailable", "config_mismatch"]
 MetricName = Literal["mean_score", "pass_rate"]
 
 _EPOCH = datetime.min.replace(tzinfo=UTC)
@@ -92,10 +92,13 @@ def aggregate_results(results: Iterable[EvaluationResultRecord]) -> Aggregates:
     n_error = sum(1 for label in labels if label == "ERROR")
     n_skipped = sum(1 for label in labels if label == "SKIPPED")
     n_pass = sum(1 for label in labels if label == "PASS")
-    # Coverage-aware: missing scores (SKIPPED/ERROR) count as 0.0 in the mean.
-    covered_scores = [r.score if r.score is not None else 0.0 for r in items]
+    # SKIPPED means the metric does not apply to the item (e.g. no must_contain gold),
+    # so it is excluded from the denominator. ERROR still counts as 0.0 so evaluator
+    # or infra failures cannot inflate the mean.
+    applicable = [r for r, label in zip(items, labels, strict=True) if label != "SKIPPED"]
+    covered_scores = [r.score if r.score is not None else 0.0 for r in applicable]
     mean_score = sum(covered_scores) / len(covered_scores) if covered_scores else None
-    pass_rate = (n_pass / len(items)) if items else None
+    pass_rate = (n_pass / len(applicable)) if applicable else None
     return Aggregates(
         n_items=len(items),
         n_scored=len(scores),
@@ -122,6 +125,23 @@ def classify_delta(
     return delta, "regression"
 
 
+def runs_config_mismatch(candidate: EvaluationRun | None, baseline: EvaluationRun | None) -> bool:
+    """True when candidate and baseline were not scored the same way.
+
+    Differs when both recorded a config_hash and it differs (e.g. k=3 vs k=5), or when
+    the judge prompt version differs. A missing prompt_version counts as its own
+    version: judge runs from before v3 carry none and are not comparable with v3.
+    Runs without a config_hash (legacy) are otherwise assumed comparable.
+    """
+    if candidate is None or baseline is None:
+        return False
+    if candidate.metadata.get("prompt_version") != baseline.metadata.get("prompt_version"):
+        return True
+    cand_hash = candidate.metadata.get("config_hash")
+    base_hash = baseline.metadata.get("config_hash")
+    return cand_hash is not None and base_hash is not None and cand_hash != base_hash
+
+
 def compare_evaluator_metrics(
     *,
     evaluator_id: uuid.UUID,
@@ -129,13 +149,20 @@ def compare_evaluator_metrics(
     candidate: Aggregates,
     baseline: Aggregates,
     threshold: float = DELTA_THRESHOLD,
+    config_mismatch: bool = False,
 ) -> list[MetricComparison]:
     rows: list[MetricComparison] = []
     for metric, cand_value, base_value in (
         ("mean_score", candidate.mean_score, baseline.mean_score),
         ("pass_rate", candidate.pass_rate, baseline.pass_rate),
     ):
-        delta, status = classify_delta(cand_value, base_value, threshold=threshold)
+        delta: float | None
+        status: MetricStatus
+        if config_mismatch:
+            # Scores measured under different configs: a delta would be meaningless.
+            delta, status = None, "config_mismatch"
+        else:
+            delta, status = classify_delta(cand_value, base_value, threshold=threshold)
         rows.append(
             MetricComparison(
                 evaluator_id=evaluator_id,

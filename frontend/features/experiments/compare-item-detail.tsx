@@ -2,6 +2,7 @@
 
 import type { ReactNode } from "react";
 import { CopyTechnicalId } from "@/components/copy-technical-id";
+import { JudgeClaimsTable } from "@/components/judge-claims-table";
 import {
   Dialog,
   DialogContent,
@@ -125,10 +126,16 @@ export function CompareItemDetail({
                 <DetailBlock title={`${baselineLabel} score`}>
                   {formatScore(row.baseline.score)}
                   {row.baseline.label ? ` · ${row.baseline.label}` : ""}
+                  {row.baseline.metadata?.error_type === "judge_output_invalid"
+                    ? " · judge output invalid"
+                    : ""}
                 </DetailBlock>
                 <DetailBlock title={`${candidateLabel} score`}>
                   {formatScore(row.candidate.score)}
                   {row.candidate.label ? ` · ${row.candidate.label}` : ""}
+                  {row.candidate.metadata?.error_type === "judge_output_invalid"
+                    ? " · judge output invalid"
+                    : ""}
                 </DetailBlock>
               </div>
               <p className="text-sm text-muted-foreground">
@@ -145,6 +152,18 @@ export function CompareItemDetail({
                   <DetailBlock title={`${candidateLabel} explanation`}>
                     {row.candidate.explanation?.trim() || "—"}
                   </DetailBlock>
+                </div>
+              ) : null}
+              {row.baseline.metadata?.claims || row.candidate.metadata?.claims ? (
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <JudgeClaimsTable
+                    metadata={row.baseline.metadata}
+                    title={`${baselineLabel} claims`}
+                  />
+                  <JudgeClaimsTable
+                    metadata={row.candidate.metadata}
+                    title={`${candidateLabel} claims`}
+                  />
                 </div>
               ) : null}
               {row.baseline.context != null || row.candidate.context != null ? (

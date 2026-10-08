@@ -6,7 +6,6 @@ from datetime import UTC, datetime
 
 import pytest
 
-from aiobs.config import get_settings
 from aiobs.domain.dataset import DatasetItem
 from aiobs.domain.evaluation import EvaluationRun
 from aiobs.domain.evaluator import Evaluator
@@ -22,7 +21,6 @@ from aiobs.evaluation.deterministic import (
     ToolCallSuccessEvaluator,
     register_deterministic_evaluators,
 )
-from aiobs.evaluation.llm_judges import LlmJudgeEvaluator
 from aiobs.evaluation.protocol import EvaluationSample
 from aiobs.evaluation.registry import clear_registry, create_evaluator, list_registered_kinds
 from aiobs.evaluation.runner import EvaluationRunner
@@ -108,19 +106,6 @@ async def test_skipped_without_actual() -> None:
 
 
 @pytest.mark.asyncio
-async def test_llm_judge_with_mock() -> None:
-    class FakeLlm:
-        async def complete_json(self, *, system: str, user: str, model: str | None = None):
-            return {"score": 0.9, "label": "PASS", "explanation": "good"}
-
-    judge = LlmJudgeEvaluator("correctness", {}, FakeLlm(), default_model=get_settings().llm_model)
-    result = await judge.evaluate(_sample())
-    assert result.score == 0.9
-    assert result.metadata["prompt_version"] == "correctness.v1"
-    assert result.metadata["model"] == get_settings().llm_model
-
-
-@pytest.mark.asyncio
 async def test_runner_hit_at_k_scores_without_actual_output() -> None:
     entity = Evaluator.create(
         uuid.uuid4(), "hit_at_k", "deterministic", {"kind": "hit_at_k", "k": 2}
@@ -196,7 +181,7 @@ async def test_runner_pass_threshold_fails_below_and_passes_at_or_above() -> Non
 
 
 @pytest.mark.asyncio
-async def test_runner_without_threshold_keeps_legacy_zero_fail() -> None:
+async def test_runner_without_threshold_fails_on_fail_label() -> None:
     class Partial:
         name = "partial"
 
@@ -210,7 +195,118 @@ async def test_runner_without_threshold_keeps_legacy_zero_fail() -> None:
     runner = EvaluationRunner(resolve_evaluator=lambda _e: Partial())
     run = EvaluationRun.create(uuid.uuid4(), entity.id)
     finished, _ = await runner.run_evaluator(run=run, evaluator_entity=entity, items=[item])
-    assert finished.status == "PASSED"
+    assert finished.status == "FAILED"
+
+
+@pytest.mark.asyncio
+async def test_runner_fail_label_above_threshold_fails() -> None:
+    class Judge:
+        name = "judge"
+
+        async def evaluate(self, sample):
+            from aiobs.evaluation.protocol import EvaluationResult
+
+            return EvaluationResult(score=0.9, label="FAIL", explanation="x", metadata={})
+
+    entity = Evaluator.create(uuid.uuid4(), "judge", "llm_judge", {"kind": "correctness"})
+    item = DatasetItem.create(uuid.uuid4(), input="x", expected_output="y", actual_output="y")
+    runner = EvaluationRunner(resolve_evaluator=lambda _e: Judge())
+    finished, results = await runner.run_evaluator(
+        run=EvaluationRun.create(uuid.uuid4(), entity.id),
+        evaluator_entity=entity,
+        items=[item],
+        pass_threshold=0.7,
+    )
+    assert finished.status == "FAILED"
+    assert results[0].label == "FAIL"
+
+
+@pytest.mark.asyncio
+async def test_runner_rewrites_pass_label_below_threshold() -> None:
+    class Judge:
+        name = "judge"
+
+        async def evaluate(self, sample):
+            from aiobs.evaluation.protocol import EvaluationResult
+
+            return EvaluationResult(score=0.5, label="PASS", explanation="x", metadata={"m": 1})
+
+    entity = Evaluator.create(uuid.uuid4(), "judge", "llm_judge", {"kind": "correctness"})
+    item = DatasetItem.create(uuid.uuid4(), input="x", expected_output="y", actual_output="y")
+    runner = EvaluationRunner(resolve_evaluator=lambda _e: Judge())
+    finished, results = await runner.run_evaluator(
+        run=EvaluationRun.create(uuid.uuid4(), entity.id),
+        evaluator_entity=entity,
+        items=[item],
+        pass_threshold=0.7,
+    )
+    assert finished.status == "FAILED"
+    # Stored label is the effective verdict so pass_rate agrees with the run status.
+    assert results[0].label == "FAIL"
+    assert results[0].metadata["judge_label"] == "PASS"
+    assert results[0].metadata["m"] == 1
+
+
+@pytest.mark.asyncio
+async def test_runner_config_override_wins_over_entity_config() -> None:
+    entity = Evaluator.create(
+        uuid.uuid4(), "hit_at_k", "deterministic", {"kind": "hit_at_k", "k": 5}
+    )
+    item = DatasetItem.create(
+        uuid.uuid4(),
+        input="q",
+        expected_output="gold",
+        context={"documents": [{"id": "other"}, {"id": "target"}]},
+        metadata={"expected_doc_ids": ["target"]},
+    )
+    runner = EvaluationRunner()
+
+    base_run, base_results = await runner.run_evaluator(
+        run=EvaluationRun.create(uuid.uuid4(), entity.id), evaluator_entity=entity, items=[item]
+    )
+    assert base_results[0].label == "PASS"
+
+    over_run, over_results = await runner.run_evaluator(
+        run=EvaluationRun.create(uuid.uuid4(), entity.id),
+        evaluator_entity=entity,
+        items=[item],
+        config_override={"k": 1, "kind": "exact_match"},
+    )
+    assert over_results[0].label == "FAIL"
+    assert over_results[0].metadata["k"] == 1
+    # kind cannot be overridden; hash reflects effective config
+    assert over_run.metadata["evaluator_kind"] == "hit_at_k"
+    assert over_run.metadata["config_hash"] != base_run.metadata["config_hash"]
+    assert over_run.metadata["config_override"] == {"k": 1}
+
+
+@pytest.mark.asyncio
+async def test_runner_missing_output_items_fail_for_every_kind() -> None:
+    entity = Evaluator.create(
+        uuid.uuid4(), "hit_at_k", "deterministic", {"kind": "hit_at_k", "k": 5}
+    )
+    present = DatasetItem.create(
+        uuid.uuid4(),
+        input="q",
+        context={"documents": [{"id": "target"}]},
+        metadata={"expected_doc_ids": ["target"]},
+    )
+    missing = DatasetItem.create(
+        uuid.uuid4(), input="q2", metadata={"expected_doc_ids": ["target"]}
+    )
+    runner = EvaluationRunner()
+    finished, results = await runner.run_evaluator(
+        run=EvaluationRun.create(uuid.uuid4(), entity.id),
+        evaluator_entity=entity,
+        items=[present, missing],
+        missing_output_item_ids={missing.id},
+    )
+    by_item = {r.dataset_item_id: r for r in results}
+    assert by_item[present.id].label == "PASS"
+    assert by_item[missing.id].label == "FAIL"
+    assert by_item[missing.id].score == 0.0
+    assert "no output" in (by_item[missing.id].explanation or "")
+    assert finished.status == "FAILED"
 
 
 def test_registry_lists_kinds() -> None:
@@ -250,6 +346,33 @@ def test_build_eval_context_from_trace() -> None:
     assert ctx["total_tokens"] == 42
     assert ctx["cost_usd"] == 0.002
     assert ctx["tool_calls"][0]["success"] is True
+
+
+def test_build_eval_context_ignores_non_tool_span_named_tool() -> None:
+    start = datetime(2024, 1, 1, tzinfo=UTC)
+    end = datetime(2024, 1, 1, 0, 0, 1, tzinfo=UTC)
+    span = Span(
+        id=uuid.uuid4(),
+        span_id="a" * 16,
+        parent_span_id=None,
+        name="toolbox_lookup",
+        kind="CHAIN",
+        start_time=start,
+        end_time=end,
+        status="error",
+        attributes={},
+    )
+    trace = Trace(
+        id=uuid.uuid4(),
+        project_id=uuid.uuid4(),
+        trace_id="b" * 32,
+        name="t",
+        status="ok",
+        start_time=start,
+        end_time=end,
+        spans=(span,),
+    )
+    assert "tool_calls" not in build_eval_context_from_trace(trace)
 
 
 def test_build_eval_context_includes_retrieval_documents() -> None:
@@ -295,11 +418,57 @@ def test_build_eval_context_includes_retrieval_documents() -> None:
         spans=(retriever, json_span),
     )
     ctx = build_eval_context_from_trace(trace)
-    assert ctx["documents"] == [
-        {"id": "doc-1", "title": "PTO", "text": "20 days paid time off."},
-        {"id": "doc-2", "title": "Holidays"},
-        {"id": "doc-3", "text": "Remote work policy."},
-    ]
+    # Same end_time: the later span in trace order is the final retrieval stage.
+    assert ctx["documents"] == [{"id": "doc-3", "text": "Remote work policy."}]
+
+
+def test_build_eval_context_uses_last_retrieval_stage() -> None:
+    t0 = datetime(2024, 1, 1, tzinfo=UTC)
+    t1 = datetime(2024, 1, 1, 0, 0, 1, tzinfo=UTC)
+    t2 = datetime(2024, 1, 1, 0, 0, 2, tzinfo=UTC)
+    rerank = Span(
+        id=uuid.uuid4(),
+        span_id="f" * 16,
+        parent_span_id=None,
+        name="rerank",
+        kind="RERANKER",
+        start_time=t1,
+        end_time=t2,
+        status="ok",
+        attributes={
+            "reranker.output_documents": [
+                {"id": "doc-7"},
+                {"id": "doc-2"},
+                {"id": "doc-7"},
+            ],
+        },
+    )
+    retrieve = Span(
+        id=uuid.uuid4(),
+        span_id="c" * 16,
+        parent_span_id=None,
+        name="retrieve",
+        kind="RETRIEVER",
+        start_time=t0,
+        end_time=t1,
+        status="ok",
+        attributes={
+            "retrieval.documents": [{"id": f"doc-{i}"} for i in range(1, 21)],
+        },
+    )
+    trace = Trace(
+        id=uuid.uuid4(),
+        project_id=uuid.uuid4(),
+        trace_id="e" * 32,
+        name="rag",
+        status="ok",
+        start_time=t0,
+        end_time=t2,
+        # Span order in the trace must not matter: end_time decides.
+        spans=(rerank, retrieve),
+    )
+    ctx = build_eval_context_from_trace(trace)
+    assert ctx["documents"] == [{"id": "doc-7"}, {"id": "doc-2"}]
 
 
 def test_build_eval_context_empty_retrieval_sets_documents_list() -> None:
@@ -341,63 +510,39 @@ async def test_tool_call_success_non_list_skipped() -> None:
     assert result.explanation == "context.tool_calls must be a list"
 
 
-@pytest.mark.asyncio
-async def test_groundedness_empty_documents_fail_min() -> None:
-    class FakeLlm:
-        async def complete_json(self, *, system: str, user: str, model: str | None = None):
-            raise AssertionError("judge should not be called when documents are empty")
-
-    judge = LlmJudgeEvaluator("groundedness", {}, FakeLlm(), default_model=get_settings().llm_model)
-    result = await judge.evaluate(
-        _sample(context={"documents": []}),
+def test_build_eval_context_skips_stage_without_recorded_documents() -> None:
+    t0 = datetime(2024, 1, 1, tzinfo=UTC)
+    t1 = datetime(2024, 1, 1, 0, 0, 1, tzinfo=UTC)
+    retrieve = Span(
+        id=uuid.uuid4(),
+        span_id="c" * 16,
+        parent_span_id=None,
+        name="retrieve",
+        kind="RETRIEVER",
+        start_time=t0,
+        end_time=t0,
+        status="ok",
+        attributes={"retrieval.documents": [{"id": "doc-1"}]},
     )
-    assert result.label == "FAIL"
-    assert result.score == 0.0
-    assert result.explanation == "context.documents are missing or empty"
-
-
-@pytest.mark.asyncio
-async def test_groundedness_missing_documents_fail_min() -> None:
-    class FakeLlm:
-        async def complete_json(self, *, system: str, user: str, model: str | None = None):
-            raise AssertionError("judge should not be called when documents are missing")
-
-    judge = LlmJudgeEvaluator("groundedness", {}, FakeLlm(), default_model=get_settings().llm_model)
-    result = await judge.evaluate(_sample(context={"latency_ms": 10}))
-    assert result.label == "FAIL"
-    assert result.score == 0.0
-
-
-@pytest.mark.asyncio
-async def test_groundedness_context_none_skipped() -> None:
-    class FakeLlm:
-        async def complete_json(self, *, system: str, user: str, model: str | None = None):
-            raise AssertionError("judge should not be called when context is missing")
-
-    judge = LlmJudgeEvaluator("groundedness", {}, FakeLlm(), default_model=get_settings().llm_model)
-    result = await judge.evaluate(_sample(context=None))
-    assert result.label == "SKIPPED"
-    assert result.score is None
-
-
-@pytest.mark.asyncio
-async def test_groundedness_judge_payload_includes_document_texts() -> None:
-    captured: dict[str, str] = {}
-
-    class FakeLlm:
-        async def complete_json(self, *, system: str, user: str, model: str | None = None):
-            captured["user"] = user
-            return {"score": 1.0, "label": "PASS", "explanation": "grounded"}
-
-    judge = LlmJudgeEvaluator("groundedness", {}, FakeLlm(), default_model=get_settings().llm_model)
-    await judge.evaluate(
-        _sample(
-            context={
-                "documents": [
-                    {"id": "doc-1", "text": "Policy excerpt for the judge."},
-                ],
-            },
-        )
+    uninstrumented_rerank = Span(
+        id=uuid.uuid4(),
+        span_id="f" * 16,
+        parent_span_id=None,
+        name="rerank",
+        kind="RERANKER",
+        start_time=t0,
+        end_time=t1,
+        status="ok",
+        attributes={},
     )
-    payload = json.loads(captured["user"])
-    assert payload["context"]["documents"][0]["text"] == "Policy excerpt for the judge."
+    trace = Trace(
+        id=uuid.uuid4(),
+        project_id=uuid.uuid4(),
+        trace_id="e" * 32,
+        name="rag",
+        status="ok",
+        start_time=t0,
+        end_time=t1,
+        spans=(retrieve, uninstrumented_rerank),
+    )
+    assert build_eval_context_from_trace(trace)["documents"] == [{"id": "doc-1"}]
