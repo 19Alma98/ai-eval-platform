@@ -135,9 +135,7 @@ def _interaction_response(
             "error_message": interaction.error_message,
             "created_at": interaction.created_at,
             "scored_at": interaction.scored_at,
-            "scores": [
-                _score_response(s, review=reviews.get(s.id)) for s in (scores or [])
-            ],
+            "scores": [_score_response(s, review=reviews.get(s.id)) for s in (scores or [])],
             "review": _review_response(review) if review is not None else None,
         }
     )
@@ -229,9 +227,7 @@ async def submit_live_interaction(
 async def live_judge_calibration(
     project_id: uuid.UUID,
     since: datetime | None = Query(default=None),
-    use_case: SummarizeLiveJudgeCalibration = Depends(
-        get_summarize_live_judge_calibration
-    ),
+    use_case: SummarizeLiveJudgeCalibration = Depends(get_summarize_live_judge_calibration),
 ) -> list[JudgeCalibrationBucketResponse]:
     try:
         buckets = await use_case.execute(project_id, since=since)

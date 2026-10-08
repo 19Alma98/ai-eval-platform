@@ -133,11 +133,7 @@ class InMemoryLiveRepository:
     async def list_score_reviews_by_score_ids(
         self, score_ids: list[uuid.UUID]
     ) -> dict[uuid.UUID, LiveScoreReview]:
-        return {
-            sid: self._score_reviews[sid]
-            for sid in score_ids
-            if sid in self._score_reviews
-        }
+        return {sid: self._score_reviews[sid] for sid in score_ids if sid in self._score_reviews}
 
     async def list_calibration_rows(
         self,
@@ -293,9 +289,7 @@ async def test_submit_rescore_review_promote(client: AsyncClient) -> None:
 
 @pytest.mark.asyncio
 async def test_score_review_and_calibration(client: AsyncClient) -> None:
-    proj = await client.post(
-        "/api/v1/projects", json={"name": "Calib", "slug": "calib"}
-    )
+    proj = await client.post("/api/v1/projects", json={"name": "Calib", "slug": "calib"})
     assert proj.status_code == 201
     project_id = proj.json()["id"]
 
@@ -336,9 +330,7 @@ async def test_score_review_and_calibration(client: AsyncClient) -> None:
     nested = next(s for s in detail.json()["scores"] if s["id"] == score_id)
     assert nested["review"]["verdict"] == "agree"
 
-    calib = await client.get(
-        f"/api/v1/projects/{project_id}/live-interactions/calibration"
-    )
+    calib = await client.get(f"/api/v1/projects/{project_id}/live-interactions/calibration")
     assert calib.status_code == 200
     buckets = calib.json()
     assert len(buckets) >= 1
@@ -359,8 +351,6 @@ async def test_score_review_and_calibration(client: AsyncClient) -> None:
     )
     assert missing.status_code == 404
 
-    empty_calib = await client.get(
-        f"/api/v1/projects/{project_id}/live-interactions/calibration"
-    )
+    empty_calib = await client.get(f"/api/v1/projects/{project_id}/live-interactions/calibration")
     assert empty_calib.status_code == 200
     assert empty_calib.json() == []

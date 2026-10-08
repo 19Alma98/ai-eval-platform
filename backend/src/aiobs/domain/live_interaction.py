@@ -199,9 +199,7 @@ class LiveScoreReview:
         v = verdict.strip().lower()
         if v not in REVIEW_VERDICTS:
             raise ValueError(f"verdict must be one of: {', '.join(sorted(REVIEW_VERDICTS))}")
-        cleaned_explanation = (
-            corrected_explanation.strip() if corrected_explanation else None
-        )
+        cleaned_explanation = corrected_explanation.strip() if corrected_explanation else None
         cleaned_note = note.strip() if note else None
         return cls(
             id=uuid.uuid4(),

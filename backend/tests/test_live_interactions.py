@@ -146,11 +146,7 @@ class InMemoryLiveRepository:
     async def list_score_reviews_by_score_ids(
         self, score_ids: list[uuid.UUID]
     ) -> dict[uuid.UUID, LiveScoreReview]:
-        return {
-            sid: self._score_reviews[sid]
-            for sid in score_ids
-            if sid in self._score_reviews
-        }
+        return {sid: self._score_reviews[sid] for sid in score_ids if sid in self._score_reviews}
 
     async def list_calibration_rows(
         self,

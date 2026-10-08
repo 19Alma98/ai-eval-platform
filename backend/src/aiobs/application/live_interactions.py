@@ -423,9 +423,7 @@ class GetLiveInteraction:
             raise LiveInteractionNotFoundError(interaction_id)
         scores = await self._live.list_scores(interaction_id)
         review = await self._live.get_review(interaction_id)
-        score_reviews = await self._live.list_score_reviews_by_score_ids(
-            [s.id for s in scores]
-        )
+        score_reviews = await self._live.list_score_reviews_by_score_ids([s.id for s in scores])
         return LiveInteractionDetail(
             interaction=interaction,
             scores=scores,

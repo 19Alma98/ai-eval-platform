@@ -1275,8 +1275,7 @@ class SqlAlchemyLiveInteractionRepository:
     async def upsert_score_review(self, review: LiveScoreReview) -> LiveScoreReview:
         result = await self._session.execute(
             select(LiveScoreReviewModel).where(
-                LiveScoreReviewModel.live_interaction_score_id
-                == review.live_interaction_score_id
+                LiveScoreReviewModel.live_interaction_score_id == review.live_interaction_score_id
             )
         )
         existing = result.scalar_one_or_none()
@@ -1337,13 +1336,11 @@ class SqlAlchemyLiveInteractionRepository:
             select(LiveInteractionScoreModel, LiveScoreReviewModel)
             .join(
                 LiveScoreReviewModel,
-                LiveScoreReviewModel.live_interaction_score_id
-                == LiveInteractionScoreModel.id,
+                LiveScoreReviewModel.live_interaction_score_id == LiveInteractionScoreModel.id,
             )
             .join(
                 LiveInteractionModel,
-                LiveInteractionModel.id
-                == LiveInteractionScoreModel.live_interaction_id,
+                LiveInteractionModel.id == LiveInteractionScoreModel.live_interaction_id,
             )
             .where(
                 LiveInteractionModel.project_id == project_id,

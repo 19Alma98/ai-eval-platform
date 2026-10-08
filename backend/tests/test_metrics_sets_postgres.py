@@ -123,9 +123,7 @@ async def test_find_or_create_evaluator_recovers_from_real_integrity_error(
         evaluators = SqlAlchemyEvaluatorRepository(session)
         project = await projects.add(Project.create("Eval race", slug="eval-race"))
         winner = await evaluators.add(
-            Evaluator.create(
-                project.id, "hit_at_k", "deterministic", {"kind": "hit_at_k", "k": 5}
-            )
+            Evaluator.create(project.id, "hit_at_k", "deterministic", {"kind": "hit_at_k", "k": 5})
         )
 
         with pytest.raises(IntegrityError):
