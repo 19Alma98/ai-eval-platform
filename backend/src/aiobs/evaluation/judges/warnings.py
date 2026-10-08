@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from collections.abc import Iterable
+from collections.abc import Iterable, Mapping
 from typing import Any, Protocol
 
 from aiobs.evaluation.judges.errors import JUDGE_OUTPUT_INVALID
@@ -10,8 +10,11 @@ UNSUITABLE_RATE = 0.20
 
 
 class _ScoredRow(Protocol):
-    label: str | None
-    metadata: dict[str, Any]
+    @property
+    def label(self) -> str | None: ...
+
+    @property
+    def metadata(self) -> Mapping[str, Any]: ...
 
 
 def unsuitable_model_warning(
