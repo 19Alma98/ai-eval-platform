@@ -27,9 +27,9 @@ async def test_litellm_client_passes_api_base() -> None:
         new_callable=AsyncMock,
         return_value=fake_response,
     ) as mock_complete:
-        data = await client.complete_json(system="sys", user="usr")
+        data = await client.complete(system="sys", user="usr")
 
-    assert data == {"score": 1.0}
+    assert data == '{"score": 1.0}'
     kwargs: dict[str, Any] = mock_complete.await_args.kwargs
     assert kwargs["model"] == "ollama/gemma4:e2b"
     assert kwargs["api_base"] == "http://localhost:11434"

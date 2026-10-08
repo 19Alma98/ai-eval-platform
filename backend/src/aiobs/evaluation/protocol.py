@@ -44,11 +44,3 @@ class LlmClient(Protocol):
         Parsing and validation are the caller's job.
         """
         ...
-
-    async def complete_json(
-        self,
-        *,
-        system: str,
-        user: str,
-        model: str | None = None,
-    ) -> dict[str, Any]: ...

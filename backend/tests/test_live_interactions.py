@@ -34,11 +34,9 @@ from aiobs.domain.metrics_set import MetricsSet, MetricsSetEntry
 from aiobs.domain.project import Project
 from aiobs.evaluation import bootstrap_evaluators
 from aiobs.evaluation.registry import clear_registry
+from support.fake_llm import ScriptedJudgeLlm
 
-
-class FakeLlm:
-    async def complete_json(self, *, system: str, user: str, model: str | None = None) -> dict:
-        return {"score": 0.9, "label": "PASS", "explanation": "ok"}
+FakeLlm = ScriptedJudgeLlm
 
 
 class InMemoryProjectRepository:
@@ -401,15 +399,9 @@ async def test_promote_never_uses_retrieved_docs_as_gold() -> None:
 
 @pytest.mark.asyncio
 async def test_live_score_applies_metrics_set_entry_config() -> None:
-    seen_models: list[str | None] = []
-
-    class RecordingLlm:
-        async def complete_json(self, *, system: str, user: str, model: str | None = None) -> dict:
-            seen_models.append(model)
-            return {"score": 0.9, "label": "PASS", "explanation": "ok"}
-
+    llm = ScriptedJudgeLlm()
     clear_registry()
-    bootstrap_evaluators(RecordingLlm())
+    bootstrap_evaluators(llm)
 
     projects = InMemoryProjectRepository()
     live = InMemoryLiveRepository()
@@ -433,7 +425,7 @@ async def test_live_score_applies_metrics_set_entry_config() -> None:
     )
     scorer = ScoreLiveInteraction(live, metrics, evaluators, create_eval, ensure)
     await scorer.execute(submitted.interaction.id)
-    assert "judge-x" in seen_models
+    assert "judge-x" in [call["model"] for call in llm.calls]
 
     clear_registry()
 
@@ -561,18 +553,13 @@ async def _score_with(llm: object, entries: tuple[MetricsSetEntry, ...]):
 
 @pytest.mark.asyncio
 async def test_live_one_judge_error_keeps_other_scores() -> None:
-    class FlakyLlm:
-        async def complete_json(self, *, system: str, user: str, model: str | None = None) -> dict:
-            if "relevant" in system:
-                raise RuntimeError("provider timeout")
-            return {"score": 0.9, "label": "PASS", "explanation": "ok"}
-
+    llm = ScriptedJudgeLlm({"rubric_answer_relevance": RuntimeError("provider timeout")})
     scored, scores, _, _ = await _score_with(
-        FlakyLlm(), (_goldless_entry("groundedness"), _goldless_entry("answer_relevance"))
+        llm, (_goldless_entry("groundedness"), _goldless_entry("answer_relevance"))
     )
     assert scored.judge_status == "scored"
     assert scores["groundedness"].label == "PASS"
-    assert scores["groundedness"].score == 0.9
+    assert scores["groundedness"].score == 1.0
     assert scores["answer_relevance"].label == "ERROR"
     assert scores["answer_relevance"].score is None
     assert "provider timeout" in (scores["answer_relevance"].explanation or "")
@@ -582,12 +569,10 @@ async def test_live_one_judge_error_keeps_other_scores() -> None:
 
 @pytest.mark.asyncio
 async def test_live_all_judges_error_sets_error_status() -> None:
-    class DownLlm:
-        async def complete_json(self, *, system: str, user: str, model: str | None = None) -> dict:
-            raise RuntimeError("provider down")
-
+    down = RuntimeError("provider down")
+    llm = ScriptedJudgeLlm({"extract_answer_claims": down, "rubric_answer_relevance": down})
     scored, scores, _, _ = await _score_with(
-        DownLlm(), (_goldless_entry("groundedness"), _goldless_entry("answer_relevance"))
+        llm, (_goldless_entry("groundedness"), _goldless_entry("answer_relevance"))
     )
     assert scored.judge_status == "error"
     assert scored.error_message is not None
@@ -609,16 +594,20 @@ async def test_live_rescore_failure_clears_stale_scores() -> None:
 
 
 @pytest.mark.asyncio
-async def test_live_score_below_threshold_fails_despite_judge_pass() -> None:
-    class LenientLlm:
-        async def complete_json(self, *, system: str, user: str, model: str | None = None) -> dict:
-            return {"score": 0.5, "label": "PASS", "explanation": "meh"}
-
-    _, scores, _, _ = await _score_with(LenientLlm(), (_goldless_entry("groundedness", 0.7),))
+async def test_live_score_below_threshold_fails() -> None:
+    llm = ScriptedJudgeLlm(
+        {
+            "extract_answer_claims": {"claims": ["a", "b"]},
+            "verify_against_documents": {
+                "verdicts": [{"verdict": "supported"}, {"verdict": "not_supported"}]
+            },
+        }
+    )
+    _, scores, _, _ = await _score_with(llm, (_goldless_entry("groundedness", 0.7),))
     g = scores["groundedness"]
+    assert g.score == 0.5
     assert g.label == "FAIL"
     assert score_is_failed(g)
-    assert "judge label: PASS" in (g.explanation or "")
 
 
 def test_score_is_failed_fail_label_above_threshold() -> None:

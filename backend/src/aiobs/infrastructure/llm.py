@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import json
 from typing import Any
 
 import litellm
@@ -48,18 +47,3 @@ class LiteLlmClient:
 
         response = await litellm.acompletion(**kwargs)
         return response.choices[0].message.content or ""
-
-    async def complete_json(
-        self,
-        *,
-        system: str,
-        user: str,
-        model: str | None = None,
-    ) -> dict[str, Any]:
-        content = await self.complete(system=system, user=user, model=model)
-        if not content:
-            raise ValueError("LLM returned empty content")
-        data = json.loads(content)
-        if not isinstance(data, dict):
-            raise ValueError("LLM JSON response must be an object")
-        return data

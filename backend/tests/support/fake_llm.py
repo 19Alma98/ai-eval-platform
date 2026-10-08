@@ -85,10 +85,5 @@ class ScriptedJudgeLlm:
             reply = reply(user)
         return reply if isinstance(reply, str) else json.dumps(reply)
 
-    async def complete_json(
-        self, *, system: str, user: str, model: str | None = None
-    ) -> dict[str, Any]:
-        return json.loads(await self.complete(system=system, user=user, model=model))
-
     def steps(self) -> list[str]:
         return [call["step"] for call in self.calls]

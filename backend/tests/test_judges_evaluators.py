@@ -4,9 +4,11 @@ from typing import Any
 
 import pytest
 
+from aiobs.evaluation import bootstrap_evaluators
 from aiobs.evaluation.judges.cache import InMemoryJudgeClaimCache
 from aiobs.evaluation.judges.evaluators import JudgeDefaults, create_llm_judge
 from aiobs.evaluation.protocol import EvaluationSample
+from aiobs.evaluation.registry import clear_registry, create_evaluator
 from support.fake_llm import ScriptedJudgeLlm
 
 _DEFAULTS = JudgeDefaults(model="judge-default")
@@ -377,3 +379,17 @@ async def test_correctness_f1_answer_contradiction_scores_zero() -> None:
     assert result.metadata["n_contradicted"] == 0
     assert result.metadata["recall"] == 1.0
     assert result.score == 0.0
+
+
+@pytest.mark.asyncio
+async def test_bootstrap_registers_new_judges() -> None:
+    clear_registry()
+    llm = ScriptedJudgeLlm()
+    bootstrap_evaluators(llm, default_model="judge-default")
+    try:
+        judge = create_evaluator("groundedness", {"kind": "groundedness"})
+        assert judge.prompt_version == "groundedness.claims.v3"
+        result = await judge.evaluate(_sample())
+        assert result.metadata["model"] == "judge-default"
+    finally:
+        clear_registry()

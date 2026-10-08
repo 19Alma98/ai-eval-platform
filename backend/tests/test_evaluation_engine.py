@@ -6,7 +6,6 @@ from datetime import UTC, datetime
 
 import pytest
 
-from aiobs.config import get_settings
 from aiobs.domain.dataset import DatasetItem
 from aiobs.domain.evaluation import EvaluationRun
 from aiobs.domain.evaluator import Evaluator
@@ -22,7 +21,6 @@ from aiobs.evaluation.deterministic import (
     ToolCallSuccessEvaluator,
     register_deterministic_evaluators,
 )
-from aiobs.evaluation.llm_judges import LlmJudgeEvaluator
 from aiobs.evaluation.protocol import EvaluationSample
 from aiobs.evaluation.registry import clear_registry, create_evaluator, list_registered_kinds
 from aiobs.evaluation.runner import EvaluationRunner
@@ -105,19 +103,6 @@ async def test_skipped_without_actual() -> None:
     result = await ev.evaluate(_sample(actual_output=None))
     assert result.label == "SKIPPED"
     assert result.score is None
-
-
-@pytest.mark.asyncio
-async def test_llm_judge_with_mock() -> None:
-    class FakeLlm:
-        async def complete_json(self, *, system: str, user: str, model: str | None = None):
-            return {"score": 0.9, "label": "PASS", "explanation": "good"}
-
-    judge = LlmJudgeEvaluator("correctness", {}, FakeLlm(), default_model=get_settings().llm_model)
-    result = await judge.evaluate(_sample())
-    assert result.score == 0.9
-    assert result.metadata["prompt_version"] == "correctness.v2"
-    assert result.metadata["model"] == get_settings().llm_model
 
 
 @pytest.mark.asyncio
@@ -523,105 +508,6 @@ async def test_tool_call_success_non_list_skipped() -> None:
     assert result.label == "SKIPPED"
     assert result.score is None
     assert result.explanation == "context.tool_calls must be a list"
-
-
-@pytest.mark.asyncio
-async def test_groundedness_empty_documents_fail_min() -> None:
-    class FakeLlm:
-        async def complete_json(self, *, system: str, user: str, model: str | None = None):
-            raise AssertionError("judge should not be called when documents are empty")
-
-    judge = LlmJudgeEvaluator("groundedness", {}, FakeLlm(), default_model=get_settings().llm_model)
-    result = await judge.evaluate(
-        _sample(context={"documents": []}),
-    )
-    assert result.label == "FAIL"
-    assert result.score == 0.0
-    assert result.explanation == "context.documents are missing or empty"
-
-
-@pytest.mark.asyncio
-async def test_groundedness_missing_documents_fail_min() -> None:
-    class FakeLlm:
-        async def complete_json(self, *, system: str, user: str, model: str | None = None):
-            raise AssertionError("judge should not be called when documents are missing")
-
-    judge = LlmJudgeEvaluator("groundedness", {}, FakeLlm(), default_model=get_settings().llm_model)
-    result = await judge.evaluate(_sample(context={"latency_ms": 10}))
-    assert result.label == "FAIL"
-    assert result.score == 0.0
-
-
-@pytest.mark.asyncio
-async def test_groundedness_context_none_skipped() -> None:
-    class FakeLlm:
-        async def complete_json(self, *, system: str, user: str, model: str | None = None):
-            raise AssertionError("judge should not be called when context is missing")
-
-    judge = LlmJudgeEvaluator("groundedness", {}, FakeLlm(), default_model=get_settings().llm_model)
-    result = await judge.evaluate(_sample(context=None))
-    assert result.label == "SKIPPED"
-    assert result.score is None
-
-
-@pytest.mark.asyncio
-async def test_groundedness_judge_payload_includes_document_texts() -> None:
-    captured: dict[str, str] = {}
-
-    class FakeLlm:
-        async def complete_json(self, *, system: str, user: str, model: str | None = None):
-            captured["user"] = user
-            return {"score": 1.0, "label": "PASS", "explanation": "grounded"}
-
-    judge = LlmJudgeEvaluator("groundedness", {}, FakeLlm(), default_model=get_settings().llm_model)
-    await judge.evaluate(
-        _sample(
-            context={
-                "documents": [
-                    {"id": "doc-1", "text": "Policy excerpt for the judge."},
-                ],
-            },
-        )
-    )
-    payload = json.loads(captured["user"])
-    assert payload["context"]["documents"][0]["text"] == "Policy excerpt for the judge."
-
-
-@pytest.mark.asyncio
-@pytest.mark.parametrize(
-    ("kind", "expected_keys"),
-    [
-        ("answer_relevance", {"input", "actual_output"}),
-        ("groundedness", {"input", "actual_output", "context"}),
-        ("correctness", {"input", "expected_output", "actual_output"}),
-    ],
-)
-async def test_judge_payload_never_leaks_gold(kind: str, expected_keys: set[str]) -> None:
-    captured: dict[str, str] = {}
-
-    class FakeLlm:
-        async def complete_json(self, *, system: str, user: str, model: str | None = None):
-            captured["user"] = user
-            return {"score": 1.0, "label": "PASS", "explanation": "ok"}
-
-    judge = LlmJudgeEvaluator(kind, {}, FakeLlm(), default_model=get_settings().llm_model)
-    await judge.evaluate(
-        EvaluationSample(
-            input="q",
-            expected_output="GOLD-ANSWER",
-            actual_output="answer",
-            context={"documents": [{"id": "doc-1", "text": "t"}], "latency_ms": 12},
-            metadata={"expected_doc_ids": ["GOLD-DOC"]},
-        )
-    )
-    payload = json.loads(captured["user"])
-    assert set(payload) == expected_keys
-    assert "GOLD-DOC" not in captured["user"]
-    if kind != "correctness":
-        assert "GOLD-ANSWER" not in captured["user"]
-    if kind == "groundedness":
-        # Only documents reach the judge, not timing/cost context.
-        assert payload["context"] == {"documents": [{"id": "doc-1", "text": "t"}]}
 
 
 def test_build_eval_context_skips_stage_without_recorded_documents() -> None:

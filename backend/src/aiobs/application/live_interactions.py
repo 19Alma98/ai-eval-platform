@@ -263,6 +263,8 @@ class ScoreLiveInteraction:
                     )
                     continue
                 verdict = item_verdict(result.score, result.label, entry.threshold)
+                if verdict == "ERROR":
+                    failed_kinds.append(entry.kind)
                 scores.append(
                     LiveInteractionScore.create(
                         interaction.id,

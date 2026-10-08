@@ -23,12 +23,10 @@ from aiobs.domain.project import Project
 from aiobs.evaluation import bootstrap_evaluators
 from aiobs.evaluation.registry import clear_registry
 from aiobs.main import create_app
+from support.fake_llm import ScriptedJudgeLlm
 from support.repositories import InMemoryEvaluatorRepository, InMemoryMetricsSetRepository
 
-
-class FakeLlm:
-    async def complete_json(self, *, system: str, user: str, model: str | None = None) -> dict:
-        return {"score": 0.85, "label": "PASS", "explanation": "grounded"}
+FakeLlm = ScriptedJudgeLlm
 
 
 class InMemoryProjectRepository:
