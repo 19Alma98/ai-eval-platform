@@ -51,5 +51,13 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    op.drop_column("live_interaction_scores", "metadata")
-    op.drop_table("judge_claim_cache")
+    bind = op.get_bind()
+    inspector = sa.inspect(bind)
+
+    if inspector.has_table("live_interaction_scores"):
+        columns = {c["name"] for c in inspector.get_columns("live_interaction_scores")}
+        if "metadata" in columns:
+            op.drop_column("live_interaction_scores", "metadata")
+
+    if inspector.has_table("judge_claim_cache"):
+        op.drop_table("judge_claim_cache")
