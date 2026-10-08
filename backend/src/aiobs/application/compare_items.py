@@ -44,6 +44,7 @@ class ItemSide:
     score: float | None
     label: str | None
     explanation: str | None
+    metadata: dict[str, Any]
     run_id: uuid.UUID | None
 
 
@@ -108,6 +109,7 @@ def _build_side(
             score=None,
             label=None,
             explanation=None,
+            metadata={},
             run_id=run_id,
         )
     return ItemSide(
@@ -116,6 +118,7 @@ def _build_side(
         score=result.score,
         label=result.label,
         explanation=result.explanation,
+        metadata=dict(result.metadata),
         run_id=run_id,
     )
 

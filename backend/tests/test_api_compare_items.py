@@ -335,6 +335,8 @@ async def test_compare_items_shows_outputs_and_regression(client: AsyncClient) -
     assert regressed["candidate"]["score"] == 0.0
     assert regressed["status"] == "regression"
     assert regressed["delta"] == pytest.approx(-1.0)
+    assert "metadata" in regressed["candidate"]
+    assert "metadata" in regressed["baseline"]
 
     unchanged = next(r for r in body["items"] if r["dataset_item_id"] != item_id)
     assert unchanged["status"] == "unchanged"

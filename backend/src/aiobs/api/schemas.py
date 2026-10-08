@@ -423,6 +423,7 @@ class ItemSideResponse(BaseModel):
     score: float | None = None
     label: str | None = None
     explanation: str | None = None
+    metadata: dict[str, Any] = Field(default_factory=dict)
     run_id: uuid.UUID | None = None
 
 

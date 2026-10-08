@@ -211,6 +211,7 @@ def _item_side_response(side: ItemSide) -> ItemSideResponse:
         score=side.score,
         label=side.label,
         explanation=side.explanation,
+        metadata=side.metadata,
         run_id=side.run_id,
     )
 
