@@ -17,15 +17,20 @@ async def test_compare_persisted(client: AsyncClient) -> None:
         json={"name": "shared", "task_type": "classification"},
     )
     dataset_id = dataset.json()["id"]
-    await client.post(
-        f"/api/v1/datasets/{dataset_id}/items",
-        json={"input": "q", "expected_output": "a", "actual_output": "a"},
-    )
-    bad_item = await client.post(
-        f"/api/v1/datasets/{dataset_id}/items",
-        json={"input": "q2", "expected_output": "a", "actual_output": "a"},
-    )
-    bad_item_id = bad_item.json()["id"]
+    bad_item_id = None
+    for idx in range(5):
+        item = await client.post(
+            f"/api/v1/datasets/{dataset_id}/items",
+            json={
+                "input": f"q{idx}",
+                "expected_output": "a",
+                "actual_output": "a",
+            },
+        )
+        assert item.status_code == 201
+        if idx == 1:
+            bad_item_id = item.json()["id"]
+    assert bad_item_id is not None
 
     evaluator = await client.post(
         f"/api/v1/projects/{project_id}/evaluators",
@@ -67,4 +72,7 @@ async def test_compare_persisted(client: AsyncClient) -> None:
 
     compare = await client.get(f"/api/v1/experiments/{candidate_id}/compare/{baseline_id}")
     assert compare.status_code == 200
-    assert all(m["status"] == "regression" for m in compare.json()["metrics"])
+    body = compare.json()
+    assert len(body["candidate_runs"]) == 1
+    assert len(body["baseline_runs"]) == 1
+    assert all(m["status"] == "regression" for m in body["metrics"])
