@@ -217,7 +217,7 @@ List query: `judge_status`, `search`, `failed_only`, `limit`.
 
 `POST .../review` body: `verdict` (`agree`|`disagree`), optional `note`, `reviewer`.
 
-`POST .../promote` body: `dataset_id`, optional `expected_output` → creates a dataset item.
+`POST .../promote` body: `dataset_id`, required `expected_output` (reviewer-written gold; the production answer is never used as default), optional `expected_doc_ids` (required for `rag_qa` datasets) → creates a dataset item. Retrieved doc ids are stored as `metadata.retrieved_doc_ids_at_promotion` for reference only; they are never copied into `expected_doc_ids`.
 
 ## Comparison
 

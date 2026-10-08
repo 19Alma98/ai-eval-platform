@@ -34,7 +34,11 @@ export function reviewLiveInteraction(
 
 export function promoteLiveInteraction(
   id: string,
-  body: { dataset_id: string; expected_output?: unknown },
+  body: {
+    dataset_id: string;
+    expected_output: unknown;
+    expected_doc_ids?: string[];
+  },
 ) {
   return apiPost<DatasetItem>(
     `/api/v1/live-interactions/${id}/promote`,

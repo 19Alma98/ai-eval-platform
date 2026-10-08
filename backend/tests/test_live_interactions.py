@@ -311,14 +311,80 @@ async def test_score_goldless_and_review_promote() -> None:
 
     promote = PromoteLiveInteraction(live, datasets, AddDatasetItem(datasets))
     item = await promote.execute(
-        PromoteLiveInteractionCommand(interaction_id=scored.id, dataset_id=dataset.id)
+        PromoteLiveInteractionCommand(
+            interaction_id=scored.id,
+            dataset_id=dataset.id,
+            expected_output="Paid time off (PTO), 20 days per year",
+            expected_doc_ids=["doc-pto-policy"],
+        )
     )
     assert item.input == "What is PTO?"
-    assert item.expected_output == "Paid time off"
-    assert item.metadata["expected_doc_ids"] == ["doc-1"]
+    assert item.expected_output == "Paid time off (PTO), 20 days per year"
+    assert item.metadata["expected_doc_ids"] == ["doc-pto-policy"]
+    assert item.metadata["retrieved_doc_ids_at_promotion"] == ["doc-1"]
     assert item.metadata["source_live_interaction_id"] == str(scored.id)
 
     clear_registry()
+
+
+async def _promote_setup(
+    task_type: str = "rag_qa",
+) -> tuple[PromoteLiveInteraction, LiveInteraction, Dataset]:
+    live = InMemoryLiveRepository()
+    datasets = InMemoryDatasetRepository()
+    project_id = uuid.uuid4()
+    dataset = Dataset.create(project_id, "gold", task_type=task_type)
+    await datasets.add(dataset)
+    interaction = await live.add(
+        LiveInteraction.create(
+            project_id,
+            "What is PTO?",
+            "Paid time off",
+            documents=[{"id": "doc-1", "text": "PTO"}],
+        )
+    )
+    return PromoteLiveInteraction(live, datasets, AddDatasetItem(datasets)), interaction, dataset
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("expected", [None, "", "   "])
+async def test_promote_requires_explicit_expected_output(expected: object) -> None:
+    promote, interaction, dataset = await _promote_setup()
+    with pytest.raises(ValueError, match="expected_output"):
+        await promote.execute(
+            PromoteLiveInteractionCommand(
+                interaction_id=interaction.id,
+                dataset_id=dataset.id,
+                expected_output=expected,
+            )
+        )
+
+
+@pytest.mark.asyncio
+async def test_promote_rag_qa_requires_explicit_doc_ids() -> None:
+    promote, interaction, dataset = await _promote_setup()
+    with pytest.raises(ValueError, match="expected_doc_ids"):
+        await promote.execute(
+            PromoteLiveInteractionCommand(
+                interaction_id=interaction.id,
+                dataset_id=dataset.id,
+                expected_output="gold answer",
+            )
+        )
+
+
+@pytest.mark.asyncio
+async def test_promote_never_uses_retrieved_docs_as_gold() -> None:
+    promote, interaction, dataset = await _promote_setup(task_type="classification")
+    item = await promote.execute(
+        PromoteLiveInteractionCommand(
+            interaction_id=interaction.id,
+            dataset_id=dataset.id,
+            expected_output="gold answer",
+        )
+    )
+    assert "expected_doc_ids" not in item.metadata
+    assert item.metadata["retrieved_doc_ids_at_promotion"] == ["doc-1"]
 
 
 @pytest.mark.asyncio

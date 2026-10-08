@@ -222,12 +222,23 @@ async def test_submit_rescore_review_promote(client: AsyncClient) -> None:
     assert review.status_code == 200
     assert review.json()["verdict"] == "disagree"
 
-    promote = await client.post(
+    missing_gold = await client.post(
         f"/api/v1/live-interactions/{interaction_id}/promote",
         json={"dataset_id": dataset_id},
     )
-    assert promote.status_code == 201
+    assert missing_gold.status_code == 422
+
+    promote = await client.post(
+        f"/api/v1/live-interactions/{interaction_id}/promote",
+        json={
+            "dataset_id": dataset_id,
+            "expected_output": "Paid time off",
+            "expected_doc_ids": ["doc-1"],
+        },
+    )
+    assert promote.status_code == 201, promote.text
     assert promote.json()["metadata"]["expected_doc_ids"] == ["doc-1"]
+    assert promote.json()["metadata"]["retrieved_doc_ids_at_promotion"] == ["doc-1"]
 
     listed = await client.get(f"/api/v1/projects/{project_id}/live-interactions")
     assert listed.status_code == 200

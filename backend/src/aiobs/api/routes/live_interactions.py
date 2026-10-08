@@ -243,6 +243,7 @@ async def promote_live_interaction(
                 interaction_id=interaction_id,
                 dataset_id=body.dataset_id,
                 expected_output=body.expected_output,
+                expected_doc_ids=body.expected_doc_ids,
             )
         )
     except LiveInteractionNotFoundError as exc:

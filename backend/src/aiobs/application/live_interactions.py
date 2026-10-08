@@ -70,7 +70,10 @@ class LiveInteractionDetail:
 class PromoteLiveInteractionCommand:
     interaction_id: uuid.UUID
     dataset_id: uuid.UUID
+    # Gold must come from a human: the production answer and retrieved docs are the
+    # system under test, so using them as gold makes later evals pass by construction.
     expected_output: Any | None = None
+    expected_doc_ids: list[str] | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -362,6 +365,10 @@ class PromoteLiveInteraction:
         self._add_item = add_item
 
     async def execute(self, command: PromoteLiveInteractionCommand) -> DatasetItem:
+        expected = command.expected_output
+        if expected is None or (isinstance(expected, str) and not expected.strip()):
+            raise ValueError("expected_output is required to promote (gold must be explicit)")
+
         interaction = await self._live.get_by_id(command.interaction_id)
         if interaction is None:
             raise LiveInteractionNotFoundError(command.interaction_id)
@@ -371,7 +378,7 @@ class PromoteLiveInteraction:
         if dataset.project_id != interaction.project_id:
             raise DatasetNotFoundError(command.dataset_id)
 
-        doc_ids = [
+        retrieved_ids = [
             str(d["id"])
             for d in interaction.documents
             if isinstance(d, dict) and d.get("id") is not None
@@ -379,12 +386,17 @@ class PromoteLiveInteraction:
         metadata: dict[str, Any] = {
             "source_live_interaction_id": str(interaction.id),
         }
-        if doc_ids:
-            metadata["expected_doc_ids"] = doc_ids
+        if retrieved_ids:
+            # Informational only: hit_at_k reads expected_doc_ids, never this key.
+            metadata["retrieved_doc_ids_at_promotion"] = retrieved_ids
+        expected_doc_ids = [
+            str(doc_id).strip()
+            for doc_id in (command.expected_doc_ids or [])
+            if str(doc_id).strip()
+        ]
+        if expected_doc_ids:
+            metadata["expected_doc_ids"] = expected_doc_ids
 
-        expected = (
-            command.expected_output if command.expected_output is not None else interaction.answer
-        )
         return await self._add_item.execute(
             AddDatasetItemCommand(
                 dataset_id=command.dataset_id,

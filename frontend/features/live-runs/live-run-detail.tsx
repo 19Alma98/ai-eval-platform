@@ -40,7 +40,9 @@ export function LiveRunDetail({ interactionId }: { interactionId: string }) {
   const [note, setNote] = useState("");
   const [promoteOpen, setPromoteOpen] = useState(false);
   const [datasetId, setDatasetId] = useState("");
-  const [expectedOverride, setExpectedOverride] = useState("");
+  const [expectedOutput, setExpectedOutput] = useState("");
+  const [expectedDocIds, setExpectedDocIds] = useState<string[]>([]);
+  const [extraDocIds, setExtraDocIds] = useState("");
 
   const row = query.data;
 
@@ -74,11 +76,15 @@ export function LiveRunDetail({ interactionId }: { interactionId: string }) {
     mutationFn: () =>
       promoteLiveInteraction(interactionId, {
         dataset_id: datasetId,
-        expected_output: expectedOverride.trim() || undefined,
+        expected_output: expectedOutput.trim(),
+        expected_doc_ids: goldDocIds.length ? goldDocIds : undefined,
       }),
     onSuccess: (item) => {
       toast.success("Promoted to test set");
       setPromoteOpen(false);
+      setExpectedOutput("");
+      setExpectedDocIds([]);
+      setExtraDocIds("");
       if (projectId) {
         // leave toast; user can navigate via datasets
         void item;
@@ -96,6 +102,16 @@ export function LiveRunDetail({ interactionId }: { interactionId: string }) {
     }));
   }, [row]);
 
+  const goldDocIds = Array.from(
+    new Set([
+      ...expectedDocIds,
+      ...extraDocIds
+        .split(",")
+        .map((x) => x.trim())
+        .filter(Boolean),
+    ]),
+  );
+
   if (query.isLoading) return <LoadingBlock />;
   if (query.isError || !row) {
     return <ErrorState message="Could not load live interaction." />;
@@ -105,6 +121,10 @@ export function LiveRunDetail({ interactionId }: { interactionId: string }) {
     e.preventDefault();
     if (!datasetId) {
       toast.error("Select a dataset");
+      return;
+    }
+    if (!expectedOutput.trim()) {
+      toast.error("Write the expected (gold) answer");
       return;
     }
     promoteMutation.mutate();
@@ -255,8 +275,9 @@ export function LiveRunDetail({ interactionId }: { interactionId: string }) {
                 <DialogHeader>
                   <DialogTitle>Promote to test set</DialogTitle>
                   <DialogDescription>
-                    Creates a dataset item from this interaction. Expected
-                    answer defaults to the production answer.
+                    Creates a dataset item from this question. Gold must be
+                    written by you: the production answer and retrieved docs
+                    are what is being evaluated, so they are never copied in.
                   </DialogDescription>
                 </DialogHeader>
                 <div className="space-y-3 py-3">
@@ -277,12 +298,50 @@ export function LiveRunDetail({ interactionId }: { interactionId: string }) {
                     </select>
                   </label>
                   <label className="block text-sm">
-                    Expected output (optional override)
+                    Expected output (gold)
                     <Textarea
                       className="mt-1"
-                      value={expectedOverride}
-                      onChange={(e) => setExpectedOverride(e.target.value)}
-                      placeholder={row.answer}
+                      value={expectedOutput}
+                      onChange={(e) => setExpectedOutput(e.target.value)}
+                      placeholder={`Production answer: ${row.answer}`}
+                      required
+                    />
+                  </label>
+                  {docPreview.length > 0 ? (
+                    <fieldset className="text-sm">
+                      <legend>Expected doc ids (check only truly relevant)</legend>
+                      <div className="mt-1 space-y-1">
+                        {docPreview.map((d) => (
+                          <label key={d.id} className="flex items-center gap-2">
+                            <input
+                              type="checkbox"
+                              checked={expectedDocIds.includes(d.id)}
+                              onChange={(e) =>
+                                setExpectedDocIds((prev) =>
+                                  e.target.checked
+                                    ? [...prev, d.id]
+                                    : prev.filter((x) => x !== d.id),
+                                )
+                              }
+                            />
+                            <span className="font-mono">{d.id}</span>
+                            {d.title ? (
+                              <span className="text-muted-foreground">
+                                {d.title}
+                              </span>
+                            ) : null}
+                          </label>
+                        ))}
+                      </div>
+                    </fieldset>
+                  ) : null}
+                  <label className="block text-sm">
+                    Other expected doc ids (not retrieved, comma-separated)
+                    <input
+                      className="mt-1 h-9 w-full rounded-md border border-border bg-background px-2 text-sm"
+                      value={extraDocIds}
+                      onChange={(e) => setExtraDocIds(e.target.value)}
+                      placeholder="e.g. pto-policy, benefits-faq"
                     />
                   </label>
                 </div>

@@ -535,4 +535,5 @@ class UpsertLiveReviewRequest(BaseModel):
 
 class PromoteLiveInteractionRequest(BaseModel):
     dataset_id: uuid.UUID
-    expected_output: Any | None = None
+    expected_output: Any
+    expected_doc_ids: list[str] | None = None
