@@ -7,6 +7,7 @@ import { ArrowLeft } from "lucide-react";
 import { toast } from "sonner";
 import { useDatasets } from "@/features/datasets/use-datasets";
 import { ErrorState } from "@/components/error-state";
+import { JudgeClaimsTable } from "@/components/judge-claims-table";
 import { LoadingBlock } from "@/components/loading-block";
 import { RelativeTime } from "@/components/relative-time";
 import { StatusBadge } from "@/components/status-badge";
@@ -209,7 +210,7 @@ export function LiveRunDetail({ interactionId }: { interactionId: string }) {
         {row.scores.length === 0 ? (
           <p className="text-sm text-muted-foreground">No scores yet</p>
         ) : (
-          <div className="grid gap-2 md:grid-cols-2">
+          <div className="grid gap-2">
             {row.scores.map((score) => (
               <div
                 key={score.id}
@@ -230,6 +231,9 @@ export function LiveRunDetail({ interactionId }: { interactionId: string }) {
                     {score.explanation}
                   </p>
                 ) : null}
+                <div className="mt-2">
+                  <JudgeClaimsTable metadata={score.metadata} />
+                </div>
               </div>
             ))}
           </div>
