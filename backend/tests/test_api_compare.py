@@ -269,16 +269,20 @@ async def _seed_dataset_and_evaluator(client: AsyncClient) -> tuple[str, str, st
 async def test_summary_and_compare_experiments(client: AsyncClient) -> None:
     project_id, dataset_id, evaluator_id = await _seed_dataset_and_evaluator(client)
 
-    item = await client.post(
-        f"/api/v1/datasets/{dataset_id}/items",
-        json={
-            "input": "hi2",
-            "expected_output": "hello",
-            "actual_output": "hello",
-        },
-    )
-    assert item.status_code == 201
-    second_item_id = item.json()["id"]
+    second_item_id = None
+    for idx in range(2, 6):
+        item = await client.post(
+            f"/api/v1/datasets/{dataset_id}/items",
+            json={
+                "input": f"hi{idx}",
+                "expected_output": "hello",
+                "actual_output": "hello",
+            },
+        )
+        assert item.status_code == 201
+        if idx == 2:
+            second_item_id = item.json()["id"]
+    assert second_item_id is not None
 
     baseline = await client.post(
         f"/api/v1/projects/{project_id}/experiments",
