@@ -31,6 +31,19 @@ Open items from the RAG evaluation review (2026-10-08). Fixed items are in git h
 - [ ] **Legacy runs without `config_hash` are assumed comparable** in compare/release. Consider
   flagging them as "config unknown" once enough runs carry the hash.
 
+## Judge warnings
+
+- [ ] **Live "judge model unsuitable" banner is computed in the browser** over the rows on screen
+  (`liveUnsuitableRate` in `frontend/features/judges/judge-metadata.ts`, used by
+  `live-run-list.tsx`). It pools all kinds and follows the active filters, so with "failed only" or
+  `judge_status=error` the rate is inflated and the banner fires even when the project's real rate
+  is low. Compute it in the backend over the last 50 live scores per kind (unfiltered) and return
+  it from the list endpoint.
+- [ ] **Compare has no run-level "judge model unsuitable" badge.** Only experiment detail shows it
+  (`runJudgeWarning`); compare shows a per-item "judge output invalid" note because the compare
+  endpoint does not return run metadata. Expose the baseline/candidate run warnings in the compare
+  response and badge them next to the config-mismatch flag.
+
 ## Performance
 
 - [ ] **Live list N+1.** `ListLiveInteractions` loads scores and review per row. Batch-load scores
