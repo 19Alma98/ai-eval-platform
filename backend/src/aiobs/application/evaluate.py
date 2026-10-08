@@ -7,9 +7,10 @@ from typing import Any
 from aiobs.application.evaluators import EvaluatorNotFoundError
 from aiobs.application.experiment_outputs import merge_dataset_item
 from aiobs.application.experiments import ExperimentNotFoundError
-from aiobs.application.metrics_sets import ResolveMetricsSetForScore
+from aiobs.application.metrics_sets import MetricsSetValidationError, ResolveMetricsSetForScore
 from aiobs.domain.evaluation import EvaluationResultRecord, EvaluationRun
 from aiobs.domain.experiment import Experiment
+from aiobs.domain.metrics_set import assert_unique_evaluator_ids
 from aiobs.domain.repositories import (
     DatasetRepository,
     EvaluationRunRepository,
@@ -191,11 +192,19 @@ class ScoreExperimentFromPack:
             save_as_default=command.save_as_default,
         )
 
+        enabled = [e for e in resolved.entries if e.enabled and e.evaluator_id is not None]
+        try:
+            # Guards sets saved before the invariant existed: thresholds and overrides
+            # below are keyed by evaluator, so a shared evaluator would mix two entries.
+            assert_unique_evaluator_ids(tuple(enabled))
+        except ValueError as exc:
+            raise MetricsSetValidationError(str(exc)) from exc
+
         evaluator_ids: list[uuid.UUID] = []
         pass_thresholds: dict[uuid.UUID, float | None] = {}
         config_overrides: dict[uuid.UUID, dict[str, Any]] = {}
-        for entry in resolved.entries:
-            if not entry.enabled or entry.evaluator_id is None:
+        for entry in enabled:
+            if entry.evaluator_id is None:
                 continue
             evaluator_ids.append(entry.evaluator_id)
             pass_thresholds[entry.evaluator_id] = entry.threshold

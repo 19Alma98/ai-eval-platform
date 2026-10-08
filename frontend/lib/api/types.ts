@@ -215,6 +215,7 @@ export type ExperimentCompareResponse = {
   regressions: MetricComparison[];
   improved: MetricComparison[];
   unchanged: MetricComparison[];
+  config_mismatches?: MetricComparison[];
 };
 
 export type ItemSide = {
@@ -233,7 +234,7 @@ export type ItemComparisonRow = {
   baseline: ItemSide;
   candidate: ItemSide;
   delta: number | null;
-  status: "regression" | "improved" | "unchanged" | "unavailable";
+  status: "regression" | "improved" | "unchanged" | "unavailable" | "config_mismatch";
 };
 
 export type ItemComparisonResponse = {

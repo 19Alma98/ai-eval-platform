@@ -5,7 +5,11 @@ from dataclasses import dataclass, replace
 from datetime import UTC, datetime
 from typing import Any
 
-from aiobs.application.evaluators import CreateEvaluator, CreateEvaluatorCommand
+from aiobs.application.evaluators import (
+    CreateEvaluator,
+    CreateEvaluatorCommand,
+    EvaluatorConflictError,
+)
 from aiobs.application.projects import ProjectNotFoundError
 from aiobs.domain.evaluator import Evaluator
 from aiobs.domain.experiment import Experiment
@@ -14,6 +18,7 @@ from aiobs.domain.metrics_set import (
     DEFAULT_RAG_SET_ENTRIES,
     MetricsSet,
     MetricsSetEntry,
+    assert_unique_evaluator_ids,
 )
 from aiobs.domain.repositories import (
     EvaluatorRepository,
@@ -83,15 +88,24 @@ async def _require_evaluator_in_project(
         raise MetricsSetValidationError(f"evaluator_id does not belong to project: {evaluator_id}")
 
 
-async def _find_evaluator_by_kind(
+async def _evaluators_for_kind(
     evaluators: EvaluatorRepository,
     project_id: uuid.UUID,
     kind: str,
+) -> list[Evaluator]:
+    """Auto-managed evaluators for a kind (name == kind), lowest version first."""
+    matches = [
+        evaluator
+        for evaluator in await evaluators.list_by_project(project_id)
+        if evaluator.name == kind and str(evaluator.config.get("kind", "")).strip() == kind
+    ]
+    return sorted(matches, key=lambda e: e.version)
+
+
+def _first_available(
+    candidates: list[Evaluator], exclude: frozenset[uuid.UUID]
 ) -> Evaluator | None:
-    for evaluator in await evaluators.list_by_project(project_id):
-        if evaluator.name == kind and str(evaluator.config.get("kind", "")).strip() == kind:
-            return evaluator
-    return None
+    return next((e for e in candidates if e.id not in exclude), None)
 
 
 def _replace_entry_at(metrics_set: MetricsSet, entry: MetricsSetEntry) -> MetricsSet:
@@ -127,50 +141,68 @@ def _with_missing_default_entries(metrics_set: MetricsSet) -> MetricsSet:
     )
 
 
-async def _ensure_all_entry_evaluator_ids(
+async def find_or_create_evaluator_for_entry(
+    evaluators: EvaluatorRepository,
+    create_evaluator: CreateEvaluator,
+    project_id: uuid.UUID,
+    entry: MetricsSetEntry,
+    *,
+    exclude: frozenset[uuid.UUID] = frozenset(),
+) -> Evaluator:
+    """Reuse the project's evaluator for this kind, creating it if missing.
+
+    ``exclude`` holds evaluators already backing other entries of the same metrics
+    set: an entry must get its own evaluator (see ``assert_unique_evaluator_ids``),
+    so when the kind's evaluator is taken a new version is created.
+
+    Concurrent callers (e.g. parallel live-scoring tasks) can both miss on find and
+    race on create; the loser hits the unique constraint and re-reads the winner's row.
+    """
+    candidates = await _evaluators_for_kind(evaluators, project_id, entry.kind)
+    evaluator = _first_available(candidates, exclude)
+    if evaluator is not None:
+        return evaluator
+    next_version = max((e.version for e in candidates), default=0) + 1
+    try:
+        return await create_evaluator.execute(
+            CreateEvaluatorCommand(
+                project_id=project_id,
+                name=entry.kind,
+                type=_evaluator_type_for_kind(entry.kind),
+                config=_evaluator_config_for_entry(entry),
+                version=next_version,
+            )
+        )
+    except EvaluatorConflictError:
+        candidates = await _evaluators_for_kind(evaluators, project_id, entry.kind)
+        evaluator = _first_available(candidates, exclude)
+        if evaluator is None:
+            raise
+        return evaluator
+
+
+def _evaluator_ids_in_use(entries: tuple[MetricsSetEntry, ...]) -> frozenset[uuid.UUID]:
+    return frozenset(e.evaluator_id for e in entries if e.evaluator_id is not None)
+
+
+async def _ensure_entry_evaluator_ids(
     metrics_set: MetricsSet,
     evaluators: EvaluatorRepository,
     create_evaluator: CreateEvaluator,
+    *,
+    only_enabled: bool,
 ) -> MetricsSet:
     current = metrics_set
     for entry in metrics_set.entries:
-        if entry.evaluator_id is not None:
+        if entry.evaluator_id is not None or (only_enabled and not entry.enabled):
             continue
-        evaluator = await _find_evaluator_by_kind(evaluators, metrics_set.project_id, entry.kind)
-        if evaluator is None:
-            evaluator = await create_evaluator.execute(
-                CreateEvaluatorCommand(
-                    project_id=metrics_set.project_id,
-                    name=entry.kind,
-                    type=_evaluator_type_for_kind(entry.kind),
-                    config=_evaluator_config_for_entry(entry),
-                )
-            )
-        idx = next(i for i, e in enumerate(current.entries) if e.kind == entry.kind)
-        current_entry = current.entries[idx]
-        current = _replace_entry_at(current, replace(current_entry, evaluator_id=evaluator.id))
-    return current
-
-
-async def _ensure_enabled_entry_evaluator_ids(
-    metrics_set: MetricsSet,
-    evaluators: EvaluatorRepository,
-    create_evaluator: CreateEvaluator,
-) -> MetricsSet:
-    current = metrics_set
-    for entry in metrics_set.entries:
-        if not entry.enabled or entry.evaluator_id is not None:
-            continue
-        evaluator = await _find_evaluator_by_kind(evaluators, metrics_set.project_id, entry.kind)
-        if evaluator is None:
-            evaluator = await create_evaluator.execute(
-                CreateEvaluatorCommand(
-                    project_id=metrics_set.project_id,
-                    name=entry.kind,
-                    type=_evaluator_type_for_kind(entry.kind),
-                    config=_evaluator_config_for_entry(entry),
-                )
-            )
+        evaluator = await find_or_create_evaluator_for_entry(
+            evaluators,
+            create_evaluator,
+            metrics_set.project_id,
+            entry,
+            exclude=_evaluator_ids_in_use(current.entries),
+        )
         idx = next(i for i, e in enumerate(current.entries) if e.kind == entry.kind)
         current_entry = current.entries[idx]
         current = _replace_entry_at(current, replace(current_entry, evaluator_id=evaluator.id))
@@ -252,6 +284,10 @@ async def _apply_entry_replacement(
             continue
         updated = updated.remove_entry(existing.kind)
 
+    try:
+        assert_unique_evaluator_ids(updated.entries)
+    except ValueError as exc:
+        raise MetricsSetValidationError(str(exc)) from exc
     return updated
 
 
@@ -307,16 +343,31 @@ class EnsureProjectDefaultMetricsSet:
 
         metrics_set = await self._metrics_sets.get_project_default(project_id)
         if metrics_set is None:
-            metrics_set = await self._metrics_sets.add(
-                MetricsSet.create_project_default(project_id)
-            )
+            try:
+                metrics_set = await self._metrics_sets.add(
+                    MetricsSet.create_project_default(project_id)
+                )
+            except Exception:
+                # A concurrent caller created the default first (one-default-per-project
+                # unique index): use theirs.
+                existing = await self._metrics_sets.get_project_default(project_id)
+                if existing is None:
+                    raise
+                metrics_set = existing
         else:
             backfilled = _with_missing_default_entries(metrics_set)
             if backfilled.entries != metrics_set.entries:
-                metrics_set = await self._metrics_sets.update(backfilled)
+                try:
+                    metrics_set = await self._metrics_sets.update(backfilled)
+                except Exception:
+                    # A concurrent caller backfilled the same entries first.
+                    existing = await self._metrics_sets.get_project_default(project_id)
+                    if existing is None:
+                        raise
+                    metrics_set = existing
 
-        updated = await _ensure_all_entry_evaluator_ids(
-            metrics_set, self._evaluators, self._create_evaluator
+        updated = await _ensure_entry_evaluator_ids(
+            metrics_set, self._evaluators, self._create_evaluator, only_enabled=False
         )
         if updated.entries != metrics_set.entries:
             return await self._metrics_sets.update(updated)
@@ -558,8 +609,8 @@ class ResolveMetricsSetForScore:
         else:
             resolved = await self._ensure_default.execute(experiment.project_id)
 
-        with_evaluators = await _ensure_enabled_entry_evaluator_ids(
-            resolved, self._evaluators, self._create_evaluator
+        with_evaluators = await _ensure_entry_evaluator_ids(
+            resolved, self._evaluators, self._create_evaluator, only_enabled=True
         )
         if with_evaluators.entries != resolved.entries:
             resolved = await self._metrics_sets.update(with_evaluators)

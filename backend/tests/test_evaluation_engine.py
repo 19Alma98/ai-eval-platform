@@ -363,6 +363,33 @@ def test_build_eval_context_from_trace() -> None:
     assert ctx["tool_calls"][0]["success"] is True
 
 
+def test_build_eval_context_ignores_non_tool_span_named_tool() -> None:
+    start = datetime(2024, 1, 1, tzinfo=UTC)
+    end = datetime(2024, 1, 1, 0, 0, 1, tzinfo=UTC)
+    span = Span(
+        id=uuid.uuid4(),
+        span_id="a" * 16,
+        parent_span_id=None,
+        name="toolbox_lookup",
+        kind="CHAIN",
+        start_time=start,
+        end_time=end,
+        status="error",
+        attributes={},
+    )
+    trace = Trace(
+        id=uuid.uuid4(),
+        project_id=uuid.uuid4(),
+        trace_id="b" * 32,
+        name="t",
+        status="ok",
+        start_time=start,
+        end_time=end,
+        spans=(span,),
+    )
+    assert "tool_calls" not in build_eval_context_from_trace(trace)
+
+
 def test_build_eval_context_includes_retrieval_documents() -> None:
     start = datetime(2024, 1, 1, tzinfo=UTC)
     end = datetime(2024, 1, 1, 0, 0, 1, tzinfo=UTC)

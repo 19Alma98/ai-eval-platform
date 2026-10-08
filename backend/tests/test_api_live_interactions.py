@@ -87,6 +87,7 @@ class InMemoryLiveRepository:
         judge_status: str | None = None,
         search: str | None = None,
         limit: int = 50,
+        offset: int = 0,
     ) -> list[LiveInteraction]:
         rows = [i for i in self._items.values() if i.project_id == project_id]
         if judge_status:
@@ -94,7 +95,7 @@ class InMemoryLiveRepository:
         if search:
             rows = [i for i in rows if search.lower() in i.question.lower()]
         rows.sort(key=lambda i: i.created_at, reverse=True)
-        return rows[:limit]
+        return rows[offset : offset + limit]
 
     async def replace_scores(
         self, interaction_id: uuid.UUID, scores: list[LiveInteractionScore]

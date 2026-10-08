@@ -50,6 +50,8 @@ def resolve_span_kind(attributes: dict[str, Any]) -> str:
             return "LLM"
         if isinstance(op, str) and op.lower() in {"embeddings", "embedding"}:
             return "EMBEDDING"
+        if isinstance(op, str) and op.lower() == "execute_tool":
+            return "TOOL"
         return "SPAN"
     if not isinstance(raw, str):
         return "SPAN"

@@ -180,6 +180,7 @@ export function ExperimentCompareView({
   const comparison = compareQuery.data;
   const unavailableCount =
     comparison?.metrics.filter((m) => m.status === "unavailable").length ?? 0;
+  const configMismatchCount = comparison?.config_mismatches?.length ?? 0;
 
   return (
     <div className="flex flex-col gap-3">
@@ -224,6 +225,14 @@ export function ExperimentCompareView({
                 {unavailableCount}
               </span>
             </span>
+            {configMismatchCount > 0 ? (
+              <span title="Candidate and baseline were scored with different evaluator configs (e.g. k, max_ms, judge model): their scores are not comparable.">
+                Config mismatch{" "}
+                <span className="font-mono tabular-nums text-status-warn">
+                  {configMismatchCount}
+                </span>
+              </span>
+            ) : null}
           </div>
           <CompareTable projectId={projectId} metrics={comparison.metrics} />
           <CompareItemsTable

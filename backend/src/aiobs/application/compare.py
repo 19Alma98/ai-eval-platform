@@ -15,6 +15,7 @@ from aiobs.regression.aggregate import (
     MetricComparison,
     aggregate_results,
     compare_evaluator_metrics,
+    runs_config_mismatch,
     select_runs,
 )
 
@@ -46,6 +47,7 @@ class ExperimentComparison:
     regressions: list[MetricComparison]
     improved: list[MetricComparison]
     unchanged: list[MetricComparison]
+    config_mismatches: list[MetricComparison]
 
 
 def _metadata_evaluator_name(run: EvaluationRun) -> str | None:
@@ -206,12 +208,14 @@ class CompareExperiments:
                     evaluator_name=name,
                     candidate=cand_agg,
                     baseline=base_agg,
+                    config_mismatch=runs_config_mismatch(cand_run, base_run),
                 )
             )
 
         regressions = [m for m in metrics if m.status == "regression"]
         improved = [m for m in metrics if m.status == "improved"]
         unchanged = [m for m in metrics if m.status == "unchanged"]
+        config_mismatches = [m for m in metrics if m.status == "config_mismatch"]
         return ExperimentComparison(
             experiment_id=experiment_id,
             baseline_experiment_id=baseline_id,
@@ -219,4 +223,5 @@ class CompareExperiments:
             regressions=regressions,
             improved=improved,
             unchanged=unchanged,
+            config_mismatches=config_mismatches,
         )

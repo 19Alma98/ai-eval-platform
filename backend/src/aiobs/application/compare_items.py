@@ -13,7 +13,12 @@ from aiobs.domain.repositories import (
     ExperimentItemOutputRepository,
     ExperimentRepository,
 )
-from aiobs.regression.aggregate import MetricStatus, classify_delta, select_latest_runs
+from aiobs.regression.aggregate import (
+    MetricStatus,
+    classify_delta,
+    runs_config_mismatch,
+    select_latest_runs,
+)
 
 
 class DatasetMismatchError(Exception):
@@ -172,6 +177,7 @@ class CompareExperimentItems:
             o.dataset_item_id: o for o in await self._outputs.list_by_experiment(baseline_id)
         }
 
+        config_mismatch = runs_config_mismatch(cand_run, base_run)
         dataset_items = await self._datasets.list_items(experiment.dataset_id)
         rows: list[ItemComparisonRow] = []
         for item in sorted(dataset_items, key=lambda i: str(i.id)):
@@ -195,7 +201,12 @@ class CompareExperimentItems:
                 result=base_result,
                 run_id=base_run.id if base_run else None,
             )
-            delta, status = classify_delta(cand_side.score, base_side.score)
+            delta: float | None
+            status: MetricStatus
+            if config_mismatch:
+                delta, status = None, "config_mismatch"
+            else:
+                delta, status = classify_delta(cand_side.score, base_side.score)
             rows.append(
                 ItemComparisonRow(
                     dataset_item_id=item.id,

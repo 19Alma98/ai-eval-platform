@@ -17,6 +17,10 @@ def test_resolve_span_kind_openinference() -> None:
     assert resolve_span_kind({}) == "SPAN"
 
 
+def test_resolve_span_kind_genai_execute_tool() -> None:
+    assert resolve_span_kind({"gen_ai.operation.name": "execute_tool"}) == "TOOL"
+
+
 def test_normalize_groups_by_trace_id() -> None:
     project_id = uuid.uuid4()
     start = datetime(2026, 1, 1, tzinfo=UTC)

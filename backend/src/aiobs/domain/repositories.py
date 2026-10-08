@@ -179,6 +179,7 @@ class LiveInteractionRepository(Protocol):
         judge_status: str | None = None,
         search: str | None = None,
         limit: int = 50,
+        offset: int = 0,
     ) -> list[LiveInteraction]: ...
 
     async def replace_scores(

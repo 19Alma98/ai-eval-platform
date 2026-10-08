@@ -44,6 +44,11 @@ from aiobs.infrastructure.models import (
 )
 
 
+def escape_like(value: str) -> str:
+    """Escape LIKE/ILIKE wildcards so user input matches literally (escape char: backslash)."""
+    return value.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+
+
 def _project_to_domain(row: ProjectModel) -> Project:
     return Project(
         id=row.id,
@@ -1154,14 +1159,20 @@ class SqlAlchemyLiveInteractionRepository:
         judge_status: str | None = None,
         search: str | None = None,
         limit: int = 50,
+        offset: int = 0,
     ) -> list[LiveInteraction]:
         stmt = select(LiveInteractionModel).where(LiveInteractionModel.project_id == project_id)
         if judge_status is not None:
             stmt = stmt.where(LiveInteractionModel.judge_status == judge_status)
         if search:
-            pattern = f"%{search.strip()}%"
-            stmt = stmt.where(LiveInteractionModel.question.ilike(pattern))
-        stmt = stmt.order_by(LiveInteractionModel.created_at.desc()).limit(max(1, min(limit, 200)))
+            pattern = f"%{escape_like(search.strip())}%"
+            stmt = stmt.where(LiveInteractionModel.question.ilike(pattern, escape="\\"))
+        # id tiebreak keeps pages stable when created_at collides.
+        stmt = (
+            stmt.order_by(LiveInteractionModel.created_at.desc(), LiveInteractionModel.id.desc())
+            .offset(max(0, offset))
+            .limit(max(1, min(limit, 200)))
+        )
         result = await self._session.execute(stmt)
         return [_live_interaction_to_domain(row) for row in result.scalars().all()]
 

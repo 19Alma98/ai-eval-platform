@@ -12,6 +12,7 @@ from aiobs.regression.aggregate import (
     aggregate_results,
     classify_delta,
     compare_evaluator_metrics,
+    runs_config_mismatch,
     select_latest_runs,
     select_runs,
 )
@@ -169,3 +170,40 @@ def test_compare_evaluator_metrics_emits_both_metrics() -> None:
     )
     assert [r.metric for r in rows] == ["mean_score", "pass_rate"]
     assert all(r.status == "regression" for r in rows)
+
+
+def _run_with_hash(config_hash: str | None) -> EvaluationRun:
+    run = _run()
+    if config_hash is None:
+        return run
+    return EvaluationRun(
+        id=run.id,
+        experiment_id=run.experiment_id,
+        evaluator_id=run.evaluator_id,
+        status=run.status,
+        started_at=run.started_at,
+        finished_at=run.finished_at,
+        metadata={"config_hash": config_hash},
+    )
+
+
+def test_runs_config_mismatch_only_when_both_hashes_differ() -> None:
+    assert runs_config_mismatch(_run_with_hash("aaa"), _run_with_hash("bbb"))
+    assert not runs_config_mismatch(_run_with_hash("aaa"), _run_with_hash("aaa"))
+    # Legacy runs without a hash stay comparable.
+    assert not runs_config_mismatch(_run_with_hash("aaa"), _run_with_hash(None))
+    assert not runs_config_mismatch(None, _run_with_hash("aaa"))
+
+
+def test_compare_evaluator_metrics_config_mismatch_has_no_delta() -> None:
+    rows = compare_evaluator_metrics(
+        evaluator_id=uuid.uuid4(),
+        evaluator_name="hit_at_k",
+        candidate=Aggregates(10, 10, 0, 0, 0.7, 0.7),
+        baseline=Aggregates(10, 10, 0, 0, 0.9, 0.9),
+        config_mismatch=True,
+    )
+    assert all(r.status == "config_mismatch" for r in rows)
+    assert all(r.delta is None for r in rows)
+    # Raw values stay visible so the user can see what was measured.
+    assert rows[0].candidate == 0.7 and rows[0].baseline == 0.9

@@ -81,7 +81,7 @@ from aiobs.application.experiments import (
     GetExperiment,
     ListExperiments,
 )
-from aiobs.application.metrics_sets import MetricsSetNotFoundError
+from aiobs.application.metrics_sets import MetricsSetNotFoundError, MetricsSetValidationError
 from aiobs.application.projects import ProjectNotFoundError
 from aiobs.domain.evaluation import EvaluationResultRecord, EvaluationRun
 from aiobs.domain.experiment import Experiment
@@ -200,6 +200,7 @@ def _compare_response(comparison: ExperimentComparison) -> ExperimentCompareResp
         regressions=[_metric_response(m) for m in comparison.regressions],
         improved=[_metric_response(m) for m in comparison.improved],
         unchanged=[_metric_response(m) for m in comparison.unchanged],
+        config_mismatches=[_metric_response(m) for m in comparison.config_mismatches],
     )
 
 
@@ -391,7 +392,7 @@ async def evaluate_experiment_from_pack(
         MetricsSetNotFoundError,
     ) as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
-    except EmptyEvaluatorListError as exc:
+    except (EmptyEvaluatorListError, MetricsSetValidationError) as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
     return EvaluateResponse(
         experiment=_experiment_response(outcome.experiment),

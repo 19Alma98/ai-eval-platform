@@ -367,6 +367,8 @@ class ExperimentCompareResponse(BaseModel):
     regressions: list[MetricComparisonResponse]
     improved: list[MetricComparisonResponse]
     unchanged: list[MetricComparisonResponse]
+    # Evaluators whose candidate and baseline runs used different effective configs.
+    config_mismatches: list[MetricComparisonResponse] = []
 
 
 class ReleaseCheckRequest(BaseModel):

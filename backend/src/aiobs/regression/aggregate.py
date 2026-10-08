@@ -10,7 +10,7 @@ from aiobs.domain.evaluation import EvaluationResultRecord, EvaluationRun
 
 DELTA_THRESHOLD = 0.01
 
-MetricStatus = Literal["regression", "improved", "unchanged", "unavailable"]
+MetricStatus = Literal["regression", "improved", "unchanged", "unavailable", "config_mismatch"]
 MetricName = Literal["mean_score", "pass_rate"]
 
 _EPOCH = datetime.min.replace(tzinfo=UTC)
@@ -125,6 +125,18 @@ def classify_delta(
     return delta, "regression"
 
 
+def runs_config_mismatch(candidate: EvaluationRun | None, baseline: EvaluationRun | None) -> bool:
+    """True when both runs recorded an effective config and it differs (e.g. k=3 vs k=5).
+
+    Runs without a config_hash (legacy) are assumed comparable.
+    """
+    if candidate is None or baseline is None:
+        return False
+    cand_hash = candidate.metadata.get("config_hash")
+    base_hash = baseline.metadata.get("config_hash")
+    return cand_hash is not None and base_hash is not None and cand_hash != base_hash
+
+
 def compare_evaluator_metrics(
     *,
     evaluator_id: uuid.UUID,
@@ -132,13 +144,20 @@ def compare_evaluator_metrics(
     candidate: Aggregates,
     baseline: Aggregates,
     threshold: float = DELTA_THRESHOLD,
+    config_mismatch: bool = False,
 ) -> list[MetricComparison]:
     rows: list[MetricComparison] = []
     for metric, cand_value, base_value in (
         ("mean_score", candidate.mean_score, baseline.mean_score),
         ("pass_rate", candidate.pass_rate, baseline.pass_rate),
     ):
-        delta, status = classify_delta(cand_value, base_value, threshold=threshold)
+        delta: float | None
+        status: MetricStatus
+        if config_mismatch:
+            # Scores measured under different configs: a delta would be meaningless.
+            delta, status = None, "config_mismatch"
+        else:
+            delta, status = classify_delta(cand_value, base_value, threshold=threshold)
         rows.append(
             MetricComparison(
                 evaluator_id=evaluator_id,

@@ -105,6 +105,7 @@ class MetricsSet:
             for e in entries
         )
         _assert_unique_kinds(normalized)
+        assert_unique_evaluator_ids(normalized)
         return cls(
             id=uuid.uuid4(),
             project_id=project_id,
@@ -220,6 +221,26 @@ def _assert_unique_kinds(entries: tuple[MetricsSetEntry, ...]) -> None:
     kinds = [e.kind for e in entries]
     if len(set(kinds)) != len(kinds):
         raise ValueError("duplicate metrics set entry kinds")
+
+
+def assert_unique_evaluator_ids(entries: tuple[MetricsSetEntry, ...]) -> None:
+    """Each evaluator backs at most one entry.
+
+    Thresholds and config overrides are keyed by evaluator at scoring time, and runs
+    are compared per evaluator, so two entries sharing one evaluator would silently
+    overwrite each other. A second config needs its own evaluator.
+    """
+    kinds_by_evaluator: dict[uuid.UUID, list[str]] = {}
+    for entry in entries:
+        if entry.evaluator_id is not None:
+            kinds_by_evaluator.setdefault(entry.evaluator_id, []).append(entry.kind)
+    shared = [kinds for kinds in kinds_by_evaluator.values() if len(kinds) > 1]
+    if shared:
+        raise ValueError(
+            "evaluator_id is shared by metrics set entries: "
+            + "; ".join(", ".join(kinds) for kinds in shared)
+            + " (create a separate evaluator for each entry)"
+        )
 
 
 def _index_of_kind(entries: tuple[MetricsSetEntry, ...], kind: str) -> int | None:

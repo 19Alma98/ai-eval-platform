@@ -2,12 +2,14 @@ from __future__ import annotations
 
 import uuid
 from dataclasses import replace
+from datetime import UTC, datetime, timedelta
 
 import pytest
 
 from aiobs.application.datasets import AddDatasetItem
 from aiobs.application.evaluators import CreateEvaluator
 from aiobs.application.live_interactions import (
+    ListLiveInteractions,
     PromoteLiveInteraction,
     PromoteLiveInteractionCommand,
     ScoreLiveInteraction,
@@ -99,6 +101,7 @@ class InMemoryLiveRepository:
         judge_status: str | None = None,
         search: str | None = None,
         limit: int = 50,
+        offset: int = 0,
     ) -> list[LiveInteraction]:
         rows = [i for i in self._items.values() if i.project_id == project_id]
         if judge_status:
@@ -106,7 +109,7 @@ class InMemoryLiveRepository:
         if search:
             rows = [i for i in rows if search.lower() in i.question.lower()]
         rows.sort(key=lambda i: i.created_at, reverse=True)
-        return rows[:limit]
+        return rows[offset : offset + limit]
 
     async def replace_scores(
         self, interaction_id: uuid.UUID, scores: list[LiveInteractionScore]
@@ -623,3 +626,58 @@ def test_score_is_failed_fail_label_above_threshold() -> None:
         uuid.uuid4(), "groundedness", score=0.9, label="FAIL", threshold=0.7
     )
     assert score_is_failed(score)
+
+
+@pytest.mark.asyncio
+async def test_failed_only_pages_past_recent_passing_interactions() -> None:
+    live = InMemoryLiveRepository()
+    project_id = uuid.uuid4()
+    base = datetime(2026, 1, 1, tzinfo=UTC)
+    failed_ids: list[uuid.UUID] = []
+    # 120 interactions; only the 3 oldest failed, far beyond any fixed limit*k window.
+    for i in range(120):
+        interaction = replace(
+            LiveInteraction.create(project_id, f"q{i}", "a"),
+            created_at=base + timedelta(minutes=i),
+        )
+        await live.add(interaction)
+        failed = i < 3
+        await live.replace_scores(
+            interaction.id,
+            [
+                LiveInteractionScore.create(
+                    interaction.id,
+                    "groundedness",
+                    score=0.2 if failed else 0.9,
+                    label="FAIL" if failed else "PASS",
+                    threshold=0.7,
+                )
+            ],
+        )
+        if failed:
+            failed_ids.append(interaction.id)
+
+    rows = await ListLiveInteractions(live).execute(project_id, failed_only=True, limit=10)
+
+    assert [row[0].id for row in rows] == list(reversed(failed_ids))
+
+
+@pytest.mark.asyncio
+async def test_failed_only_stops_at_limit() -> None:
+    live = InMemoryLiveRepository()
+    project_id = uuid.uuid4()
+    base = datetime(2026, 1, 1, tzinfo=UTC)
+    for i in range(80):
+        interaction = replace(
+            LiveInteraction.create(project_id, f"q{i}", "a"),
+            created_at=base + timedelta(minutes=i),
+        )
+        await live.add(interaction)
+        await live.replace_scores(
+            interaction.id,
+            [LiveInteractionScore.create(interaction.id, "groundedness", score=0.1, label="FAIL")],
+        )
+
+    rows = await ListLiveInteractions(live).execute(project_id, failed_only=True, limit=5)
+
+    assert [row[0].question for row in rows] == ["q79", "q78", "q77", "q76", "q75"]

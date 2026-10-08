@@ -73,7 +73,7 @@ def build_eval_context_from_trace(
             cost_usd += cost
             has_cost = True
 
-        if span.kind.upper() == "TOOL" or "tool" in span.name.lower():
+        if span.kind.upper() == "TOOL":
             tool_calls.append(_tool_call_from_span(span))
 
     context: dict[str, Any] = {}

@@ -2,15 +2,16 @@ from __future__ import annotations
 
 import logging
 import uuid
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import UTC, datetime
 from typing import Any
 
 from aiobs.application.datasets import AddDatasetItem, AddDatasetItemCommand, DatasetNotFoundError
-from aiobs.application.evaluators import CreateEvaluator, CreateEvaluatorCommand
+from aiobs.application.evaluators import CreateEvaluator
 from aiobs.application.metrics_sets import (
     EnsureProjectDefaultMetricsSet,
     MetricsSetNotFoundError,
+    find_or_create_evaluator_for_entry,
 )
 from aiobs.application.projects import ProjectNotFoundError
 from aiobs.domain.dataset import DatasetItem
@@ -86,23 +87,6 @@ class UpsertLiveReviewCommand:
     reviewer: str | None = None
 
 
-def _evaluator_type_for_kind(kind: str) -> str:
-    if kind in GOLDLESS_METRIC_KINDS:
-        return "llm_judge"
-    return "deterministic"
-
-
-async def _find_evaluator_by_kind(
-    evaluators: EvaluatorRepository,
-    project_id: uuid.UUID,
-    kind: str,
-) -> Any:
-    for evaluator in await evaluators.list_by_project(project_id):
-        if evaluator.name == kind and str(evaluator.config.get("kind", "")).strip() == kind:
-            return evaluator
-    return None
-
-
 async def _ensure_goldless_evaluator_ids(
     metrics_set: MetricsSet,
     entries: list[MetricsSetEntry],
@@ -110,22 +94,19 @@ async def _ensure_goldless_evaluator_ids(
     create_evaluator_uc: CreateEvaluator,
 ) -> list[MetricsSetEntry]:
     resolved: list[MetricsSetEntry] = []
+    in_use = {e.evaluator_id for e in metrics_set.entries if e.evaluator_id is not None}
     for entry in entries:
         if entry.evaluator_id is not None:
             resolved.append(entry)
             continue
-        evaluator = await _find_evaluator_by_kind(evaluators, metrics_set.project_id, entry.kind)
-        if evaluator is None:
-            evaluator = await create_evaluator_uc.execute(
-                CreateEvaluatorCommand(
-                    project_id=metrics_set.project_id,
-                    name=entry.kind,
-                    type=_evaluator_type_for_kind(entry.kind),
-                    config={**dict(entry.config), "kind": entry.kind},
-                )
-            )
-        from dataclasses import replace
-
+        evaluator = await find_or_create_evaluator_for_entry(
+            evaluators,
+            create_evaluator_uc,
+            metrics_set.project_id,
+            entry,
+            exclude=frozenset(in_use),
+        )
+        in_use.add(evaluator.id)
         resolved.append(replace(entry, evaluator_id=evaluator.id))
     return resolved
 
@@ -354,22 +335,30 @@ class ListLiveInteractions:
         failed_only: bool = False,
         limit: int = 50,
     ) -> list[tuple[LiveInteraction, list[LiveInteractionScore], LiveReview | None]]:
-        items = await self._live.list_by_project(
-            project_id,
-            judge_status=judge_status,
-            search=search,
-            limit=limit if not failed_only else min(limit * 3, 200),
-        )
+        # failed_only filters after loading scores, so page through until enough
+        # failures are found instead of scanning a fixed window.
+        page_size = min(max(limit, 50), 200) if failed_only else limit
+        offset = 0
         out: list[tuple[LiveInteraction, list[LiveInteractionScore], LiveReview | None]] = []
-        for item in items:
-            scores = await self._live.list_scores(item.id)
-            review = await self._live.get_review(item.id)
-            if failed_only and not any(score_is_failed(s) for s in scores):
-                continue
-            out.append((item, scores, review))
-            if len(out) >= limit:
-                break
-        return out
+        while True:
+            items = await self._live.list_by_project(
+                project_id,
+                judge_status=judge_status,
+                search=search,
+                limit=page_size,
+                offset=offset,
+            )
+            for item in items:
+                scores = await self._live.list_scores(item.id)
+                if failed_only and not any(score_is_failed(s) for s in scores):
+                    continue
+                review = await self._live.get_review(item.id)
+                out.append((item, scores, review))
+                if len(out) >= limit:
+                    return out
+            if not failed_only or len(items) < page_size:
+                return out
+            offset += page_size
 
 
 class GetLiveInteraction:
