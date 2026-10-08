@@ -305,7 +305,7 @@ class ScoreLiveInteraction:
                     interaction.with_status(
                         "error",
                         metrics_set_id=metrics_set.id,
-                        score_warning=None,
+                        score_warning=_live_score_warning([], unsuitable),
                         error_message=f"All judges failed: {', '.join(failed_kinds)}",
                         scored_at=datetime.now(UTC),
                     )

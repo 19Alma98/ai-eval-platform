@@ -690,3 +690,14 @@ async def test_live_invalid_judge_output_sets_unsuitable_warning() -> None:
     assert scored.score_warning is not None
     assert "judge_model_unsuitable" in scored.score_warning
     assert "answer_relevance" in scored.score_warning
+
+
+@pytest.mark.asyncio
+async def test_live_all_invalid_judge_output_keeps_unsuitable_warning() -> None:
+    llm = ScriptedJudgeLlm({"rubric_answer_relevance": ["bad", "bad"]})
+    scored, _, _, _ = await _score_with(llm, (_goldless_entry("answer_relevance"),))
+    assert scored.judge_status == "error"
+    assert scored.error_message is not None
+    assert scored.score_warning is not None
+    assert "judge_model_unsuitable" in scored.score_warning
+    assert "Judge errors" not in scored.score_warning
