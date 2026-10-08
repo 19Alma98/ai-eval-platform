@@ -9,8 +9,6 @@ Open items from the RAG evaluation review (2026-10-08). Fixed items are in git h
 
 ## Evaluation correctness
 
-- [ ] **hit@k with `expected_doc_ids: []` always FAILs** (`evaluation/deterministic.py`,
-  `HitAtKEvaluator`). An empty gold set should be SKIPPED, not a retrieval failure.
 - [ ] **Judge is not calibrated.** Live reviews (agree/disagree) are stored but never used. Report
   judge/human agreement (per kind, per judge model) so judge scores can be trusted or tuned.
 - [ ] **Retrieval metrics are binary only.** Add recall@k and MRR (and optionally context

@@ -274,6 +274,8 @@ class HitAtKEvaluator:
             return skip("metadata.expected_doc_ids is missing")
         if not isinstance(expected, list):
             return skip("metadata.expected_doc_ids must be a list")
+        if not expected:
+            return skip("metadata.expected_doc_ids is empty")
         expected_ids = {str(doc_id) for doc_id in expected}
 
         ctx = _as_context(sample)
