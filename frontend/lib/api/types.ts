@@ -224,6 +224,7 @@ export type ItemSide = {
   score: number | null;
   label: string | null;
   explanation: string | null;
+  metadata?: Record<string, unknown>;
   run_id: string | null;
 };
 
@@ -331,6 +332,7 @@ export type LiveInteractionScore = {
   explanation: string | null;
   threshold: number | null;
   created_at: string;
+  metadata?: Record<string, unknown>;
 };
 
 export type LiveReview = {
