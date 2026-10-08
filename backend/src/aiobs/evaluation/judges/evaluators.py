@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
 from typing import Any
 
@@ -40,6 +41,8 @@ _SCORINGS = frozenset({"recall", "f1"})
 DEFAULT_MAX_CLAIMS = 30
 _RAW_OUTPUT_LIMIT = 2000
 _QUOTED_CLAIMS = 3
+_QUOTED_CLAIM_CHARS = 200
+_EXPLANATION_LIMIT = 1000
 
 
 @dataclass(frozen=True, slots=True)
@@ -70,16 +73,32 @@ class JudgeConfig:
         max_claims = config.get("max_claims", DEFAULT_MAX_CLAIMS)
         if isinstance(max_claims, bool) or not isinstance(max_claims, int) or max_claims < 1:
             raise ValueError(f"{kind} judge: max_claims must be an integer >= 1")
-        temperature = config.get("temperature")
+        raw_model = config.get("model")
+        model = str(raw_model).strip() if raw_model is not None else ""
         return cls(
             method=method,
             scoring=scoring,
             max_claims=max_claims,
             options=CallOptions(
-                model=config.get("model") or defaults.model,
-                temperature=None if temperature is None else float(temperature),
+                model=model or defaults.model,
+                temperature=_parse_temperature(kind, config.get("temperature")),
             ),
         )
+
+
+def _parse_temperature(kind: str, value: Any) -> float | None:
+    if value is None:
+        return None
+    invalid = ValueError(f"{kind} judge: temperature must be a finite number, got {value!r}")
+    if isinstance(value, bool):
+        raise invalid
+    try:
+        temperature = float(value)
+    except (TypeError, ValueError):
+        raise invalid from None
+    if not math.isfinite(temperature):
+        raise invalid
+    return temperature
 
 
 def _documents(context: Any) -> list[dict[str, Any]]:
@@ -91,8 +110,17 @@ def _documents(context: Any) -> list[dict[str, Any]]:
     return [d for d in documents if isinstance(d, dict)]
 
 
+def _clip(text: str, limit: int) -> str:
+    return text if len(text) <= limit else text[:limit] + "…"
+
+
+def _cap(text: str, limit: int = _EXPLANATION_LIMIT) -> str:
+    """Bound an explanation (stored in a String(4000) column), keeping its head."""
+    return text if len(text) <= limit else text[: limit - 1] + "…"
+
+
 def _quote_list(items: list[str]) -> str:
-    shown = "; ".join(f'"{text}"' for text in items[:_QUOTED_CLAIMS])
+    shown = "; ".join(f'"{_clip(text, _QUOTED_CLAIM_CHARS)}"' for text in items[:_QUOTED_CLAIMS])
     extra = len(items) - _QUOTED_CLAIMS
     return shown + (f" (+{extra} more)" if extra > 0 else "")
 
@@ -144,7 +172,7 @@ class _LlmJudge:
 
     def _precheck(self, sample: EvaluationSample) -> EvaluationResult | None:
         if sample.actual_output is None:
-            return skip("actual_output is missing")
+            return skip("actual_output is missing", metadata=self._meta())
         return None
 
     async def _evaluate(self, sample: EvaluationSample) -> EvaluationResult:
@@ -168,7 +196,7 @@ class _LlmJudge:
         return EvaluationResult(
             score=level_to_score(out.level),
             label=None,
-            explanation=explanation[:1000],
+            explanation=explanation[:_EXPLANATION_LIMIT],
             metadata=self._meta(level=out.level, reasoning=reasoning, llm_calls=calls),
         )
 
@@ -188,9 +216,9 @@ class GroundednessJudge(_LlmJudge):
         if early is not None:
             return early
         if sample.context is None:
-            return skip("context is missing")
+            return skip("context is missing", metadata=self._meta())
         if not _documents(sample.context):
-            return fail_min("context.documents are missing or empty")
+            return fail_min("context.documents are missing or empty", metadata=self._meta())
         return None
 
     async def _evaluate(self, sample: EvaluationSample) -> EvaluationResult:
@@ -222,10 +250,12 @@ class GroundednessJudge(_LlmJudge):
         return EvaluationResult(
             score=support.score,
             label=None,
-            explanation=_with_lists(
-                f"{support.n_supported}/{support.n_claims} claims supported",
-                records,
-                ("contradicted", "not_supported"),
+            explanation=_cap(
+                _with_lists(
+                    f"{support.n_supported}/{support.n_claims} claims supported",
+                    records,
+                    ("contradicted", "not_supported"),
+                )
             ),
             metadata=self._meta(
                 claims=records,
@@ -246,7 +276,7 @@ class CorrectnessJudge(_LlmJudge):
         if early is not None:
             return early
         if sample.expected_output is None:
-            return skip("expected_output is missing")
+            return skip("expected_output is missing", metadata=self._meta())
         return None
 
     async def _evaluate(self, sample: EvaluationSample) -> EvaluationResult:
@@ -285,6 +315,7 @@ class CorrectnessJudge(_LlmJudge):
             records,
             ("contradicted", "missing"),
         )
+        suffix = ""
         extra: dict[str, Any] = {}
 
         if self._config.scoring == "f1":
@@ -313,12 +344,15 @@ class CorrectnessJudge(_LlmJudge):
             contradicted = coverage.n_contradicted or answer_contradictions
             score = 0.0 if contradicted else f1(precision, coverage.recall)
             extra["precision"] = precision
-            explanation += f"; precision {precision:.2f}, F1 {score:.2f}"
+            suffix = f"; precision {precision:.2f}, F1 {score:.2f}"
+            if not answer_claims:
+                suffix += "; answer has no claims"
 
         return EvaluationResult(
             score=score,
             label=None,
-            explanation=explanation,
+            # Cap the claim lists first so the F1 summary is never cut off.
+            explanation=_cap(explanation, _EXPLANATION_LIMIT - len(suffix)) + suffix,
             metadata=self._meta(
                 claims=records,
                 n_gold=coverage.n_gold,

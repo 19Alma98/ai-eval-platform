@@ -279,3 +279,101 @@ async def test_provider_failure_is_classified_error() -> None:
     assert result.label == "ERROR"
     assert result.metadata["error_type"] == "llm_unavailable"
     assert "slow provider" in result.explanation
+
+
+# --- review fixes ----------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_claim_explanations_are_capped() -> None:
+    long_claims = [f"{i}" + "x" * 999 for i in range(5)]
+    llm = ScriptedJudgeLlm(
+        {
+            "extract_answer_claims": {"claims": long_claims},
+            "verify_against_documents": {
+                "verdicts": [{"reasoning": "r", "verdict": "not_supported"}] * 5
+            },
+        }
+    )
+    result = await _judge("groundedness", llm).evaluate(_sample())
+    assert len(result.explanation) <= 1000
+    assert result.explanation.startswith("0/5 claims supported")
+    assert "…" in result.explanation
+
+    llm = ScriptedJudgeLlm(
+        {
+            "extract_reference_claims": {"claims": long_claims},
+            "verify_reference_coverage": _coverage(*["missing"] * 5),
+        }
+    )
+    result = await _judge("correctness", llm, {"scoring": "f1"}).evaluate(_sample())
+    assert len(result.explanation) <= 1000
+    assert result.explanation.startswith("0/5 reference facts covered")
+
+
+@pytest.mark.parametrize("bad", [True, float("nan"), float("inf"), "warm", "nan"])
+def test_invalid_temperature_raises(bad: Any) -> None:
+    with pytest.raises(ValueError, match="temperature"):
+        _judge("answer_relevance", ScriptedJudgeLlm(), {"temperature": bad})
+
+
+@pytest.mark.asyncio
+async def test_numeric_string_temperature_and_model_strip() -> None:
+    llm = ScriptedJudgeLlm()
+    await _judge("answer_relevance", llm, {"temperature": "0.2", "model": "  m1 "}).evaluate(
+        _sample()
+    )
+    assert llm.calls[0]["temperature"] == 0.2
+    assert llm.calls[0]["model"] == "m1"
+
+    llm = ScriptedJudgeLlm()
+    await _judge("answer_relevance", llm, {"model": "   "}).evaluate(_sample())
+    assert llm.calls[0]["model"] == "judge-default"
+
+
+@pytest.mark.asyncio
+async def test_precheck_results_carry_judge_metadata() -> None:
+    judge = _judge("groundedness", ScriptedJudgeLlm())
+    skipped = await judge.evaluate(_sample(context=None))
+    assert skipped.metadata["prompt_version"] == "groundedness.claims.v3"
+    failed = await judge.evaluate(_sample(context={"documents": []}))
+    assert failed.metadata["method"] == "claims"
+    missing = await _judge("correctness", ScriptedJudgeLlm()).evaluate(
+        _sample(expected_output=None)
+    )
+    assert missing.metadata["judge_kind"] == "correctness"
+
+
+@pytest.mark.asyncio
+async def test_correctness_f1_answer_without_claims_is_explained() -> None:
+    llm = ScriptedJudgeLlm(
+        {
+            "extract_reference_claims": {"claims": ["26 days"]},
+            "extract_answer_claims": {"claims": []},
+        }
+    )
+    result = await _judge("correctness", llm, {"scoring": "f1"}).evaluate(_sample())
+    assert result.score == 0.0
+    assert result.metadata["precision"] == 0.0
+    assert "answer has no claims" in result.explanation
+
+
+@pytest.mark.asyncio
+async def test_correctness_f1_answer_contradiction_scores_zero() -> None:
+    llm = ScriptedJudgeLlm(
+        {
+            "extract_reference_claims": {"claims": ["26 days", "via the portal"]},
+            "verify_reference_coverage": _coverage("covered", "covered"),
+            "extract_answer_claims": {"claims": ["26 days", "requests go by fax"]},
+            "verify_against_reference": {
+                "verdicts": [
+                    {"reasoning": "r", "verdict": "supported"},
+                    {"reasoning": "r", "verdict": "contradicted"},
+                ]
+            },
+        }
+    )
+    result = await _judge("correctness", llm, {"scoring": "f1"}).evaluate(_sample())
+    assert result.metadata["n_contradicted"] == 0
+    assert result.metadata["recall"] == 1.0
+    assert result.score == 0.0
