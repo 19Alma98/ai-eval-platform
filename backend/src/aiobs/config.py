@@ -19,6 +19,8 @@ class Settings(BaseSettings):
     llm_timeout_seconds: float = 60.0
     llm_max_retries: int = 2
     llm_max_concurrency: int = 8
+    llm_temperature: float = 0.0
+    llm_seed: int | None = 42
 
 
 @lru_cache
