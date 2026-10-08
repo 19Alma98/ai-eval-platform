@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import uuid
+from dataclasses import replace
 from datetime import UTC, datetime
 
 import pytest
@@ -207,3 +208,18 @@ def test_compare_evaluator_metrics_config_mismatch_has_no_delta() -> None:
     assert all(r.delta is None for r in rows)
     # Raw values stay visible so the user can see what was measured.
     assert rows[0].candidate == 0.7 and rows[0].baseline == 0.9
+
+
+def _run_with_meta(**metadata: object) -> EvaluationRun:
+    run = _run_with_hash("aaa")
+    return replace(run, metadata={**run.metadata, **metadata})
+
+
+def test_runs_config_mismatch_on_prompt_version() -> None:
+    v3 = _run_with_meta(prompt_version="groundedness.claims.v3")
+    rubric = _run_with_meta(prompt_version="groundedness.rubric.v3")
+    legacy = _run_with_meta()  # judge run scored before prompt versions were recorded
+    assert runs_config_mismatch(v3, rubric)
+    assert runs_config_mismatch(v3, legacy)
+    assert not runs_config_mismatch(v3, _run_with_meta(prompt_version="groundedness.claims.v3"))
+    assert not runs_config_mismatch(legacy, _run_with_meta())

@@ -126,12 +126,17 @@ def classify_delta(
 
 
 def runs_config_mismatch(candidate: EvaluationRun | None, baseline: EvaluationRun | None) -> bool:
-    """True when both runs recorded an effective config and it differs (e.g. k=3 vs k=5).
+    """True when candidate and baseline were not scored the same way.
 
-    Runs without a config_hash (legacy) are assumed comparable.
+    Differs when both recorded a config_hash and it differs (e.g. k=3 vs k=5), or when
+    the judge prompt version differs. A missing prompt_version counts as its own
+    version: judge runs from before v3 carry none and are not comparable with v3.
+    Runs without a config_hash (legacy) are otherwise assumed comparable.
     """
     if candidate is None or baseline is None:
         return False
+    if candidate.metadata.get("prompt_version") != baseline.metadata.get("prompt_version"):
+        return True
     cand_hash = candidate.metadata.get("config_hash")
     base_hash = baseline.metadata.get("config_hash")
     return cand_hash is not None and base_hash is not None and cand_hash != base_hash

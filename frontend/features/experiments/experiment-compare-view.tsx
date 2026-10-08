@@ -226,7 +226,7 @@ export function ExperimentCompareView({
               </span>
             </span>
             {configMismatchCount > 0 ? (
-              <span title="Candidate and baseline were scored with different evaluator configs (e.g. k, max_ms, judge model): their scores are not comparable.">
+              <span title="Candidate and baseline were scored with different evaluator configs (e.g. k, max_ms, judge model) or judge prompt versions: their scores are not comparable.">
                 Config mismatch{" "}
                 <span className="font-mono tabular-nums text-status-warn">
                   {configMismatchCount}
