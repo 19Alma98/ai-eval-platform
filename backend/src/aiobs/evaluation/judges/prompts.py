@@ -159,7 +159,7 @@ def as_text(value: Any) -> str:
 
 
 def render_claims(claims: list[str]) -> str:
-    return "\n".join(f"[C{i}] {claim}" for i, claim in enumerate(claims, 1))
+    return "\n".join(f"[C{i}] {' '.join(claim.split())}" for i, claim in enumerate(claims, 1))
 
 
 def render_documents(documents: list[Any]) -> str:
@@ -169,7 +169,7 @@ def render_documents(documents: list[Any]) -> str:
             continue
         header = f"[doc:{doc.get('id', '?')}]"
         if doc.get("title"):
-            header += f" {doc['title']}"
+            header += " " + " ".join(str(doc["title"]).split())
         blocks.append(f"{header}\n{as_text(doc.get('text'))}")
     return "\n\n".join(blocks)
 
