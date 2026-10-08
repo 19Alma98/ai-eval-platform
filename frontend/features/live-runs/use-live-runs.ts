@@ -1,6 +1,7 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
+import { ApiError } from "@/lib/api/client";
 import {
   getLiveInteraction,
   getLiveJudgeCalibration,
@@ -51,16 +52,23 @@ export function useLiveJudgeCalibration(projectId: string | null) {
   });
 }
 
-export function liveRunQueryKey(id: string) {
-  return ["live-run", id] as const;
+export function liveRunQueryKey(id: string, projectId: string) {
+  return ["live-run", projectId, id] as const;
 }
 
-export function useLiveRun(id: string | null) {
+export function useLiveRun(id: string | null, projectId: string | null) {
   const key = id ?? "";
+  const projectKey = projectId ?? "";
   return useQuery({
-    queryKey: liveRunQueryKey(key),
-    queryFn: () => getLiveInteraction(key),
-    enabled: Boolean(id),
+    queryKey: liveRunQueryKey(key, projectKey),
+    queryFn: async () => {
+      const row = await getLiveInteraction(key);
+      if (row.project_id !== projectKey) {
+        throw new ApiError(404, "Live interaction not found in this project.");
+      }
+      return row;
+    },
+    enabled: Boolean(id && projectId),
     refetchInterval: (query) => {
       const status = query.state.data?.judge_status;
       return status === "pending" || status === "running" ? 3000 : false;

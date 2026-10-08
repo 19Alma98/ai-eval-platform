@@ -23,7 +23,7 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
-import { formatErrorForUi } from "@/lib/api/client";
+import { ApiError, formatErrorForUi } from "@/lib/api/client";
 import {
   promoteLiveInteraction,
   rescoreLiveInteraction,
@@ -37,9 +37,11 @@ import { liveRunQueryKey, useLiveRun } from "./use-live-runs";
 function ScoreReviewControls({
   score,
   interactionId,
+  projectId,
 }: {
   score: LiveInteractionScore;
   interactionId: string;
+  projectId: string | null;
 }) {
   const queryClient = useQueryClient();
   const judgeExplanation = score.explanation ?? "";
@@ -68,7 +70,7 @@ function ScoreReviewControls({
     onSuccess: async () => {
       toast.success(`Review saved for ${score.kind}`);
       await queryClient.invalidateQueries({
-        queryKey: liveRunQueryKey(interactionId),
+        queryKey: liveRunQueryKey(interactionId, projectId ?? ""),
       });
     },
     onError: (err) => toast.error(formatErrorForUi(err)),
@@ -125,7 +127,7 @@ function ScoreReviewControls({
 export function LiveRunDetail({ interactionId }: { interactionId: string }) {
   const { projectId } = useProjectId();
   const queryClient = useQueryClient();
-  const query = useLiveRun(interactionId);
+  const query = useLiveRun(interactionId, projectId);
   const datasets = useDatasets(projectId);
   const [promoteOpen, setPromoteOpen] = useState(false);
   const [datasetId, setDatasetId] = useState("");
@@ -140,7 +142,7 @@ export function LiveRunDetail({ interactionId }: { interactionId: string }) {
     onSuccess: async () => {
       toast.success("Rescored");
       await queryClient.invalidateQueries({
-        queryKey: liveRunQueryKey(interactionId),
+        queryKey: liveRunQueryKey(interactionId, projectId ?? ""),
       });
     },
     onError: (err) => toast.error(formatErrorForUi(err)),
@@ -189,7 +191,18 @@ export function LiveRunDetail({ interactionId }: { interactionId: string }) {
 
   if (query.isLoading) return <LoadingBlock />;
   if (query.isError || !row) {
-    return <ErrorState message="Could not load live interaction." />;
+    const wrongProject =
+      query.error instanceof ApiError &&
+      query.error.message === "Live interaction not found in this project.";
+    return (
+      <ErrorState
+        message={
+          wrongProject
+            ? "This live interaction is not in the selected project."
+            : "Could not load live interaction."
+        }
+      />
+    );
   }
 
   function onPromote(e: SubmitEvent) {
@@ -416,6 +429,7 @@ export function LiveRunDetail({ interactionId }: { interactionId: string }) {
                 <ScoreReviewControls
                   score={score}
                   interactionId={interactionId}
+                  projectId={projectId}
                 />
               </div>
             ))}

@@ -10,6 +10,12 @@ function readStoredProjectId(): string | null {
   return localStorage.getItem(STORAGE_KEY);
 }
 
+function pathAfterProjectSwitch(pathname: string): string {
+  const parts = pathname.split("/").filter(Boolean);
+  if (parts.length <= 1) return pathname;
+  return `/${parts[0]}`;
+}
+
 export function useProjectId(): {
   projectId: string | null;
   setProjectId: (id: string) => void;
@@ -36,9 +42,12 @@ export function useProjectId(): {
     (id: string) => {
       setStoredProjectId(id);
       localStorage.setItem(STORAGE_KEY, id);
-      const params = new URLSearchParams(searchParams.toString());
+      const nextPath = pathAfterProjectSwitch(pathname);
+      const params = new URLSearchParams(
+        nextPath === pathname ? searchParams.toString() : "",
+      );
       params.set("project", id);
-      router.replace(`${pathname}?${params.toString()}`);
+      router.replace(`${nextPath}?${params.toString()}`);
     },
     [pathname, router, searchParams],
   );
@@ -46,10 +55,13 @@ export function useProjectId(): {
   const clearProjectId = useCallback(() => {
     setStoredProjectId(null);
     localStorage.removeItem(STORAGE_KEY);
-    const params = new URLSearchParams(searchParams.toString());
+    const nextPath = pathAfterProjectSwitch(pathname);
+    const params = new URLSearchParams(
+      nextPath === pathname ? searchParams.toString() : "",
+    );
     params.delete("project");
     const qs = params.toString();
-    router.replace(qs ? `${pathname}?${qs}` : pathname);
+    router.replace(qs ? `${nextPath}?${qs}` : nextPath);
   }, [pathname, router, searchParams]);
 
   return { projectId, setProjectId, clearProjectId };
