@@ -121,7 +121,68 @@ async def test_ensure_creates_default_v1_with_evaluator_ids() -> None:
     assert result.version == 1
     assert result.is_project_default is True
     assert all(e.evaluator_id is not None for e in result.entries)
+    assert {e.kind for e in result.entries} >= {
+        "hit_at_k",
+        "recall_at_k",
+        "mrr",
+        "context_precision",
+    }
     assert await sets.get_project_default(project.id) is not None
+
+
+@pytest.mark.asyncio
+async def test_ensure_backfills_missing_retrieval_default_entries() -> None:
+    from datetime import UTC, datetime
+
+    from aiobs.domain.metrics_set import MetricsSetEntry
+
+    projects = InMemoryProjectRepository()
+    project = await _seed_project(projects)
+    sets = InMemoryMetricsSetRepository()
+    evaluators = InMemoryEvaluatorRepository()
+    create_eval = StubCreateEvaluator(evaluators)
+
+    now = datetime.now(UTC)
+    legacy = MetricsSet(
+        id=uuid.uuid4(),
+        project_id=project.id,
+        name="Default",
+        version=1,
+        description=None,
+        is_project_default=True,
+        created_at=now,
+        updated_at=now,
+        entries=(
+            MetricsSetEntry(
+                id=uuid.uuid4(),
+                kind="hit_at_k",
+                enabled=True,
+                threshold=0.8,
+                config={"k": 5},
+                evaluator_id=None,
+                is_default=True,
+            ),
+            MetricsSetEntry(
+                id=uuid.uuid4(),
+                kind="latency",
+                enabled=True,
+                threshold=None,
+                config={"max_ms": 5000},
+                evaluator_id=None,
+                is_default=True,
+            ),
+        ),
+    )
+    await sets.add(legacy)
+
+    result = await EnsureProjectDefaultMetricsSet(sets, evaluators, projects, create_eval).execute(
+        project.id
+    )
+    kinds = {e.kind for e in result.entries}
+    assert {"recall_at_k", "mrr", "context_precision", "must_contain", "groundedness"}.issubset(
+        kinds
+    )
+    assert all(e.evaluator_id is not None for e in result.entries)
 
 
 @pytest.mark.asyncio

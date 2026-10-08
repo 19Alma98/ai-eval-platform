@@ -27,7 +27,9 @@ from aiobs.domain.repositories import (
     ProjectRepository,
 )
 
-_LLM_JUDGE_KINDS = frozenset({"groundedness", "correctness", "answer_relevance"})
+_LLM_JUDGE_KINDS = frozenset(
+    {"groundedness", "correctness", "answer_relevance", "context_precision"}
+)
 
 
 class MetricsSetNotFoundError(Exception):

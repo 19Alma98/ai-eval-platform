@@ -102,6 +102,24 @@ Respond with JSON only: {"verdicts": [{"reasoning": "<why>", "verdict": "covered
 """,
 )
 
+VERIFY_CONTEXT_RELEVANCE = _system(
+    "verify_context_relevance",
+    """
+You are an evaluation judge. For each DOCUMENT ([D1], [D2], ...) decide whether it is
+useful for producing the REFERENCE ANSWER to the QUESTION.
+Verdicts:
+- "relevant": the document contains information needed to arrive at the reference answer
+  (facts, conditions, or details the reference relies on).
+- "not_relevant": the document is off-topic, redundant noise, or does not help produce
+  the reference answer.
+Use only the question, reference answer and documents. Judge each document independently.
+Return exactly one verdict per document, in the same order. Write your reasoning before
+choosing the verdict.
+Respond with JSON only: {"verdicts": [{"reasoning": "<why>", "verdict": "relevant" |
+"not_relevant"}, ...]}
+""",
+)
+
 _RUBRIC_FORMAT = 'Respond with JSON only: {"reasoning": "<why>", "level": <1-5>}'
 
 RUBRICS: dict[str, str] = {
@@ -147,6 +165,20 @@ Write your reasoning before choosing the level.
 {_RUBRIC_FORMAT}
 """,
     ),
+    "context_precision": _system(
+        "rubric_context_precision",
+        f"""
+You are an evaluation judge. Rate how precisely the DOCUMENTS support producing the
+REFERENCE ANSWER to the QUESTION. Prefer early relevant documents; penalize noise.
+5: every document is useful; ranking puts useful ones first
+4: almost all documents are useful; little noise
+3: a mix of useful and irrelevant documents
+2: most documents are irrelevant
+1: documents are irrelevant or actively misleading for the reference answer
+Write your reasoning before choosing the level.
+{_RUBRIC_FORMAT}
+""",
+    ),
 }
 
 
@@ -168,6 +200,18 @@ def render_documents(documents: list[Any]) -> str:
         if not isinstance(doc, dict):
             continue
         header = f"[doc:{doc.get('id', '?')}]"
+        if doc.get("title"):
+            header += " " + " ".join(str(doc["title"]).split())
+        blocks.append(f"{header}\n{as_text(doc.get('text'))}")
+    return "\n\n".join(blocks)
+
+
+def render_numbered_documents(documents: list[Any]) -> str:
+    blocks: list[str] = []
+    for i, doc in enumerate(documents, start=1):
+        if not isinstance(doc, dict):
+            continue
+        header = f"[D{i}] id={doc.get('id', '?')}"
         if doc.get("title"):
             header += " " + " ".join(str(doc["title"]).split())
         blocks.append(f"{header}\n{as_text(doc.get('text'))}")

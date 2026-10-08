@@ -27,6 +27,9 @@ TASK_TYPE_CATALOG: tuple[TaskTypeInfo, ...] = (
         ),
         recommended_evaluator_kinds=(
             "hit_at_k",
+            "recall_at_k",
+            "mrr",
+            "context_precision",
             "must_contain",
             "groundedness",
             "answer_relevance",

@@ -40,6 +40,9 @@ def _seed_entry(
 
 DEFAULT_RAG_SET_ENTRIES: tuple[MetricsSetEntry, ...] = (
     _seed_entry("hit_at_k", enabled=True, threshold=0.8, config={"k": 5}),
+    _seed_entry("recall_at_k", enabled=True, threshold=0.8, config={"k": 5}),
+    _seed_entry("mrr", enabled=True, threshold=0.5, config={"k": 5}),
+    _seed_entry("context_precision", enabled=True, threshold=0.7, config={}),
     _seed_entry("must_contain", enabled=True, threshold=1.0, config={"case_sensitive": False}),
     _seed_entry("groundedness", enabled=True, threshold=0.7, config={}),
     _seed_entry("correctness", enabled=True, threshold=0.7, config={}),

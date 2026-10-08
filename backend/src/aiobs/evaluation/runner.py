@@ -31,6 +31,8 @@ def _requires_actual(kind: str) -> bool:
         "cost",
         "tool_call_success",
         "hit_at_k",
+        "recall_at_k",
+        "mrr",
     }
 
 

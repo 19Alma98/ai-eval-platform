@@ -155,7 +155,7 @@ export function MetricsSetList({ projectId }: { projectId: string }) {
       {rows.length === 0 ? (
         <EmptyState
           title="Nessun set metriche"
-          description="Crea il pack RAG predefinito per questo progetto (hit@k, groundedness, correttezza, latenza)."
+          description="Crea il pack RAG predefinito per questo progetto (hit@k, recall@k, MRR, context precision, groundedness, correttezza, latenza)."
           action={
             <Button
               type="button"

@@ -112,7 +112,7 @@ async def test_list_includes_default_after_ensure(
     body = listed.json()
     default = next(s for s in body if s["name"] == "Default" and s["version"] == 1)
     assert default["is_project_default"] is True
-    assert default["entry_count"] == 5
+    assert default["entry_count"] == 8
 
 
 @pytest.mark.asyncio

@@ -81,6 +81,18 @@ async def client() -> AsyncIterator[tuple[AsyncClient, InMemoryExperimentReposit
     app.dependency_overrides.clear()
 
 
+_DEFAULT_PACK_KINDS = (
+    "hit_at_k",
+    "recall_at_k",
+    "mrr",
+    "context_precision",
+    "must_contain",
+    "groundedness",
+    "correctness",
+    "latency",
+)
+
+
 def _entry_payload(pack: dict, kind: str) -> dict:
     for entry in pack["entries"]:
         if entry["kind"] == kind:
@@ -104,15 +116,9 @@ async def test_ensure_creates_default_entries_with_evaluator_ids(
     resp = await ac.post(f"/api/v1/projects/{proj['id']}/metrics-pack/ensure")
     assert resp.status_code == 200
     body = resp.json()
-    assert len(body["entries"]) == 5
+    assert len(body["entries"]) == len(_DEFAULT_PACK_KINDS)
     kinds = {e["kind"] for e in body["entries"]}
-    assert kinds == {
-        "hit_at_k",
-        "must_contain",
-        "groundedness",
-        "correctness",
-        "latency",
-    }
+    assert kinds == set(_DEFAULT_PACK_KINDS)
     for entry in body["entries"]:
         assert entry["evaluator_id"] is not None
 
@@ -128,10 +134,7 @@ async def test_put_cannot_drop_hit_at_k(
     ac, _ = client
     proj = (await ac.post("/api/v1/projects", json={"name": "P2", "slug": "p-mp2"})).json()
     ensured = (await ac.post(f"/api/v1/projects/{proj['id']}/metrics-pack/ensure")).json()
-    entries = [
-        _entry_payload(ensured, k)
-        for k in ("must_contain", "groundedness", "correctness", "latency")
-    ]
+    entries = [_entry_payload(ensured, k) for k in _DEFAULT_PACK_KINDS if k != "hit_at_k"]
     bad = await ac.put(
         f"/api/v1/projects/{proj['id']}/metrics-pack",
         json={"entries": entries},
@@ -146,10 +149,7 @@ async def test_put_can_disable_hit_at_k(
     ac, _ = client
     proj = (await ac.post("/api/v1/projects", json={"name": "P3", "slug": "p-mp3"})).json()
     ensured = (await ac.post(f"/api/v1/projects/{proj['id']}/metrics-pack/ensure")).json()
-    entries = [
-        _entry_payload(ensured, k)
-        for k in ("hit_at_k", "must_contain", "groundedness", "correctness", "latency")
-    ]
+    entries = [_entry_payload(ensured, k) for k in _DEFAULT_PACK_KINDS]
     hit = next(e for e in entries if e["kind"] == "hit_at_k")
     hit["enabled"] = False
     updated = await ac.put(
@@ -169,10 +169,7 @@ async def test_put_rejects_foreign_or_unknown_evaluator_id(
     proj_a = (await ac.post("/api/v1/projects", json={"name": "PA", "slug": "p-mp-a"})).json()
     proj_b = (await ac.post("/api/v1/projects", json={"name": "PB", "slug": "p-mp-b"})).json()
     ensured = (await ac.post(f"/api/v1/projects/{proj_a['id']}/metrics-pack/ensure")).json()
-    entries = [
-        _entry_payload(ensured, k)
-        for k in ("hit_at_k", "must_contain", "groundedness", "correctness", "latency")
-    ]
+    entries = [_entry_payload(ensured, k) for k in _DEFAULT_PACK_KINDS]
 
     foreign_resp = await ac.post(
         f"/api/v1/projects/{proj_b['id']}/evaluators",
@@ -230,10 +227,7 @@ async def test_put_pack_conflict_when_experiment_pins_default(
     assert stored is not None
     await experiments.update(stored.with_metrics_set_id(uuid.UUID(pack["id"])))
 
-    entries = [
-        _entry_payload(pack, k)
-        for k in ("hit_at_k", "must_contain", "groundedness", "correctness", "latency")
-    ]
+    entries = [_entry_payload(pack, k) for k in _DEFAULT_PACK_KINDS]
     conflict = await ac.put(
         f"/api/v1/projects/{proj['id']}/metrics-pack",
         json={"entries": entries},
@@ -256,5 +250,5 @@ async def test_rag_qa_dataset_create_auto_ensures_metrics_pack(
     )
     pack = await ac.get(f"/api/v1/projects/{proj['id']}/metrics-pack")
     assert pack.status_code == 200
-    assert len(pack.json()["entries"]) == 5
+    assert len(pack.json()["entries"]) == len(_DEFAULT_PACK_KINDS)
     assert all(e["evaluator_id"] for e in pack.json()["entries"])

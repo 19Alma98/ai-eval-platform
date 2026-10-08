@@ -105,7 +105,10 @@ Default seed entries (`is_default=true`, not deletable on the default set while 
 
 | kind | role |
 |------|------|
-| `hit_at_k` | expected doc id in top-k retrieved ids |
+| `hit_at_k` | expected doc id in top-k retrieved ids (binary) |
+| `recall_at_k` | fraction of expected doc ids in top-k |
+| `mrr` | reciprocal rank of first expected doc in top-k |
+| `context_precision` | LLM judge: RAGAS average precision of retrieved chunks vs reference answer |
 | `must_contain` | required phrases in the answer |
 | `groundedness` | LLM judge on answer vs retrieved chunks |
 | `correctness` | LLM judge vs expected answer |

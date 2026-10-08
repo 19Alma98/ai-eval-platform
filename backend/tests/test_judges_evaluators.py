@@ -428,6 +428,88 @@ async def test_correctness_f1_answer_contradiction_scores_zero() -> None:
     assert result.score == 0.0
 
 
+# --- context_precision -----------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_context_precision_claims_average_precision() -> None:
+    docs = {
+        "documents": [
+            {"id": "kb-1", "text": "Full-time staff get 26 days of PTO."},
+            {"id": "kb-2", "text": "The cafeteria menu changes weekly."},
+            {"id": "kb-3", "text": "PTO is requested via the portal."},
+        ]
+    }
+    llm = ScriptedJudgeLlm(
+        {
+            "verify_context_relevance": {
+                "verdicts": [
+                    {"reasoning": "r", "verdict": "relevant"},
+                    {"reasoning": "r", "verdict": "not_relevant"},
+                    {"reasoning": "r", "verdict": "relevant"},
+                ]
+            }
+        }
+    )
+    result = await _judge("context_precision", llm).evaluate(_sample(context=docs))
+    assert result.score == pytest.approx(5 / 6)
+    assert result.label is None
+    assert result.metadata["prompt_version"] == "context_precision.claims.v3"
+    assert result.metadata["n_documents"] == 3
+    assert result.metadata["n_relevant"] == 2
+    assert result.metadata["documents"][1]["verdict"] == "not_relevant"
+    assert llm.steps() == ["verify_context_relevance"]
+    assert "REFERENCE ANSWER" in llm.calls[0]["user"]
+    assert "26 days, requested via the portal." in llm.calls[0]["user"]
+
+
+@pytest.mark.asyncio
+async def test_context_precision_all_irrelevant_is_zero() -> None:
+    llm = ScriptedJudgeLlm(
+        {"verify_context_relevance": {"verdicts": [{"reasoning": "r", "verdict": "not_relevant"}]}}
+    )
+    result = await _judge("context_precision", llm).evaluate(_sample())
+    assert result.score == 0.0
+    assert result.metadata["n_relevant"] == 0
+
+
+@pytest.mark.asyncio
+async def test_context_precision_prechecks_do_not_call_llm() -> None:
+    llm = ScriptedJudgeLlm()
+    judge = _judge("context_precision", llm)
+    assert (await judge.evaluate(_sample(expected_output=None))).label == "SKIPPED"
+    assert (await judge.evaluate(_sample(context=None))).label == "SKIPPED"
+    empty = await judge.evaluate(_sample(context={"documents": []}))
+    assert (empty.label, empty.score) == ("FAIL", 0.0)
+    assert (await judge.evaluate(_sample(actual_output=None))).label == "SKIPPED"
+    assert llm.calls == []
+
+
+@pytest.mark.asyncio
+async def test_context_precision_rubric_method() -> None:
+    llm = ScriptedJudgeLlm({"rubric_context_precision": {"reasoning": "noisy", "level": 3}})
+    result = await _judge("context_precision", llm, {"method": "rubric"}).evaluate(_sample())
+    assert result.score == 0.5
+    assert result.metadata["prompt_version"] == "context_precision.rubric.v3"
+    assert llm.steps() == ["rubric_context_precision"]
+
+
+@pytest.mark.asyncio
+async def test_context_precision_k_truncates_documents() -> None:
+    docs = {
+        "documents": [
+            {"id": "a", "text": "useful"},
+            {"id": "b", "text": "noise"},
+            {"id": "c", "text": "more"},
+        ]
+    }
+    llm = ScriptedJudgeLlm()
+    result = await _judge("context_precision", llm, {"k": 2}).evaluate(_sample(context=docs))
+    assert result.metadata["n_documents"] == 2
+    assert result.metadata["documents_truncated"] is True
+    assert "[D3]" not in llm.calls[0]["user"]
+
+
 @pytest.mark.asyncio
 async def test_bootstrap_registers_new_judges() -> None:
     clear_registry()
@@ -438,5 +520,7 @@ async def test_bootstrap_registers_new_judges() -> None:
         assert judge.prompt_version == "groundedness.claims.v3"
         result = await judge.evaluate(_sample())
         assert result.metadata["model"] == "judge-default"
+        cp = create_evaluator("context_precision", {"kind": "context_precision"})
+        assert cp.prompt_version == "context_precision.claims.v3"
     finally:
         clear_registry()

@@ -75,6 +75,20 @@ class CoverageVerifyOut(BaseModel):
     verdicts: list[CoverageVerdict]
 
 
+class RelevanceVerdict(BaseModel):
+    reasoning: str | None = None
+    verdict: Literal["relevant", "not_relevant"]
+
+    @field_validator("verdict", mode="before")
+    @classmethod
+    def _verdict(cls, value: object) -> object:
+        return _normalize_verdict(value)
+
+
+class RelevanceVerifyOut(BaseModel):
+    verdicts: list[RelevanceVerdict]
+
+
 class RubricOut(BaseModel):
     reasoning: str | None = None
     level: int = Field(ge=1, le=5)

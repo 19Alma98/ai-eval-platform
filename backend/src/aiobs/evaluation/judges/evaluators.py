@@ -9,6 +9,7 @@ from aiobs.evaluation.judges import prompts
 from aiobs.evaluation.judges.cache import claim_cache_key
 from aiobs.evaluation.judges.claims import (
     ExtractedClaims,
+    average_precision,
     coverage_claim_records,
     extract_claims,
     f1,
@@ -17,6 +18,7 @@ from aiobs.evaluation.judges.claims import (
     score_support,
     support_claim_records,
     verify_coverage,
+    verify_relevance,
     verify_support,
 )
 from aiobs.evaluation.judges.errors import (
@@ -29,14 +31,20 @@ from aiobs.evaluation.judges.rubric import level_to_score, rubric_judge
 from aiobs.evaluation.outcomes import error, fail_min, skip
 from aiobs.evaluation.protocol import EvaluationResult, EvaluationSample, LlmClient
 
-JUDGE_KINDS = ("answer_relevance", "groundedness", "correctness")
+JUDGE_KINDS = ("answer_relevance", "groundedness", "correctness", "context_precision")
 
 _METHODS: dict[str, frozenset[str]] = {
     "groundedness": frozenset({"claims", "rubric"}),
     "correctness": frozenset({"claims", "rubric"}),
     "answer_relevance": frozenset({"rubric"}),
+    "context_precision": frozenset({"claims", "rubric"}),
 }
-_DEFAULT_METHOD = {"groundedness": "claims", "correctness": "claims", "answer_relevance": "rubric"}
+_DEFAULT_METHOD = {
+    "groundedness": "claims",
+    "correctness": "claims",
+    "answer_relevance": "rubric",
+    "context_precision": "claims",
+}
 _SCORINGS = frozenset({"recall", "f1"})
 DEFAULT_MAX_CLAIMS = 30
 _RAW_OUTPUT_LIMIT = 2000
@@ -411,8 +419,114 @@ class AnswerRelevanceJudge(_LlmJudge):
         )
 
 
+class ContextPrecisionJudge(_LlmJudge):
+    kind = "context_precision"
+
+    def __init__(
+        self,
+        config: dict[str, Any],
+        llm: LlmClient,
+        *,
+        defaults: JudgeDefaults,
+        claim_cache: JudgeClaimCacheRepository | None = None,
+    ) -> None:
+        super().__init__(config, llm, defaults=defaults, claim_cache=claim_cache)
+        raw_k = config.get("k")
+        if raw_k is None:
+            self._k: int | None = None
+        else:
+            if isinstance(raw_k, bool):
+                raise ValueError(f"{self.kind} judge: k must be an integer >= 1")
+            try:
+                k_int = int(raw_k)
+            except (TypeError, ValueError) as exc:
+                raise ValueError(f"{self.kind} judge: k must be an integer >= 1") from exc
+            if k_int < 1:
+                raise ValueError(f"{self.kind} judge: k must be an integer >= 1")
+            self._k = k_int
+
+    def _precheck(self, sample: EvaluationSample) -> EvaluationResult | None:
+        early = super()._precheck(sample)
+        if early is not None:
+            return early
+        if sample.expected_output is None:
+            return skip("expected_output is missing", metadata=self._meta())
+        if sample.context is None:
+            return skip("context is missing", metadata=self._meta())
+        if not _documents(sample.context):
+            return fail_min("context.documents are missing or empty", metadata=self._meta())
+        return None
+
+    def _select_documents(self, sample: EvaluationSample) -> tuple[list[dict[str, Any]], bool]:
+        documents = _documents(sample.context)
+        limit = self._config.max_claims
+        if self._k is not None:
+            limit = min(limit, self._k)
+        truncated = len(documents) > limit
+        return documents[:limit], truncated
+
+    async def _evaluate(self, sample: EvaluationSample) -> EvaluationResult:
+        question = prompts.as_text(sample.input)
+        reference = prompts.as_text(sample.expected_output)
+        documents, truncated = self._select_documents(sample)
+        if self._config.method == "rubric":
+            result = await self._rubric(
+                prompts.sections(
+                    question=question,
+                    reference_answer=reference,
+                    documents=prompts.render_documents(documents),
+                )
+            )
+            if not truncated:
+                return result
+            return EvaluationResult(
+                score=result.score,
+                label=result.label,
+                explanation=result.explanation,
+                metadata={**result.metadata, "documents_truncated": True},
+            )
+
+        verdicts, calls = await verify_relevance(
+            self._llm,
+            system=prompts.VERIFY_CONTEXT_RELEVANCE,
+            user=prompts.sections(
+                question=question,
+                reference_answer=reference,
+                documents=prompts.render_numbered_documents(documents),
+            ),
+            n=len(documents),
+            options=self._config.options,
+        )
+        relevances = [v.verdict == "relevant" for v in verdicts]
+        score = average_precision(relevances)
+        n_relevant = sum(relevances)
+        records = [
+            {
+                "doc_id": str(doc.get("id", "?")) if isinstance(doc, dict) else "?",
+                "verdict": v.verdict,
+                "reasoning": v.reasoning,
+            }
+            for doc, v in zip(documents, verdicts, strict=True)
+        ]
+        return EvaluationResult(
+            score=score,
+            label=None,
+            explanation=_cap(
+                f"context precision {score:.3f} ({n_relevant}/{len(documents)} relevant)"
+            ),
+            metadata=self._meta(
+                documents=records,
+                n_documents=len(documents),
+                n_relevant=n_relevant,
+                documents_truncated=truncated,
+                llm_calls=calls,
+            ),
+        )
+
+
 _JUDGES: dict[str, type[_LlmJudge]] = {
-    cls.kind: cls for cls in (GroundednessJudge, CorrectnessJudge, AnswerRelevanceJudge)
+    cls.kind: cls
+    for cls in (GroundednessJudge, CorrectnessJudge, AnswerRelevanceJudge, ContextPrecisionJudge)
 }
 
 

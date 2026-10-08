@@ -258,46 +258,127 @@ def _retrieved_doc_ids(ctx: dict[str, Any]) -> list[str] | None:
     return None
 
 
+def _parse_k(kind: str, config: dict[str, Any], *, default: int = 5) -> int:
+    k = config.get("k", default)
+    k_int = int(k)
+    if k_int < 1:
+        raise ValueError(f"{kind} evaluator requires config.k >= 1")
+    return k_int
+
+
+def _retrieval_inputs(
+    sample: EvaluationSample, *, k: int
+) -> tuple[EvaluationResult | None, list[str] | None, list[str] | None, dict[str, Any]]:
+    """Parse expected/retrieved ids for retrieval metrics.
+
+    Returns ``(early_result, expected_list, top_k_ids, meta)``. When ``early_result``
+    is set, scoring should stop.
+    """
+    expected = sample.metadata.get("expected_doc_ids")
+    if expected is None:
+        return skip("metadata.expected_doc_ids is missing"), None, None, {}
+    if not isinstance(expected, list):
+        return skip("metadata.expected_doc_ids must be a list"), None, None, {}
+    if not expected:
+        return skip("metadata.expected_doc_ids is empty"), None, None, {}
+
+    ctx = _as_context(sample)
+    retrieved = _retrieved_doc_ids(ctx)
+    if retrieved is None:
+        return (
+            fail_min(
+                "no documents retrieved (context.documents or context.retrieved_doc_ids is missing)"
+            ),
+            None,
+            None,
+            {},
+        )
+    if not retrieved:
+        return (
+            fail_min("retrieved documents are empty or have no document ids"),
+            None,
+            None,
+            {},
+        )
+
+    top_k = retrieved[:k]
+    meta = {
+        "k": k,
+        "expected_doc_ids": list(expected),
+        "retrieved_top_k": list(top_k),
+    }
+    return None, [str(doc_id) for doc_id in expected], top_k, meta
+
+
 class HitAtKEvaluator:
     name = "hit_at_k"
 
     def __init__(self, config: dict[str, Any]) -> None:
-        k = config.get("k", 5)
-        k_int = int(k)
-        if k_int < 1:
-            raise ValueError("hit_at_k evaluator requires config.k >= 1")
-        self._k = k_int
+        self._k = _parse_k(self.name, config)
 
     async def evaluate(self, sample: EvaluationSample) -> EvaluationResult:
-        expected = sample.metadata.get("expected_doc_ids")
-        if expected is None:
-            return skip("metadata.expected_doc_ids is missing")
-        if not isinstance(expected, list):
-            return skip("metadata.expected_doc_ids must be a list")
-        if not expected:
-            return skip("metadata.expected_doc_ids is empty")
-        expected_ids = {str(doc_id) for doc_id in expected}
-
-        ctx = _as_context(sample)
-        retrieved = _retrieved_doc_ids(ctx)
-        if retrieved is None:
-            return fail_min(
-                "no documents retrieved (context.documents or context.retrieved_doc_ids is missing)"
-            )
-
-        if not retrieved:
-            return fail_min("retrieved documents are empty or have no document ids")
-
-        top_k = set(retrieved[: self._k])
-        hit = bool(expected_ids & top_k)
-        meta = {
-            "k": self._k,
-            "expected_doc_ids": list(expected),
-            "retrieved_top_k": retrieved[: self._k],
-        }
+        early, expected, top_k, meta = _retrieval_inputs(sample, k=self._k)
+        if early is not None:
+            return early
+        assert expected is not None and top_k is not None
+        hit = bool(set(expected) & set(top_k))
         if hit:
             return pass_("expected doc in top-k retrieved", metadata=meta)
         return fail_min("no expected doc in top-k retrieved", metadata=meta)
+
+
+class RecallAtKEvaluator:
+    name = "recall_at_k"
+
+    def __init__(self, config: dict[str, Any]) -> None:
+        self._k = _parse_k(self.name, config)
+
+    async def evaluate(self, sample: EvaluationSample) -> EvaluationResult:
+        early, expected, top_k, meta = _retrieval_inputs(sample, k=self._k)
+        if early is not None:
+            return early
+        assert expected is not None and top_k is not None
+        expected_set = set(expected)
+        hits = len(expected_set & set(top_k))
+        score = hits / len(expected_set)
+        meta = {**meta, "hits": hits, "n_expected": len(expected_set)}
+        return EvaluationResult(
+            score=score,
+            label=None,
+            explanation=f"{hits}/{len(expected_set)} expected docs in top-{self._k}",
+            metadata=meta,
+        )
+
+
+class MRREvaluator:
+    name = "mrr"
+
+    def __init__(self, config: dict[str, Any]) -> None:
+        self._k = _parse_k(self.name, config)
+
+    async def evaluate(self, sample: EvaluationSample) -> EvaluationResult:
+        early, expected, top_k, meta = _retrieval_inputs(sample, k=self._k)
+        if early is not None:
+            return early
+        assert expected is not None and top_k is not None
+        expected_set = set(expected)
+        rank: int | None = None
+        for i, doc_id in enumerate(top_k, start=1):
+            if doc_id in expected_set:
+                rank = i
+                break
+        score = 0.0 if rank is None else 1.0 / rank
+        meta = {**meta, "rank": rank}
+        return EvaluationResult(
+            score=score,
+            label=None,
+            explanation=(
+                f"first expected doc at rank {rank}"
+                if rank is not None
+                else "no expected doc in top-k"
+            ),
+            metadata=meta,
+        )
 
 
 class ToolCallSuccessEvaluator:
@@ -388,4 +469,6 @@ def register_deterministic_evaluators() -> None:
     register_evaluator("cost", CostEvaluator)
     register_evaluator("tool_call_success", ToolCallSuccessEvaluator)
     register_evaluator("hit_at_k", HitAtKEvaluator)
+    register_evaluator("recall_at_k", RecallAtKEvaluator)
+    register_evaluator("mrr", MRREvaluator)
     register_evaluator("must_contain", MustContainEvaluator)

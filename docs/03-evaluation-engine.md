@@ -41,6 +41,8 @@ class Evaluator(Protocol):
 - regex
 - json_schema
 - hit_at_k (config `k`; uses `metadata.expected_doc_ids` and run context documents / `retrieved_doc_ids`)
+- recall_at_k (same inputs; `|expected ∩ top-k| / |expected|`)
+- mrr (same inputs; `1/rank` of first expected id in top-k, else `0`)
 - latency
 - token_usage
 - cost
@@ -50,12 +52,13 @@ class Evaluator(Protocol):
 - answer_relevance
 - groundedness
 - correctness
+- context_precision
 
 LLM judges return structured, validated output and are versioned by `prompt_version` (see [LLM judges (v3)](#llm-judges-v3)).
 
 ## RAG metrics sets and pack scoring
 
-Projects hold versioned **metrics sets**; the default set seeds RAG kinds (`hit_at_k`, `must_contain`, `groundedness`, `correctness`, `latency`). `POST /experiments/{experiment_id}/evaluate-pack` resolves a set (body override → experiment pin → project default), then runs all **enabled** entries with linked `evaluator_id` values against experiment item outputs (including OTLP-bound runs). Optional `save_as_default` persists the request set on the experiment.
+Projects hold versioned **metrics sets**; the default set seeds RAG kinds (`hit_at_k`, `recall_at_k`, `mrr`, `context_precision`, `must_contain`, `groundedness`, `correctness`, `latency`). `POST /experiments/{experiment_id}/evaluate-pack` resolves a set (body override → experiment pin → project default), then runs all **enabled** entries with linked `evaluator_id` values against experiment item outputs (including OTLP-bound runs). Optional `save_as_default` persists the request set on the experiment.
 
 Evaluators are shared per kind across metrics sets, so each entry's `config` (e.g. `k`, `max_ms`, judge `model`) is overlaid on the evaluator config at scoring time (`kind` cannot be overridden); run metadata records `config_override` and the effective `config_hash`. Live scoring applies the same overlay.
 
@@ -67,7 +70,7 @@ Groundedness reads retrieved chunk text from run `context.documents` (populated 
 
 PASS/FAIL rule (offline runs and live scoring): an item passes only if the evaluator label is not `FAIL` **and** the score meets the entry threshold. The stored label is that effective verdict; when it overrides the evaluator's own label, the original is kept in `metadata.judge_label` (live: appended to the explanation). LLM judges never emit a label, so for them the verdict comes from the threshold alone. A run is `FAILED` if any item fails.
 
-LLM judges only receive the fields their rubric needs: `answer_relevance` gets input + answer, `groundedness` adds `context.documents`, `correctness` adds `expected_output`. Item `metadata` (e.g. `expected_doc_ids`) is never sent to a judge. Prompt versions are `{kind}.{method}.v3`.
+LLM judges only receive the fields their rubric needs: `answer_relevance` gets input + answer, `groundedness` adds `context.documents`, `correctness` adds `expected_output`, `context_precision` adds `expected_output` + `context.documents`. Item `metadata` (e.g. `expected_doc_ids`) is never sent to a judge. Prompt versions are `{kind}.{method}.v3`.
 
 Live scoring: a failing judge records an `ERROR` score for its kind without discarding the others (`score_warning` lists the failed kinds; status is `error` only if every judge failed).
 
@@ -82,6 +85,7 @@ Code: `aiobs.evaluation.judges` (`prompts`, `parsing`, `claims`, `rubric`, `eval
 | `groundedness` | `claims` (default), `rubric` | claims: extract answer claims, verify each against `context.documents` (2 calls) |
 | `correctness` | `claims` (default), `rubric` | claims: extract gold claims from `expected_output`, check coverage in the answer (2 calls, 4 with `scoring: f1`; one fewer on a gold-claim cache hit) |
 | `answer_relevance` | `rubric` (only value) | one call, anchored 1-5 level |
+| `context_precision` | `claims` (default), `rubric` | claims: one batched relevance verdict per retrieved document vs question + reference; score is RAGAS average precision |
 
 `rubric` for groundedness/correctness is a single holistic call intended for small local models; it is never selected as a silent fallback.
 
@@ -89,7 +93,7 @@ Entry config keys (part of `config_hash`). Invalid values raise `ValueError` whe
 
 | key | values | default | applies to |
 |---|---|---|---|
-| `method` | `claims` \| `rubric` | `claims` (groundedness, correctness), `rubric` (answer_relevance) | all judges |
+| `method` | `claims` \| `rubric` | `claims` (groundedness, correctness, context_precision), `rubric` (answer_relevance) | all judges |
 | `scoring` | `recall` \| `f1` | `recall` | correctness with `method=claims` |
 | `max_claims` | integer >= 1 | 30 | `method=claims`; extra claims are dropped and `claims_truncated=true` |
 | `model` | LiteLLM model id | `LLM_MODEL` | all |
@@ -99,8 +103,9 @@ Entry config keys (part of `config_hash`). Invalid values raise `ValueError` whe
 
 - **Groundedness (claims):** `supported / claims`. Each claim is `supported`, `contradicted` or `not_supported`. Zero claims (refusal, "I don't know") is `SKIPPED` (`no_factual_claims`). Missing `context` is `SKIPPED`; empty `context.documents` is a minimum-score `FAIL`.
 - **Correctness (claims):** recall `= covered / gold claims`; any `contradicted` gold claim gives `0.0`. `scoring: f1` adds two calls: extract the answer's own claims, then check them against `expected_output` (`precision = supported / answer claims`, score is F1, still `0.0` on any contradiction). Zero gold claims is `SKIPPED` (`no_gold_claims`). Extra non-contradicting statements are not penalized by recall.
+- **Context precision (claims):** for each retrieved document (rank order), verdict `relevant` / `not_relevant` vs question + `expected_output`. Score is average precision \(\sum_k (P@k \cdot v_k) / \sum v_k\); `0` when no document is relevant. Optional `config.k` truncates the document list; `max_claims` is also applied as a safety cap. Missing `expected_output` or `context` is `SKIPPED`; empty `context.documents` is a minimum-score `FAIL`.
 - **Rubric:** `{reasoning, level}` with `level` 1-5 and `score = (level - 1) / 4`.
-- Missing `actual_output` is `SKIPPED` for every judge; correctness also needs `expected_output`.
+- Missing `actual_output` is `SKIPPED` for every judge; correctness and context_precision also need `expected_output`.
 - PASS/FAIL comes only from the entry threshold.
 
 ### Determinism and versioning
@@ -130,7 +135,7 @@ Every step parses tolerantly (code fences, JSON wrapped in prose), validates aga
 
 ### Manual smoke test
 
-`scripts/judge_smoke.py` runs all three judges on a fixed sample against a real model (not part of CI):
+`scripts/judge_smoke.py` runs the built-in judges on a fixed sample against a real model (not part of CI):
 
 ```bash
 cd backend

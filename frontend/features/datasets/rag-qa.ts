@@ -11,6 +11,9 @@ export const RAG_FIELD_HINTS = [
 
 export const RAG_RECOMMENDED_EVALUATOR_KINDS = [
   "hit_at_k",
+  "recall_at_k",
+  "mrr",
+  "context_precision",
   "must_contain",
   "groundedness",
   "answer_relevance",

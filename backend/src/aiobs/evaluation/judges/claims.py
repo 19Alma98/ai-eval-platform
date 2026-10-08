@@ -9,6 +9,8 @@ from aiobs.evaluation.judges.schemas import (
     CoverageVerdict,
     CoverageVerifyOut,
     ExtractOut,
+    RelevanceVerdict,
+    RelevanceVerifyOut,
     SupportVerdict,
     SupportVerifyOut,
 )
@@ -84,6 +86,33 @@ async def verify_coverage(
         check=_expect_verdicts(n),
     )
     return out.value.verdicts, out.calls
+
+
+async def verify_relevance(
+    llm: LlmClient, *, system: str, user: str, n: int, options: CallOptions
+) -> tuple[list[RelevanceVerdict], int]:
+    out = await call_structured(
+        llm,
+        system=system,
+        user=user,
+        schema=RelevanceVerifyOut,
+        options=options,
+        check=_expect_verdicts(n),
+    )
+    return out.value.verdicts, out.calls
+
+
+def average_precision(relevances: list[bool]) -> float:
+    """RAGAS-style context precision: mean of precision@k over relevant ranks."""
+    hits = 0
+    sum_prec = 0.0
+    for i, relevant in enumerate(relevances, start=1):
+        if relevant:
+            hits += 1
+            sum_prec += hits / i
+    if hits == 0:
+        return 0.0
+    return sum_prec / hits
 
 
 def limit_claims(claims: list[str], max_claims: int) -> tuple[list[str], bool]:

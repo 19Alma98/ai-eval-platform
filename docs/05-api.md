@@ -196,7 +196,7 @@ PUT /projects/{project_id}/metrics-pack
 POST /projects/{project_id}/metrics-pack/ensure
 ```
 
-These routes are aliases over the project **default metrics set** (same UUID as `GET .../metrics-pack`). `ensure` creates the default RAG set and links built-in evaluator entities (`hit_at_k`, `must_contain`, `groundedness`, `correctness`, `latency`). `PUT` returns 409 when an experiment pins that default set.
+These routes are aliases over the project **default metrics set** (same UUID as `GET .../metrics-pack`). `ensure` creates the default RAG set and links built-in evaluator entities (`hit_at_k`, `recall_at_k`, `mrr`, `context_precision`, `must_contain`, `groundedness`, `correctness`, `latency`). `PUT` returns 409 when an experiment pins that default set.
 
 ## Live interactions (AI Eval Run)
 

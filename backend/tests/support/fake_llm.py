@@ -7,6 +7,7 @@ from typing import Any
 
 _STEP_RE = re.compile(r"^STEP: (\S+)", re.MULTILINE)
 _CLAIM_LINE_RE = re.compile(r"^\[C\d+\] ", re.MULTILINE)
+_DOC_LINE_RE = re.compile(r"^\[D\d+\] ", re.MULTILINE)
 
 Reply = str | dict[str, Any] | Callable[[str], "str | dict[str, Any]"] | BaseException
 
@@ -20,12 +21,18 @@ def claim_count(user: str) -> int:
     return len(_CLAIM_LINE_RE.findall(user))
 
 
+def doc_count(user: str) -> int:
+    return len(_DOC_LINE_RE.findall(user))
+
+
 def default_reply(step: str, user: str) -> dict[str, Any]:
     """A reply that makes every claim pass and every rubric score the top level."""
     if step.startswith("extract"):
         return {"claims": ["The answer states a fact."]}
     if step == "verify_reference_coverage":
         return {"verdicts": [{"reasoning": "ok", "verdict": "covered"}] * claim_count(user)}
+    if step == "verify_context_relevance":
+        return {"verdicts": [{"reasoning": "ok", "verdict": "relevant"}] * doc_count(user)}
     if step.startswith("verify"):
         return {
             "verdicts": [{"reasoning": "ok", "verdict": "supported", "doc_ids": [], "quote": None}]

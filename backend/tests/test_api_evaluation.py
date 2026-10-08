@@ -410,6 +410,18 @@ async def test_from_trace_item(client: AsyncClient) -> None:
     assert body["context"]["total_tokens"] == 10
 
 
+_DEFAULT_PACK_KINDS = (
+    "hit_at_k",
+    "recall_at_k",
+    "mrr",
+    "context_precision",
+    "must_contain",
+    "groundedness",
+    "correctness",
+    "latency",
+)
+
+
 def _pack_entry_payload(pack: dict, kind: str) -> dict:
     for entry in pack["entries"]:
         if entry["kind"] == kind:
@@ -435,10 +447,7 @@ async def test_evaluate_pack_uses_enabled_metrics_pack_evaluators(
     ensured = await client.post(f"/api/v1/projects/{project_id}/metrics-pack/ensure")
     assert ensured.status_code == 200, ensured.text
     pack = ensured.json()
-    entries = [
-        _pack_entry_payload(pack, kind)
-        for kind in ("hit_at_k", "must_contain", "groundedness", "correctness", "latency")
-    ]
+    entries = [_pack_entry_payload(pack, kind) for kind in _DEFAULT_PACK_KINDS]
     for entry in entries:
         entry["enabled"] = entry["kind"] == "hit_at_k"
     updated = await client.put(
@@ -784,10 +793,7 @@ async def test_put_pack_conflict_when_experiment_pins_default_via_create(
     )
     assert experiment.status_code == 201, experiment.text
 
-    entries = [
-        _pack_entry_payload(pack, kind)
-        for kind in ("hit_at_k", "must_contain", "groundedness", "correctness", "latency")
-    ]
+    entries = [_pack_entry_payload(pack, kind) for kind in _DEFAULT_PACK_KINDS]
     conflict = await client.put(
         f"/api/v1/projects/{project_id}/metrics-pack",
         json={"entries": entries},

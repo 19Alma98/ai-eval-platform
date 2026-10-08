@@ -128,6 +128,35 @@ async def test_runner_hit_at_k_scores_without_actual_output() -> None:
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("kind", "config", "expected_score"),
+    [
+        ("recall_at_k", {"kind": "recall_at_k", "k": 2}, 0.5),
+        ("mrr", {"kind": "mrr", "k": 3}, 0.5),
+    ],
+)
+async def test_runner_retrieval_metrics_score_without_actual_output(
+    kind: str, config: dict, expected_score: float
+) -> None:
+    entity = Evaluator.create(uuid.uuid4(), kind, "deterministic", config)
+    item = DatasetItem.create(
+        uuid.uuid4(),
+        input="q",
+        expected_output="gold",
+        actual_output=None,
+        context={"documents": [{"id": "x"}, {"id": "doc-a"}, {"id": "doc-b"}]},
+        metadata={"expected_doc_ids": ["doc-a", "doc-b"]},
+    )
+    runner = EvaluationRunner()
+    run = EvaluationRun.create(uuid.uuid4(), entity.id)
+    finished, results = await runner.run_evaluator(run=run, evaluator_entity=entity, items=[item])
+    assert results[0].score == expected_score
+    assert results[0].label != "SKIPPED"
+    assert results[0].explanation != "actual_output is missing"
+    assert finished.status in {"PASSED", "FAILED"}
+
+
+@pytest.mark.asyncio
 async def test_runner_maps_errors_not_to_zero() -> None:
     class Boom:
         name = "boom"
