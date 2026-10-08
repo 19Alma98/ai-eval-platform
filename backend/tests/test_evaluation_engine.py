@@ -213,6 +213,68 @@ async def test_runner_without_threshold_keeps_legacy_zero_fail() -> None:
     assert finished.status == "PASSED"
 
 
+@pytest.mark.asyncio
+async def test_runner_config_override_wins_over_entity_config() -> None:
+    entity = Evaluator.create(
+        uuid.uuid4(), "hit_at_k", "deterministic", {"kind": "hit_at_k", "k": 5}
+    )
+    item = DatasetItem.create(
+        uuid.uuid4(),
+        input="q",
+        expected_output="gold",
+        context={"documents": [{"id": "other"}, {"id": "target"}]},
+        metadata={"expected_doc_ids": ["target"]},
+    )
+    runner = EvaluationRunner()
+
+    base_run, base_results = await runner.run_evaluator(
+        run=EvaluationRun.create(uuid.uuid4(), entity.id), evaluator_entity=entity, items=[item]
+    )
+    assert base_results[0].label == "PASS"
+
+    over_run, over_results = await runner.run_evaluator(
+        run=EvaluationRun.create(uuid.uuid4(), entity.id),
+        evaluator_entity=entity,
+        items=[item],
+        config_override={"k": 1, "kind": "exact_match"},
+    )
+    assert over_results[0].label == "FAIL"
+    assert over_results[0].metadata["k"] == 1
+    # kind cannot be overridden; hash reflects effective config
+    assert over_run.metadata["evaluator_kind"] == "hit_at_k"
+    assert over_run.metadata["config_hash"] != base_run.metadata["config_hash"]
+    assert over_run.metadata["config_override"] == {"k": 1}
+
+
+@pytest.mark.asyncio
+async def test_runner_missing_output_items_fail_for_every_kind() -> None:
+    entity = Evaluator.create(
+        uuid.uuid4(), "hit_at_k", "deterministic", {"kind": "hit_at_k", "k": 5}
+    )
+    present = DatasetItem.create(
+        uuid.uuid4(),
+        input="q",
+        context={"documents": [{"id": "target"}]},
+        metadata={"expected_doc_ids": ["target"]},
+    )
+    missing = DatasetItem.create(
+        uuid.uuid4(), input="q2", metadata={"expected_doc_ids": ["target"]}
+    )
+    runner = EvaluationRunner()
+    finished, results = await runner.run_evaluator(
+        run=EvaluationRun.create(uuid.uuid4(), entity.id),
+        evaluator_entity=entity,
+        items=[present, missing],
+        missing_output_item_ids={missing.id},
+    )
+    by_item = {r.dataset_item_id: r for r in results}
+    assert by_item[present.id].label == "PASS"
+    assert by_item[missing.id].label == "FAIL"
+    assert by_item[missing.id].score == 0.0
+    assert "no output" in (by_item[missing.id].explanation or "")
+    assert finished.status == "FAILED"
+
+
 def test_registry_lists_kinds() -> None:
     assert "exact_match" in list_registered_kinds()
     create_evaluator("exact_match", {})

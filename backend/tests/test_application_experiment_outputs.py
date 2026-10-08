@@ -37,6 +37,25 @@ def test_resolve_no_output_row_uses_legacy() -> None:
     assert resolve_item_fields(item, None) == ("legacy", None)
 
 
+def test_resolve_without_fallback_ignores_dataset_fields() -> None:
+    item = DatasetItem.create(uuid.uuid4(), input="q", actual_output="legacy", context={"c": 1})
+    out = ExperimentItemOutput.create(uuid.uuid4(), item.id, actual_output="new", context=None)
+    assert resolve_item_fields(item, out, fallback_to_item=False) == ("new", None)
+    assert resolve_item_fields(item, None, fallback_to_item=False) == (None, None)
+
+
+def test_merge_includes_output_metadata_but_item_gold_wins() -> None:
+    item = DatasetItem.create(uuid.uuid4(), input="q", metadata={"expected_doc_ids": ["gold"]})
+    out = ExperimentItemOutput.create(
+        uuid.uuid4(),
+        item.id,
+        actual_output="a",
+        metadata={"source_trace_id": "t1", "expected_doc_ids": ["spoofed"]},
+    )
+    merged = merge_dataset_item(item, out)
+    assert merged.metadata == {"source_trace_id": "t1", "expected_doc_ids": ["gold"]}
+
+
 def test_merge_dataset_item_keeps_id_and_resolves_fields() -> None:
     dataset_id = uuid.uuid4()
     item = DatasetItem.create(dataset_id, input="q", actual_output="legacy", context={"k": 1})
@@ -304,5 +323,60 @@ async def test_evaluate_without_experiment_output_uses_legacy() -> None:
         FakeExperimentItemOutputRepository(),
     )
     result = await use_case.execute(EvaluateExperimentCommand(experiment.id, [evaluator.id]))
+    scores = [r.score for r in result.results_by_run[next(iter(result.results_by_run))]]
+    assert scores == [1.0]
+
+
+@pytest.mark.asyncio
+async def test_evaluate_partial_outputs_fails_missing_items_without_legacy_fallback() -> None:
+    project_id = uuid.uuid4()
+    dataset_id = uuid.uuid4()
+    experiment = Experiment.create(project_id, "exp", dataset_id, model_config={})
+    answered = DatasetItem.create(dataset_id, input="q1", expected_output="a")
+    # Dataset carries a stale inline answer that matches gold: must NOT be used.
+    unanswered = DatasetItem.create(dataset_id, input="q2", expected_output="b", actual_output="b")
+    evaluator = Evaluator.create(project_id, "exact", "deterministic", {"kind": "exact_match"})
+    out = ExperimentItemOutput.create(experiment.id, answered.id, actual_output="a", context=None)
+    use_case = EvaluateExperiment(
+        FakeExperimentRepository({experiment.id: experiment}),
+        FakeDatasetRepository({answered.id: answered, unanswered.id: unanswered}),
+        FakeEvaluatorRepository({evaluator.id: evaluator}),
+        FakeEvaluationRunRepository(),
+        EvaluationRunner(max_concurrency=1),
+        FakeExperimentItemOutputRepository({(experiment.id, answered.id): out}),
+    )
+    result = await use_case.execute(EvaluateExperimentCommand(experiment.id, [evaluator.id]))
+    by_item = {
+        r.dataset_item_id: r for r in result.results_by_run[next(iter(result.results_by_run))]
+    }
+    assert by_item[answered.id].label == "PASS"
+    assert by_item[unanswered.id].label == "FAIL"
+    assert by_item[unanswered.id].score == 0.0
+
+
+@pytest.mark.asyncio
+async def test_evaluate_applies_config_overrides() -> None:
+    project_id = uuid.uuid4()
+    dataset_id = uuid.uuid4()
+    experiment = Experiment.create(project_id, "exp", dataset_id, model_config={})
+    item = DatasetItem.create(dataset_id, input="q", expected_output="HELLO", actual_output="hello")
+    evaluator = Evaluator.create(
+        project_id, "exact", "deterministic", {"kind": "exact_match", "case_sensitive": True}
+    )
+    use_case = EvaluateExperiment(
+        FakeExperimentRepository({experiment.id: experiment}),
+        FakeDatasetRepository({item.id: item}),
+        FakeEvaluatorRepository({evaluator.id: evaluator}),
+        FakeEvaluationRunRepository(),
+        EvaluationRunner(max_concurrency=1),
+        FakeExperimentItemOutputRepository(),
+    )
+    result = await use_case.execute(
+        EvaluateExperimentCommand(
+            experiment.id,
+            [evaluator.id],
+            config_overrides={evaluator.id: {"case_sensitive": False}},
+        )
+    )
     scores = [r.score for r in result.results_by_run[next(iter(result.results_by_run))]]
     assert scores == [1.0]

@@ -5,6 +5,7 @@ import hashlib
 import json
 import time
 from collections.abc import Callable
+from dataclasses import replace
 from datetime import UTC, datetime
 from typing import Any
 from uuid import UUID
@@ -31,6 +32,26 @@ def _requires_actual(kind: str) -> bool:
     }
 
 
+def effective_entity(
+    entity: EvaluatorEntity, config_override: dict[str, Any] | None
+) -> EvaluatorEntity:
+    """Overlay per-scoring config (e.g. a metrics set entry) on the evaluator config.
+
+    ``kind`` is never overridable: it selects the implementation.
+    """
+    if not config_override:
+        return entity
+    config = {**entity.config, **config_override}
+    if "kind" in entity.config:
+        config["kind"] = entity.config["kind"]
+    else:
+        config.pop("kind", None)
+    return replace(entity, config=config)
+
+
+MISSING_OUTPUT_EXPLANATION = "no output recorded for this item in experiment"
+
+
 class EvaluationRunner:
     def __init__(
         self,
@@ -50,14 +71,29 @@ class EvaluationRunner:
         evaluator_entity: EvaluatorEntity,
         items: list[DatasetItem],
         pass_threshold: float | None = None,
+        config_override: dict[str, Any] | None = None,
+        missing_output_item_ids: set[UUID] | frozenset[UUID] = frozenset(),
     ) -> tuple[EvaluationRun, list[EvaluationResultRecord]]:
         started = datetime.now(UTC)
         run = run.with_status("RUNNING", started_at=started)
+        evaluator_entity = effective_entity(evaluator_entity, config_override)
         kind = str(evaluator_entity.config.get("kind", ""))
         impl = self._resolve(evaluator_entity)
         semaphore = asyncio.Semaphore(self._max_concurrency)
 
         async def _one(item: DatasetItem) -> EvaluationResultRecord:
+            if item.id in missing_output_item_ids:
+                # The app produced nothing for this item: a quality failure, not a
+                # non-applicable metric, so it must not become SKIPPED.
+                return EvaluationResultRecord.create(
+                    run.id,
+                    item.id,
+                    score=0.0,
+                    label="FAIL",
+                    explanation=MISSING_OUTPUT_EXPLANATION,
+                    metadata={"missing_output": True},
+                    duration_ms=0,
+                )
             async with semaphore:
                 return await self._evaluate_item(run.id, impl, item, kind)
 
@@ -87,6 +123,8 @@ class EvaluationRunner:
             "evaluator_kind": kind,
             "config_hash": config_hash(evaluator_entity.config),
         }
+        if config_override:
+            meta["config_override"] = {k: v for k, v in config_override.items() if k != "kind"}
         run = run.with_status(status, finished_at=finished, metadata=meta)
         return run, results
 

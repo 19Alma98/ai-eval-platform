@@ -240,7 +240,9 @@ class ScoreLiveInteraction:
                 if entity is None:
                     continue
                 kind = str(entity.config.get("kind", entry.kind)).strip()
-                evaluator = create_evaluator(kind, dict(entity.config))
+                # Entry config (e.g. judge model) overrides the shared per-kind evaluator.
+                config = {**entity.config, **entry.config, "kind": kind}
+                evaluator = create_evaluator(kind, config)
                 result = await evaluator.evaluate(sample)
                 scores.append(
                     LiveInteractionScore.create(

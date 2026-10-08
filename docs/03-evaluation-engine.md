@@ -57,6 +57,10 @@ LLM judges must return structured output and be versioned by evaluator configura
 
 Projects hold versioned **metrics sets**; the default set seeds RAG kinds (`hit_at_k`, `must_contain`, `groundedness`, `correctness`, `latency`). `POST /experiments/{experiment_id}/evaluate-pack` resolves a set (body override → experiment pin → project default), then runs all **enabled** entries with linked `evaluator_id` values against experiment item outputs (including OTLP-bound runs). Optional `save_as_default` persists the request set on the experiment.
 
+Evaluators are shared per kind across metrics sets, so each entry's `config` (e.g. `k`, `max_ms`, judge `model`) is overlaid on the evaluator config at scoring time (`kind` cannot be overridden); run metadata records `config_override` and the effective `config_hash`. Live scoring applies the same overlay.
+
+Output resolution: once an experiment has any recorded outputs, every item is read from those outputs only — dataset-level `actual_output`/`context` are never used as fallback (they belong to another run). Items without an output in that experiment score `FAIL` (0.0, `metadata.missing_output=true`) for every evaluator. Experiments with no outputs at all keep reading inline dataset fields (e.g. datasets built from traces).
+
 Explicit `POST .../evaluate` with `evaluator_ids` bypasses set resolution.
 
 Groundedness reads retrieved chunk text from run `context.documents` (populated from SDK `set_retrieval_documents` or ingestion normalization).

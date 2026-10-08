@@ -175,8 +175,12 @@ class CompareExperimentItems:
         dataset_items = await self._datasets.list_items(experiment.dataset_id)
         rows: list[ItemComparisonRow] = []
         for item in sorted(dataset_items, key=lambda i: str(i.id)):
-            cand_actual, cand_context = resolve_item_fields(item, cand_outputs.get(item.id))
-            base_actual, base_context = resolve_item_fields(item, base_outputs.get(item.id))
+            cand_actual, cand_context = resolve_item_fields(
+                item, cand_outputs.get(item.id), fallback_to_item=not cand_outputs
+            )
+            base_actual, base_context = resolve_item_fields(
+                item, base_outputs.get(item.id), fallback_to_item=not base_outputs
+            )
             cand_result = cand_results.get(item.id)
             base_result = base_results.get(item.id)
             cand_side = _build_side(

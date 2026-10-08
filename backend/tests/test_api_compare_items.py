@@ -231,7 +231,9 @@ async def client() -> AsyncIterator[AsyncClient]:
     get_settings.cache_clear()
 
 
-async def _seed_project_dataset_evaluator(client: AsyncClient) -> tuple[str, str, str]:
+async def _seed_project_dataset_evaluator(
+    client: AsyncClient,
+) -> tuple[str, str, str, str, str]:
     project = await client.post("/api/v1/projects", json={"name": "Item Compare"})
     assert project.status_code == 201
     project_id = project.json()["id"]
@@ -263,6 +265,7 @@ async def _seed_project_dataset_evaluator(client: AsyncClient) -> tuple[str, str
         },
     )
     assert item2.status_code == 201
+    item2_id = item2.json()["id"]
 
     evaluator = await client.post(
         f"/api/v1/projects/{project_id}/evaluators",
@@ -273,12 +276,14 @@ async def _seed_project_dataset_evaluator(client: AsyncClient) -> tuple[str, str
         },
     )
     assert evaluator.status_code == 201
-    return project_id, dataset_id, evaluator.json()["id"], item_id
+    return project_id, dataset_id, evaluator.json()["id"], item_id, item2_id
 
 
 @pytest.mark.asyncio
 async def test_compare_items_shows_outputs_and_regression(client: AsyncClient) -> None:
-    project_id, dataset_id, evaluator_id, item_id = await _seed_project_dataset_evaluator(client)
+    project_id, dataset_id, evaluator_id, item_id, item2_id = await _seed_project_dataset_evaluator(
+        client
+    )
 
     baseline = await client.post(
         f"/api/v1/projects/{project_id}/experiments",
@@ -300,7 +305,12 @@ async def test_compare_items_shows_outputs_and_regression(client: AsyncClient) -
 
     await client.put(
         f"/api/v1/experiments/{candidate_id}/outputs",
-        json={"items": [{"dataset_item_id": item_id, "actual_output": "nope"}]},
+        json={
+            "items": [
+                {"dataset_item_id": item_id, "actual_output": "nope"},
+                {"dataset_item_id": item2_id, "actual_output": "goodbye"},
+            ]
+        },
     )
 
     for experiment_id in (baseline_id, candidate_id):
@@ -332,7 +342,9 @@ async def test_compare_items_shows_outputs_and_regression(client: AsyncClient) -
 
 @pytest.mark.asyncio
 async def test_compare_items_regressions_only_filter(client: AsyncClient) -> None:
-    project_id, dataset_id, evaluator_id, item_id = await _seed_project_dataset_evaluator(client)
+    project_id, dataset_id, evaluator_id, item_id, item2_id = await _seed_project_dataset_evaluator(
+        client
+    )
 
     baseline = await client.post(
         f"/api/v1/projects/{project_id}/experiments",
@@ -347,7 +359,12 @@ async def test_compare_items_regressions_only_filter(client: AsyncClient) -> Non
 
     await client.put(
         f"/api/v1/experiments/{candidate_id}/outputs",
-        json={"items": [{"dataset_item_id": item_id, "actual_output": "nope"}]},
+        json={
+            "items": [
+                {"dataset_item_id": item_id, "actual_output": "nope"},
+                {"dataset_item_id": item2_id, "actual_output": "goodbye"},
+            ]
+        },
     )
 
     for experiment_id in (baseline_id, candidate_id):
@@ -369,7 +386,13 @@ async def test_compare_items_regressions_only_filter(client: AsyncClient) -> Non
 
 @pytest.mark.asyncio
 async def test_compare_items_dataset_mismatch_400(client: AsyncClient) -> None:
-    project_id, dataset_id, evaluator_id, _item_id = await _seed_project_dataset_evaluator(client)
+    (
+        project_id,
+        dataset_id,
+        evaluator_id,
+        _item_id,
+        _item2_id,
+    ) = await _seed_project_dataset_evaluator(client)
 
     other_dataset = await client.post(
         f"/api/v1/projects/{project_id}/datasets",
@@ -404,7 +427,13 @@ async def test_compare_items_dataset_mismatch_400(client: AsyncClient) -> None:
 
 @pytest.mark.asyncio
 async def test_compare_items_ambiguous_evaluator_400(client: AsyncClient) -> None:
-    project_id, dataset_id, evaluator_id, _item_id = await _seed_project_dataset_evaluator(client)
+    (
+        project_id,
+        dataset_id,
+        evaluator_id,
+        _item_id,
+        _item2_id,
+    ) = await _seed_project_dataset_evaluator(client)
 
     second = await client.post(
         f"/api/v1/projects/{project_id}/evaluators",

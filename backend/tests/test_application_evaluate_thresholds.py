@@ -81,6 +81,7 @@ class SpyRunner:
         evaluator_entity: Evaluator,
         items: list[DatasetItem],
         pass_threshold: float | None = None,
+        **_kwargs: object,
     ) -> tuple[EvaluationRun, list]:
         self.thresholds.append(pass_threshold)
         finished = run.with_status("PASSED", finished_at=datetime.now(UTC))
@@ -137,7 +138,7 @@ async def test_score_from_pack_builds_pass_thresholds_map() -> None:
                 kind="latency",
                 enabled=True,
                 threshold=None,
-                config={},
+                config={"max_ms": 1200},
                 evaluator_id=e2,
                 is_default=False,
             ),
@@ -178,3 +179,4 @@ async def test_score_from_pack_builds_pass_thresholds_map() -> None:
     assert capture.command is not None
     assert capture.command.evaluator_ids == [e1, e2]
     assert capture.command.pass_thresholds == {e1: 0.7, e2: None}
+    assert capture.command.config_overrides == {e1: {}, e2: {"max_ms": 1200}}

@@ -322,6 +322,45 @@ async def test_score_goldless_and_review_promote() -> None:
 
 
 @pytest.mark.asyncio
+async def test_live_score_applies_metrics_set_entry_config() -> None:
+    seen_models: list[str | None] = []
+
+    class RecordingLlm:
+        async def complete_json(self, *, system: str, user: str, model: str | None = None) -> dict:
+            seen_models.append(model)
+            return {"score": 0.9, "label": "PASS", "explanation": "ok"}
+
+    clear_registry()
+    bootstrap_evaluators(RecordingLlm())
+
+    projects = InMemoryProjectRepository()
+    live = InMemoryLiveRepository()
+    metrics = InMemoryMetricsSetRepository()
+    evaluators = InMemoryEvaluatorRepository()
+    project = Project.create("Demo", slug="demo-cfg")
+    await projects.add(project)
+    create_eval = CreateEvaluator(evaluators, projects)
+    ensure = EnsureProjectDefaultMetricsSet(metrics, evaluators, projects, create_eval)
+    default = await ensure.execute(project.id)
+    # Evaluator already exists (created with empty config); entry config changes later.
+    await metrics.update(default.patch_entry("groundedness", config={"model": "judge-x"}))
+
+    submitted = await SubmitLiveInteraction(projects, live, metrics).execute(
+        SubmitLiveInteractionCommand(
+            project_id=project.id,
+            question="q",
+            answer="a",
+            documents=[{"id": "d", "text": "t"}],
+        )
+    )
+    scorer = ScoreLiveInteraction(live, metrics, evaluators, create_eval, ensure)
+    await scorer.execute(submitted.interaction.id)
+    assert "judge-x" in seen_models
+
+    clear_registry()
+
+
+@pytest.mark.asyncio
 async def test_score_warns_when_no_goldless_metrics() -> None:
     clear_registry()
     bootstrap_evaluators(FakeLlm())
