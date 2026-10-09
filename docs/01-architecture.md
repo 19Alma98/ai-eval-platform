@@ -84,7 +84,6 @@ repo/
 │   ├── features/
 │   ├── lib/
 │   └── package.json
-├── cli/
 ├── docs/
 ├── examples/
 ├── migrations/

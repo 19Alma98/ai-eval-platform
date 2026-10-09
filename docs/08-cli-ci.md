@@ -11,8 +11,6 @@ Implementation:
 - PyYAML
 - uvicorn (for `aiobs ui`)
 
-The legacy `cli/` package (`aiobs-cli`) is deprecated; do not install it alongside `aiobs-server` for the console script.
-
 ### Local UI
 
 ```text

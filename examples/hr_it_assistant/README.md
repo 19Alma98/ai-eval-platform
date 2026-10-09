@@ -47,7 +47,7 @@ uv run --extra openai --with openai python ../examples/hr_it_assistant/main.py \
 From the repo root (after Compose + Ollama + both models):
 
 ```bash
-cd cli && uv sync && cd ..
+cd backend && uv sync && cd ..
 python scripts/portfolio_demo.py
 ```
 
@@ -58,7 +58,7 @@ This creates a gold `rag_qa` test set (`expected_doc_ids` from `knowledge.json`)
 Same KB and a **single** Ollama model; the variable under test is the generation system prompt, versioned as App Config and bound to each experiment.
 
 ```bash
-cd cli && uv sync && cd ..
+cd backend && uv sync && cd ..
 python scripts/prompt_ab_demo.py
 # optional: --skip-check
 ```

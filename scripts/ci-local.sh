@@ -9,7 +9,7 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
 
 if [[ $# -eq 0 ]]; then
-  set -- backend sdk cli frontend
+  set -- backend sdk frontend
 fi
 
 run_python_job() {
@@ -46,10 +46,9 @@ for job in "$@"; do
       run_python_job backend src/aiobs_server "--all-extras"
       ;;
     sdk)      run_python_job sdk src/aiobs "--extra dev" ;;
-    cli)      run_python_job cli src/aiobs_cli "--extra dev" ;;
     frontend) run_frontend ;;
     *)
-      echo "Unknown job: $job (expected: backend sdk cli frontend)" >&2
+      echo "Unknown job: $job (expected: backend sdk frontend)" >&2
       exit 2
       ;;
   esac

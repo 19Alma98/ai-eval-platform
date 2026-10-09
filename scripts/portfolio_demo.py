@@ -18,7 +18,7 @@ SDK_DIR = ROOT / "sdk"
 APP_DIR = ROOT / "examples" / "hr_it_assistant"
 KNOWLEDGE_PATH = APP_DIR / "knowledge.json"
 POLICY_PATH = APP_DIR / "aiobs.yaml"
-CLI_DIR = ROOT / "cli"
+BACKEND_DIR = ROOT / "backend"
 
 sys.path.insert(0, str(SDK_DIR / "src"))
 
@@ -237,7 +237,7 @@ def run_aiobs_check(policy: Path, base: str) -> int:
         base,
     ]
     print("running:", " ".join(cmd))
-    proc = subprocess.run(cmd, cwd=str(CLI_DIR), check=False)
+    proc = subprocess.run(cmd, cwd=str(BACKEND_DIR), check=False)
     return proc.returncode
 
 

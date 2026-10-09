@@ -86,20 +86,18 @@ regression:
   max_delta: -0.03
 EOF
 
-if [ -d "$ROOT/cli" ]; then
-  echo "cli check (expect exit 1)..."
-  set +e
-  (
-    cd "$ROOT/cli"
-    uv sync --quiet
-    uv run aiobs check --policy "$POLICY_FILE"
-  )
-  CLI_EXIT=$?
-  set -e
-  if [ "$CLI_EXIT" -ne 1 ]; then
-    echo "expected aiobs check exit 1, got $CLI_EXIT" >&2
-    exit 1
-  fi
+echo "aiobs check (expect exit 1)..."
+set +e
+(
+  cd "$ROOT/backend"
+  uv sync --quiet
+  uv run aiobs check --policy "$POLICY_FILE"
+)
+CLI_EXIT=$?
+set -e
+if [ "$CLI_EXIT" -ne 1 ]; then
+  echo "expected aiobs check exit 1, got $CLI_EXIT" >&2
+  exit 1
 fi
 
 echo
