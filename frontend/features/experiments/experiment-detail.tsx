@@ -441,7 +441,7 @@ export function ExperimentDetailView({
             <h1 className="text-lg font-semibold text-foreground">
               {experiment.name}
             </h1>
-            <StatusBadge status={experiment.status} />
+            <StatusBadge status={experiment.status} kind="experiment" />
           </div>
           <p className="text-sm text-muted-foreground">
             Flow: Evaluate (scores) → Compare (delta vs baseline) → Release

@@ -47,6 +47,12 @@ describe("formatStatusLabel", () => {
     assert.equal(formatStatusLabel("unset"), "Unset");
   });
 
+  it("maps experiment job statuses to Finished / Eval error", () => {
+    assert.equal(formatStatusLabel("completed", "experiment"), "Finished");
+    assert.equal(formatStatusLabel("failed", "experiment"), "Eval error");
+    assert.equal(formatStatusLabel("running", "experiment"), "Running");
+  });
+
   it("capitalizes unknown statuses", () => {
     assert.equal(formatStatusLabel("running"), "Running");
   });

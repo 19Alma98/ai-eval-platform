@@ -68,7 +68,7 @@ export function ExperimentList() {
         id: "status",
         header: "Status",
         headerClassName: "w-[120px]",
-        cell: (row) => <StatusBadge status={row.status} />,
+        cell: (row) => <StatusBadge status={row.status} kind="experiment" />,
       },
       {
         id: "dataset_id",

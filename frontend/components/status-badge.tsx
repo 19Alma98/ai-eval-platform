@@ -32,14 +32,30 @@ const STATUS_LABELS: Record<string, string> = {
   unset: "Unset",
 };
 
+/** Job-level experiment status (not quality / evaluator pass-fail). */
+const EXPERIMENT_STATUS_LABELS: Record<string, string> = {
+  complete: "Finished",
+  completed: "Finished",
+  fail: "Eval error",
+  failed: "Eval error",
+};
+
+export type StatusLabelKind = "default" | "experiment";
+
 function capitalizeWord(value: string): string {
   if (!value) return value;
   return value.charAt(0).toUpperCase() + value.slice(1).toLowerCase();
 }
 
 /** Human-readable English label for known API status strings. */
-export function formatStatusLabel(status: string): string {
+export function formatStatusLabel(
+  status: string,
+  kind: StatusLabelKind = "default",
+): string {
   const key = status.trim().toLowerCase();
+  if (kind === "experiment" && key in EXPERIMENT_STATUS_LABELS) {
+    return EXPERIMENT_STATUS_LABELS[key]!;
+  }
   if (key in STATUS_LABELS) return STATUS_LABELS[key]!;
   return capitalizeWord(status.trim());
 }
@@ -58,9 +74,11 @@ export function statusTone(status: string): string {
 
 export function StatusBadge({
   status,
+  kind = "default",
   className,
 }: {
   status: string;
+  kind?: StatusLabelKind;
   className?: string;
 }) {
   const key = statusTone(status);
@@ -75,7 +93,7 @@ export function StatusBadge({
         className,
       )}
     >
-      {formatStatusLabel(status)}
+      {formatStatusLabel(status, kind)}
     </span>
   );
 }
