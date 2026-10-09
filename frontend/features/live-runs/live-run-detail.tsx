@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { useEffect, useMemo, useState, type SubmitEvent } from "react";
+import { useMemo, useState, type SubmitEvent } from "react";
 import { ArrowLeft } from "lucide-react";
 import { toast } from "sonner";
 import { useDatasets } from "@/features/datasets/use-datasets";
@@ -50,11 +50,6 @@ function ScoreReviewControls({
     existing?.corrected_explanation ?? judgeExplanation,
   );
   const [note, setNote] = useState(existing?.note ?? "");
-
-  useEffect(() => {
-    setExplanation(existing?.corrected_explanation ?? judgeExplanation);
-    setNote(existing?.note ?? "");
-  }, [existing?.corrected_explanation, existing?.note, judgeExplanation, score.id]);
 
   const mutation = useMutation({
     mutationFn: (verdict: "agree" | "disagree") => {
@@ -427,6 +422,12 @@ export function LiveRunDetail({ interactionId }: { interactionId: string }) {
                   <JudgeClaimsTable metadata={score.metadata} />
                 </div>
                 <ScoreReviewControls
+                  key={[
+                    score.id,
+                    score.explanation ?? "",
+                    score.review?.corrected_explanation ?? "",
+                    score.review?.note ?? "",
+                  ].join("|")}
                   score={score}
                   interactionId={interactionId}
                   projectId={projectId}

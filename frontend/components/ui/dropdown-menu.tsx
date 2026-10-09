@@ -33,7 +33,8 @@ type DropdownMenuTriggerProps = React.ComponentProps<"button"> & {
 }
 
 function resolveDropdownMenuTrigger(props: DropdownMenuTriggerProps) {
-  const { render, children, asChild: _asChild, ...buttonProps } = props
+  const { render, children, asChild, ...buttonProps } = props
+  void asChild
 
   if (render && React.isValidElement(render)) {
     const triggerProps = render.props as React.HTMLAttributes<HTMLElement> & {

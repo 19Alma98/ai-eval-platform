@@ -84,7 +84,8 @@ function Dialog({
 }
 
 /** Marker + props holder; `Dialog` resolves `render` / children into the RAC trigger. */
-function DialogTrigger(_props: DialogTriggerProps) {
+function DialogTrigger(props: DialogTriggerProps) {
+  void props
   return null
 }
 

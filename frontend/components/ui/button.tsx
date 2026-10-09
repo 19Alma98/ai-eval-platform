@@ -57,10 +57,11 @@ function Button({
   size = "default",
   disabled,
   render,
-  nativeButton: _nativeButton,
+  nativeButton,
   children,
   ...props
 }: ButtonProps) {
+  void nativeButton
   const classes = cn(buttonVariants({ variant, size, className }))
 
   if (render) {
