@@ -1,5 +1,6 @@
 "use client"
 
+import type * as React from "react"
 import { Separator as RacSeparator } from "react-aria-components"
 import { cn } from "cn"
 

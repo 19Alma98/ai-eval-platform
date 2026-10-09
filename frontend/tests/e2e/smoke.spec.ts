@@ -1,3 +1,4 @@
+// page.goto uses Playwright baseURL (PLAYWRIGHT_BASE_URL); point it at the FE instance under test.
 import { test, expect } from "@playwright/test";
 
 const API = process.env.API_ORIGIN ?? "http://localhost:8000";

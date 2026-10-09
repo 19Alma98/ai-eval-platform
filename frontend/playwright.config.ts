@@ -1,5 +1,7 @@
 import { defineConfig, devices } from "@playwright/test";
 
+// Set PLAYWRIGHT_BASE_URL to the frontend under test (e.g. a worktree on a non-default port).
+
 export default defineConfig({
   testDir: "./tests/e2e",
   fullyParallel: true,

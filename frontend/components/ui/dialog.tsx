@@ -7,6 +7,7 @@ import {
   Modal,
   ModalOverlay,
   Heading,
+  Text,
 } from "react-aria-components"
 import { cn } from "cn"
 import { Button } from "@/components/ui/button"
@@ -160,16 +161,30 @@ function DialogHeader({ className, ...props }: React.ComponentProps<"div">) {
   )
 }
 
-function DialogFooter({ className, ...props }: React.ComponentProps<"div">) {
+function DialogFooter({
+  className,
+  showCloseButton = false,
+  children,
+  ...props
+}: React.ComponentProps<"div"> & {
+  showCloseButton?: boolean
+}) {
   return (
     <div
       data-slot="dialog-footer"
       className={cn(
-        "flex flex-col-reverse gap-2 sm:flex-row sm:justify-end",
+        "-mx-4 -mb-4 flex flex-col-reverse gap-2 rounded-b-xl border-t bg-muted/50 p-4 sm:flex-row sm:justify-end",
         className
       )}
       {...props}
-    />
+    >
+      {children}
+      {showCloseButton ? (
+        <Button slot="close" variant="outline" data-slot="dialog-close">
+          Close
+        </Button>
+      ) : null}
+    </div>
   )
 }
 
@@ -190,11 +205,15 @@ function DialogTitle({
 function DialogDescription({
   className,
   ...props
-}: React.ComponentProps<"p">) {
+}: React.ComponentProps<typeof Text>) {
   return (
-    <p
+    <Text
+      slot="description"
       data-slot="dialog-description"
-      className={cn("text-sm text-muted-foreground", className)}
+      className={cn(
+        "text-sm text-muted-foreground *:[a]:underline *:[a]:underline-offset-3 *:[a]:hover:text-foreground",
+        className
+      )}
       {...props}
     />
   )
