@@ -5,7 +5,7 @@
 - Next.js
 - TypeScript
 - Tailwind CSS
-- shadcn/ui
+- React Aria Components (owned `@/components/ui` wrappers)
 - TanStack Query
 - ECharts/Recharts
 - Playwright
@@ -39,7 +39,16 @@ Traces are ingest/storage plumbing (OTLP) plus read-only detail on **Run** item 
 
 ### 1. Overview
 
-Setup checklist: test set present, metrics pack configured, at least one scored run. Aggregate metrics reflect pack evaluators where available. **Live runs** KPI, recent live interactions, and latest experiment runs surface prod-like traffic alongside offline eval.
+Route: `/overview?project={id}` (default landing). Single aggregated payload from `GET /projects/{project_id}/overview` via `useOverview` (TanStack Query); `since` / `until` derive from the sticky **Time range** control. URL preset `?range=` (`15m` | `1h` | `6h` | **24h** default | `7d`); missing `range` is normalized to `24h` on load.
+
+Curated layout bands:
+
+- **A — KPI strip** — dual row: live traffic (interactions, fail rate, in progress, mean score) and offline readiness (test sets, default metrics set, last run, release ready).
+- **B — Charts** — live quality time series (bucketed mean score / fail rate; widen-range when sparse) and compare **pass rate** bars vs baseline when compare data exists.
+- **C — Attention** — merged queue: recent live failures, offline metric regressions, calibration agreement alerts (cap 8).
+- **D — Quality loop** — four cards: Test set → **Metrics** (metrics sets, not legacy pack-only wording) → Runs → Release readiness; first incomplete step shows CTA.
+
+States: skeleton while loading; full-page error with retry; empty/degraded compare shows inline empty copy and links (API may return `compare: null` with 200).
 
 ### 2. Test set (datasets)
 

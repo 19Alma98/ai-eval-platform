@@ -25,6 +25,14 @@ GET /projects/{project_id}
 DELETE /projects/{project_id}
 ```
 
+### Overview
+
+```http
+GET /projects/{project_id}/overview?since={iso}&until={iso}
+```
+
+`since` required; `until` optional (default now). Returns live range KPIs + series, offline project snapshot (datasets, default metrics set, latest experiment, optional compare/`pass_rate` metrics, regressions), calibration alerts, and `warnings` for degraded sections. Unknown project → 404. Compare failures degrade to `compare: null` with HTTP 200.
+
 ## Traces
 
 Ingest via OTLP/HTTP (outside `/api/v1` prefix):
