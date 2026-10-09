@@ -24,6 +24,7 @@ from aiobs.domain.live_interaction import (
     LiveReview,
     LiveScoreReview,
 )
+from aiobs.domain.live_overview import LiveInteractionInRange
 from aiobs.domain.metrics_set import MetricsSet, MetricsSetEntry
 from aiobs.domain.project import Project
 from aiobs.domain.trace import Span, Trace
@@ -1194,6 +1195,39 @@ class SqlAlchemyLiveInteractionRepository:
         )
         result = await self._session.execute(stmt)
         return [_live_interaction_to_domain(row) for row in result.scalars().all()]
+
+    async def list_in_range(
+        self,
+        project_id: uuid.UUID,
+        *,
+        since: datetime,
+        until: datetime,
+        limit: int = 10_000,
+    ) -> list[LiveInteractionInRange]:
+        cap = max(1, min(limit, 10_000))
+        stmt = (
+            select(LiveInteractionModel)
+            .where(
+                LiveInteractionModel.project_id == project_id,
+                LiveInteractionModel.created_at >= since,
+                LiveInteractionModel.created_at < until,
+            )
+            .options(selectinload(LiveInteractionModel.scores))
+            .order_by(LiveInteractionModel.created_at.desc(), LiveInteractionModel.id.desc())
+            .limit(cap)
+        )
+        result = await self._session.execute(stmt)
+        rows = result.scalars().unique().all()
+        out: list[LiveInteractionInRange] = []
+        for row in rows:
+            scores = sorted(row.scores, key=lambda s: s.created_at)
+            out.append(
+                LiveInteractionInRange(
+                    interaction=_live_interaction_to_domain(row),
+                    scores=[_live_score_to_domain(s) for s in scores],
+                )
+            )
+        return out
 
     async def replace_scores(
         self, interaction_id: uuid.UUID, scores: list[LiveInteractionScore]

@@ -16,6 +16,7 @@ from aiobs.domain.live_interaction import (
     LiveReview,
     LiveScoreReview,
 )
+from aiobs.domain.live_overview import LiveInteractionInRange
 from aiobs.domain.metrics_set import MetricsSet
 from aiobs.domain.project import Project
 from aiobs.domain.trace import Trace
@@ -182,6 +183,15 @@ class LiveInteractionRepository(Protocol):
         limit: int = 50,
         offset: int = 0,
     ) -> list[LiveInteraction]: ...
+
+    async def list_in_range(
+        self,
+        project_id: uuid.UUID,
+        *,
+        since: datetime,
+        until: datetime,
+        limit: int = 10_000,
+    ) -> list[LiveInteractionInRange]: ...
 
     async def replace_scores(
         self, interaction_id: uuid.UUID, scores: list[LiveInteractionScore]
