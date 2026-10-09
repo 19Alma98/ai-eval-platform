@@ -10,8 +10,16 @@ import {
 import { PRESET_LABELS, PRESETS } from "@/lib/time-range";
 import { useTimeRange } from "@/lib/time-range-context";
 
-export function TimeRangePicker() {
-  const { preset, setPreset } = useTimeRange();
+export function TimeRangePicker({
+  preset: presetProp,
+  onPresetChange,
+}: {
+  preset?: string;
+  onPresetChange?: (p: string) => void;
+} = {}) {
+  const ctx = useTimeRange();
+  const preset = presetProp ?? ctx.preset;
+  const setPreset = onPresetChange ?? ctx.setPreset;
 
   return (
     <Select

@@ -391,3 +391,89 @@ export type ListLiveInteractionsResponse = {
   items: LiveInteraction[];
   judge_warnings: LiveJudgeWarning[];
 };
+
+export type LiveSeriesBucket = {
+  bucket_start: string;
+  n: number;
+  mean_score: number | null;
+  fail_rate: number | null;
+};
+
+export type LiveAttentionItem = {
+  interaction_id: string;
+  question: string;
+  created_at: string;
+  reason: string;
+};
+
+export type LiveOverview = {
+  n_interactions: number;
+  n_failed: number;
+  n_pending: number;
+  mean_score: number | null;
+  fail_rate: number | null;
+  series: LiveSeriesBucket[];
+  attention: LiveAttentionItem[];
+};
+
+export type OverviewMetricsSetRef = {
+  id: string;
+  name: string;
+  version: number;
+  is_default: boolean;
+};
+
+export type OverviewExperimentRef = {
+  id: string;
+  name: string;
+  status: string;
+  created_at: string;
+  baseline_experiment_id: string | null;
+};
+
+export type OverviewCompareMetric = {
+  name: string;
+  metric: string;
+  candidate: number | null;
+  baseline: number | null;
+  delta: number | null;
+  status: string;
+};
+
+export type OverviewCompare = {
+  candidate_experiment_id: string;
+  baseline_experiment_id: string;
+  metrics: OverviewCompareMetric[];
+};
+
+export type OverviewRegression = {
+  name: string;
+  delta: number | null;
+  status: string;
+};
+
+export type OfflineOverview = {
+  n_datasets: number;
+  metrics_set: OverviewMetricsSetRef | null;
+  reference_threshold: number | null;
+  latest_experiment: OverviewExperimentRef | null;
+  release_ready: boolean;
+  compare: OverviewCompare | null;
+  regressions: OverviewRegression[];
+};
+
+export type CalibrationAlert = {
+  kind: string;
+  agreement_rate: number;
+  n_reviewed: number;
+};
+
+export type ProjectOverview = {
+  generated_at: string;
+  since: string;
+  until: string;
+  live: LiveOverview;
+  offline: OfflineOverview;
+  calibration_alerts: CalibrationAlert[];
+  warnings: string[];
+};
