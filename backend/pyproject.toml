@@ -48,6 +48,9 @@ pythonpath = ["src", "tests"]
 markers = [
     "integration: tests that require PostgreSQL",
 ]
+filterwarnings = [
+    "ignore:.*ReadOnly.*:UserWarning:pydantic",
+]
 
 [tool.ruff]
 target-version = "py312"

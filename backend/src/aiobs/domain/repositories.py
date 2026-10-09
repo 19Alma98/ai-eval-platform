@@ -16,7 +16,7 @@ from aiobs.domain.live_interaction import (
     LiveReview,
     LiveScoreReview,
 )
-from aiobs.domain.live_overview import LiveInRangeResult, LiveInteractionInRange
+from aiobs.domain.live_overview import LiveInRangeResult
 from aiobs.domain.metrics_set import MetricsSet
 from aiobs.domain.project import Project
 from aiobs.domain.trace import Trace

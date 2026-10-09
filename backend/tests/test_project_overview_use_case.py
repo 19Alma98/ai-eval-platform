@@ -216,12 +216,8 @@ async def test_live_interactions_in_range() -> None:
         LiveInteraction.create(project.id, "q2", "a2").with_status("scored"),
         created_at=t2,
     )
-    s1 = LiveInteractionScore.create(
-        i1.id, "groundedness", score=0.8, label="PASS", threshold=0.7
-    )
-    s2 = LiveInteractionScore.create(
-        i2.id, "groundedness", score=0.3, label="FAIL", threshold=0.7
-    )
+    s1 = LiveInteractionScore.create(i1.id, "groundedness", score=0.8, label="PASS", threshold=0.7)
+    s2 = LiveInteractionScore.create(i2.id, "groundedness", score=0.3, label="FAIL", threshold=0.7)
     await live.add_with_scores(i1, [s1])
     await live.add_with_scores(i2, [s2])
     use_case = _build_use_case(projects=projects, live=live)

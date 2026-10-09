@@ -15,6 +15,7 @@ from aiobs.domain.live_overview import (
     LiveOverviewStats,
     LiveSeriesBucket,
 )
+from aiobs.domain.metrics_set import MetricsSet
 from aiobs.domain.repositories import (
     DatasetRepository,
     ExperimentRepository,
@@ -134,10 +135,8 @@ class ProjectOverviewResult:
     warnings: list[str] = field(default_factory=list)
 
 
-def _reference_threshold(metrics_set) -> float | None:
-    thresholds = [
-        e.threshold for e in metrics_set.entries if e.enabled and e.threshold is not None
-    ]
+def _reference_threshold(metrics_set: MetricsSet) -> float | None:
+    thresholds = [e.threshold for e in metrics_set.entries if e.enabled and e.threshold is not None]
     return min(thresholds) if thresholds else None
 
 
@@ -201,12 +200,8 @@ def _aggregate_live(
     idx = 0
     while since + bucket * idx < until:
         bucket_rows = bucket_counts.get(idx, [])
-        bucket_scores = [
-            s.score for row in bucket_rows for s in row.scores if s.score is not None
-        ]
-        bucket_failed = sum(
-            1 for row in bucket_rows if any(score_is_failed(s) for s in row.scores)
-        )
+        bucket_scores = [s.score for row in bucket_rows for s in row.scores if s.score is not None]
+        bucket_failed = sum(1 for row in bucket_rows if any(score_is_failed(s) for s in row.scores))
         n = len(bucket_rows)
         series.append(
             LiveSeriesBucket(
@@ -278,14 +273,10 @@ class GetProjectOverview:
 
         warnings: list[str] = []
         bucket = bucket_size_for_range(since, until)
-        live_range = await self._live.list_in_range(
-            project_id, since=since, until=until
-        )
+        live_range = await self._live.list_in_range(project_id, since=since, until=until)
         if live_range.truncated:
             warnings.append("live_truncated")
-        live = _aggregate_live(
-            live_range.items, since=since, until=until, bucket=bucket
-        )
+        live = _aggregate_live(live_range.items, since=since, until=until, bucket=bucket)
 
         datasets = await self._datasets.list_by_project(project_id)
         metrics_set = await self._metrics_sets.get_project_default(project_id)
@@ -320,9 +311,7 @@ class GetProjectOverview:
                     comparison = await self._compare.execute(
                         latest.id, latest.baseline_experiment_id
                     )
-                    pass_metrics = [
-                        m for m in comparison.metrics if m.metric == "pass_rate"
-                    ][:10]
+                    pass_metrics = [m for m in comparison.metrics if m.metric == "pass_rate"][:10]
                     compare_dto = OverviewCompare(
                         candidate_experiment_id=comparison.experiment_id,
                         baseline_experiment_id=comparison.baseline_experiment_id,
