@@ -38,3 +38,23 @@ test("quality loop strip and glossaries render", async ({ page, request }) => {
   await expect(page.getByText(/evaluation run on a dataset/i)).toBeVisible();
   await expect(page.getByRole("button", { name: /new experiment/i })).toBeVisible();
 });
+
+test("create experiment dialog select works", async ({ page, request }) => {
+  const proj = await request.post(`${API}/api/v1/projects`, {
+    data: { name: "E2E Dialog", slug: `e2e-dlg-${Date.now()}` },
+  });
+  expect(proj.ok()).toBeTruthy();
+  const { id } = await proj.json();
+
+  const ds = await request.post(`${API}/api/v1/projects/${id}/datasets`, {
+    data: { name: "DS", task_type: "rag_qa", version: 1 },
+  });
+  expect(ds.ok()).toBeTruthy();
+
+  await page.goto(`/experiments?project=${id}`);
+  await page.getByRole("button", { name: /new experiment/i }).click();
+  await expect(page.getByRole("heading", { name: /create experiment/i })).toBeVisible();
+  await page.getByLabel("Dataset").click();
+  await page.getByRole("option").first().click();
+  await expect(page.getByRole("dialog")).toBeVisible();
+});
