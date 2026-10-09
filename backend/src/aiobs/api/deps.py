@@ -63,6 +63,7 @@ from aiobs.application.metrics_sets import (
     ResolveMetricsSetForScore,
     VersionMetricsSet,
 )
+from aiobs.application.project_overview import GetProjectOverview
 from aiobs.application.projects import (
     CreateProject,
     DeleteProject,
@@ -567,6 +568,26 @@ def get_summarize_live_judge_calibration(
     live: SqlAlchemyLiveInteractionRepository = Depends(get_live_interaction_repository),
 ) -> SummarizeLiveJudgeCalibration:
     return SummarizeLiveJudgeCalibration(projects, live)
+
+
+def get_project_overview(
+    projects: SqlAlchemyProjectRepository = Depends(get_project_repository),
+    datasets: SqlAlchemyDatasetRepository = Depends(get_dataset_repository),
+    metrics_sets: SqlAlchemyMetricsSetRepository = Depends(get_metrics_set_repository),
+    experiments: SqlAlchemyExperimentRepository = Depends(get_experiment_repository),
+    live: SqlAlchemyLiveInteractionRepository = Depends(get_live_interaction_repository),
+    compare: CompareExperiments = Depends(get_compare_experiments),
+    calibration: SummarizeLiveJudgeCalibration = Depends(get_summarize_live_judge_calibration),
+) -> GetProjectOverview:
+    return GetProjectOverview(
+        projects,
+        datasets,
+        metrics_sets,
+        experiments,
+        live,
+        compare,
+        calibration,
+    )
 
 
 def get_promote_live_interaction(

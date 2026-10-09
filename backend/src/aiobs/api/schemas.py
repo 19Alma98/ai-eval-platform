@@ -703,3 +703,89 @@ class PromoteLiveInteractionRequest(BaseModel):
     dataset_id: uuid.UUID
     expected_output: Any
     expected_doc_ids: list[str] | None = None
+
+
+class LiveSeriesBucketResponse(BaseModel):
+    bucket_start: datetime
+    n: int
+    mean_score: float | None
+    fail_rate: float | None
+
+
+class LiveAttentionItemResponse(BaseModel):
+    interaction_id: uuid.UUID
+    question: str
+    created_at: datetime
+    reason: str
+
+
+class LiveOverviewResponse(BaseModel):
+    n_interactions: int
+    n_failed: int
+    n_pending: int
+    mean_score: float | None
+    fail_rate: float | None
+    series: list[LiveSeriesBucketResponse]
+    attention: list[LiveAttentionItemResponse]
+
+
+class OverviewMetricsSetRefResponse(BaseModel):
+    id: uuid.UUID
+    name: str
+    version: int
+    is_default: bool
+
+
+class OverviewExperimentRefResponse(BaseModel):
+    id: uuid.UUID
+    name: str
+    status: str
+    created_at: datetime
+    baseline_experiment_id: uuid.UUID | None
+
+
+class OverviewCompareMetricResponse(BaseModel):
+    name: str
+    metric: str
+    candidate: float | None
+    baseline: float | None
+    delta: float | None
+    status: str
+
+
+class OverviewCompareResponse(BaseModel):
+    candidate_experiment_id: uuid.UUID
+    baseline_experiment_id: uuid.UUID
+    metrics: list[OverviewCompareMetricResponse]
+
+
+class OverviewRegressionResponse(BaseModel):
+    name: str
+    delta: float | None
+    status: str
+
+
+class OfflineOverviewResponse(BaseModel):
+    n_datasets: int
+    metrics_set: OverviewMetricsSetRefResponse | None
+    reference_threshold: float | None
+    latest_experiment: OverviewExperimentRefResponse | None
+    release_ready: bool
+    compare: OverviewCompareResponse | None
+    regressions: list[OverviewRegressionResponse]
+
+
+class CalibrationAlertResponse(BaseModel):
+    kind: str
+    agreement_rate: float
+    n_reviewed: int
+
+
+class ProjectOverviewResponse(BaseModel):
+    generated_at: datetime
+    since: datetime
+    until: datetime
+    live: LiveOverviewResponse
+    offline: OfflineOverviewResponse
+    calibration_alerts: list[CalibrationAlertResponse]
+    warnings: list[str] = Field(default_factory=list)
