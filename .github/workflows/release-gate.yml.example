@@ -39,12 +39,12 @@ jobs:
       - name: Set up Python
         run: uv python install 3.12
 
-      - name: Install aiobs CLI
-        working-directory: cli
+      - name: Install aiobs-server (CLI)
+        working-directory: backend
         run: uv sync
 
       - name: Run release check
-        working-directory: cli
+        working-directory: backend
         env:
           AIOBS_BASE_URL: ${{ inputs.api_base_url }}
           AIOBS_PROJECT_ID: ${{ inputs.project_id }}

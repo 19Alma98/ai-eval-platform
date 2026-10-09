@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from aiobs.evaluation.outcomes import error, fail_min, item_verdict, pass_, skip
+from aiobs_server.evaluation.outcomes import error, fail_min, item_verdict, pass_, skip
 
 
 def test_skip() -> None:

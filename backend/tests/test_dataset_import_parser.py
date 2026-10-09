@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from aiobs.application.dataset_import import parse_import_payload, row_to_item_fields
+from aiobs_server.application.dataset_import import parse_import_payload, row_to_item_fields
 
 
 def test_parse_csv_requires_headers() -> None:

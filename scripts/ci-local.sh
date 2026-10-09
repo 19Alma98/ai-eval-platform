@@ -40,7 +40,11 @@ run_frontend() {
 
 for job in "$@"; do
   case "$job" in
-    backend)  run_python_job backend src/aiobs "--all-extras" ;;
+    backend)
+      echo "==> package-ui"
+      "$ROOT/scripts/package-ui.sh"
+      run_python_job backend src/aiobs_server "--all-extras"
+      ;;
     sdk)      run_python_job sdk src/aiobs "--extra dev" ;;
     cli)      run_python_job cli src/aiobs_cli "--extra dev" ;;
     frontend) run_frontend ;;

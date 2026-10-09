@@ -5,8 +5,8 @@ from dataclasses import dataclass, field
 
 import pytest
 
-from aiobs.application.evaluators import CreateEvaluatorCommand, EvaluatorConflictError
-from aiobs.application.metrics_sets import (
+from aiobs_server.application.evaluators import CreateEvaluatorCommand, EvaluatorConflictError
+from aiobs_server.application.metrics_sets import (
     CreateMetricsSet,
     CreateMetricsSetCommand,
     DeleteMetricsSet,
@@ -24,13 +24,13 @@ from aiobs.application.metrics_sets import (
     VersionMetricsSet,
     VersionMetricsSetCommand,
 )
-from aiobs.application.projects import ProjectNotFoundError
-from aiobs.domain.evaluator import Evaluator
-from aiobs.domain.experiment import Experiment
-from aiobs.domain.metrics_set import MetricsSet
-from aiobs.domain.project import Project
-from aiobs.evaluation.deterministic import register_deterministic_evaluators
-from aiobs.evaluation.registry import clear_registry
+from aiobs_server.application.projects import ProjectNotFoundError
+from aiobs_server.domain.evaluator import Evaluator
+from aiobs_server.domain.experiment import Experiment
+from aiobs_server.domain.metrics_set import MetricsSet
+from aiobs_server.domain.project import Project
+from aiobs_server.evaluation.deterministic import register_deterministic_evaluators
+from aiobs_server.evaluation.registry import clear_registry
 from tests.support.repositories import InMemoryEvaluatorRepository, InMemoryMetricsSetRepository
 
 
@@ -79,7 +79,7 @@ class StubCreateEvaluator:
     evaluators: InMemoryEvaluatorRepository
 
     async def execute(self, command: CreateEvaluatorCommand):
-        from aiobs.domain.evaluator import Evaluator
+        from aiobs_server.domain.evaluator import Evaluator
 
         evaluator = Evaluator.create(
             command.project_id,
@@ -134,7 +134,7 @@ async def test_ensure_creates_default_v1_with_evaluator_ids() -> None:
 async def test_ensure_backfills_missing_retrieval_default_entries() -> None:
     from datetime import UTC, datetime
 
-    from aiobs.domain.metrics_set import MetricsSetEntry
+    from aiobs_server.domain.metrics_set import MetricsSetEntry
 
     projects = InMemoryProjectRepository()
     project = await _seed_project(projects)
@@ -600,7 +600,7 @@ async def test_auto_assign_creates_new_evaluator_version_when_kind_evaluator_is_
 
 @pytest.mark.asyncio
 async def test_get_metrics_set_not_found() -> None:
-    from aiobs.application.metrics_sets import GetMetricsSet
+    from aiobs_server.application.metrics_sets import GetMetricsSet
 
     with pytest.raises(MetricsSetNotFoundError):
         await GetMetricsSet(InMemoryMetricsSetRepository()).execute(uuid.uuid4())

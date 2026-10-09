@@ -5,15 +5,15 @@ from typing import Literal
 import pytest
 from pydantic import BaseModel
 
-from aiobs.evaluation.judges.errors import (
+from aiobs_server.evaluation.judges.errors import (
     CONTEXT_OVERFLOW,
     LLM_ERROR,
     LLM_UNAVAILABLE,
     JudgeOutputError,
     classify_llm_error,
 )
-from aiobs.evaluation.judges.parsing import CallOptions, call_structured, extract_json_object
-from aiobs.evaluation.judges.schemas import (
+from aiobs_server.evaluation.judges.parsing import CallOptions, call_structured, extract_json_object
+from aiobs_server.evaluation.judges.schemas import (
     CoverageVerifyOut,
     ExtractOut,
     RubricOut,

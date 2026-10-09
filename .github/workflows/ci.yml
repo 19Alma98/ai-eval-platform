@@ -34,6 +34,17 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Package UI into aiobs_server
+        working-directory: .
+        run: ./scripts/package-ui.sh
+
       - name: Install uv
         uses: astral-sh/setup-uv@v4
         with:
@@ -52,7 +63,7 @@ jobs:
         run: uv run ruff format --check src
 
       - name: Mypy
-        run: uv run mypy src/aiobs
+        run: uv run mypy src/aiobs_server
 
       - name: Pytest
         run: uv run pytest -v

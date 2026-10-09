@@ -2,9 +2,9 @@ from __future__ import annotations
 
 import pytest
 
-from aiobs.evaluation.judges import prompts
-from aiobs.evaluation.judges.parsing import CallOptions
-from aiobs.evaluation.judges.rubric import level_to_score, rubric_judge
+from aiobs_server.evaluation.judges import prompts
+from aiobs_server.evaluation.judges.parsing import CallOptions
+from aiobs_server.evaluation.judges.rubric import level_to_score, rubric_judge
 from support.fake_llm import ScriptedJudgeLlm
 
 

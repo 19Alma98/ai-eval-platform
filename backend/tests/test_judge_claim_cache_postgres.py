@@ -1,12 +1,12 @@
 from __future__ import annotations
 
 import pytest
-from httpx import AsyncClient
+from httpx2 import AsyncClient
 
-from aiobs.domain.live_interaction import LiveInteraction, LiveInteractionScore
-from aiobs.domain.project import Project
-from aiobs.infrastructure.db import get_session_factory
-from aiobs.infrastructure.repositories import (
+from aiobs_server.domain.live_interaction import LiveInteraction, LiveInteractionScore
+from aiobs_server.domain.project import Project
+from aiobs_server.infrastructure.db import get_session_factory
+from aiobs_server.infrastructure.repositories import (
     SqlAlchemyLiveInteractionRepository,
     SqlAlchemyProjectRepository,
     SqlJudgeClaimCache,

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from aiobs.infrastructure.repositories import escape_like
+from aiobs_server.infrastructure.repositories import escape_like
 
 
 def test_escape_like_escapes_wildcards_and_backslash() -> None:

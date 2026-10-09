@@ -5,9 +5,9 @@ from collections.abc import AsyncIterator
 from typing import Any
 
 import pytest
-from httpx import ASGITransport, AsyncClient
+from httpx2 import ASGITransport, AsyncClient
 
-from aiobs.api.deps import (
+from aiobs_server.api.deps import (
     get_dataset_repository,
     get_evaluation_run_repository,
     get_evaluator_repository,
@@ -17,14 +17,14 @@ from aiobs.api.deps import (
     get_project_repository,
     get_trace_repository,
 )
-from aiobs.domain.dataset import Dataset, DatasetItem
-from aiobs.domain.evaluation import EvaluationResultRecord, EvaluationRun
-from aiobs.domain.evaluator import Evaluator
-from aiobs.domain.experiment import Experiment
-from aiobs.domain.experiment_output import ExperimentItemOutput
-from aiobs.domain.project import Project
-from aiobs.domain.trace import Trace
-from aiobs.main import create_app
+from aiobs_server.domain.dataset import Dataset, DatasetItem
+from aiobs_server.domain.evaluation import EvaluationResultRecord, EvaluationRun
+from aiobs_server.domain.evaluator import Evaluator
+from aiobs_server.domain.experiment import Experiment
+from aiobs_server.domain.experiment_output import ExperimentItemOutput
+from aiobs_server.domain.project import Project
+from aiobs_server.domain.trace import Trace
+from aiobs_server.main import create_app
 from tests.support.repositories import InMemoryMetricsSetRepository
 
 
@@ -198,7 +198,7 @@ class InMemoryExperimentItemOutputRepository:
 async def client() -> AsyncIterator[AsyncClient]:
     import os
 
-    from aiobs.config import get_settings
+    from aiobs_server.config import get_settings
 
     os.environ["CONTENT_CAPTURE_ENABLED"] = "true"
     get_settings.cache_clear()

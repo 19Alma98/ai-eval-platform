@@ -6,15 +6,15 @@ import re
 from collections.abc import AsyncIterator
 
 import pytest
-from httpx import ASGITransport, AsyncClient
+from httpx2 import ASGITransport, AsyncClient
 from sqlalchemy import text
 from sqlalchemy.engine.url import make_url
 from sqlalchemy.ext.asyncio import create_async_engine
 from sqlalchemy.pool import NullPool
 
-from aiobs.infrastructure.db import dispose_db, init_db
-from aiobs.infrastructure.models import Base
-from aiobs.main import create_app
+from aiobs_server.infrastructure.db import dispose_db, init_db
+from aiobs_server.infrastructure.models import Base
+from aiobs_server.main import create_app
 
 DEFAULT_TEST_DATABASE_URL = "postgresql+asyncpg://aiobs:aiobs@localhost:5434/aiobs_test"
 _DB_NAME_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
@@ -93,7 +93,7 @@ async def client() -> AsyncIterator[AsyncClient]:
     previous_capture = os.environ.get("CONTENT_CAPTURE_ENABLED")
     os.environ["DATABASE_URL"] = url
     os.environ["CONTENT_CAPTURE_ENABLED"] = "true"
-    from aiobs.config import get_settings
+    from aiobs_server.config import get_settings
 
     get_settings.cache_clear()
     await dispose_db()

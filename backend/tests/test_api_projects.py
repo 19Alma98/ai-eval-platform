@@ -5,11 +5,11 @@ from collections.abc import AsyncIterator
 from datetime import UTC, datetime
 
 import pytest
-from httpx import ASGITransport, AsyncClient
+from httpx2 import ASGITransport, AsyncClient
 
-from aiobs.api.deps import get_project_repository
-from aiobs.domain.project import Project
-from aiobs.main import create_app
+from aiobs_server.api.deps import get_project_repository
+from aiobs_server.domain.project import Project
+from aiobs_server.main import create_app
 
 
 class InMemoryProjectRepository:

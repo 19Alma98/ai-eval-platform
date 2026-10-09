@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import uuid
 
-from aiobs.domain.experiment import Experiment
+from aiobs_server.domain.experiment import Experiment
 
 
 def test_create_defaults_metrics_set_id_to_none() -> None:

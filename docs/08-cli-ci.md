@@ -2,15 +2,26 @@
 
 ## CLI
 
-Package: `aiobs-cli` (repo `cli/`), console script `aiobs`.
+Package: **`aiobs-server`** (repo `backend/`), console script `aiobs`.
 
 Implementation:
 - Typer
-- httpx
+- httpx2
 - Rich
 - PyYAML
+- uvicorn (for `aiobs ui`)
 
-Phase 4 command:
+The legacy `cli/` package (`aiobs-cli`) is deprecated; do not install it alongside `aiobs-server` for the console script.
+
+### Local UI
+
+```text
+aiobs ui [--host 127.0.0.1] [--port 8000] [--backend-store-uri URI] [--open/--no-open]
+```
+
+Defaults to SQLite at `sqlite+aiosqlite:///./aiobs.db`. Override with `--backend-store-uri` or `DATABASE_URL` for Postgres. Requires a packaged UI (`./scripts/package-ui.sh` or a release wheel).
+
+### Release gate
 
 ```text
 aiobs check --policy aiobs.yaml [--base-url URL] [--project-id ID] [--experiment-id ID] [--baseline-experiment-id ID]
@@ -18,20 +29,16 @@ aiobs check --policy aiobs.yaml [--base-url URL] [--project-id ID] [--experiment
 
 YAML may include meta fields (`api_base_url`, `project_id`, `experiment_id`, `baseline_experiment_id`) plus policy blocks. Flags override meta fields. The CLI strips meta keys and POSTs the remainder as `policy` to `POST /api/v1/projects/{project_id}/release-check`.
 
-Planned later (not Phase 4):
+Planned later:
 
 ```text
 aiobs init
 aiobs projects
 aiobs traces list
-aiobs traces show
-aiobs dataset create
-aiobs dataset add
-aiobs experiment run
 aiobs experiment compare
 ```
 
-`aiobs login` is not required for v0.1. The CLI talks to a local/self-hosted API on a trusted network. An optional API-key flag may be added later without becoming an MVP dependency.
+`aiobs login` is not required for v0.1. The CLI talks to a local/self-hosted API on a trusted network.
 
 ## CI integration
 

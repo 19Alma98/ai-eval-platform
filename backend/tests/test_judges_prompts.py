@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from aiobs.evaluation.judges import prompts
+from aiobs_server.evaluation.judges import prompts
 from support.fake_llm import claim_count, step_of
 
 

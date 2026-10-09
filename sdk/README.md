@@ -8,15 +8,24 @@ Python SDK for the AI Evaluation & Observability Platform: OTLP/HTTP export with
 pip install aiobs
 pip install 'aiobs[openai]'
 pip install 'aiobs[ai]'   # all tier-1 OpenInference instrumentors
+pip install 'aiobs[ui]'  # also installs aiobs-server (API + packaged UI)
 ```
 
-Individual extras: `openai`, `anthropic`, `langchain`, `llama-index`, `bedrock`.
+Individual extras: `openai`, `anthropic`, `langchain`, `llama-index`, `bedrock`, `ui`.
+
+Local platform (SQLite + UI):
+
+```bash
+pip install 'aiobs[ui]'
+aiobs ui   # http://127.0.0.1:8000 — creates ./aiobs.db
+```
 
 Develop from this monorepo:
 
 ```bash
 cd sdk && uv sync --extra dev
 uv sync --extra openai   # add OpenAI instrumentor
+# UI packaging (server wheel): ./scripts/package-ui.sh then cd backend && uv sync
 ```
 
 ## Quickstart
@@ -187,7 +196,8 @@ The SDK may set OpenInference `input` / `output` attributes on decorated spans (
 
 ## Monorepo note
 
-The FastAPI backend distribution is `aiobs-server` (`backend/`), but it still installs the top-level import package `aiobs`. **Do not** `pip install` the SDK into the backend virtualenv (or vice versa)—use separate venvs (`sdk/.venv`, example dirs) to avoid import clashes.
+- SDK distribution / import: `aiobs`
+- Server distribution: `aiobs-server`, import: `aiobs_server` (so both can share one venv via `aiobs[ui]`)
 
 ## Manual smoke (not CI-required)
 

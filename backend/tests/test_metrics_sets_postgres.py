@@ -5,19 +5,19 @@ from typing import Any
 from uuid import UUID
 
 import pytest
-from httpx import AsyncClient
+from httpx2 import AsyncClient
 from sqlalchemy.exc import IntegrityError
 
-from aiobs.application.evaluators import CreateEvaluator
-from aiobs.application.metrics_sets import (
+from aiobs_server.application.evaluators import CreateEvaluator
+from aiobs_server.application.metrics_sets import (
     EnsureProjectDefaultMetricsSet,
     find_or_create_evaluator_for_entry,
 )
-from aiobs.domain.evaluator import Evaluator
-from aiobs.domain.metrics_set import MetricsSet, MetricsSetEntry
-from aiobs.domain.project import Project
-from aiobs.infrastructure.db import get_session_factory
-from aiobs.infrastructure.repositories import (
+from aiobs_server.domain.evaluator import Evaluator
+from aiobs_server.domain.metrics_set import MetricsSet, MetricsSetEntry
+from aiobs_server.domain.project import Project
+from aiobs_server.infrastructure.db import get_session_factory
+from aiobs_server.infrastructure.repositories import (
     SqlAlchemyEvaluatorRepository,
     SqlAlchemyMetricsSetRepository,
     SqlAlchemyProjectRepository,

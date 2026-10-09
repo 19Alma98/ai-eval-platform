@@ -6,8 +6,8 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from aiobs.config import Settings
-from aiobs.infrastructure.llm import LiteLlmClient
+from aiobs_server.config import Settings
+from aiobs_server.infrastructure.llm import LiteLlmClient
 
 
 @pytest.mark.asyncio
@@ -23,7 +23,7 @@ async def test_litellm_client_passes_api_base() -> None:
     )
 
     with patch(
-        "aiobs.infrastructure.llm.litellm.acompletion",
+        "aiobs_server.infrastructure.llm.litellm.acompletion",
         new_callable=AsyncMock,
         return_value=fake_response,
     ) as mock_complete:
@@ -44,7 +44,7 @@ def _response(content: str | None) -> SimpleNamespace:
 async def test_complete_defaults_to_deterministic_settings() -> None:
     client = LiteLlmClient(Settings(llm_model="m", llm_temperature=0.0, llm_seed=42))
     with patch(
-        "aiobs.infrastructure.llm.litellm.acompletion",
+        "aiobs_server.infrastructure.llm.litellm.acompletion",
         new_callable=AsyncMock,
         return_value=_response('{"a": 1}'),
     ) as mock_complete:
@@ -70,7 +70,7 @@ async def test_complete_overrides_and_history() -> None:
         {"role": "user", "content": "fix it"},
     ]
     with patch(
-        "aiobs.infrastructure.llm.litellm.acompletion",
+        "aiobs_server.infrastructure.llm.litellm.acompletion",
         new_callable=AsyncMock,
         return_value=_response("{}"),
     ) as mock_complete:
@@ -89,7 +89,7 @@ async def test_complete_overrides_and_history() -> None:
 async def test_complete_returns_empty_string_for_empty_content() -> None:
     client = LiteLlmClient(Settings(llm_model="m"))
     with patch(
-        "aiobs.infrastructure.llm.litellm.acompletion",
+        "aiobs_server.infrastructure.llm.litellm.acompletion",
         new_callable=AsyncMock,
         return_value=_response(None),
     ):

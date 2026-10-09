@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import uuid
 
-from aiobs.application.live_judge_calibration import aggregate_calibration
-from aiobs.domain.live_interaction import LiveInteractionScore, LiveScoreReview
+from aiobs_server.application.live_judge_calibration import aggregate_calibration
+from aiobs_server.domain.live_interaction import LiveInteractionScore, LiveScoreReview
 
 
 def _score(

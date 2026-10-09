@@ -6,8 +6,8 @@ from datetime import UTC, datetime
 
 import pytest
 
-from aiobs.domain.evaluation import EvaluationResultRecord, EvaluationRun
-from aiobs.regression.aggregate import (
+from aiobs_server.domain.evaluation import EvaluationResultRecord, EvaluationRun
+from aiobs_server.regression.aggregate import (
     DELTA_THRESHOLD,
     MIN_APPLICABLE_ITEMS,
     Aggregates,

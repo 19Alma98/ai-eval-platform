@@ -4,8 +4,8 @@ import uuid
 
 import pytest
 
-from aiobs.domain.evaluation import EvaluationResultRecord
-from aiobs.regression.policy import (
+from aiobs_server.domain.evaluation import EvaluationResultRecord
+from aiobs_server.regression.policy import (
     EvaluatorMetricInput,
     InvalidPolicyError,
     RegressionDeltaInput,

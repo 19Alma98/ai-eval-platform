@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import pytest
 
-from aiobs.evaluation.judges import prompts
-from aiobs.evaluation.judges.claims import (
+from aiobs_server.evaluation.judges import prompts
+from aiobs_server.evaluation.judges.claims import (
     coverage_claim_records,
     extract_claims,
     f1,
@@ -14,8 +14,8 @@ from aiobs.evaluation.judges.claims import (
     verify_coverage,
     verify_support,
 )
-from aiobs.evaluation.judges.parsing import CallOptions
-from aiobs.evaluation.judges.schemas import CoverageVerdict, SupportVerdict
+from aiobs_server.evaluation.judges.parsing import CallOptions
+from aiobs_server.evaluation.judges.schemas import CoverageVerdict, SupportVerdict
 from support.fake_llm import ScriptedJudgeLlm
 
 _OPTS = CallOptions(model=None, temperature=None)

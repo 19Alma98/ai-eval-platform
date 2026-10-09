@@ -6,9 +6,9 @@ from collections.abc import AsyncIterator
 from typing import Any
 
 import pytest
-from httpx import ASGITransport, AsyncClient
+from httpx2 import ASGITransport, AsyncClient
 
-from aiobs.api.deps import (
+from aiobs_server.api.deps import (
     get_bind_otlp_traces,
     get_dataset_repository,
     get_evaluator_repository,
@@ -18,8 +18,8 @@ from aiobs.api.deps import (
     get_project_repository,
     get_trace_repository,
 )
-from aiobs.domain.trace import Trace
-from aiobs.main import create_app
+from aiobs_server.domain.trace import Trace
+from aiobs_server.main import create_app
 from tests.support.repositories import InMemoryEvaluatorRepository, InMemoryMetricsSetRepository
 from tests.test_api_experiment_outputs import (
     InMemoryDatasetRepository,
@@ -34,7 +34,7 @@ from tests.test_api_experiment_outputs import (
 async def client() -> AsyncIterator[AsyncClient]:
     import os
 
-    from aiobs.config import get_settings
+    from aiobs_server.config import get_settings
 
     os.environ["CONTENT_CAPTURE_ENABLED"] = "true"
     get_settings.cache_clear()
@@ -331,7 +331,7 @@ async def test_otlp_bind_capture_off_keeps_retrieval_context(
 ) -> None:
     import os
 
-    from aiobs.config import get_settings
+    from aiobs_server.config import get_settings
 
     os.environ["CONTENT_CAPTURE_ENABLED"] = "false"
     get_settings.cache_clear()
@@ -366,7 +366,7 @@ async def test_otlp_bind_capture_off_preserves_existing_actual_output(
 ) -> None:
     import os
 
-    from aiobs.config import get_settings
+    from aiobs_server.config import get_settings
 
     project_id, experiment_id, item_id = await _seed_rag_experiment(client)
     seed = await client.put(

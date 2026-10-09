@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from aiobs.evaluation.judges.claims import average_precision
+from aiobs_server.evaluation.judges.claims import average_precision
 
 
 def test_average_precision_all_irrelevant() -> None:

@@ -1,6 +1,6 @@
 from datetime import UTC, datetime, timedelta
 
-from aiobs.application.project_overview import bucket_size_for_range
+from aiobs_server.application.project_overview import bucket_size_for_range
 
 
 def test_bucket_size_short_range_is_5_minutes():

@@ -4,13 +4,13 @@ import uuid
 from collections.abc import AsyncIterator
 
 import pytest
-from httpx import ASGITransport, AsyncClient
+from httpx2 import ASGITransport, AsyncClient
 
-from aiobs.api.deps import get_dataset_repository, get_project_repository, get_trace_repository
-from aiobs.domain.dataset import Dataset, DatasetItem
-from aiobs.domain.project import Project
-from aiobs.domain.trace import Trace
-from aiobs.main import create_app
+from aiobs_server.api.deps import get_dataset_repository, get_project_repository, get_trace_repository
+from aiobs_server.domain.dataset import Dataset, DatasetItem
+from aiobs_server.domain.project import Project
+from aiobs_server.domain.trace import Trace
+from aiobs_server.main import create_app
 from tests.support.repositories import wire_metrics_pack_repos
 
 

@@ -6,7 +6,7 @@ from collections.abc import AsyncIterator
 
 import pytest
 
-from aiobs.infrastructure.db import dispose_db
+from aiobs_server.infrastructure.db import dispose_db
 
 pytest_plugins = ["support.postgres"]
 

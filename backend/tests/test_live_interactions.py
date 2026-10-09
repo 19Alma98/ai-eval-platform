@@ -6,9 +6,9 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 
-from aiobs.application.datasets import AddDatasetItem
-from aiobs.application.evaluators import CreateEvaluator
-from aiobs.application.live_interactions import (
+from aiobs_server.application.datasets import AddDatasetItem
+from aiobs_server.application.evaluators import CreateEvaluator
+from aiobs_server.application.live_interactions import (
     ListLiveInteractions,
     PromoteLiveInteraction,
     PromoteLiveInteractionCommand,
@@ -19,10 +19,10 @@ from aiobs.application.live_interactions import (
     UpsertLiveReviewCommand,
     score_is_failed,
 )
-from aiobs.application.metrics_sets import EnsureProjectDefaultMetricsSet
-from aiobs.domain.dataset import Dataset, DatasetItem
-from aiobs.domain.evaluator import Evaluator
-from aiobs.domain.live_interaction import (
+from aiobs_server.application.metrics_sets import EnsureProjectDefaultMetricsSet
+from aiobs_server.domain.dataset import Dataset, DatasetItem
+from aiobs_server.domain.evaluator import Evaluator
+from aiobs_server.domain.live_interaction import (
     GOLDLESS_METRIC_KINDS,
     DuplicateExternalIdError,
     LiveInteraction,
@@ -31,10 +31,10 @@ from aiobs.domain.live_interaction import (
     LiveScoreReview,
     filter_goldless_entries,
 )
-from aiobs.domain.metrics_set import MetricsSet, MetricsSetEntry
-from aiobs.domain.project import Project
-from aiobs.evaluation import bootstrap_evaluators
-from aiobs.evaluation.registry import clear_registry
+from aiobs_server.domain.metrics_set import MetricsSet, MetricsSetEntry
+from aiobs_server.domain.project import Project
+from aiobs_server.evaluation import bootstrap_evaluators
+from aiobs_server.evaluation.registry import clear_registry
 from support.fake_llm import ScriptedJudgeLlm
 
 FakeLlm = ScriptedJudgeLlm
@@ -732,8 +732,8 @@ async def test_failed_only_stops_at_limit() -> None:
 
 @pytest.mark.asyncio
 async def test_list_judge_warnings_use_unfiltered_per_kind_window() -> None:
-    from aiobs.evaluation.judges.errors import JUDGE_OUTPUT_INVALID
-    from aiobs.evaluation.judges.warnings import JUDGE_MODEL_UNSUITABLE
+    from aiobs_server.evaluation.judges.errors import JUDGE_OUTPUT_INVALID
+    from aiobs_server.evaluation.judges.warnings import JUDGE_MODEL_UNSUITABLE
 
     live = InMemoryLiveRepository()
     project_id = uuid.uuid4()

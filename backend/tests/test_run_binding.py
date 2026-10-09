@@ -3,8 +3,8 @@ from __future__ import annotations
 import uuid
 from datetime import UTC, datetime
 
-from aiobs.domain.trace import Span, Trace
-from aiobs.tracing.run_binding import (
+from aiobs_server.domain.trace import Span, Trace
+from aiobs_server.tracing.run_binding import (
     build_output_from_trace,
     extract_run_binding,
     traces_for_output_binding,

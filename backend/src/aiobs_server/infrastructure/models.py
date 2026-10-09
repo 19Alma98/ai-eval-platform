@@ -1,0 +1,634 @@
+from __future__ import annotations
+
+import uuid
+from datetime import datetime
+from typing import Any
+
+from sqlalchemy import (
+    JSON,
+    Boolean,
+    DateTime,
+    Float,
+    ForeignKey,
+    Index,
+    Integer,
+    String,
+    Text,
+    UniqueConstraint,
+    Uuid,
+    func,
+    text,
+)
+from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
+
+PortableJSON = JSON().with_variant(JSONB(), "postgresql")
+
+
+class Base(DeclarativeBase):
+    pass
+
+
+class ProjectModel(Base):
+    __tablename__ = "projects"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True)
+    name: Mapped[str] = mapped_column(String(200), nullable=False)
+    slug: Mapped[str] = mapped_column(String(200), nullable=False, unique=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+    )
+
+
+class TraceModel(Base):
+    __tablename__ = "traces"
+    __table_args__ = (
+        UniqueConstraint("project_id", "trace_id", name="uq_traces_project_trace_id"),
+        Index("ix_traces_project_start_time", "project_id", "start_time"),
+        Index("ix_traces_project_status", "project_id", "status"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True)
+    project_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey("projects.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    trace_id: Mapped[str] = mapped_column(String(32), nullable=False)
+    name: Mapped[str] = mapped_column(String(512), nullable=False)
+    status: Mapped[str] = mapped_column(String(32), nullable=False)
+    start_time: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    end_time: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    input: Mapped[Any | None] = mapped_column(PortableJSON, nullable=True)
+    output: Mapped[Any | None] = mapped_column(PortableJSON, nullable=True)
+    metadata_json: Mapped[dict[str, Any]] = mapped_column(
+        "metadata", PortableJSON, nullable=False, server_default="{}"
+    )
+    environment: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    user_id: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    session_id: Mapped[str | None] = mapped_column(String(200), nullable=True)
+
+    spans: Mapped[list[SpanModel]] = relationship(
+        "SpanModel",
+        back_populates="trace",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+    )
+
+
+class SpanModel(Base):
+    __tablename__ = "spans"
+    __table_args__ = (
+        Index("ix_spans_trace_pk", "trace_pk"),
+        Index("ix_spans_project_start_time", "project_id", "start_time"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True)
+    trace_pk: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey("traces.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    project_id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), nullable=False)
+    span_id: Mapped[str] = mapped_column(String(16), nullable=False)
+    parent_span_id: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    name: Mapped[str] = mapped_column(String(512), nullable=False)
+    kind: Mapped[str] = mapped_column(String(64), nullable=False)
+    start_time: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    end_time: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    status: Mapped[str] = mapped_column(String(32), nullable=False)
+    attributes: Mapped[dict[str, Any]] = mapped_column(
+        PortableJSON, nullable=False, server_default="{}"
+    )
+    events: Mapped[list[Any]] = mapped_column(PortableJSON, nullable=False, server_default="[]")
+
+    trace: Mapped[TraceModel] = relationship("TraceModel", back_populates="spans")
+
+
+class DatasetModel(Base):
+    __tablename__ = "datasets"
+    __table_args__ = (
+        UniqueConstraint("project_id", "name", "version", name="uq_datasets_project_name_version"),
+        Index("ix_datasets_project_created_at", "project_id", "created_at"),
+        Index("ix_datasets_project_task_type", "project_id", "task_type"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True)
+    project_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey("projects.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    name: Mapped[str] = mapped_column(String(200), nullable=False)
+    version: Mapped[int] = mapped_column(Integer, nullable=False, server_default="1")
+    description: Mapped[str | None] = mapped_column(String(2000), nullable=True)
+    task_type: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+    )
+
+    items: Mapped[list[DatasetItemModel]] = relationship(
+        "DatasetItemModel",
+        back_populates="dataset",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+    )
+
+
+class DatasetItemModel(Base):
+    __tablename__ = "dataset_items"
+    __table_args__ = (Index("ix_dataset_items_dataset_id", "dataset_id"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True)
+    dataset_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey("datasets.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    input: Mapped[Any] = mapped_column(PortableJSON, nullable=False)
+    expected_output: Mapped[Any | None] = mapped_column(PortableJSON, nullable=True)
+    actual_output: Mapped[Any | None] = mapped_column(PortableJSON, nullable=True)
+    context: Mapped[Any | None] = mapped_column(PortableJSON, nullable=True)
+    metadata_json: Mapped[dict[str, Any]] = mapped_column(
+        "metadata", PortableJSON, nullable=False, server_default="{}"
+    )
+    source_trace_id: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    source_span_id: Mapped[str | None] = mapped_column(String(16), nullable=True)
+
+    dataset: Mapped[DatasetModel] = relationship("DatasetModel", back_populates="items")
+
+
+class AppConfigModel(Base):
+    __tablename__ = "app_configs"
+    __table_args__ = (
+        UniqueConstraint(
+            "project_id", "name", "version", name="uq_app_configs_project_name_version"
+        ),
+        Index("ix_app_configs_project_name", "project_id", "name"),
+        Index("ix_app_configs_project_created_at", "project_id", "created_at"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True)
+    project_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey("projects.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    name: Mapped[str] = mapped_column(String(200), nullable=False)
+    version: Mapped[int] = mapped_column(Integer, nullable=False)
+    description: Mapped[str | None] = mapped_column(String(2000), nullable=True)
+    prompt: Mapped[dict[str, Any]] = mapped_column(
+        PortableJSON, nullable=False, server_default="{}"
+    )
+    model: Mapped[dict[str, Any]] = mapped_column(PortableJSON, nullable=False, server_default="{}")
+    retrieval: Mapped[dict[str, Any]] = mapped_column(
+        PortableJSON, nullable=False, server_default="{}"
+    )
+    content_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+    )
+
+
+class AppConfigAliasModel(Base):
+    __tablename__ = "app_config_aliases"
+
+    project_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey("projects.id", ondelete="CASCADE"),
+        primary_key=True,
+    )
+    name: Mapped[str] = mapped_column(String(200), primary_key=True)
+    app_config_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey("app_configs.id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+    )
+
+
+class EvaluatorModel(Base):
+    __tablename__ = "evaluators"
+    __table_args__ = (
+        UniqueConstraint(
+            "project_id", "name", "version", name="uq_evaluators_project_name_version"
+        ),
+        Index("ix_evaluators_project_id", "project_id"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True)
+    project_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey("projects.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    name: Mapped[str] = mapped_column(String(200), nullable=False)
+    type: Mapped[str] = mapped_column(String(32), nullable=False)
+    config: Mapped[dict[str, Any]] = mapped_column(
+        PortableJSON, nullable=False, server_default="{}"
+    )
+    version: Mapped[int] = mapped_column(Integer, nullable=False, server_default="1")
+
+
+class ExperimentModel(Base):
+    __tablename__ = "experiments"
+    __table_args__ = (Index("ix_experiments_project_created_at", "project_id", "created_at"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True)
+    project_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey("projects.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    name: Mapped[str] = mapped_column(String(200), nullable=False)
+    dataset_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey("datasets.id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    model_config_json: Mapped[dict[str, Any]] = mapped_column(
+        "model_config", PortableJSON, nullable=False, server_default="{}"
+    )
+    version: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    baseline_experiment_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey("experiments.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    app_config_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey("app_configs.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    metrics_set_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey("metrics_sets.id", ondelete="RESTRICT"),
+        nullable=True,
+    )
+    status: Mapped[str] = mapped_column(String(32), nullable=False, server_default="created")
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+    )
+
+
+class EvaluationRunModel(Base):
+    __tablename__ = "evaluation_runs"
+    __table_args__ = (Index("ix_evaluation_runs_experiment_id", "experiment_id"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True)
+    experiment_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey("experiments.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    evaluator_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey("evaluators.id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    status: Mapped[str] = mapped_column(String(32), nullable=False)
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    metadata_json: Mapped[dict[str, Any]] = mapped_column(
+        "metadata", PortableJSON, nullable=False, server_default="{}"
+    )
+
+    results: Mapped[list[EvaluationResultModel]] = relationship(
+        "EvaluationResultModel",
+        back_populates="run",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+    )
+
+
+class EvaluationResultModel(Base):
+    __tablename__ = "evaluation_results"
+    __table_args__ = (Index("ix_evaluation_results_run_item", "run_id", "dataset_item_id"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True)
+    run_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey("evaluation_runs.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    dataset_item_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey("dataset_items.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    score: Mapped[float | None] = mapped_column(Float, nullable=True)
+    label: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    explanation: Mapped[str | None] = mapped_column(String(4000), nullable=True)
+    metadata_json: Mapped[dict[str, Any]] = mapped_column(
+        "metadata", PortableJSON, nullable=False, server_default="{}"
+    )
+    duration_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)
+
+    run: Mapped[EvaluationRunModel] = relationship("EvaluationRunModel", back_populates="results")
+
+
+class MetricsSetModel(Base):
+    __tablename__ = "metrics_sets"
+    __table_args__ = (
+        UniqueConstraint(
+            "project_id",
+            "name",
+            "version",
+            name="uq_metrics_sets_project_name_version",
+        ),
+        Index(
+            "uq_metrics_sets_one_project_default",
+            "project_id",
+            unique=True,
+            postgresql_where=text("is_project_default"),
+            sqlite_where=text("is_project_default"),
+        ),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True)
+    project_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey("projects.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    name: Mapped[str] = mapped_column(String(200), nullable=False)
+    version: Mapped[int] = mapped_column(Integer, nullable=False, server_default="1")
+    description: Mapped[str | None] = mapped_column(String(2000), nullable=True)
+    is_project_default: Mapped[bool] = mapped_column(
+        Boolean,
+        nullable=False,
+        server_default=text("false"),
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+    )
+
+    entries: Mapped[list[MetricsSetEntryModel]] = relationship(
+        "MetricsSetEntryModel",
+        back_populates="metrics_set",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+    )
+
+
+class MetricsSetEntryModel(Base):
+    __tablename__ = "metrics_set_entries"
+    __table_args__ = (
+        UniqueConstraint(
+            "metrics_set_id",
+            "kind",
+            name="uq_metrics_set_entries_set_kind",
+        ),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True)
+    metrics_set_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey("metrics_sets.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    kind: Mapped[str] = mapped_column(String(64), nullable=False)
+    enabled: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    threshold: Mapped[float | None] = mapped_column(Float, nullable=True)
+    config: Mapped[dict[str, Any]] = mapped_column(
+        PortableJSON, nullable=False, server_default="{}"
+    )
+    evaluator_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey("evaluators.id", ondelete="RESTRICT"),
+        nullable=True,
+    )
+    is_default: Mapped[bool] = mapped_column(
+        Boolean,
+        nullable=False,
+        server_default=text("false"),
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+    )
+
+    metrics_set: Mapped[MetricsSetModel] = relationship(
+        "MetricsSetModel",
+        back_populates="entries",
+    )
+
+
+class ExperimentItemOutputModel(Base):
+    __tablename__ = "experiment_item_outputs"
+    __table_args__ = (
+        UniqueConstraint(
+            "experiment_id",
+            "dataset_item_id",
+            name="uq_experiment_item_outputs_exp_item",
+        ),
+        Index("ix_experiment_item_outputs_experiment_id", "experiment_id"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True)
+    experiment_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey("experiments.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    dataset_item_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey("dataset_items.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    actual_output: Mapped[Any | None] = mapped_column(PortableJSON, nullable=True)
+    context: Mapped[Any | None] = mapped_column(PortableJSON, nullable=True)
+    metadata_json: Mapped[dict[str, Any]] = mapped_column(
+        "metadata", PortableJSON, nullable=False, server_default="{}"
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+    )
+
+
+class LiveInteractionModel(Base):
+    __tablename__ = "live_interactions"
+    __table_args__ = (
+        UniqueConstraint(
+            "project_id",
+            "external_id",
+            name="uq_live_interactions_project_external_id",
+        ),
+        Index("ix_live_interactions_project_created_at", "project_id", "created_at"),
+        Index("ix_live_interactions_project_judge_status", "project_id", "judge_status"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True)
+    project_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey("projects.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    question: Mapped[str] = mapped_column(Text, nullable=False)
+    answer: Mapped[str] = mapped_column(Text, nullable=False)
+    documents: Mapped[list[Any]] = mapped_column(PortableJSON, nullable=False, server_default="[]")
+    metadata_json: Mapped[dict[str, Any]] = mapped_column(
+        "metadata", PortableJSON, nullable=False, server_default="{}"
+    )
+    external_id: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    judge_status: Mapped[str] = mapped_column(String(32), nullable=False)
+    metrics_set_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey("metrics_sets.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    score_warning: Mapped[str | None] = mapped_column(Text, nullable=True)
+    error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+    )
+    scored_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    scores: Mapped[list[LiveInteractionScoreModel]] = relationship(
+        "LiveInteractionScoreModel",
+        back_populates="live_interaction",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+    )
+    review: Mapped[LiveReviewModel | None] = relationship(
+        "LiveReviewModel",
+        back_populates="live_interaction",
+        uselist=False,
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+    )
+
+
+class LiveInteractionScoreModel(Base):
+    __tablename__ = "live_interaction_scores"
+    __table_args__ = (Index("ix_live_interaction_scores_interaction_id", "live_interaction_id"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True)
+    live_interaction_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey("live_interactions.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    evaluator_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey("evaluators.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    kind: Mapped[str] = mapped_column(String(64), nullable=False)
+    score: Mapped[float | None] = mapped_column(Float, nullable=True)
+    label: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    explanation: Mapped[str | None] = mapped_column(Text, nullable=True)
+    threshold: Mapped[float | None] = mapped_column(Float, nullable=True)
+    metadata_json: Mapped[dict[str, Any]] = mapped_column(
+        "metadata", PortableJSON, nullable=False, server_default="{}", default=dict
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+    )
+
+    live_interaction: Mapped[LiveInteractionModel] = relationship(
+        "LiveInteractionModel",
+        back_populates="scores",
+    )
+    score_review: Mapped[LiveScoreReviewModel | None] = relationship(
+        "LiveScoreReviewModel",
+        back_populates="score",
+        uselist=False,
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+    )
+
+
+class LiveScoreReviewModel(Base):
+    __tablename__ = "live_score_reviews"
+    __table_args__ = (
+        UniqueConstraint("live_interaction_score_id", name="uq_live_score_reviews_score_id"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True)
+    live_interaction_score_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey("live_interaction_scores.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    verdict: Mapped[str] = mapped_column(String(32), nullable=False)
+    corrected_explanation: Mapped[str | None] = mapped_column(Text, nullable=True)
+    note: Mapped[str | None] = mapped_column(Text, nullable=True)
+    reviewer: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+    )
+
+    score: Mapped[LiveInteractionScoreModel] = relationship(
+        "LiveInteractionScoreModel",
+        back_populates="score_review",
+    )
+
+
+class LiveReviewModel(Base):
+    __tablename__ = "live_reviews"
+    __table_args__ = (
+        UniqueConstraint("live_interaction_id", name="uq_live_reviews_interaction_id"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True)
+    live_interaction_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey("live_interactions.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    verdict: Mapped[str] = mapped_column(String(32), nullable=False)
+    note: Mapped[str | None] = mapped_column(Text, nullable=True)
+    reviewer: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+    )
+
+    live_interaction: Mapped[LiveInteractionModel] = relationship(
+        "LiveInteractionModel",
+        back_populates="review",
+    )
+
+
+class JudgeClaimCacheModel(Base):
+    __tablename__ = "judge_claim_cache"
+
+    key: Mapped[str] = mapped_column(String(64), primary_key=True)
+    prompt_version: Mapped[str] = mapped_column(String(128), nullable=False)
+    model: Mapped[str] = mapped_column(String(200), nullable=False)
+    claims: Mapped[list[str]] = mapped_column(PortableJSON, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+    )

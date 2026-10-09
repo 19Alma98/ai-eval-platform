@@ -6,17 +6,17 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 
-from aiobs.application.compare import CompareExperiments
-from aiobs.application.live_judge_calibration import SummarizeLiveJudgeCalibration
-from aiobs.application.project_overview import GetProjectOverview
-from aiobs.application.projects import ProjectNotFoundError
-from aiobs.domain.dataset import Dataset
-from aiobs.domain.evaluation import EvaluationResultRecord, EvaluationRun
-from aiobs.domain.evaluator import Evaluator
-from aiobs.domain.experiment import Experiment
-from aiobs.domain.live_interaction import LiveInteraction, LiveInteractionScore
-from aiobs.domain.live_overview import LiveInRangeResult, LiveInteractionInRange
-from aiobs.domain.project import Project
+from aiobs_server.application.compare import CompareExperiments
+from aiobs_server.application.live_judge_calibration import SummarizeLiveJudgeCalibration
+from aiobs_server.application.project_overview import GetProjectOverview
+from aiobs_server.application.projects import ProjectNotFoundError
+from aiobs_server.domain.dataset import Dataset
+from aiobs_server.domain.evaluation import EvaluationResultRecord, EvaluationRun
+from aiobs_server.domain.evaluator import Evaluator
+from aiobs_server.domain.experiment import Experiment
+from aiobs_server.domain.live_interaction import LiveInteraction, LiveInteractionScore
+from aiobs_server.domain.live_overview import LiveInRangeResult, LiveInteractionInRange
+from aiobs_server.domain.project import Project
 
 
 class InMemoryProjectRepository:

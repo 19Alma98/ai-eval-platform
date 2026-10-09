@@ -5,9 +5,9 @@ from collections.abc import AsyncIterator
 from typing import Any
 
 import pytest
-from httpx import ASGITransport, AsyncClient
+from httpx2 import ASGITransport, AsyncClient
 
-from aiobs.api.deps import (
+from aiobs_server.api.deps import (
     get_app_config_repository,
     get_dataset_repository,
     get_evaluator_repository,
@@ -15,9 +15,9 @@ from aiobs.api.deps import (
     get_metrics_set_repository,
     get_project_repository,
 )
-from aiobs.domain.dataset import Dataset
-from aiobs.domain.experiment import Experiment
-from aiobs.main import create_app
+from aiobs_server.domain.dataset import Dataset
+from aiobs_server.domain.experiment import Experiment
+from aiobs_server.main import create_app
 from tests.support.repositories import InMemoryEvaluatorRepository, InMemoryMetricsSetRepository
 from tests.test_api_app_configs import InMemoryAppConfigRepository, InMemoryProjectRepository
 

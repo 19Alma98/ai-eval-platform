@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import pytest
 
-from aiobs.evaluation.deterministic import MustContainEvaluator
-from aiobs.evaluation.protocol import EvaluationSample
+from aiobs_server.evaluation.deterministic import MustContainEvaluator
+from aiobs_server.evaluation.protocol import EvaluationSample
 
 
 @pytest.mark.asyncio

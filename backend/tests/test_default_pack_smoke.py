@@ -4,10 +4,10 @@ from __future__ import annotations
 
 import pytest
 
-from aiobs.domain.metrics_set import DEFAULT_RAG_SET_ENTRIES
-from aiobs.evaluation import bootstrap_evaluators
-from aiobs.evaluation.protocol import EvaluationSample
-from aiobs.evaluation.registry import clear_registry, create_evaluator
+from aiobs_server.domain.metrics_set import DEFAULT_RAG_SET_ENTRIES
+from aiobs_server.evaluation import bootstrap_evaluators
+from aiobs_server.evaluation.protocol import EvaluationSample
+from aiobs_server.evaluation.registry import clear_registry, create_evaluator
 from support.fake_llm import ScriptedJudgeLlm
 
 _SAMPLE = EvaluationSample(

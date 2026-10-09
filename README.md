@@ -7,13 +7,29 @@ Open-source, self-hosted platform for AI quality engineering: turn production tr
 
 **Deployment model (v0.1):** trusted network only (localhost / private Docker network). There is **no built-in authentication**. Do not expose the stack on a public network without an external auth layer (reverse proxy, VPN, or cluster network policy).
 
-## Quickstart
+## Quickstart (local UI)
+
+Zero external infra — SQLite file + packaged UI in one process:
+
+```bash
+# from a built/release install, or after ./scripts/package-ui.sh + pip install -e backend
+pip install 'aiobs[ui]'   # SDK + aiobs-server (includes UI)
+aiobs ui                  # http://127.0.0.1:8000  → creates ./aiobs.db
+```
+
+Optional Postgres (production / Compose):
+
+```bash
+aiobs ui --backend-store-uri 'postgresql+asyncpg://aiobs:aiobs@localhost:5434/aiobs'
+```
+
+## Quickstart (Docker Compose)
 
 ```bash
 docker compose up --build
 ```
 
-Frontend UI: http://localhost:3000 (included when the `web` service is up).
+Frontend UI: http://localhost:3000 (Compose `web` service). API: http://localhost:8000.
 
 Check health:
 
@@ -28,7 +44,7 @@ Dataset-first RAG loop: gold test set → metrics pack → SDK-bound runs (`bind
 1. `docker compose up --build` (API needs `CONTENT_CAPTURE_ENABLED=true`; Compose sets this)
 2. Pull two chat models, e.g. `ollama pull gemma4:e2b` and `ollama pull tinyllama`
 3. Sync SDK: `cd sdk && uv sync --extra openai --extra dev && cd ..`
-4. Sync CLI: `cd cli && uv sync && cd ..`
+4. Sync server/CLI: `cd backend && uv sync && cd ..`
 5. Run: `python scripts/portfolio_demo.py`
 
 In the UI: **Test set → Metriche → Runs**. Release policy uses pack names: `hit_at_k`, `groundedness`, `correctness`, `latency`.
@@ -93,7 +109,7 @@ curl "http://localhost:8000/api/v1/projects/<project-uuid>/traces/<otel-trace-id
 After evaluating an experiment, check a YAML policy:
 
 ```bash
-cd cli && uv sync
+cd backend && uv sync
 uv run aiobs check --policy ../examples/aiobs.yaml \
   --base-url http://localhost:8000 \
   --project-id <project-uuid> \
@@ -123,7 +139,7 @@ cd backend
 cp .env.example .env   # edit as needed
 uv sync --all-extras
 uv run alembic upgrade head
-uv run uvicorn aiobs.main:app --reload --host 0.0.0.0 --port 8000
+uv run uvicorn aiobs_server.main:app --reload --host 0.0.0.0 --port 8000
 ```
 
 Requires PostgreSQL. With Compose, Postgres is published on host port **5434** (`DATABASE_URL=postgresql+asyncpg://aiobs:aiobs@localhost:5434/aiobs`).

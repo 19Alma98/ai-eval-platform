@@ -6,19 +6,19 @@ from datetime import UTC, datetime
 
 import pytest
 
-from aiobs.application.evaluate import (
+from aiobs_server.application.evaluate import (
     EvaluateExperiment,
     EvaluateExperimentCommand,
     EvaluateExperimentResult,
     ScoreExperimentFromPack,
     ScoreExperimentFromPackCommand,
 )
-from aiobs.application.metrics_sets import MetricsSetValidationError
-from aiobs.domain.dataset import DatasetItem
-from aiobs.domain.evaluation import EvaluationRun
-from aiobs.domain.evaluator import Evaluator
-from aiobs.domain.experiment import Experiment
-from aiobs.domain.metrics_set import MetricsSet, MetricsSetEntry
+from aiobs_server.application.metrics_sets import MetricsSetValidationError
+from aiobs_server.domain.dataset import DatasetItem
+from aiobs_server.domain.evaluation import EvaluationRun
+from aiobs_server.domain.evaluator import Evaluator
+from aiobs_server.domain.experiment import Experiment
+from aiobs_server.domain.metrics_set import MetricsSet, MetricsSetEntry
 
 
 @dataclass

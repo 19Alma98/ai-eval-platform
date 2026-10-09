@@ -4,11 +4,11 @@ from typing import Any
 
 import pytest
 
-from aiobs.evaluation import bootstrap_evaluators
-from aiobs.evaluation.judges.cache import InMemoryJudgeClaimCache
-from aiobs.evaluation.judges.evaluators import JudgeDefaults, create_llm_judge
-from aiobs.evaluation.protocol import EvaluationSample
-from aiobs.evaluation.registry import clear_registry, create_evaluator
+from aiobs_server.evaluation import bootstrap_evaluators
+from aiobs_server.evaluation.judges.cache import InMemoryJudgeClaimCache
+from aiobs_server.evaluation.judges.evaluators import JudgeDefaults, create_llm_judge
+from aiobs_server.evaluation.protocol import EvaluationSample
+from aiobs_server.evaluation.registry import clear_registry, create_evaluator
 from support.fake_llm import ScriptedJudgeLlm
 
 _DEFAULTS = JudgeDefaults(model="judge-default")

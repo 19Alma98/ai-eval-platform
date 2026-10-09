@@ -2,16 +2,16 @@ from __future__ import annotations
 
 import uuid
 
-from aiobs.api.deps import (
+from aiobs_server.api.deps import (
     get_app_config_repository,
     get_evaluator_repository,
     get_experiment_repository,
     get_metrics_set_repository,
 )
-from aiobs.domain.app_config import AppConfig, AppConfigAlias
-from aiobs.domain.evaluator import Evaluator
-from aiobs.domain.experiment import Experiment
-from aiobs.domain.metrics_set import MetricsSet
+from aiobs_server.domain.app_config import AppConfig, AppConfigAlias
+from aiobs_server.domain.evaluator import Evaluator
+from aiobs_server.domain.experiment import Experiment
+from aiobs_server.domain.metrics_set import MetricsSet
 
 
 class InMemoryAppConfigRepository:

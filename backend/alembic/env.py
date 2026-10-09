@@ -5,8 +5,8 @@ from sqlalchemy import pool
 from sqlalchemy.engine import Connection
 from sqlalchemy.ext.asyncio import async_engine_from_config
 
-from aiobs.config import get_settings
-from aiobs.infrastructure.models import Base
+from aiobs_server.config import get_settings
+from aiobs_server.infrastructure.models import Base
 
 config = context.config
 if config.config_file_name is not None:

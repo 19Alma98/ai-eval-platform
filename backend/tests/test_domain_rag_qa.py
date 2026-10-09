@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from aiobs.domain.rag_qa import normalize_expected_doc_ids, validate_rag_qa_item
+from aiobs_server.domain.rag_qa import normalize_expected_doc_ids, validate_rag_qa_item
 
 
 def test_normalize_pipe_and_list() -> None:

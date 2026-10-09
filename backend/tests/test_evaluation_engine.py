@@ -6,11 +6,11 @@ from datetime import UTC, datetime
 
 import pytest
 
-from aiobs.domain.dataset import DatasetItem
-from aiobs.domain.evaluation import EvaluationRun
-from aiobs.domain.evaluator import Evaluator
-from aiobs.domain.trace import Span, Trace
-from aiobs.evaluation.deterministic import (
+from aiobs_server.domain.dataset import DatasetItem
+from aiobs_server.domain.evaluation import EvaluationRun
+from aiobs_server.domain.evaluator import Evaluator
+from aiobs_server.domain.trace import Span, Trace
+from aiobs_server.evaluation.deterministic import (
     ContainsEvaluator,
     CostEvaluator,
     ExactMatchEvaluator,
@@ -21,10 +21,10 @@ from aiobs.evaluation.deterministic import (
     ToolCallSuccessEvaluator,
     register_deterministic_evaluators,
 )
-from aiobs.evaluation.protocol import EvaluationSample
-from aiobs.evaluation.registry import clear_registry, create_evaluator, list_registered_kinds
-from aiobs.evaluation.runner import EvaluationRunner
-from aiobs.evaluation.trace_context import build_eval_context_from_trace
+from aiobs_server.evaluation.protocol import EvaluationSample
+from aiobs_server.evaluation.registry import clear_registry, create_evaluator, list_registered_kinds
+from aiobs_server.evaluation.runner import EvaluationRunner
+from aiobs_server.evaluation.trace_context import build_eval_context_from_trace
 
 
 @pytest.fixture(autouse=True)
@@ -183,7 +183,7 @@ async def test_runner_pass_threshold_fails_below_and_passes_at_or_above() -> Non
             self._score = score
 
         async def evaluate(self, sample):
-            from aiobs.evaluation.protocol import EvaluationResult
+            from aiobs_server.evaluation.protocol import EvaluationResult
 
             return EvaluationResult(
                 score=self._score,
@@ -215,7 +215,7 @@ async def test_runner_without_threshold_fails_on_fail_label() -> None:
         name = "partial"
 
         async def evaluate(self, sample):
-            from aiobs.evaluation.protocol import EvaluationResult
+            from aiobs_server.evaluation.protocol import EvaluationResult
 
             return EvaluationResult(score=0.6, label="FAIL", explanation="ok", metadata={})
 
@@ -233,7 +233,7 @@ async def test_runner_fail_label_above_threshold_fails() -> None:
         name = "judge"
 
         async def evaluate(self, sample):
-            from aiobs.evaluation.protocol import EvaluationResult
+            from aiobs_server.evaluation.protocol import EvaluationResult
 
             return EvaluationResult(score=0.9, label="FAIL", explanation="x", metadata={})
 
@@ -256,7 +256,7 @@ async def test_runner_rewrites_pass_label_below_threshold() -> None:
         name = "judge"
 
         async def evaluate(self, sample):
-            from aiobs.evaluation.protocol import EvaluationResult
+            from aiobs_server.evaluation.protocol import EvaluationResult
 
             return EvaluationResult(score=0.5, label="PASS", explanation="x", metadata={"m": 1})
 

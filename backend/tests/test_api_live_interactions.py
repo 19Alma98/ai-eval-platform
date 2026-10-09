@@ -5,26 +5,26 @@ from collections.abc import AsyncIterator
 from datetime import datetime
 
 import pytest
-from httpx import ASGITransport, AsyncClient
+from httpx2 import ASGITransport, AsyncClient
 
-from aiobs.api.deps import (
+from aiobs_server.api.deps import (
     get_dataset_repository,
     get_evaluator_repository,
     get_live_interaction_repository,
     get_metrics_set_repository,
     get_project_repository,
 )
-from aiobs.domain.dataset import Dataset, DatasetItem
-from aiobs.domain.live_interaction import (
+from aiobs_server.domain.dataset import Dataset, DatasetItem
+from aiobs_server.domain.live_interaction import (
     LiveInteraction,
     LiveInteractionScore,
     LiveReview,
     LiveScoreReview,
 )
-from aiobs.domain.project import Project
-from aiobs.evaluation import bootstrap_evaluators
-from aiobs.evaluation.registry import clear_registry
-from aiobs.main import create_app
+from aiobs_server.domain.project import Project
+from aiobs_server.evaluation import bootstrap_evaluators
+from aiobs_server.evaluation.registry import clear_registry
+from aiobs_server.main import create_app
 from support.fake_llm import ScriptedJudgeLlm
 from support.repositories import InMemoryEvaluatorRepository, InMemoryMetricsSetRepository
 

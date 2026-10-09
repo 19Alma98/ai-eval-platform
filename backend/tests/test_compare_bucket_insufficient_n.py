@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import uuid
 
-from aiobs.application.compare import ExperimentComparison
-from aiobs.regression.aggregate import Aggregates, compare_evaluator_metrics
+from aiobs_server.application.compare import ExperimentComparison
+from aiobs_server.regression.aggregate import Aggregates, compare_evaluator_metrics
 
 
 def test_experiment_comparison_buckets_insufficient_n() -> None:

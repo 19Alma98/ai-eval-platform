@@ -1,25 +1,9 @@
-"use client";
+import PageClient from "./page-client";
 
-import { useParams } from "next/navigation";
-import { AppConfigFamilyDetail } from "@/features/app-configs/app-config-family-detail";
-import { ProjectRequired } from "@/components/project-required";
-import { useProjectId } from "@/lib/project-store";
+export function generateStaticParams() {
+  return [{ name: "_" }];
+}
 
-export default function AppConfigFamilyPage() {
-  const params = useParams();
-  const rawName = typeof params.name === "string" ? params.name : "";
-  const familyName = rawName ? decodeURIComponent(rawName) : "";
-  const { projectId } = useProjectId();
-
-  if (!projectId) {
-    return <ProjectRequired />;
-  }
-
-  if (!familyName) {
-    return null;
-  }
-
-  return (
-    <AppConfigFamilyDetail projectId={projectId} familyName={familyName} />
-  );
+export default function Page() {
+  return <PageClient />;
 }

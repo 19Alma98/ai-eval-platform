@@ -5,10 +5,10 @@ from datetime import UTC, datetime
 
 import pytest
 
-from aiobs.application.compare import CompareExperiments, SummarizeExperiment
-from aiobs.domain.evaluation import EvaluationResultRecord, EvaluationRun
-from aiobs.domain.evaluator import Evaluator
-from aiobs.domain.experiment import Experiment
+from aiobs_server.application.compare import CompareExperiments, SummarizeExperiment
+from aiobs_server.domain.evaluation import EvaluationResultRecord, EvaluationRun
+from aiobs_server.domain.evaluator import Evaluator
+from aiobs_server.domain.experiment import Experiment
 
 
 class _FakeExperiments:
