@@ -1,7 +1,7 @@
 [project]
-name = "aiobs"
+name = "aiobs-server"
 version = "0.1.0"
-description = "AI Evaluation & Observability Platform backend"
+description = "AI Evaluation & Observability Platform server (FastAPI backend)"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
@@ -39,6 +39,9 @@ examples = [
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/aiobs"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"

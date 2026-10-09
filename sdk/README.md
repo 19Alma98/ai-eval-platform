@@ -187,7 +187,7 @@ The SDK may set OpenInference `input` / `output` attributes on decorated spans (
 
 ## Monorepo note
 
-The FastAPI backend in `backend/` is also named `aiobs` on PyPI paths inside the repo. **Do not** `pip install` the SDK into the backend virtualenv (or vice versa)—use separate venvs (`sdk/.venv`, example dirs) to avoid import clashes.
+The FastAPI backend distribution is `aiobs-server` (`backend/`), but it still installs the top-level import package `aiobs`. **Do not** `pip install` the SDK into the backend virtualenv (or vice versa)—use separate venvs (`sdk/.venv`, example dirs) to avoid import clashes.
 
 ## Manual smoke (not CI-required)
 
