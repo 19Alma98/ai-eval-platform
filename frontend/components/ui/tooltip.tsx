@@ -31,7 +31,25 @@ type TooltipTriggerProps = React.ComponentProps<"button"> & {
 
 function resolveTooltipTrigger(props: TooltipTriggerProps) {
   const { render, children, asChild: _asChild, ...buttonProps } = props
-  const trigger = render ?? children
+
+  if (render && React.isValidElement(render)) {
+    const triggerProps = render.props as React.HTMLAttributes<HTMLElement> & {
+      className?: string
+      children?: React.ReactNode
+    }
+    return React.cloneElement(
+      render,
+      {
+        ...buttonProps,
+        ...triggerProps,
+        "data-slot": "tooltip-trigger",
+        className: cn(triggerProps.className),
+        children: children ?? triggerProps.children,
+      } as Record<string, unknown>
+    )
+  }
+
+  const trigger = children
   if (React.isValidElement(trigger)) {
     const triggerProps = trigger.props as React.HTMLAttributes<HTMLElement> & {
       className?: string
