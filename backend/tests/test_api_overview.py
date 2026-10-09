@@ -6,6 +6,7 @@ from datetime import UTC, datetime, timedelta
 import pytest
 from httpx import AsyncClient
 
+from aiobs.application.compare import CompareExperiments
 from aiobs.evaluation import bootstrap_evaluators
 from aiobs.evaluation.registry import clear_registry
 from support.fake_llm import ScriptedJudgeLlm
@@ -184,6 +185,87 @@ async def test_overview_offline_compare_with_baseline(client: AsyncClient) -> No
     assert metrics[0]["status"] == "regressed"
     assert offline["regressions"]
     assert offline["regressions"][0]["status"] == "regressed"
+
+
+@pytest.mark.asyncio
+async def test_overview_compare_failure_degraded(
+    client: AsyncClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    async def _compare_raises(self: CompareExperiments, *args: object, **kwargs: object) -> None:
+        raise RuntimeError("compare unavailable")
+
+    monkeypatch.setattr(CompareExperiments, "execute", _compare_raises)
+
+    project = await client.post(
+        "/api/v1/projects",
+        json={"name": "Compare Fail", "slug": f"cmp-fail-{uuid.uuid4().hex[:8]}"},
+    )
+    assert project.status_code == 201
+    project_id = project.json()["id"]
+
+    dataset = await client.post(
+        f"/api/v1/projects/{project_id}/datasets",
+        json={"name": "shared", "task_type": "classification"},
+    )
+    assert dataset.status_code == 201
+    dataset_id = dataset.json()["id"]
+    for idx in range(2):
+        item = await client.post(
+            f"/api/v1/datasets/{dataset_id}/items",
+            json={
+                "input": f"q{idx}",
+                "expected_output": "a",
+                "actual_output": "a",
+            },
+        )
+        assert item.status_code == 201
+
+    evaluator = await client.post(
+        f"/api/v1/projects/{project_id}/evaluators",
+        json={
+            "name": "exact",
+            "type": "deterministic",
+            "config": {"kind": "exact_match"},
+        },
+    )
+    assert evaluator.status_code == 201
+    evaluator_id = evaluator.json()["id"]
+
+    baseline = await client.post(
+        f"/api/v1/projects/{project_id}/experiments",
+        json={"name": "baseline", "dataset_id": dataset_id},
+    )
+    assert baseline.status_code == 201
+    baseline_id = baseline.json()["id"]
+
+    candidate = await client.post(
+        f"/api/v1/projects/{project_id}/experiments",
+        json={
+            "name": "candidate",
+            "dataset_id": dataset_id,
+            "baseline_experiment_id": baseline_id,
+        },
+    )
+    assert candidate.status_code == 201
+    candidate_id = candidate.json()["id"]
+
+    for experiment_id in (baseline_id, candidate_id):
+        evaluated = await client.post(
+            f"/api/v1/experiments/{experiment_id}/evaluate",
+            json={"evaluator_ids": [evaluator_id]},
+        )
+        assert evaluated.status_code == 200
+
+    since = datetime.now(tz=UTC) - timedelta(hours=24)
+    resp = await client.get(
+        f"/api/v1/projects/{project_id}/overview",
+        params={"since": since.isoformat()},
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["offline"]["compare"] is None
+    assert body["offline"]["latest_experiment"]["id"] == candidate_id
+    assert "compare_unavailable" in body["warnings"]
 
 
 @pytest.mark.asyncio
