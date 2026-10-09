@@ -5,6 +5,27 @@ import type {
 
 export const OVERVIEW_ATTENTION_LIMIT = 8;
 
+const OVERVIEW_WARNING_MESSAGES: Record<string, string> = {
+  compare_unavailable:
+    "Offline compare is temporarily unavailable; experiment cards may be incomplete.",
+  calibration_unavailable:
+    "Judge calibration could not be loaded; calibration alerts are hidden.",
+  live_truncated:
+    "This time range has more than 10,000 live interactions; KPIs and charts may undercount.",
+};
+
+export function overviewWarningMessages(warnings: string[]): string[] {
+  const seen = new Set<string>();
+  const messages: string[] = [];
+  for (const code of warnings) {
+    const message = OVERVIEW_WARNING_MESSAGES[code] ?? code;
+    if (seen.has(message)) continue;
+    seen.add(message);
+    messages.push(message);
+  }
+  return messages;
+}
+
 export function shouldShowLiveChart(series: LiveSeriesBucket[]): boolean {
   const nonEmpty = series.filter((b) => b.n > 0).length;
   return nonEmpty >= 4;

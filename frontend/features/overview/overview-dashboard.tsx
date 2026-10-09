@@ -23,6 +23,7 @@ import {
   buildLoopCards,
   mapOverviewToDualKpi,
   mergeAttentionItems,
+  overviewWarningMessages,
 } from "./map-overview";
 
 function OverviewSkeleton({ className }: { className?: string }) {
@@ -79,20 +80,12 @@ export function OverviewDashboard() {
 
   const overview = overviewQuery.data;
   const loading = overviewQuery.isLoading && !overview;
-
-  if (overviewQuery.isError) {
-    return (
-      <ErrorState
-        title="Could not load overview"
-        message={formatErrorForUi(overviewQuery.error)}
-        onRetry={() => void overviewQuery.refetch()}
-      />
-    );
-  }
+  const loadFailed = overviewQuery.isError && !overview;
 
   const dualKpi = overview ? mapOverviewToDualKpi(overview) : null;
   const loopCards = overview ? buildLoopCards(overview) : null;
   const attentionRows = overview ? mergeAttentionItems(overview) : [];
+  const warningMessages = overview ? overviewWarningMessages(overview.warnings) : [];
 
   return (
     <div className="flex flex-col gap-6">
@@ -119,11 +112,30 @@ export function OverviewDashboard() {
         glossary="Where you are in the quality loop — live signal and offline readiness in one place."
       />
 
+      {warningMessages.length > 0 ? (
+        <div
+          role="status"
+          className="rounded-md border border-status-warn bg-status-warn-bg px-3 py-2 text-sm text-status-warn"
+        >
+          {warningMessages.map((message) => (
+            <p key={message}>{message}</p>
+          ))}
+        </div>
+      ) : null}
+
+      {loadFailed ? (
+        <ErrorState
+          title="Could not load overview"
+          message={formatErrorForUi(overviewQuery.error)}
+          onRetry={() => void overviewQuery.refetch()}
+        />
+      ) : null}
+
       <div
         aria-busy={loading}
         className={cn("flex flex-col gap-6", loading && "pointer-events-none opacity-90")}
       >
-        {loading || !projectId || !dualKpi ? (
+        {loadFailed ? null : loading || !projectId || !dualKpi ? (
           <>
             <OverviewSkeleton className="h-40" />
             <div className="grid gap-4 lg:grid-cols-2">

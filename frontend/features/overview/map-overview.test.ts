@@ -5,6 +5,7 @@ import {
   shouldShowLiveChart,
   mapPassRateBars,
   mergeAttentionItems,
+  overviewWarningMessages,
   regressionDrillDownHref,
 } from "./map-overview";
 
@@ -111,5 +112,17 @@ describe("mergeAttentionItems", () => {
     });
     const regression = rows.find((r) => r.kind === "regression");
     assert.equal(regression?.href, "/experiments/c1/compare?baseline=b1");
+  });
+});
+
+describe("overviewWarningMessages", () => {
+  it("maps known warning codes to user-facing copy", () => {
+    const messages = overviewWarningMessages([
+      "live_truncated",
+      "calibration_unavailable",
+    ]);
+    assert.equal(messages.length, 2);
+    assert.match(messages[0]!, /10,000/);
+    assert.match(messages[1]!, /calibration/i);
   });
 });
