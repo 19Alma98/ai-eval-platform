@@ -93,7 +93,7 @@ def ui(
         bool, typer.Option("--open/--no-open", help="Open the UI in a browser")
     ] = True,
 ) -> None:
-    """Start the local API + packaged UI (MLflow-style)."""
+    """Start the local API + packaged UI."""
     uri = backend_store_uri or os.environ.get("DATABASE_URL") or DEFAULT_SQLITE_URL
     os.environ["DATABASE_URL"] = uri
     get_settings.cache_clear()

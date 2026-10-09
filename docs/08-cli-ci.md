@@ -38,6 +38,42 @@ aiobs experiment compare
 
 `aiobs login` is not required for v0.1. The CLI talks to a local/self-hosted API on a trusted network.
 
+## Publishing to PyPI
+
+Workflow: [`.github/workflows/publish.yml`](../.github/workflows/publish.yml).
+
+Distributions:
+
+| PyPI name | Import / CLI |
+|-----------|--------------|
+| `aiobs-eval` | `import aiobs` |
+| `aiobs-eval-server` | `aiobs_server` / console script `aiobs` |
+
+### One-time setup (Trusted Publishing)
+
+1. Create a GitHub Environment named **`pypi`** on `19Alma98/ai-eval-platform` (optional protection rules / required reviewers).
+2. On [PyPI](https://pypi.org/manage/account/publishing/): for **each** of `aiobs-eval` and `aiobs-eval-server`, add a **pending** trusted publisher:
+   - Owner: `19Alma98`
+   - Repository: `ai-eval-platform`
+   - Workflow name: `publish.yml`
+   - Environment name: `pypi`
+3. No API tokens are required.
+
+### Release steps
+
+1. Bump `version` in **both** `sdk/pyproject.toml` and `backend/pyproject.toml` (keep them identical). Keep `aiobs-eval[ui]` pinned to the same server version.
+2. Commit, then tag and push: `git tag v0.1.0 && git push origin v0.1.0`
+3. The workflow builds the UI (`package-ui.sh`), builds both wheels, checks `_ui/index.html` is inside the server wheel, then uploads via OIDC.
+
+Dry-run (build only, no upload): Actions → **Publish** → Run workflow → leave **dry_run** checked.
+
+Install for users after publish:
+
+```bash
+pip install 'aiobs-eval[ui]'
+aiobs ui
+```
+
 ## CI integration
 
 See `.github/workflows/release-gate.yml.example` and `examples/aiobs.yaml`.

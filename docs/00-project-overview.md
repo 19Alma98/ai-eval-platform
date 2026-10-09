@@ -29,8 +29,7 @@ Generic loop (still valid for classification, tool schemas, and trace curation):
 Trace or example → dataset → experiment/run → evaluation → regression policy → CI gate.
 
 This is a **CI quality gate for AI apps**, not a general-purpose agent oracle.
-MLflow-style metrics work when outputs are scorable against a curated dataset.
-The same assumption applies here: the platform measures regressions and improvements
+The platform measures regressions and improvements
 when “good” can be defined with ground truth, schemas, or stable judge criteria.
 
 ## What this is good for

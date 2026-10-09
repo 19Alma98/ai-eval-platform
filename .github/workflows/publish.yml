@@ -1,0 +1,151 @@
+name: Publish
+
+# Publishes aiobs-eval-server then aiobs-eval to PyPI via Trusted Publishing (OIDC).
+# Trigger: push tag vX.Y.Z (must match version in both pyproject.toml files),
+# or workflow_dispatch (dry-run by default).
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Build wheels only; skip PyPI upload"
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          version: "0.8.4"
+
+      - name: Set up Python
+        run: uv python install 3.12
+
+      - name: Resolve and check version
+        id: version
+        run: |
+          set -euo pipefail
+          PY="uv run --python 3.12 --no-project python"
+          if [[ "${{ github.event_name }}" == "push" ]]; then
+            TAG="${GITHUB_REF_NAME}"
+            VERSION="${TAG#v}"
+            if [[ "$TAG" != "v$VERSION" || -z "$VERSION" ]]; then
+              echo "Tag must look like vX.Y.Z (got: $TAG)" >&2
+              exit 1
+            fi
+          else
+            VERSION="$($PY -c "import tomllib; print(tomllib.load(open('sdk/pyproject.toml','rb'))['project']['version'])")"
+          fi
+
+          SDK_VER="$($PY -c "import tomllib; print(tomllib.load(open('sdk/pyproject.toml','rb'))['project']['version'])")"
+          SRV_VER="$($PY -c "import tomllib; print(tomllib.load(open('backend/pyproject.toml','rb'))['project']['version'])")"
+
+          if [[ "$SDK_VER" != "$SRV_VER" ]]; then
+            echo "Version mismatch: sdk=$SDK_VER backend=$SRV_VER" >&2
+            exit 1
+          fi
+          if [[ "$SDK_VER" != "$VERSION" ]]; then
+            echo "pyproject version ($SDK_VER) != release version ($VERSION)" >&2
+            exit 1
+          fi
+
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "Publishing version $VERSION"
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Package UI into aiobs_server
+        run: ./scripts/package-ui.sh
+
+      - name: Build aiobs-eval-server
+        working-directory: backend
+        run: uv build
+
+      - name: Build aiobs-eval
+        working-directory: sdk
+        run: uv build
+
+      - name: Collect and verify dist
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          cp -a backend/dist/. dist/
+          cp -a sdk/dist/. dist/
+          ls -la dist/
+
+          python3 <<'PY'
+          import sys
+          import zipfile
+          from pathlib import Path
+
+          dist = Path("dist")
+          server_wheels = list(dist.glob("aiobs_eval_server-*-py3-none-any.whl"))
+          sdk_wheels = list(dist.glob("aiobs_eval-*-py3-none-any.whl"))
+          if len(server_wheels) != 1 or len(sdk_wheels) != 1:
+              print("expected one wheel each for server and sdk:", server_wheels, sdk_wheels, file=sys.stderr)
+              sys.exit(1)
+
+          with zipfile.ZipFile(server_wheels[0]) as zf:
+              if "aiobs_server/_ui/index.html" not in zf.namelist():
+                  print("server wheel missing aiobs_server/_ui/index.html", file=sys.stderr)
+                  sys.exit(1)
+
+          with zipfile.ZipFile(sdk_wheels[0]) as zf:
+              meta = zf.read(next(n for n in zf.namelist() if n.endswith(".dist-info/METADATA"))).decode()
+          if "aiobs-eval-server" not in meta:
+              print("sdk wheel METADATA missing aiobs-eval-server dependency", file=sys.stderr)
+              sys.exit(1)
+          print("dist OK:", server_wheels[0].name, sdk_wheels[0].name)
+          PY
+
+      - name: Upload dist artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: python-dist
+          path: dist/
+          if-no-files-found: error
+
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    if: >-
+      github.event_name == 'push'
+      || (github.event_name == 'workflow_dispatch' && inputs.dry_run == false)
+    environment:
+      name: pypi
+      url: https://pypi.org/project/aiobs-eval/${{ needs.build.outputs.version }}/
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - name: Download dist artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: python-dist
+          path: dist/
+
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: dist/
+          # Upload both projects from the same workflow; each needs a Trusted
+          # Publisher on PyPI pointing at this repo + publish.yml + env `pypi`.
+          skip-existing: false

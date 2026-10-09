@@ -122,6 +122,10 @@ Exit codes: `0` pass, `1` gate failed, `2` config error, `3` infra error. Exampl
 
 Technical specification lives in [`docs/`](docs/). Phase 1 design: [`docs/superpowers/specs/2026-09-30-phase1-otlp-traces-design.md`](docs/superpowers/specs/2026-09-30-phase1-otlp-traces-design.md).
 
+## PyPI release
+
+Packages: **`aiobs-eval`** (SDK) and **`aiobs-eval-server`** (API + UI). Publish via tag `vX.Y.Z` and [`.github/workflows/publish.yml`](.github/workflows/publish.yml) (Trusted Publishing). Setup and checklist: [`docs/08-cli-ci.md`](docs/08-cli-ci.md#publishing-to-pypi).
+
 ## Local CI checks
 
 Same checks as [`.github/workflows/ci.yml`](.github/workflows/ci.yml) (ruff / mypy / pytest for backend+sdk, frontend typecheck). Backend integration tests use a dedicated `aiobs_test` database on host port **5434** (created automatically; they do not wipe the Compose `aiobs` demo DB).

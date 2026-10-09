@@ -8,7 +8,7 @@ DEFAULT_SQLITE_URL = "sqlite+aiosqlite:///./aiobs.db"
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
-    # Local default matches MLflow-style SQLite; Compose / .env override to Postgres.
+    # Local default matches SQLite; Compose / .env override to Postgres.
     database_url: str = DEFAULT_SQLITE_URL
     app_host: str = "0.0.0.0"
     app_port: int = 8000

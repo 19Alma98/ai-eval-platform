@@ -6,7 +6,7 @@ Server package for the AI Evaluation & Observability Platform.
 - Import path: `aiobs_server` (e.g. `uvicorn aiobs_server.main:app`)
 - Console script: `aiobs` (`ui`, `check`)
 
-## Local UI (MLflow-style)
+## Local UI
 
 ```bash
 # from repo root — build the Next static export into the package

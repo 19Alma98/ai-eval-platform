@@ -36,6 +36,5 @@ docs/superpowers/
 backend/src/aiobs_server/_ui/**
 !backend/src/aiobs_server/_ui/.gitkeep
 
-# Local MLflow-style SQLite store
 aiobs.db
 **/aiobs.db
