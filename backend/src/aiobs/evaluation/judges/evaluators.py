@@ -31,19 +31,27 @@ from aiobs.evaluation.judges.rubric import level_to_score, rubric_judge
 from aiobs.evaluation.outcomes import error, fail_min, skip
 from aiobs.evaluation.protocol import EvaluationResult, EvaluationSample, LlmClient
 
-JUDGE_KINDS = ("answer_relevance", "groundedness", "correctness", "context_precision")
+JUDGE_KINDS = (
+    "answer_relevance",
+    "groundedness",
+    "correctness",
+    "context_precision",
+    "context_recall",
+)
 
 _METHODS: dict[str, frozenset[str]] = {
     "groundedness": frozenset({"claims", "rubric"}),
     "correctness": frozenset({"claims", "rubric"}),
     "answer_relevance": frozenset({"rubric"}),
     "context_precision": frozenset({"claims", "rubric"}),
+    "context_recall": frozenset({"claims", "rubric"}),
 }
 _DEFAULT_METHOD = {
     "groundedness": "claims",
     "correctness": "claims",
     "answer_relevance": "rubric",
     "context_precision": "claims",
+    "context_recall": "claims",
 }
 _SCORINGS = frozenset({"recall", "f1"})
 DEFAULT_MAX_CLAIMS = 30
@@ -276,6 +284,36 @@ class GroundednessJudge(_LlmJudge):
         )
 
 
+async def _load_reference_claims(
+    judge: _LlmJudge,
+    sample: EvaluationSample,
+    question: str,
+    reference: str,
+) -> ExtractedClaims:
+    model = judge._config.options.model or ""
+    key = claim_cache_key(
+        [sample.input, sample.expected_output], prompt_version=judge.prompt_version, model=model
+    )
+    if judge._cache is not None:
+        cached = await judge._cache.get(key)
+        if cached is not None:
+            return ExtractedClaims(claims=cached, calls=0, cache_hit=True)
+    extracted = await extract_claims(
+        judge._llm,
+        system=prompts.EXTRACT_REFERENCE_CLAIMS,
+        user=prompts.sections(question=question, reference_answer=reference),
+        options=judge._config.options,
+    )
+    if judge._cache is not None:
+        await judge._cache.put(
+            key, prompt_version=judge.prompt_version, model=model, claims=extracted.claims
+        )
+        stored = await judge._cache.get(key)
+        if stored:
+            return ExtractedClaims(claims=stored, calls=extracted.calls, cache_hit=False)
+    return extracted
+
+
 class CorrectnessJudge(_LlmJudge):
     kind = "correctness"
 
@@ -296,7 +334,7 @@ class CorrectnessJudge(_LlmJudge):
                 prompts.sections(question=question, reference_answer=reference, answer=answer)
             )
 
-        gold = await self._reference_claims(sample, question, reference)
+        gold = await _load_reference_claims(self, sample, question, reference)
         gold_claims, truncated = limit_claims(gold.claims, self._config.max_claims)
         if not gold_claims:
             return skip(
@@ -376,36 +414,6 @@ class CorrectnessJudge(_LlmJudge):
             ),
         )
 
-    async def _reference_claims(
-        self, sample: EvaluationSample, question: str, reference: str
-    ) -> ExtractedClaims:
-        model = self._config.options.model or ""
-        key = claim_cache_key(
-            [sample.input, sample.expected_output], prompt_version=self.prompt_version, model=model
-        )
-        if self._cache is not None:
-            cached = await self._cache.get(key)
-            if cached is not None:
-                return ExtractedClaims(claims=cached, calls=0, cache_hit=True)
-        extracted = await extract_claims(
-            self._llm,
-            system=prompts.EXTRACT_REFERENCE_CLAIMS,
-            user=prompts.sections(question=question, reference_answer=reference),
-            options=self._config.options,
-        )
-        # Only validated output reaches this point, so a bad reply is never cached.
-        if self._cache is not None:
-            await self._cache.put(
-                key, prompt_version=self.prompt_version, model=model, claims=extracted.claims
-            )
-            # Writes are first-wins: a concurrent run may have stored different claims.
-            # Re-read so every run is judged against the same gold; keep ours if the
-            # re-read finds nothing (e.g. cache errors are treated as a miss).
-            stored = await self._cache.get(key)
-            if stored:
-                return ExtractedClaims(claims=stored, calls=extracted.calls, cache_hit=False)
-        return extracted
-
 
 class AnswerRelevanceJudge(_LlmJudge):
     kind = "answer_relevance"
@@ -416,6 +424,75 @@ class AnswerRelevanceJudge(_LlmJudge):
                 question=prompts.as_text(sample.input),
                 answer=prompts.as_text(sample.actual_output),
             )
+        )
+
+
+class ContextRecallJudge(_LlmJudge):
+    kind = "context_recall"
+
+    def _precheck(self, sample: EvaluationSample) -> EvaluationResult | None:
+        early = super()._precheck(sample)
+        if early is not None:
+            return early
+        if sample.expected_output is None:
+            return skip("expected_output is missing", metadata=self._meta())
+        if sample.context is None:
+            return skip("context is missing", metadata=self._meta())
+        if not _documents(sample.context):
+            return fail_min("context.documents are missing or empty", metadata=self._meta())
+        return None
+
+    async def _evaluate(self, sample: EvaluationSample) -> EvaluationResult:
+        question = prompts.as_text(sample.input)
+        reference = prompts.as_text(sample.expected_output)
+        documents = prompts.render_documents(_documents(sample.context))
+        if self._config.method == "rubric":
+            return await self._rubric(
+                prompts.sections(question=question, reference_answer=reference, documents=documents)
+            )
+
+        gold = await _load_reference_claims(self, sample, question, reference)
+        gold_claims, truncated = limit_claims(gold.claims, self._config.max_claims)
+        if not gold_claims:
+            return skip(
+                "no_gold_claims: the expected output has no factual claims",
+                metadata=self._meta(n_gold=0, llm_calls=gold.calls, cache_hit=gold.cache_hit),
+            )
+        verdicts, coverage_calls = await verify_coverage(
+            self._llm,
+            system=prompts.VERIFY_CONTEXT_COVERAGE,
+            user=prompts.sections(
+                question=question,
+                reference_claims=prompts.render_claims(gold_claims),
+                documents=documents,
+            ),
+            n=len(gold_claims),
+            options=self._config.options,
+        )
+        coverage = score_coverage(verdicts)
+        records = coverage_claim_records(gold_claims, verdicts)
+        # Recall ratio only: a contradicted claim is not covered, but does not zero the score.
+        return EvaluationResult(
+            score=coverage.recall,
+            label=None,
+            explanation=_cap(
+                _with_lists(
+                    f"{coverage.n_covered}/{coverage.n_gold} reference facts in context",
+                    records,
+                    ("contradicted", "missing"),
+                )
+            ),
+            metadata=self._meta(
+                claims=records,
+                n_gold=coverage.n_gold,
+                n_covered=coverage.n_covered,
+                n_contradicted=coverage.n_contradicted,
+                n_missing=coverage.n_missing,
+                recall=coverage.recall,
+                cache_hit=gold.cache_hit,
+                claims_truncated=truncated,
+                llm_calls=gold.calls + coverage_calls,
+            ),
         )
 
 
@@ -526,7 +603,13 @@ class ContextPrecisionJudge(_LlmJudge):
 
 _JUDGES: dict[str, type[_LlmJudge]] = {
     cls.kind: cls
-    for cls in (GroundednessJudge, CorrectnessJudge, AnswerRelevanceJudge, ContextPrecisionJudge)
+    for cls in (
+        GroundednessJudge,
+        CorrectnessJudge,
+        AnswerRelevanceJudge,
+        ContextPrecisionJudge,
+        ContextRecallJudge,
+    )
 }
 
 

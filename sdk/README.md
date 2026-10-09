@@ -96,7 +96,35 @@ with Client("http://localhost:8000") as client:
 
 Control-plane methods return **Pydantic** models (see `aiobs.models`); use attributes or `.model_dump()` for a dict. Prefer `with Client(...)` / `client.close()` so the shared `httpx2` connection pool is released.
 
-Namespaces: `projects`, `datasets` (`create`, `create_with_items`, `add_item`, `get`, `list`, `import_items`), `experiments` (`create`, `get`, `list_outputs`, `evaluate_pack`, `summary`, `compare`), `metrics_packs` (`ensure`, `get`), `app_configs` (same methods as `AppConfigClient`). Non-2xx responses raise `AiobsAPIError` (with parsed FastAPI `detail` when present).
+Namespaces: `projects`, `datasets` (`create`, `create_with_items`, `add_item`, `get`, `list`, `import_items`), `experiments` (`create`, `get`, `list_outputs`, `evaluate_pack`, `summary`, `compare`), `metrics_packs` (`ensure`, `get`), `live_runs` (`submit`, `list`, `get`, `promote`, `rescore`), `app_configs` (same methods as `AppConfigClient`). Non-2xx responses raise `AiobsAPIError` (with parsed FastAPI `detail` when present).
+
+### Live runs → TestSet loop
+
+```python
+from aiobs import Client
+
+with Client() as client:
+    project_id = "..."  # existing project
+    live = client.live_runs.submit(
+        project_id,
+        question="How many PTO days?",
+        answer="Unlimited.",
+        documents=[{"id": "pto", "text": "Full-time staff get 20 PTO days."}],
+    )
+    detail = client.live_runs.get(live.id)  # or list(..., failed_only=True)
+    # After review, promote with reviewer-authored gold (never copy the prod answer):
+    ds = client.datasets.create(project_id, name="from-live", task_type="rag_qa")
+    client.live_runs.promote(
+        live.id,
+        dataset_id=ds.id,
+        expected_output="Full-time employees get 20 PTO days per year.",
+        expected_doc_ids=["pto"],
+    )
+    exp = client.experiments.create(project_id, name="after-promote", dataset_id=ds.id)
+    client.experiments.evaluate_pack(exp.id)
+```
+
+See also [`scripts/live_run_demo.py`](../scripts/live_run_demo.py) (`--promote`).
 
 Eval binding still uses tracing attributes (no REST call):
 

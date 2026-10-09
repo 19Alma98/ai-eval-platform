@@ -50,6 +50,16 @@ const EVALUATOR_PRESETS = [
     type: "llm_judge",
     config: { kind: "answer_relevance" },
   },
+  {
+    label: "Context precision (LLM)",
+    type: "llm_judge",
+    config: { kind: "context_precision" },
+  },
+  {
+    label: "Context recall (LLM)",
+    type: "llm_judge",
+    config: { kind: "context_recall" },
+  },
 ] as const;
 
 export function CreateEvaluatorDialog({

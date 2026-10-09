@@ -28,7 +28,7 @@ from aiobs.domain.repositories import (
 )
 
 _LLM_JUDGE_KINDS = frozenset(
-    {"groundedness", "correctness", "answer_relevance", "context_precision"}
+    {"groundedness", "correctness", "answer_relevance", "context_precision", "context_recall"}
 )
 
 

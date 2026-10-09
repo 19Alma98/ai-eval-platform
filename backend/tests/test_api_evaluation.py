@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import uuid
 from collections.abc import AsyncIterator
-from datetime import UTC, datetime
 from typing import Any
 
 import pytest
@@ -368,8 +367,10 @@ _DEFAULT_PACK_KINDS = (
     "recall_at_k",
     "mrr",
     "context_precision",
+    "context_recall",
     "must_contain",
     "groundedness",
+    "answer_relevance",
     "correctness",
     "latency",
 )

@@ -14,6 +14,7 @@ export const RAG_RECOMMENDED_EVALUATOR_KINDS = [
   "recall_at_k",
   "mrr",
   "context_precision",
+  "context_recall",
   "must_contain",
   "groundedness",
   "answer_relevance",

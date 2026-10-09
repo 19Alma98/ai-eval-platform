@@ -105,7 +105,7 @@ def mock_transport(captured_requests: list[httpx2.Request]) -> httpx2.MockTransp
             )
         if method == "POST" and url.endswith("/metrics-pack/ensure"):
             return httpx2.Response(200, json={"entries": [{"kind": "hit_at_k"}]})
-        if method == "POST" and "/live-interactions" in url:
+        if method == "POST" and url.endswith("/projects/proj-1/live-interactions"):
             body = json.loads(request.content.decode()) if request.content else {}
             return httpx2.Response(
                 202,
@@ -114,6 +114,56 @@ def mock_transport(captured_requests: list[httpx2.Request]) -> httpx2.MockTransp
                     "judge_status": "pending",
                     "question": body.get("question"),
                     "answer": body.get("answer"),
+                },
+            )
+        if method == "GET" and "/projects/proj-1/live-interactions" in url:
+            return httpx2.Response(
+                200,
+                json={
+                    "items": [
+                        {
+                            "id": "live-1",
+                            "question": "What is PTO?",
+                            "answer": "Paid time off",
+                            "judge_status": "scored",
+                            "scores": [{"kind": "groundedness", "score": 1.0, "label": "PASS"}],
+                        }
+                    ],
+                    "judge_warnings": [],
+                },
+            )
+        if method == "GET" and url.endswith("/live-interactions/live-1"):
+            return httpx2.Response(
+                200,
+                json={
+                    "id": "live-1",
+                    "question": "What is PTO?",
+                    "answer": "Paid time off",
+                    "judge_status": "scored",
+                    "scores": [{"kind": "groundedness", "score": 1.0, "label": "PASS"}],
+                },
+            )
+        if method == "POST" and url.endswith("/live-interactions/live-1/promote"):
+            body = json.loads(request.content.decode()) if request.content else {}
+            return httpx2.Response(
+                201,
+                json={
+                    "id": "item-live",
+                    "dataset_id": body.get("dataset_id"),
+                    "input": "What is PTO?",
+                    "expected_output": body.get("expected_output"),
+                    "metadata": {"expected_doc_ids": body.get("expected_doc_ids") or []},
+                },
+            )
+        if method == "POST" and url.endswith("/live-interactions/live-1/rescore"):
+            return httpx2.Response(
+                200,
+                json={
+                    "id": "live-1",
+                    "question": "What is PTO?",
+                    "answer": "Paid time off",
+                    "judge_status": "scored",
+                    "scores": [{"kind": "groundedness", "score": 0.9, "label": "PASS"}],
                 },
             )
         raise AssertionError(f"unexpected request: {method} {url}")
@@ -234,3 +284,38 @@ def test_live_runs_submit(
         assert body["question"] == "What is PTO?"
         assert body["documents"][0]["id"] == "d1"
         assert body["external_id"] == "turn-1"
+
+
+def test_live_runs_list_get_promote_rescore(
+    mock_transport: httpx2.MockTransport,
+    captured_requests: list[httpx2.Request],
+) -> None:
+    with Client("http://localhost:8000", transport=mock_transport) as client:
+        listed = client.live_runs.list("proj-1", failed_only=True, search="PTO", limit=10)
+        assert len(listed.items) == 1
+        assert listed.items[0].id == "live-1"
+        list_req = captured_requests[-1]
+        assert list_req.method == "GET"
+        assert "failed_only=true" in str(list_req.url)
+        assert "search=PTO" in str(list_req.url)
+
+        detail = client.live_runs.get("live-1")
+        assert detail.judge_status == "scored"
+        assert detail.scores[0].kind == "groundedness"
+
+        promoted = client.live_runs.promote(
+            "live-1",
+            dataset_id="ds-1",
+            expected_output="Paid time off",
+            expected_doc_ids=["d1"],
+        )
+        assert promoted.id == "item-live"
+        assert promoted.expected_output == "Paid time off"
+        promote_body = json.loads(captured_requests[-1].content.decode())
+        assert promote_body["dataset_id"] == "ds-1"
+        assert promote_body["expected_doc_ids"] == ["d1"]
+
+        rescored = client.live_runs.rescore("live-1")
+        assert rescored.scores[0].score == 0.9
+        assert captured_requests[-1].method == "POST"
+        assert str(captured_requests[-1].url).endswith("/live-interactions/live-1/rescore")

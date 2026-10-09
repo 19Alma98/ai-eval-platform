@@ -8,6 +8,7 @@ from httpx import ASGITransport, AsyncClient
 
 from aiobs.api.deps import get_dataset_repository, get_project_repository
 from aiobs.domain.dataset import Dataset
+from aiobs.domain.metrics_set import DEFAULT_RAG_SET_ENTRIES
 from aiobs.domain.project import Project
 from aiobs.main import create_app
 from tests.support.repositories import (
@@ -112,7 +113,7 @@ async def test_list_includes_default_after_ensure(
     body = listed.json()
     default = next(s for s in body if s["name"] == "Default" and s["version"] == 1)
     assert default["is_project_default"] is True
-    assert default["entry_count"] == 8
+    assert default["entry_count"] == len(DEFAULT_RAG_SET_ENTRIES)
 
 
 @pytest.mark.asyncio

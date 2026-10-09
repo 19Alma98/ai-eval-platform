@@ -30,6 +30,7 @@ TASK_TYPE_CATALOG: tuple[TaskTypeInfo, ...] = (
             "recall_at_k",
             "mrr",
             "context_precision",
+            "context_recall",
             "must_contain",
             "groundedness",
             "answer_relevance",

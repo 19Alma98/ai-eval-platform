@@ -179,9 +179,15 @@ async def test_ensure_backfills_missing_retrieval_default_entries() -> None:
         project.id
     )
     kinds = {e.kind for e in result.entries}
-    assert {"recall_at_k", "mrr", "context_precision", "must_contain", "groundedness"}.issubset(
-        kinds
-    )
+    assert {
+        "recall_at_k",
+        "mrr",
+        "context_precision",
+        "context_recall",
+        "must_contain",
+        "groundedness",
+        "answer_relevance",
+    }.issubset(kinds)
     assert all(e.evaluator_id is not None for e in result.entries)
 
 

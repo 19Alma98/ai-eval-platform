@@ -92,6 +92,8 @@ async def test_list_task_types(client: AsyncClient) -> None:
     assert ids == {"rag_qa", "classification", "agent_tools"}
     rag = next(t for t in body if t["id"] == "rag_qa")
     assert "groundedness" in rag["recommended_evaluator_kinds"]
+    assert "context_recall" in rag["recommended_evaluator_kinds"]
+    assert "answer_relevance" in rag["recommended_evaluator_kinds"]
     assert rag["field_hints"]
 
 

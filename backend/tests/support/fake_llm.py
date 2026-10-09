@@ -29,7 +29,7 @@ def default_reply(step: str, user: str) -> dict[str, Any]:
     """A reply that makes every claim pass and every rubric score the top level."""
     if step.startswith("extract"):
         return {"claims": ["The answer states a fact."]}
-    if step == "verify_reference_coverage":
+    if step in ("verify_reference_coverage", "verify_context_coverage"):
         return {"verdicts": [{"reasoning": "ok", "verdict": "covered"}] * claim_count(user)}
     if step == "verify_context_relevance":
         return {"verdicts": [{"reasoning": "ok", "verdict": "relevant"}] * doc_count(user)}

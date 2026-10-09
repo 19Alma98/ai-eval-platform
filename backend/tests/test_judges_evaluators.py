@@ -510,6 +510,90 @@ async def test_context_precision_k_truncates_documents() -> None:
     assert "[D3]" not in llm.calls[0]["user"]
 
 
+# --- context_recall --------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_context_recall_claims_scores_covered_ratio() -> None:
+    llm = ScriptedJudgeLlm(
+        {
+            "extract_reference_claims": {"claims": ["26 days", "via the portal"]},
+            "verify_context_coverage": _coverage("covered", "missing"),
+        }
+    )
+    result = await _judge("context_recall", llm).evaluate(_sample())
+    assert result.score == 0.5
+    assert result.label is None
+    assert result.explanation == '1/2 reference facts in context; missing: "via the portal"'
+    meta = result.metadata
+    assert meta["prompt_version"] == "context_recall.claims.v3"
+    assert (meta["n_gold"], meta["n_covered"], meta["n_missing"]) == (2, 1, 1)
+    assert meta["recall"] == 0.5
+    assert meta["cache_hit"] is False
+    assert llm.steps() == ["extract_reference_claims", "verify_context_coverage"]
+    assert "Full-time staff" in llm.calls[1]["user"]
+    assert "You get 26 days" not in llm.calls[1]["user"]
+
+
+@pytest.mark.asyncio
+async def test_context_recall_contradiction_does_not_zero_score() -> None:
+    llm = ScriptedJudgeLlm(
+        {
+            "extract_reference_claims": {"claims": ["26 days", "via the portal"]},
+            "verify_context_coverage": _coverage("contradicted", "covered"),
+        }
+    )
+    result = await _judge("context_recall", llm).evaluate(_sample())
+    assert result.score == 0.5
+    assert result.metadata["n_contradicted"] == 1
+    assert "contradicted:" in (result.explanation or "")
+
+
+@pytest.mark.asyncio
+async def test_context_recall_reuses_cached_gold_claims() -> None:
+    cache = InMemoryJudgeClaimCache()
+    first_llm = ScriptedJudgeLlm({"extract_reference_claims": {"claims": ["26 days"]}})
+    await _judge("context_recall", first_llm, cache=cache).evaluate(_sample())
+
+    second_llm = ScriptedJudgeLlm(
+        {"extract_reference_claims": AssertionError("gold must come from the cache")}
+    )
+    result = await _judge("context_recall", second_llm, cache=cache).evaluate(
+        _sample(actual_output="A different candidate answer")
+    )
+    assert result.metadata["cache_hit"] is True
+    assert second_llm.steps() == ["verify_context_coverage"]
+
+
+@pytest.mark.asyncio
+async def test_context_recall_prechecks_do_not_call_llm() -> None:
+    llm = ScriptedJudgeLlm()
+    judge = _judge("context_recall", llm)
+    assert (await judge.evaluate(_sample(expected_output=None))).label == "SKIPPED"
+    assert (await judge.evaluate(_sample(context=None))).label == "SKIPPED"
+    empty = await judge.evaluate(_sample(context={"documents": []}))
+    assert (empty.label, empty.score) == ("FAIL", 0.0)
+    assert (await judge.evaluate(_sample(actual_output=None))).label == "SKIPPED"
+    assert llm.calls == []
+
+
+@pytest.mark.asyncio
+async def test_context_recall_skips_without_gold_claims() -> None:
+    llm = ScriptedJudgeLlm({"extract_reference_claims": {"claims": []}})
+    result = await _judge("context_recall", llm).evaluate(_sample())
+    assert result.label == "SKIPPED"
+    assert result.explanation is not None and result.explanation.startswith("no_gold_claims")
+
+
+@pytest.mark.asyncio
+async def test_context_recall_rubric_method() -> None:
+    llm = ScriptedJudgeLlm({"rubric_context_recall": {"reasoning": "partial", "level": 3}})
+    result = await _judge("context_recall", llm, {"method": "rubric"}).evaluate(_sample())
+    assert result.score == 0.5
+    assert result.metadata["prompt_version"] == "context_recall.rubric.v3"
+    assert llm.steps() == ["rubric_context_recall"]
+
+
 @pytest.mark.asyncio
 async def test_bootstrap_registers_new_judges() -> None:
     clear_registry()
@@ -522,5 +606,7 @@ async def test_bootstrap_registers_new_judges() -> None:
         assert result.metadata["model"] == "judge-default"
         cp = create_evaluator("context_precision", {"kind": "context_precision"})
         assert cp.prompt_version == "context_precision.claims.v3"
+        cr = create_evaluator("context_recall", {"kind": "context_recall"})
+        assert cr.prompt_version == "context_recall.claims.v3"
     finally:
         clear_registry()

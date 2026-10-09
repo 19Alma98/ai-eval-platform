@@ -235,6 +235,27 @@ class AppConfigAliasResponse(_ApiModel):
     app_config: AppConfigSummaryResponse
 
 
+class LiveInteractionScoreResponse(_ApiModel):
+    id: str | None = None
+    kind: str | None = None
+    score: float | None = None
+    label: str | None = None
+    explanation: str | None = None
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+
+class LiveReviewResponse(_ApiModel):
+    verdict: str | None = None
+    note: str | None = None
+    reviewer: str | None = None
+
+
+class LiveJudgeWarningResponse(_ApiModel):
+    kind: str
+    warnings: list[str] = Field(default_factory=list)
+    warning_detail: dict[str, Any] = Field(default_factory=dict)
+
+
 class LiveInteractionResponse(_ApiModel):
     id: str
     project_id: str | None = None
@@ -249,3 +270,10 @@ class LiveInteractionResponse(_ApiModel):
     error_message: str | None = None
     created_at: datetime | str | None = None
     scored_at: datetime | str | None = None
+    scores: list[LiveInteractionScoreResponse] = Field(default_factory=list)
+    review: LiveReviewResponse | None = None
+
+
+class ListLiveInteractionsResponse(_ApiModel):
+    items: list[LiveInteractionResponse] = Field(default_factory=list)
+    judge_warnings: list[LiveJudgeWarningResponse] = Field(default_factory=list)

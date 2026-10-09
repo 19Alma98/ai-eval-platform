@@ -9,13 +9,20 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 from aiobs.regression.policy import META_KEYS
 
 _LLM_JUDGE_KINDS = frozenset(
-    {"answer_relevance", "groundedness", "correctness", "context_precision"}
+    {
+        "answer_relevance",
+        "groundedness",
+        "correctness",
+        "context_precision",
+        "context_recall",
+    }
 )
 _JUDGE_METHODS: dict[str, frozenset[str]] = {
     "groundedness": frozenset({"claims", "rubric"}),
     "correctness": frozenset({"claims", "rubric"}),
     "answer_relevance": frozenset({"rubric"}),
     "context_precision": frozenset({"claims", "rubric"}),
+    "context_recall": frozenset({"claims", "rubric"}),
 }
 
 

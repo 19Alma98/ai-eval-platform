@@ -52,6 +52,14 @@ DEFAULT_RAG_ENTRIES: tuple[MetricsPackEntry, ...] = (
         removable=False,
     ),
     MetricsPackEntry(
+        kind="context_recall",
+        enabled=True,
+        threshold=0.7,
+        config={},
+        evaluator_id=None,
+        removable=False,
+    ),
+    MetricsPackEntry(
         kind="must_contain",
         enabled=True,
         threshold=1.0,
@@ -61,6 +69,14 @@ DEFAULT_RAG_ENTRIES: tuple[MetricsPackEntry, ...] = (
     ),
     MetricsPackEntry(
         kind="groundedness",
+        enabled=True,
+        threshold=0.7,
+        config={},
+        evaluator_id=None,
+        removable=False,
+    ),
+    MetricsPackEntry(
+        kind="answer_relevance",
         enabled=True,
         threshold=0.7,
         config={},

@@ -137,4 +137,17 @@ LLM_MODEL=ollama/gemma4:e2b
 LLM_API_BASE=http://localhost:11434
 ```
 
-When creating an evaluator, use `"type": "llm_judge"` and `"config": {"kind": "correctness"}` (or `answer_relevance` / `groundedness`).
+When creating an evaluator, use `"type": "llm_judge"` and `"config": {"kind": "correctness"}` (or `answer_relevance` / `groundedness` / `context_precision` / `context_recall`).
+
+### RAG metrics naming (Ragas ↔ aiobs)
+
+| Ragas (common name) | aiobs `kind` | Notes |
+|---|---|---|
+| Faithfulness | `groundedness` | Answer claims supported by retrieved docs |
+| Response / answer relevancy | `answer_relevance` | Question–answer relevance (rubric) |
+| Context precision | `context_precision` | RAGAS-style average precision over retrieved docs |
+| Context recall | `context_recall` | Gold-answer claims covered by retrieved docs |
+| Factual correctness (approx.) | `correctness` | Gold claims covered by the answer |
+| — | `hit_at_k` / `recall_at_k` / `mrr` | Deterministic retrieval metrics on `expected_doc_ids` |
+
+There is no API alias for Ragas names: use the aiobs `kind` values above.

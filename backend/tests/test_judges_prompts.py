@@ -18,9 +18,13 @@ def test_prompt_version_format() -> None:
         (prompts.VERIFY_AGAINST_DOCUMENTS, "verify_against_documents"),
         (prompts.VERIFY_AGAINST_REFERENCE, "verify_against_reference"),
         (prompts.VERIFY_REFERENCE_COVERAGE, "verify_reference_coverage"),
+        (prompts.VERIFY_CONTEXT_COVERAGE, "verify_context_coverage"),
+        (prompts.VERIFY_CONTEXT_RELEVANCE, "verify_context_relevance"),
         (prompts.RUBRICS["answer_relevance"], "rubric_answer_relevance"),
         (prompts.RUBRICS["groundedness"], "rubric_groundedness"),
         (prompts.RUBRICS["correctness"], "rubric_correctness"),
+        (prompts.RUBRICS["context_precision"], "rubric_context_precision"),
+        (prompts.RUBRICS["context_recall"], "rubric_context_recall"),
     ],
 )
 def test_every_template_is_tagged_and_demands_json(template: str, step: str) -> None:

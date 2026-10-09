@@ -98,52 +98,33 @@ def sample_turns(docs: dict[str, dict[str, str]]) -> list[dict[str, Any]]:
     ]
 
 
-def api_get(client: Client, path: str) -> dict[str, Any] | list[Any]:
-    result = client._http.request("GET", path)
-    assert isinstance(result, (dict, list))
-    return result
-
-
-def api_post(
-    client: Client, path: str, body: dict[str, Any] | None = None
-) -> dict[str, Any]:
-    result = client._http.request("POST", path, body=body or {})
-    assert isinstance(result, dict)
-    return result
-
-
 def wait_until_scored(
     client: Client,
     interaction_id: str,
     *,
     timeout_s: float,
     poll_s: float,
-) -> dict[str, Any]:
+) -> Any:
     deadline = time.monotonic() + timeout_s
-    last: dict[str, Any] = {}
+    last: Any = None
     while time.monotonic() < deadline:
-        raw = api_get(client, f"/api/v1/live-interactions/{interaction_id}")
-        assert isinstance(raw, dict)
-        last = raw
-        status = str(last.get("judge_status") or "")
+        last = client.live_runs.get(interaction_id)
+        status = str(last.judge_status or "")
         if status in {"scored", "error"}:
             return last
         time.sleep(poll_s)
     print(f"  timeout waiting; calling rescore for {interaction_id[:8]}…")
-    return api_post(client, f"/api/v1/live-interactions/{interaction_id}/rescore")
+    return client.live_runs.rescore(interaction_id)
 
 
-def summarize(interaction: dict[str, Any]) -> str:
-    status = interaction.get("judge_status")
-    scores = interaction.get("scores") or []
+def summarize(interaction: Any) -> str:
+    status = interaction.judge_status
+    scores = interaction.scores or []
     parts = []
     for s in scores:
-        kind = s.get("kind")
-        score = s.get("score")
-        label = s.get("label")
-        parts.append(f"{kind}={score} ({label})")
+        parts.append(f"{s.kind}={s.score} ({s.label})")
     score_txt = ", ".join(parts) if parts else "(no scores)"
-    warn = interaction.get("score_warning") or interaction.get("error_message")
+    warn = interaction.score_warning or interaction.error_message
     extra = f" — {warn}" if warn else ""
     return f"{status}: {score_txt}{extra}"
 
@@ -177,7 +158,7 @@ def main() -> int:
     project_id = project["id"]
 
     pack = client.metrics_packs.ensure(project_id)
-    kinds = [e.get("kind") for e in (pack.get("entries") or [])]
+    kinds = [e.kind for e in pack.entries]
     print(f"metrics pack: {', '.join(str(k) for k in kinds)}")
 
     docs = load_docs()
@@ -196,10 +177,10 @@ def main() -> int:
             metadata=turn["metadata"],
             external_id=external_id,
         )
-        submitted.append({**result, "_label": turn["label"]})
+        submitted.append({"id": result.id, "_label": turn["label"]})
         print(
-            f"  [{turn['label']}] id={result['id'][:8]}… "
-            f"status={result.get('judge_status')} external_id={external_id}"
+            f"  [{turn['label']}] id={result.id[:8]}… "
+            f"status={result.judge_status} external_id={external_id}"
         )
 
     if not args.no_wait:
@@ -222,32 +203,22 @@ def main() -> int:
             task_type="rag_qa",
         )
         # Gold is written by a reviewer, never copied from the prod answer/retrieval.
-        item = api_post(
-            client,
-            f"/api/v1/live-interactions/{target['id']}/promote",
-            {
-                "dataset_id": dataset["id"],
-                "expected_output": "Full-time employees get 20 PTO days per calendar year.",
-                "expected_doc_ids": ["pto"],
-            },
+        item = client.live_runs.promote(
+            target["id"],
+            dataset_id=dataset.id,
+            expected_output="Full-time employees get 20 PTO days per calendar year.",
+            expected_doc_ids=["pto"],
         )
         print(
-            f"\npromoted [{target['_label']}] → dataset {dataset['name']} "
-            f"item {item.get('id', '')[:8]}…"
+            f"\npromoted [{target['_label']}] → dataset {dataset.name} "
+            f"item {item.id[:8]}…"
         )
 
-    listed = client._http.request(
-        "GET",
-        f"/api/v1/projects/{project_id}/live-interactions",
-        query={"limit": "20"},
-    )
-    if isinstance(listed, dict) and isinstance(listed.get("items"), list):
-        n = len(listed["items"])
-    elif isinstance(listed, list):
-        n = len(listed)
-    else:
-        n = 0
-    print(f"\nLive interactions in project: {n}")
+    listed = client.live_runs.list(project_id, limit=20)
+    print(f"\nLive interactions in project: {len(listed.items)}")
+    failed = client.live_runs.list(project_id, failed_only=True, limit=20)
+    if failed.items:
+        print(f"Failed-only: {len(failed.items)} (promote candidates for the next TestSet)")
     print(f"Open UI: http://localhost:3000/live-runs?project={project_id}")
     print("Nav: Live runs — inspect scores, Agree/Disagree, Promote to TestSet")
     return 0

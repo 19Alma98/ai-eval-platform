@@ -120,6 +120,24 @@ Respond with JSON only: {"verdicts": [{"reasoning": "<why>", "verdict": "relevan
 """,
 )
 
+VERIFY_CONTEXT_COVERAGE = _system(
+    "verify_context_coverage",
+    """
+You are an evaluation judge. For each REFERENCE CLAIM ([C1], [C2], ...) decide whether
+the DOCUMENTS convey it (context recall).
+Verdicts:
+- "covered": the documents state the same fact. Wording may differ; numbers, dates, names
+  and conditions must match.
+- "contradicted": the documents state something incompatible with it.
+- "missing": the documents do not state it.
+Use only the documents, never outside knowledge. Extra information in the documents is
+not your concern. Return exactly one verdict per reference claim, in the same order.
+Write your reasoning before choosing the verdict.
+Respond with JSON only: {"verdicts": [{"reasoning": "<why>", "verdict": "covered" |
+"contradicted" | "missing"}, ...]}
+""",
+)
+
 _RUBRIC_FORMAT = 'Respond with JSON only: {"reasoning": "<why>", "level": <1-5>}'
 
 RUBRICS: dict[str, str] = {
@@ -175,6 +193,20 @@ REFERENCE ANSWER to the QUESTION. Prefer early relevant documents; penalize nois
 3: a mix of useful and irrelevant documents
 2: most documents are irrelevant
 1: documents are irrelevant or actively misleading for the reference answer
+Write your reasoning before choosing the level.
+{_RUBRIC_FORMAT}
+""",
+    ),
+    "context_recall": _system(
+        "rubric_context_recall",
+        f"""
+You are an evaluation judge. Rate how completely the DOCUMENTS cover the facts in the
+REFERENCE ANSWER to the QUESTION (context recall). Use only the documents.
+5: every fact of the reference is present in the documents
+4: all key facts are present; a minor detail is missing
+3: about half of the reference facts are present
+2: few reference facts are present
+1: documents omit the reference facts, or contradict them
 Write your reasoning before choosing the level.
 {_RUBRIC_FORMAT}
 """,

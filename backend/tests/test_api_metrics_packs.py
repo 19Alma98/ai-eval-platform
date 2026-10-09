@@ -86,8 +86,10 @@ _DEFAULT_PACK_KINDS = (
     "recall_at_k",
     "mrr",
     "context_precision",
+    "context_recall",
     "must_contain",
     "groundedness",
+    "answer_relevance",
     "correctness",
     "latency",
 )

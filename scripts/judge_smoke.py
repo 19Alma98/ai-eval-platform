@@ -5,7 +5,8 @@ Usage (from backend/):
         uv run python ../scripts/judge_smoke.py [--method rubric]
 
 With a capable model, expect roughly: groundedness 0.5 (the carry-over claim contradicts
-"up to 5 days"), correctness 0.5 (the HR portal is missing), answer_relevance 1.0.
+"up to 5 days"), correctness 0.5 (the HR portal is missing), answer_relevance 1.0,
+context_recall near 1.0 (docs cover the gold facts), context_precision high if ranking is clean.
 """
 
 from __future__ import annotations

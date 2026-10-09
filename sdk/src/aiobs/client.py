@@ -19,6 +19,7 @@ from aiobs.models import (
     ExperimentSummaryResponse,
     HealthResponse,
     ImportDatasetItemsResponse,
+    ListLiveInteractionsResponse,
     LiveInteractionResponse,
     MetricsPackResponse,
     ProjectResponse,
@@ -344,6 +345,61 @@ class _LiveRunsResource:
             "POST",
             f"/api/v1/projects/{project_id}/live-interactions",
             body=body,
+            response_model=LiveInteractionResponse,
+        )
+
+    def list(
+        self,
+        project_id: str,
+        *,
+        judge_status: str | None = None,
+        search: str | None = None,
+        failed_only: bool = False,
+        limit: int = 50,
+    ) -> ListLiveInteractionsResponse:
+        params: dict[str, str] = {"limit": str(limit)}
+        if judge_status is not None:
+            params["judge_status"] = judge_status
+        if search is not None:
+            params["search"] = search
+        if failed_only:
+            params["failed_only"] = "true"
+        path = f"/api/v1/projects/{project_id}/live-interactions?{urlencode(params)}"
+        return self._http.request_model("GET", path, response_model=ListLiveInteractionsResponse)
+
+    def get(self, interaction_id: str) -> LiveInteractionResponse:
+        return self._http.request_model(
+            "GET",
+            f"/api/v1/live-interactions/{interaction_id}",
+            response_model=LiveInteractionResponse,
+        )
+
+    def promote(
+        self,
+        interaction_id: str,
+        *,
+        dataset_id: str,
+        expected_output: Any,
+        expected_doc_ids: builtins.list[str] | None = None,
+    ) -> DatasetItemResponse:
+        body: dict[str, Any] = {
+            "dataset_id": dataset_id,
+            "expected_output": expected_output,
+        }
+        if expected_doc_ids is not None:
+            body["expected_doc_ids"] = list(expected_doc_ids)
+        return self._http.request_model(
+            "POST",
+            f"/api/v1/live-interactions/{interaction_id}/promote",
+            body=body,
+            response_model=DatasetItemResponse,
+        )
+
+    def rescore(self, interaction_id: str) -> LiveInteractionResponse:
+        return self._http.request_model(
+            "POST",
+            f"/api/v1/live-interactions/{interaction_id}/rescore",
+            body={},
             response_model=LiveInteractionResponse,
         )
 

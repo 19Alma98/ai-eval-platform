@@ -143,6 +143,4 @@ def test_get_aliases_get_path(
         assert aliases == []
         req = captured_requests[0]
         assert req.method == "GET"
-        assert str(req.url) == (
-            "http://localhost:8000/api/v1/projects/proj-9/app-config-aliases"
-        )
+        assert str(req.url) == ("http://localhost:8000/api/v1/projects/proj-9/app-config-aliases")

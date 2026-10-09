@@ -22,6 +22,26 @@ def test_create_project_default_seeds_is_default_rows() -> None:
     assert all(e.is_default for e in s.entries)
 
 
+def test_default_rag_set_includes_ragas_core_and_answer_relevance() -> None:
+    kinds = [e.kind for e in DEFAULT_RAG_SET_ENTRIES]
+    assert kinds == [
+        "hit_at_k",
+        "recall_at_k",
+        "mrr",
+        "context_precision",
+        "context_recall",
+        "must_contain",
+        "groundedness",
+        "answer_relevance",
+        "correctness",
+        "latency",
+    ]
+    by_kind = {e.kind: e for e in DEFAULT_RAG_SET_ENTRIES}
+    assert by_kind["context_recall"].threshold == 0.7
+    assert by_kind["answer_relevance"].threshold == 0.7
+    assert by_kind["context_recall"].enabled is True
+
+
 def test_create_custom_never_sets_project_default() -> None:
     entry = MetricsSetEntry(
         id=uuid.uuid4(),
