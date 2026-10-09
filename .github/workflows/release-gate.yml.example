@@ -39,7 +39,7 @@ jobs:
       - name: Set up Python
         run: uv python install 3.12
 
-      - name: Install aiobs-server (CLI)
+      - name: Install aiobs-eval-server (CLI)
         working-directory: backend
         run: uv sync
 

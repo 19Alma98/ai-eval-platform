@@ -1,5 +1,5 @@
 [project]
-name = "aiobs"
+name = "aiobs-eval"
 version = "0.1.0"
 description = "Python SDK for AI Evaluation & Observability Platform (OTLP + OpenInference)"
 readme = "README.md"
@@ -34,15 +34,20 @@ bedrock = [
     "openinference-instrumentation-bedrock>=0.1.0",
 ]
 ai = [
-    "aiobs[openai,anthropic,langchain,llama-index,bedrock]",
+    "aiobs-eval[openai,anthropic,langchain,llama-index,bedrock]",
 ]
 ui = [
-    "aiobs-server==0.1.0",
+    "aiobs-eval-server==0.1.0",
 ]
 
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
+
+# Monorepo only: resolve [ui] against local server until PyPI publish exists.
+# Not included in the published wheel metadata.
+[tool.uv.sources]
+aiobs-eval-server = { path = "../backend", editable = true }
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/aiobs"]

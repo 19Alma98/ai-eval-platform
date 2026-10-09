@@ -2,7 +2,7 @@
 
 ## CLI
 
-Package: **`aiobs-server`** (repo `backend/`), console script `aiobs`.
+Package: **`aiobs-eval-server`** (repo `backend/`), console script `aiobs`.
 
 Implementation:
 - Typer

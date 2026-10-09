@@ -14,7 +14,7 @@ Initial options:
 
 1. OTLP/HTTP ingestion endpoint.
 2. OTLP/gRPC in a later milestone.
-3. Native SDK helper for Python applications — delivered as [`sdk/README.md`](../sdk/README.md) (`pip install aiobs`).
+3. Native SDK helper for Python applications — delivered as [`sdk/README.md`](../sdk/README.md) (`pip install aiobs-eval`).
 
 ## Trace normalization
 

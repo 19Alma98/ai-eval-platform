@@ -13,8 +13,8 @@ Zero external infra — SQLite file + packaged UI in one process:
 
 ```bash
 # from a built/release install, or after ./scripts/package-ui.sh + pip install -e backend
-pip install 'aiobs[ui]'   # SDK + aiobs-server (includes UI)
-aiobs ui                  # http://127.0.0.1:8000  → creates ./aiobs.db
+pip install 'aiobs-eval[ui]'   # SDK + aiobs-eval-server (includes UI)
+aiobs ui                       # http://127.0.0.1:8000  → creates ./aiobs.db
 ```
 
 Optional Postgres (production / Compose):
