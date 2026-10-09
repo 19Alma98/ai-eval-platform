@@ -3,18 +3,14 @@ from __future__ import annotations
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy.exc import IntegrityError
 
 from aiobs.api.deps import get_create_evaluator, get_list_evaluators
 from aiobs.api.schemas import CreateEvaluatorRequest, EvaluatorResponse
 from aiobs.application.evaluators import (
     CreateEvaluator,
     CreateEvaluatorCommand,
-    EvaluatorConflictError,
     ListEvaluators,
-    UnknownEvaluatorKindError,
 )
-from aiobs.application.projects import ProjectNotFoundError
 
 router = APIRouter(tags=["evaluators"])
 
@@ -39,22 +35,9 @@ async def create_evaluator(
                 version=body.version,
             )
         )
-    except ProjectNotFoundError as exc:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
-    except UnknownEvaluatorKindError as exc:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
-    except (EvaluatorConflictError, IntegrityError) as exc:
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
-    return EvaluatorResponse(
-        id=evaluator.id,
-        project_id=evaluator.project_id,
-        name=evaluator.name,
-        type=evaluator.type,
-        config=evaluator.config,
-        version=evaluator.version,
-    )
+    return EvaluatorResponse.model_validate(evaluator)
 
 
 @router.get(
@@ -66,14 +49,4 @@ async def list_evaluators(
     use_case: ListEvaluators = Depends(get_list_evaluators),
 ) -> list[EvaluatorResponse]:
     evaluators = await use_case.execute(project_id)
-    return [
-        EvaluatorResponse(
-            id=e.id,
-            project_id=e.project_id,
-            name=e.name,
-            type=e.type,
-            config=e.config,
-            version=e.version,
-        )
-        for e in evaluators
-    ]
+    return [EvaluatorResponse.model_validate(e) for e in evaluators]

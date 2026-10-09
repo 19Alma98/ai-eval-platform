@@ -36,4 +36,5 @@ __all__ = [
     "trace",
     "trace_async",
 ]
+
 __version__ = "0.1.0"

@@ -402,7 +402,7 @@ async def test_release_check_missing_baseline_and_invalid_policy(
             "policy": {"quality": {"min": 0.8, "extra": 1}},
         },
     )
-    assert invalid.status_code == 400
+    assert invalid.status_code == 422
 
 
 @pytest.mark.asyncio

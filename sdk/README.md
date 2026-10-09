@@ -71,31 +71,32 @@ HTTP client for the platform JSON API (uses `httpx2`, a core SDK dependency). Po
 ```python
 from aiobs import Client
 
-client = Client("http://localhost:8000")
+with Client("http://localhost:8000") as client:
+    project = client.projects.create(name="Demo", slug="demo")
+    ds = client.datasets.create_with_items(
+        project.id,
+        name="gold-v1",
+        task_type="rag_qa",
+        items=[{"input": "Q?", "expected_output": "A"}],
+    )
+    # or CSV/JSONL via multipart import:
+    # client.datasets.import_items(ds.id, path="gold.csv", format="csv")
 
-project = client.projects.create(name="Demo", slug="demo")
-ds = client.datasets.create_with_items(
-    project["id"],
-    name="gold-v1",
-    task_type="rag_qa",
-    items=[{"input": "Q?", "expected_output": "A"}],
-)
-# or CSV/JSONL via multipart import:
-# client.datasets.import_items(ds["id"], path="gold.csv", format="csv")
-
-exp = client.experiments.create(
-    project["id"],
-    name="baseline",
-    dataset_id=ds["id"],
-    model_config={"model": "gemma4:e2b"},
-)
-client.metrics_packs.ensure(project["id"])
-# after OTLP-bound runs:
-client.experiments.evaluate_pack(exp["id"])
-summary = client.experiments.summary(exp["id"])
+    exp = client.experiments.create(
+        project.id,
+        name="baseline",
+        dataset_id=ds.id,
+        model_config={"model": "gemma4:e2b"},
+    )
+    client.metrics_packs.ensure(project.id)
+    # after OTLP-bound runs:
+    client.experiments.evaluate_pack(exp.id)
+    summary = client.experiments.summary(exp.id)
 ```
 
-Namespaces: `projects`, `datasets` (`create`, `create_with_items`, `add_item`, `get`, `list`, `import_items`), `experiments` (`create`, `get`, `list_outputs`, `evaluate_pack`, `summary`, `compare`), `metrics_packs` (`ensure`, `get`), `app_configs` (same methods as `AppConfigClient`). Non-2xx responses raise `AiobsAPIError`.
+Control-plane methods return **Pydantic** models (see `aiobs.models`); use attributes or `.model_dump()` for a dict. Prefer `with Client(...)` / `client.close()` so the shared `httpx2` connection pool is released.
+
+Namespaces: `projects`, `datasets` (`create`, `create_with_items`, `add_item`, `get`, `list`, `import_items`), `experiments` (`create`, `get`, `list_outputs`, `evaluate_pack`, `summary`, `compare`), `metrics_packs` (`ensure`, `get`), `app_configs` (same methods as `AppConfigClient`). Non-2xx responses raise `AiobsAPIError` (with parsed FastAPI `detail` when present).
 
 Eval binding still uses tracing attributes (no REST call):
 
@@ -121,7 +122,7 @@ created = registry.create_app_config(
     model={"model_id": "demo"},
 )
 latest = registry.list_app_configs(project_id, latest=True)
-registry.set_alias(project_id, "baseline", created["id"])
+registry.set_alias(project_id, "baseline", created.id)
 ```
 
 Methods: `create_app_config`, `list_app_configs` (`name`, `latest`), `set_alias`, `get_aliases`.

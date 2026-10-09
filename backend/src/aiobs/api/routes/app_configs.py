@@ -21,9 +21,7 @@ from aiobs.api.schemas import (
     SetAppConfigAliasRequest,
 )
 from aiobs.application.app_configs import (
-    AppConfigAliasNotFoundError,
     AppConfigAliasWithSummary,
-    AppConfigNotFoundError,
     CreateAppConfig,
     CreateAppConfigCommand,
     DeleteAppConfigAlias,
@@ -34,24 +32,25 @@ from aiobs.application.app_configs import (
     SetAppConfigAlias,
     SetAppConfigAliasCommand,
 )
-from aiobs.application.projects import ProjectNotFoundError
 from aiobs.domain.app_config import AppConfig
 
 router = APIRouter(tags=["app-configs"])
 
 
 def _app_config_response(config: AppConfig) -> AppConfigResponse:
-    return AppConfigResponse(
-        id=config.id,
-        project_id=config.project_id,
-        name=config.name,
-        version=config.version,
-        description=config.description,
-        prompt=dict(config.prompt),
-        model=dict(config.model),
-        retrieval=dict(config.retrieval),
-        content_hash=config.content_hash,
-        created_at=config.created_at,
+    return AppConfigResponse.model_validate(
+        {
+            "id": config.id,
+            "project_id": config.project_id,
+            "name": config.name,
+            "version": config.version,
+            "description": config.description,
+            "prompt": config.prompt,
+            "model": config.model,
+            "retrieval": config.retrieval,
+            "content_hash": config.content_hash,
+            "created_at": config.created_at,
+        }
     )
 
 
@@ -84,13 +83,11 @@ async def create_app_config(
                 project_id=project_id,
                 name=body.name,
                 description=body.description,
-                prompt=body.prompt,
-                model=body.model,
-                retrieval=body.retrieval,
+                prompt=body.prompt.model_dump(exclude_unset=True),
+                model=body.model.model_dump(exclude_unset=True),
+                retrieval=body.retrieval.model_dump(exclude_unset=True),
             )
         )
-    except ProjectNotFoundError as exc:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
     return _app_config_response(config)
@@ -115,10 +112,7 @@ async def get_app_config(
     app_config_id: uuid.UUID,
     use_case: GetAppConfig = Depends(get_get_app_config),
 ) -> AppConfigResponse:
-    try:
-        config = await use_case.execute(app_config_id)
-    except AppConfigNotFoundError as exc:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    config = await use_case.execute(app_config_id)
     return _app_config_response(config)
 
 
@@ -155,8 +149,6 @@ async def set_app_config_alias(
             )
         )
         config = await get_config.execute(alias_row.app_config_id)
-    except AppConfigNotFoundError as exc:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
     return _alias_response(AppConfigAliasWithSummary(alias=alias_row, config=config))
@@ -170,10 +162,7 @@ async def list_app_config_aliases(
     project_id: uuid.UUID,
     use_case: ListAppConfigAliases = Depends(get_list_app_config_aliases),
 ) -> list[AppConfigAliasResponse]:
-    try:
-        items = await use_case.execute(project_id)
-    except AppConfigNotFoundError as exc:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    items = await use_case.execute(project_id)
     return [_alias_response(i) for i in items]
 
 
@@ -188,8 +177,6 @@ async def delete_app_config_alias(
 ) -> Response:
     try:
         await use_case.execute(project_id, alias)
-    except AppConfigAliasNotFoundError as exc:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
     return Response(status_code=status.HTTP_204_NO_CONTENT)

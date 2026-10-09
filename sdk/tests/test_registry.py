@@ -59,41 +59,43 @@ def test_create_app_config_post_body_and_path(
     mock_transport: httpx2.MockTransport,
     captured_requests: list[httpx2.Request],
 ) -> None:
-    client = AppConfigClient("http://localhost:8000/", transport=mock_transport)
-    result = client.create_app_config(
-        "proj-1",
-        "rag-faq",
-        prompt={"system": "You are helpful."},
-        description="demo",
-    )
+    with AppConfigClient("http://localhost:8000/", transport=mock_transport) as client:
+        result = client.create_app_config(
+            "proj-1",
+            "rag-faq",
+            prompt={"system": "You are helpful."},
+            description="demo",
+        )
 
-    assert result["name"] == "rag-faq"
-    assert len(captured_requests) == 1
-    req = captured_requests[0]
-    assert req.method == "POST"
-    assert str(req.url) == "http://localhost:8000/api/v1/projects/proj-1/app-configs"
-    body: dict[str, Any] = json.loads(req.content.decode())
-    assert body == {
-        "name": "rag-faq",
-        "description": "demo",
-        "prompt": {"system": "You are helpful."},
-    }
+        assert result.name == "rag-faq"
+        assert len(captured_requests) == 1
+        req = captured_requests[0]
+        assert req.method == "POST"
+        assert str(req.url) == "http://localhost:8000/api/v1/projects/proj-1/app-configs"
+        body: dict[str, Any] = json.loads(req.content.decode())
+        assert body == {
+            "name": "rag-faq",
+            "description": "demo",
+            "prompt": {"system": "You are helpful."},
+        }
 
 
 def test_set_alias_put_body_and_path(
     mock_transport: httpx2.MockTransport,
     captured_requests: list[httpx2.Request],
 ) -> None:
-    client = AppConfigClient("http://api.example", transport=mock_transport)
-    config_id = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"
-    result = client.set_alias("proj-2", "baseline", config_id)
+    with AppConfigClient("http://api.example", transport=mock_transport) as client:
+        config_id = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"
+        result = client.set_alias("proj-2", "baseline", config_id)
 
-    assert result["name"] == "baseline"
-    req = captured_requests[0]
-    assert req.method == "PUT"
-    assert str(req.url) == ("http://api.example/api/v1/projects/proj-2/app-config-aliases/baseline")
-    body = json.loads(req.content.decode())
-    assert body == {"app_config_id": config_id}
+        assert result.name == "baseline"
+        req = captured_requests[0]
+        assert req.method == "PUT"
+        assert str(req.url) == (
+            "http://api.example/api/v1/projects/proj-2/app-config-aliases/baseline"
+        )
+        body = json.loads(req.content.decode())
+        assert body == {"app_config_id": config_id}
 
 
 def test_list_app_configs_query_params(
@@ -101,30 +103,46 @@ def test_list_app_configs_query_params(
 ) -> None:
     def handler(request: httpx2.Request) -> httpx2.Response:
         captured_requests.append(request)
-        return httpx2.Response(200, json=[{"id": "x", "name": "rag-faq"}])
+        return httpx2.Response(
+            200,
+            json=[
+                {
+                    "id": "x",
+                    "project_id": "proj-1",
+                    "name": "rag-faq",
+                    "version": 1,
+                    "content_hash": "h",
+                    "created_at": "2026-01-01T00:00:00+00:00",
+                }
+            ],
+        )
 
-    client = AppConfigClient(
+    with AppConfigClient(
         "http://localhost:8000",
         transport=httpx2.MockTransport(handler),
-    )
-    rows = client.list_app_configs("proj-1", name="rag-faq", latest=True)
+    ) as client:
+        rows = client.list_app_configs("proj-1", name="rag-faq", latest=True)
 
-    assert rows == [{"id": "x", "name": "rag-faq"}]
-    req = captured_requests[0]
-    assert req.method == "GET"
-    assert str(req.url) == (
-        "http://localhost:8000/api/v1/projects/proj-1/app-configs?name=rag-faq&latest=true"
-    )
+        assert len(rows) == 1
+        assert rows[0].id == "x"
+        assert rows[0].name == "rag-faq"
+        req = captured_requests[0]
+        assert req.method == "GET"
+        assert str(req.url) == (
+            "http://localhost:8000/api/v1/projects/proj-1/app-configs?name=rag-faq&latest=true"
+        )
 
 
 def test_get_aliases_get_path(
     mock_transport: httpx2.MockTransport,
     captured_requests: list[httpx2.Request],
 ) -> None:
-    client = AppConfigClient("http://localhost:8000", transport=mock_transport)
-    aliases = client.get_aliases("proj-9")
+    with AppConfigClient("http://localhost:8000", transport=mock_transport) as client:
+        aliases = client.get_aliases("proj-9")
 
-    assert aliases == []
-    req = captured_requests[0]
-    assert req.method == "GET"
-    assert str(req.url) == ("http://localhost:8000/api/v1/projects/proj-9/app-config-aliases")
+        assert aliases == []
+        req = captured_requests[0]
+        assert req.method == "GET"
+        assert str(req.url) == (
+            "http://localhost:8000/api/v1/projects/proj-9/app-config-aliases"
+        )

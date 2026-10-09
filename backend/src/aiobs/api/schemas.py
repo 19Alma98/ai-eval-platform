@@ -2,9 +2,21 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime
-from typing import Any
+from typing import Any, Literal, Self
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
+
+from aiobs.regression.policy import META_KEYS
+
+_LLM_JUDGE_KINDS = frozenset(
+    {"answer_relevance", "groundedness", "correctness", "context_precision"}
+)
+_JUDGE_METHODS: dict[str, frozenset[str]] = {
+    "groundedness": frozenset({"claims", "rubric"}),
+    "correctness": frozenset({"claims", "rubric"}),
+    "answer_relevance": frozenset({"rubric"}),
+    "context_precision": frozenset({"claims", "rubric"}),
+}
 
 
 class CreateProjectRequest(BaseModel):
@@ -18,7 +30,7 @@ class ProjectResponse(BaseModel):
     slug: str
     created_at: datetime
 
-    model_config = {"from_attributes": True}
+    model_config = ConfigDict(from_attributes=True)
 
 
 class HealthResponse(BaseModel):
@@ -121,14 +133,58 @@ class ImportDatasetItemsResponse(BaseModel):
     errors: list[ImportDatasetItemErrorResponse]
 
 
+class LlmJudgeConfigBody(BaseModel):
+    """Known LLM-judge config fields. Extra keys allowed for forward compatibility."""
+
+    model_config = ConfigDict(extra="allow")
+
+    kind: str | None = None
+    method: str | None = None
+    scoring: Literal["recall", "f1"] | None = None
+    max_claims: int | None = Field(default=None, ge=1)
+    model: str | None = None
+    temperature: float | None = None
+    k: int | None = Field(default=None, ge=1)
+
+    @model_validator(mode="after")
+    def _check_method_for_kind(self) -> Self:
+        kind = (self.kind or "").strip().lower()
+        if not kind or kind not in _LLM_JUDGE_KINDS:
+            return self
+        if self.method is None:
+            return self
+        method = self.method.strip().lower()
+        allowed = _JUDGE_METHODS[kind]
+        if method not in allowed:
+            raise ValueError(
+                f"{kind} judge: method must be one of {sorted(allowed)}, got {method!r}"
+            )
+        return self
+
+
+def _validate_judge_config(kind: str, config: dict[str, Any]) -> None:
+    key = kind.strip().lower()
+    if key not in _LLM_JUDGE_KINDS:
+        return
+    LlmJudgeConfigBody.model_validate({**config, "kind": key})
+
+
 class CreateEvaluatorRequest(BaseModel):
     name: str = Field(min_length=1, max_length=200)
     type: str = Field(min_length=1, max_length=32)
     config: dict[str, Any]
     version: int = Field(default=1, ge=1)
 
+    @model_validator(mode="after")
+    def _validate_config(self) -> Self:
+        kind = str(self.config.get("kind", ""))
+        _validate_judge_config(kind, self.config)
+        return self
+
 
 class EvaluatorResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     id: uuid.UUID
     project_id: uuid.UUID
     name: str
@@ -144,6 +200,11 @@ class MetricsPackEntryRequest(BaseModel):
     config: dict[str, Any] = Field(default_factory=dict)
     evaluator_id: uuid.UUID | None = None
     removable: bool | None = None
+
+    @model_validator(mode="after")
+    def _validate_config(self) -> Self:
+        _validate_judge_config(self.kind, self.config)
+        return self
 
 
 class ReplaceMetricsPackRequest(BaseModel):
@@ -172,6 +233,11 @@ class MetricsSetEntryRequest(BaseModel):
     threshold: float | None = None
     config: dict[str, Any] = Field(default_factory=dict)
     evaluator_id: uuid.UUID | None = None
+
+    @model_validator(mode="after")
+    def _validate_config(self) -> Self:
+        _validate_judge_config(self.kind, self.config)
+        return self
 
 
 class CreateMetricsSetRequest(BaseModel):
@@ -332,9 +398,70 @@ class ExperimentCompareResponse(BaseModel):
     baseline_runs: list[CompareRunRefResponse] = []
 
 
+class AbsoluteMinRuleBody(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    min: float
+
+
+class LatencyRuleBody(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    p95_max_ms: float
+
+
+class CostRuleBody(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    max_per_request_usd: float
+
+
+class RegressionRuleBody(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    max_delta: float
+
+
+class ReleasePolicyBody(BaseModel):
+    """Release gate policy. Named evaluator keys map to ``{min: ...}`` via extras."""
+
+    model_config = ConfigDict(extra="allow")
+
+    latency: LatencyRuleBody | None = None
+    cost: CostRuleBody | None = None
+    regression: RegressionRuleBody | None = None
+    # Optional meta keys (stripped before evaluation); accepted so they are not
+    # treated as absolute-min evaluator rules.
+    api_base_url: str | None = None
+    base_url: str | None = None
+    project_id: str | None = None
+    experiment_id: str | None = None
+    baseline_experiment_id: str | None = None
+
+    @model_validator(mode="after")
+    def _validate_rules(self) -> Self:
+        extras = dict(self.__pydantic_extra__ or {})
+        for key, value in extras.items():
+            if key in META_KEYS:
+                continue
+            AbsoluteMinRuleBody.model_validate(value)
+        has_rules = (
+            bool(extras)
+            or self.latency is not None
+            or self.cost is not None
+            or self.regression is not None
+        )
+        if not has_rules:
+            raise ValueError("policy must define at least one rule")
+        return self
+
+    def to_raw_dict(self) -> dict[str, Any]:
+        return self.model_dump(exclude_none=True)
+
+
 class ReleaseCheckRequest(BaseModel):
     experiment_id: uuid.UUID
-    policy: dict[str, Any]
+    policy: ReleasePolicyBody
     baseline_experiment_id: uuid.UUID | None = None
 
 
@@ -405,23 +532,48 @@ class ExperimentItemCompareResponse(BaseModel):
     items: list[ItemComparisonRowResponse]
 
 
+class AppConfigPromptBody(BaseModel):
+    model_config = ConfigDict(extra="allow")
+
+    system: str | None = None
+    user: str | None = None
+    template: str | None = None
+
+
+class AppConfigModelBody(BaseModel):
+    model_config = ConfigDict(extra="allow")
+
+    model_id: str | None = None
+    temperature: float | None = None
+    max_tokens: int | None = Field(default=None, ge=1)
+
+
+class AppConfigRetrievalBody(BaseModel):
+    model_config = ConfigDict(extra="allow")
+
+    top_k: int | None = Field(default=None, ge=1)
+    index: str | None = None
+
+
 class CreateAppConfigRequest(BaseModel):
     name: str = Field(min_length=1, max_length=200)
     description: str | None = Field(default=None, max_length=2000)
-    prompt: dict[str, Any] = Field(default_factory=dict)
-    model: dict[str, Any] = Field(default_factory=dict)
-    retrieval: dict[str, Any] = Field(default_factory=dict)
+    prompt: AppConfigPromptBody = Field(default_factory=AppConfigPromptBody)
+    model: AppConfigModelBody = Field(default_factory=AppConfigModelBody)
+    retrieval: AppConfigRetrievalBody = Field(default_factory=AppConfigRetrievalBody)
 
 
 class AppConfigResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     id: uuid.UUID
     project_id: uuid.UUID
     name: str
     version: int
     description: str | None
-    prompt: dict[str, Any]
-    model: dict[str, Any]
-    retrieval: dict[str, Any]
+    prompt: AppConfigPromptBody
+    model: AppConfigModelBody
+    retrieval: AppConfigRetrievalBody
     content_hash: str
     created_at: datetime
 

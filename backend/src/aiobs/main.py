@@ -3,6 +3,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 
+from aiobs.api.errors import register_exception_handlers
 from aiobs.api.routes import api_router
 from aiobs.api.schemas import HealthResponse
 from aiobs.config import get_settings
@@ -38,6 +39,7 @@ def create_app() -> FastAPI:
         version="0.1.0",
         lifespan=lifespan,
     )
+    register_exception_handlers(app)
     app.include_router(api_router)
 
     @app.get("/health", response_model=HealthResponse, tags=["health"])

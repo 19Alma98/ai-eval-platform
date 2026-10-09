@@ -1,20 +1,35 @@
 from __future__ import annotations
 
+import json
 import mimetypes
 import os
 from pathlib import Path
-from typing import Any
+from typing import Any, TypeVar
 
 import httpx2
+from pydantic import BaseModel
+
+T = TypeVar("T", bound=BaseModel)
 
 
 class AiobsAPIError(RuntimeError):
     """Raised when the platform API returns a non-2xx response."""
 
-    def __init__(self, status: int, body: str) -> None:
+    def __init__(self, status: int, body: str, *, detail: Any = None) -> None:
         self.status = status
         self.body = body
+        self.detail = detail
         super().__init__(f"HTTP {status}: {body}")
+
+
+def _parse_error_detail(body: str) -> Any:
+    try:
+        data = json.loads(body)
+    except (json.JSONDecodeError, TypeError):
+        return None
+    if isinstance(data, dict) and "detail" in data:
+        return data["detail"]
+    return None
 
 
 class _HttpTransport:
@@ -24,9 +39,14 @@ class _HttpTransport:
         *,
         timeout: float = 30.0,
         transport: httpx2.BaseTransport | None = None,
+        client: httpx2.Client | None = None,
     ) -> None:
         self._base_url = base_url.rstrip("/")
         self._timeout = timeout
+        self._owns_client = client is None
+        if client is not None:
+            self._client = client
+            return
         kwargs: dict[str, Any] = {
             "base_url": self._base_url,
             "timeout": timeout,
@@ -52,6 +72,32 @@ class _HttpTransport:
         )
         return self._parse(response)
 
+    def request_model(
+        self,
+        method: str,
+        path: str,
+        *,
+        response_model: type[T],
+        body: dict[str, Any] | None = None,
+        query: dict[str, str] | None = None,
+    ) -> T:
+        data = self.request(method, path, body=body, query=query)
+        return response_model.model_validate(data)
+
+    def request_model_list(
+        self,
+        method: str,
+        path: str,
+        *,
+        response_model: type[T],
+        body: dict[str, Any] | None = None,
+        query: dict[str, str] | None = None,
+    ) -> list[T]:
+        data = self.request(method, path, body=body, query=query)
+        if not isinstance(data, list):
+            raise TypeError(f"expected list response, got {type(data).__name__}")
+        return [response_model.model_validate(item) for item in data]
+
     def request_multipart(
         self,
         method: str,
@@ -72,12 +118,37 @@ class _HttpTransport:
         )
         return self._parse(response)
 
+    def request_multipart_model(
+        self,
+        method: str,
+        path: str,
+        *,
+        response_model: type[T],
+        file_field: str,
+        filename: str,
+        content: bytes,
+        content_type: str | None = None,
+        query: dict[str, str] | None = None,
+    ) -> T:
+        data = self.request_multipart(
+            method,
+            path,
+            file_field=file_field,
+            filename=filename,
+            content=content,
+            content_type=content_type,
+            query=query,
+        )
+        return response_model.model_validate(data)
+
     def close(self) -> None:
-        self._client.close()
+        if self._owns_client:
+            self._client.close()
 
     def _parse(self, response: httpx2.Response) -> Any:
         if response.status_code >= 400:
-            raise AiobsAPIError(response.status_code, response.text)
+            detail = _parse_error_detail(response.text)
+            raise AiobsAPIError(response.status_code, response.text, detail=detail)
         if not response.content:
             return None
         return response.json()

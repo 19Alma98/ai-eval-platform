@@ -62,6 +62,7 @@ def test_request_raises_aiobs_api_error() -> None:
         transport.request("GET", "/api/v1/projects/missing")
     assert exc_info.value.status == 404
     assert "missing" in exc_info.value.body
+    assert exc_info.value.detail == "missing"
     transport.close()
 
 

@@ -8,6 +8,21 @@ from urllib.parse import urlencode
 import httpx2
 
 from aiobs._http import _HttpTransport, read_upload, resolve_api_base_url
+from aiobs.models import (
+    DatasetDetailResponse,
+    DatasetItemResponse,
+    DatasetResponse,
+    EvaluateResponse,
+    ExperimentCompareResponse,
+    ExperimentItemOutputResponse,
+    ExperimentResponse,
+    ExperimentSummaryResponse,
+    HealthResponse,
+    ImportDatasetItemsResponse,
+    LiveInteractionResponse,
+    MetricsPackResponse,
+    ProjectResponse,
+)
 from aiobs.registry import AppConfigClient
 
 
@@ -15,23 +30,25 @@ class _ProjectsResource:
     def __init__(self, http: _HttpTransport) -> None:
         self._http = http
 
-    def create(self, *, name: str, slug: str | None = None) -> dict[str, Any]:
+    def create(self, *, name: str, slug: str | None = None) -> ProjectResponse:
         body: dict[str, Any] = {"name": name}
         if slug is not None:
             body["slug"] = slug
-        result = self._http.request("POST", "/api/v1/projects", body=body)
-        assert isinstance(result, dict)
-        return result
+        return self._http.request_model(
+            "POST", "/api/v1/projects", body=body, response_model=ProjectResponse
+        )
 
-    def list(self) -> builtins.list[dict[str, Any]]:
-        result = self._http.request("GET", "/api/v1/projects")
-        assert isinstance(result, builtins.list)
-        return result
+    def list(self) -> builtins.list[ProjectResponse]:
+        return self._http.request_model_list(
+            "GET", "/api/v1/projects", response_model=ProjectResponse
+        )
 
-    def get(self, project_id: str) -> dict[str, Any]:
-        result = self._http.request("GET", f"/api/v1/projects/{project_id}")
-        assert isinstance(result, dict)
-        return result
+    def get(self, project_id: str) -> ProjectResponse:
+        return self._http.request_model(
+            "GET",
+            f"/api/v1/projects/{project_id}",
+            response_model=ProjectResponse,
+        )
 
 
 class _DatasetsResource:
@@ -46,7 +63,7 @@ class _DatasetsResource:
         version: int = 1,
         description: str | None = None,
         task_type: str = "rag_qa",
-    ) -> dict[str, Any]:
+    ) -> DatasetResponse:
         body: dict[str, Any] = {
             "name": name,
             "version": version,
@@ -54,32 +71,32 @@ class _DatasetsResource:
         }
         if description is not None:
             body["description"] = description
-        result = self._http.request(
+        return self._http.request_model(
             "POST",
             f"/api/v1/projects/{project_id}/datasets",
             body=body,
+            response_model=DatasetResponse,
         )
-        assert isinstance(result, dict)
-        return result
 
     def list(
         self, project_id: str, *, task_type: str | None = None
-    ) -> builtins.list[dict[str, Any]]:
+    ) -> builtins.list[DatasetResponse]:
         query: dict[str, str] | None = None
         if task_type is not None:
             query = {"task_type": task_type}
-        result = self._http.request(
+        return self._http.request_model_list(
             "GET",
             f"/api/v1/projects/{project_id}/datasets",
             query=query,
+            response_model=DatasetResponse,
         )
-        assert isinstance(result, builtins.list)
-        return result
 
-    def get(self, dataset_id: str) -> dict[str, Any]:
-        result = self._http.request("GET", f"/api/v1/datasets/{dataset_id}")
-        assert isinstance(result, dict)
-        return result
+    def get(self, dataset_id: str) -> DatasetDetailResponse:
+        return self._http.request_model(
+            "GET",
+            f"/api/v1/datasets/{dataset_id}",
+            response_model=DatasetDetailResponse,
+        )
 
     def add_item(
         self,
@@ -92,7 +109,7 @@ class _DatasetsResource:
         metadata: dict[str, Any] | None = None,
         source_trace_id: str | None = None,
         source_span_id: str | None = None,
-    ) -> dict[str, Any]:
+    ) -> DatasetItemResponse:
         body: dict[str, Any] = {"input": input}
         if expected_output is not None:
             body["expected_output"] = expected_output
@@ -106,13 +123,12 @@ class _DatasetsResource:
             body["source_trace_id"] = source_trace_id
         if source_span_id is not None:
             body["source_span_id"] = source_span_id
-        result = self._http.request(
+        return self._http.request_model(
             "POST",
             f"/api/v1/datasets/{dataset_id}/items",
             body=body,
+            response_model=DatasetItemResponse,
         )
-        assert isinstance(result, dict)
-        return result
 
     def create_with_items(
         self,
@@ -123,7 +139,7 @@ class _DatasetsResource:
         version: int = 1,
         description: str | None = None,
         task_type: str = "rag_qa",
-    ) -> dict[str, Any]:
+    ) -> DatasetResponse:
         dataset = self.create(
             project_id,
             name=name,
@@ -131,7 +147,7 @@ class _DatasetsResource:
             description=description,
             task_type=task_type,
         )
-        dataset_id = str(dataset["id"])
+        dataset_id = str(dataset.id)
         for item in items:
             self.add_item(dataset_id, **item)
         return dataset
@@ -144,22 +160,21 @@ class _DatasetsResource:
         file: tuple[str, bytes] | None = None,
         format: str | None = None,
         content_type: str | None = None,
-    ) -> dict[str, Any]:
+    ) -> ImportDatasetItemsResponse:
         filename, content = read_upload(path, file=file)
         query: dict[str, str] | None = None
         if format is not None:
             query = {"format": format}
-        result = self._http.request_multipart(
+        return self._http.request_multipart_model(
             "POST",
             f"/api/v1/datasets/{dataset_id}/items/import",
+            response_model=ImportDatasetItemsResponse,
             file_field="file",
             filename=filename,
             content=content,
             content_type=content_type,
             query=query,
         )
-        assert isinstance(result, dict)
-        return result
 
 
 class _ExperimentsResource:
@@ -178,7 +193,7 @@ class _ExperimentsResource:
         app_config_id: str | None = None,
         app_config_alias: str | None = None,
         metrics_set_id: str | None = None,
-    ) -> dict[str, Any]:
+    ) -> ExperimentResponse:
         body: dict[str, Any] = {
             "name": name,
             "dataset_id": dataset_id,
@@ -194,34 +209,33 @@ class _ExperimentsResource:
             body["app_config_alias"] = app_config_alias
         if metrics_set_id is not None:
             body["metrics_set_id"] = metrics_set_id
-        result = self._http.request(
+        return self._http.request_model(
             "POST",
             f"/api/v1/projects/{project_id}/experiments",
             body=body,
+            response_model=ExperimentResponse,
         )
-        assert isinstance(result, dict)
-        return result
 
-    def list(self, project_id: str) -> builtins.list[dict[str, Any]]:
-        result = self._http.request(
+    def list(self, project_id: str) -> builtins.list[ExperimentResponse]:
+        return self._http.request_model_list(
             "GET",
             f"/api/v1/projects/{project_id}/experiments",
+            response_model=ExperimentResponse,
         )
-        assert isinstance(result, builtins.list)
-        return result
 
-    def get(self, experiment_id: str) -> dict[str, Any]:
-        result = self._http.request("GET", f"/api/v1/experiments/{experiment_id}")
-        assert isinstance(result, dict)
-        return result
+    def get(self, experiment_id: str) -> ExperimentResponse:
+        return self._http.request_model(
+            "GET",
+            f"/api/v1/experiments/{experiment_id}",
+            response_model=ExperimentResponse,
+        )
 
-    def list_outputs(self, experiment_id: str) -> builtins.list[dict[str, Any]]:
-        result = self._http.request(
+    def list_outputs(self, experiment_id: str) -> builtins.list[ExperimentItemOutputResponse]:
+        return self._http.request_model_list(
             "GET",
             f"/api/v1/experiments/{experiment_id}/outputs",
+            response_model=ExperimentItemOutputResponse,
         )
-        assert isinstance(result, builtins.list)
-        return result
 
     def evaluate_pack(
         self,
@@ -229,19 +243,18 @@ class _ExperimentsResource:
         *,
         metrics_set_id: str | None = None,
         save_as_default: bool = False,
-    ) -> dict[str, Any]:
+    ) -> EvaluateResponse:
         body: dict[str, Any] = {}
         if metrics_set_id is not None:
             body["metrics_set_id"] = metrics_set_id
         if save_as_default:
             body["save_as_default"] = True
-        result = self._http.request(
+        return self._http.request_model(
             "POST",
             f"/api/v1/experiments/{experiment_id}/evaluate-pack",
             body=body or None,
+            response_model=EvaluateResponse,
         )
-        assert isinstance(result, dict)
-        return result
 
     def summary(
         self,
@@ -249,7 +262,7 @@ class _ExperimentsResource:
         *,
         run_ids: builtins.list[str] | None = None,
         evaluator_ids: builtins.list[str] | None = None,
-    ) -> dict[str, Any]:
+    ) -> ExperimentSummaryResponse:
         path = f"/api/v1/experiments/{experiment_id}/summary"
         pairs: builtins.list[tuple[str, str]] = []
         for rid in run_ids or []:
@@ -258,9 +271,7 @@ class _ExperimentsResource:
             pairs.append(("evaluator_ids", eid))
         if pairs:
             path = f"{path}?{urlencode(pairs)}"
-        result = self._http.request("GET", path)
-        assert isinstance(result, dict)
-        return result
+        return self._http.request_model("GET", path, response_model=ExperimentSummaryResponse)
 
     def compare(
         self,
@@ -270,7 +281,7 @@ class _ExperimentsResource:
         evaluator_ids: builtins.list[str] | None = None,
         candidate_run_ids: builtins.list[str] | None = None,
         baseline_run_ids: builtins.list[str] | None = None,
-    ) -> dict[str, Any]:
+    ) -> ExperimentCompareResponse:
         path = f"/api/v1/experiments/{experiment_id}/compare/{baseline_id}"
         pairs: builtins.list[tuple[str, str]] = []
         for eid in evaluator_ids or []:
@@ -281,31 +292,27 @@ class _ExperimentsResource:
             pairs.append(("baseline_run_ids", rid))
         if pairs:
             path = f"{path}?{urlencode(pairs)}"
-        result = self._http.request("GET", path)
-        assert isinstance(result, dict)
-        return result
+        return self._http.request_model("GET", path, response_model=ExperimentCompareResponse)
 
 
 class _MetricsPacksResource:
     def __init__(self, http: _HttpTransport) -> None:
         self._http = http
 
-    def ensure(self, project_id: str) -> dict[str, Any]:
-        result = self._http.request(
+    def ensure(self, project_id: str) -> MetricsPackResponse:
+        return self._http.request_model(
             "POST",
             f"/api/v1/projects/{project_id}/metrics-pack/ensure",
             body={},
+            response_model=MetricsPackResponse,
         )
-        assert isinstance(result, dict)
-        return result
 
-    def get(self, project_id: str) -> dict[str, Any]:
-        result = self._http.request(
+    def get(self, project_id: str) -> MetricsPackResponse:
+        return self._http.request_model(
             "GET",
             f"/api/v1/projects/{project_id}/metrics-pack",
+            response_model=MetricsPackResponse,
         )
-        assert isinstance(result, dict)
-        return result
 
 
 class _LiveRunsResource:
@@ -322,7 +329,7 @@ class _LiveRunsResource:
         metadata: dict[str, Any] | None = None,
         external_id: str | None = None,
         metrics_set_id: str | None = None,
-    ) -> dict[str, Any]:
+    ) -> LiveInteractionResponse:
         body: dict[str, Any] = {
             "question": question,
             "answer": answer,
@@ -333,13 +340,12 @@ class _LiveRunsResource:
             body["external_id"] = external_id
         if metrics_set_id is not None:
             body["metrics_set_id"] = metrics_set_id
-        result = self._http.request(
+        return self._http.request_model(
             "POST",
             f"/api/v1/projects/{project_id}/live-interactions",
             body=body,
+            response_model=LiveInteractionResponse,
         )
-        assert isinstance(result, dict)
-        return result
 
 
 class Client:
@@ -360,9 +366,16 @@ class Client:
         self.experiments = _ExperimentsResource(self._http)
         self.metrics_packs = _MetricsPacksResource(self._http)
         self.live_runs = _LiveRunsResource(self._http)
-        self.app_configs = AppConfigClient(resolved, timeout=timeout, transport=transport)
+        self.app_configs = AppConfigClient.from_transport(self._http)
 
-    def health(self) -> dict[str, Any]:
-        result = self._http.request("GET", "/health")
-        assert isinstance(result, dict)
-        return result
+    def health(self) -> HealthResponse:
+        return self._http.request_model("GET", "/health", response_model=HealthResponse)
+
+    def close(self) -> None:
+        self._http.close()
+
+    def __enter__(self) -> Client:
+        return self
+
+    def __exit__(self, *_exc: object) -> None:
+        self.close()
