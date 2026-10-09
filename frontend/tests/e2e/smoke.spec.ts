@@ -13,8 +13,13 @@ test("overview live runs and release page render", async ({ page, request }) => 
   await page.goto(`/overview?project=${id}&range=24h`);
   await expect(page.getByRole("heading", { name: "Overview" })).toBeVisible();
   await expect(page.getByLabel("Time range")).toBeVisible();
-  await expect(page.getByText(/Live/i).first()).toBeVisible();
-  await expect(page.getByText(/Offline/i).first()).toBeVisible();
+  const keyMetrics = page.getByRole("region", { name: "Key metrics" });
+  await expect(
+    keyMetrics.getByRole("heading", { name: "Live", exact: true }),
+  ).toBeVisible();
+  await expect(
+    keyMetrics.getByRole("heading", { name: "Offline", exact: true }),
+  ).toBeVisible();
   await expect(page.getByRole("link", { name: "Traces" })).toHaveCount(0);
 
   await page.goto(`/live-runs?project=${id}`);

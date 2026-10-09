@@ -115,6 +115,22 @@ export function mapOverviewToDualKpi(
   };
 }
 
+export function regressionDrillDownHref(
+  offline: ProjectOverview["offline"],
+): string {
+  const compare = offline.compare;
+  if (compare?.candidate_experiment_id && compare.baseline_experiment_id) {
+    const candidate = encodeURIComponent(compare.candidate_experiment_id);
+    const baseline = encodeURIComponent(compare.baseline_experiment_id);
+    return `/experiments/${candidate}/compare?baseline=${baseline}`;
+  }
+  const latest = offline.latest_experiment;
+  if (latest) {
+    return `/experiments/${latest.id}`;
+  }
+  return "/experiments";
+}
+
 export type AttentionRowKind = "live_fail" | "regression" | "calibration";
 
 export type AttentionRow = {
@@ -142,6 +158,8 @@ export function mergeAttentionItems(
     });
   }
 
+  const regressionHref = regressionDrillDownHref(overview.offline);
+
   for (const regression of overview.offline.regressions) {
     rows.push({
       id: `regression-${regression.name}`,
@@ -151,6 +169,7 @@ export function mergeAttentionItems(
         regression.delta != null
           ? `Δ ${regression.delta.toFixed(3)}`
           : regression.status,
+      href: regressionHref,
     });
   }
 
