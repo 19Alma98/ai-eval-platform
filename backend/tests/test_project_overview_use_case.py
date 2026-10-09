@@ -15,7 +15,7 @@ from aiobs.domain.evaluation import EvaluationResultRecord, EvaluationRun
 from aiobs.domain.evaluator import Evaluator
 from aiobs.domain.experiment import Experiment
 from aiobs.domain.live_interaction import LiveInteraction, LiveInteractionScore
-from aiobs.domain.live_overview import LiveInteractionInRange
+from aiobs.domain.live_overview import LiveInRangeResult, LiveInteractionInRange
 from aiobs.domain.project import Project
 
 
@@ -117,7 +117,7 @@ class InMemoryLiveRepository:
         since: datetime,
         until: datetime,
         limit: int = 10_000,
-    ) -> list[LiveInteractionInRange]:
+    ) -> LiveInRangeResult:
         cap = max(1, min(limit, 10_000))
         rows = [
             i
@@ -125,6 +125,7 @@ class InMemoryLiveRepository:
             if i.project_id == project_id and since <= i.created_at < until
         ]
         rows.sort(key=lambda i: (i.created_at, i.id), reverse=True)
+        truncated = len(rows) > cap
         out: list[LiveInteractionInRange] = []
         for interaction in rows[:cap]:
             out.append(
@@ -133,7 +134,7 @@ class InMemoryLiveRepository:
                     scores=list(self._scores.get(interaction.id, [])),
                 )
             )
-        return out
+        return LiveInRangeResult(items=out, truncated=truncated)
 
     async def list_calibration_rows(
         self,
@@ -347,3 +348,44 @@ async def test_latest_with_baseline_compare_and_regressions() -> None:
     assert pass_rows[0].status == "regressed"
     assert len(result.offline.regressions) == 1
     assert result.offline.regressions[0].status == "regressed"
+
+
+@pytest.mark.asyncio
+async def test_live_truncated_warning(monkeypatch: pytest.MonkeyPatch) -> None:
+    projects = InMemoryProjectRepository()
+    project = Project.create("Truncated")
+    await projects.add(project)
+    live = InMemoryLiveRepository()
+    since = datetime(2026, 10, 9, 0, 0, tzinfo=UTC)
+    until = since + timedelta(hours=24)
+    for idx in range(10_001):
+        t = since + timedelta(seconds=idx)
+        interaction = replace(
+            LiveInteraction.create(project.id, f"q{idx}", "a").with_status("scored"),
+            created_at=t,
+        )
+        await live.add_with_scores(interaction, [])
+    use_case = _build_use_case(projects=projects, live=live)
+    result = await use_case.execute(project.id, since=since, until=until)
+    assert result.live.n_interactions == 10_000
+    assert "live_truncated" in result.warnings
+
+
+@pytest.mark.asyncio
+async def test_calibration_failure_degraded(monkeypatch: pytest.MonkeyPatch) -> None:
+    async def _cal_raises(
+        self: SummarizeLiveJudgeCalibration, *args: object, **kwargs: object
+    ) -> None:
+        raise RuntimeError("calibration unavailable")
+
+    monkeypatch.setattr(SummarizeLiveJudgeCalibration, "execute", _cal_raises)
+
+    projects = InMemoryProjectRepository()
+    project = Project.create("Cal fail")
+    await projects.add(project)
+    since = datetime(2026, 10, 9, 0, 0, tzinfo=UTC)
+    until = since + timedelta(hours=24)
+    use_case = _build_use_case(projects=projects)
+    result = await use_case.execute(project.id, since=since, until=until)
+    assert result.calibration_alerts == []
+    assert "calibration_unavailable" in result.warnings

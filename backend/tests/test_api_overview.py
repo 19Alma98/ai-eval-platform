@@ -7,6 +7,7 @@ import pytest
 from httpx import AsyncClient
 
 from aiobs.application.compare import CompareExperiments
+from aiobs.application.live_judge_calibration import SummarizeLiveJudgeCalibration
 from aiobs.evaluation import bootstrap_evaluators
 from aiobs.evaluation.registry import clear_registry
 from support.fake_llm import ScriptedJudgeLlm
@@ -266,6 +267,35 @@ async def test_overview_compare_failure_degraded(
     assert body["offline"]["compare"] is None
     assert body["offline"]["latest_experiment"]["id"] == candidate_id
     assert "compare_unavailable" in body["warnings"]
+
+
+@pytest.mark.asyncio
+async def test_overview_calibration_failure_degraded(
+    client: AsyncClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    async def _cal_raises(
+        self: SummarizeLiveJudgeCalibration, *args: object, **kwargs: object
+    ) -> None:
+        raise RuntimeError("calibration unavailable")
+
+    monkeypatch.setattr(SummarizeLiveJudgeCalibration, "execute", _cal_raises)
+
+    project = await client.post(
+        "/api/v1/projects",
+        json={"name": "Cal Fail", "slug": f"cal-fail-{uuid.uuid4().hex[:8]}"},
+    )
+    assert project.status_code == 201
+    project_id = project.json()["id"]
+
+    since = datetime.now(tz=UTC) - timedelta(hours=24)
+    resp = await client.get(
+        f"/api/v1/projects/{project_id}/overview",
+        params={"since": since.isoformat()},
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["calibration_alerts"] == []
+    assert "calibration_unavailable" in body["warnings"]
 
 
 @pytest.mark.asyncio

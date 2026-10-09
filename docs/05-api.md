@@ -33,6 +33,8 @@ GET /projects/{project_id}/overview?since={iso}&until={iso}
 
 `since` required; `until` optional (default now). Returns live range KPIs + series, offline project snapshot (datasets, default metrics set, latest experiment, optional compare/`pass_rate` metrics, regressions), calibration alerts, and `warnings` for degraded sections. Unknown project → 404. Compare failures degrade to `compare: null` with HTTP 200.
 
+`warnings` codes (non-exhaustive): `compare_unavailable`, `calibration_unavailable`, `live_truncated` (live interactions in the window exceeded the 10k aggregate cap — KPIs and series may undercount).
+
 ## Traces
 
 Ingest via OTLP/HTTP (outside `/api/v1` prefix):

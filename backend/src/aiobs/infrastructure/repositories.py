@@ -24,7 +24,7 @@ from aiobs.domain.live_interaction import (
     LiveReview,
     LiveScoreReview,
 )
-from aiobs.domain.live_overview import LiveInteractionInRange
+from aiobs.domain.live_overview import LiveInRangeResult, LiveInteractionInRange
 from aiobs.domain.metrics_set import MetricsSet, MetricsSetEntry
 from aiobs.domain.project import Project
 from aiobs.domain.trace import Span, Trace
@@ -1203,7 +1203,7 @@ class SqlAlchemyLiveInteractionRepository:
         since: datetime,
         until: datetime,
         limit: int = 10_000,
-    ) -> list[LiveInteractionInRange]:
+    ) -> LiveInRangeResult:
         cap = max(1, min(limit, 10_000))
         stmt = (
             select(LiveInteractionModel)
@@ -1214,10 +1214,13 @@ class SqlAlchemyLiveInteractionRepository:
             )
             .options(selectinload(LiveInteractionModel.scores))
             .order_by(LiveInteractionModel.created_at.desc(), LiveInteractionModel.id.desc())
-            .limit(cap)
+            .limit(cap + 1)
         )
         result = await self._session.execute(stmt)
         rows = result.scalars().unique().all()
+        truncated = len(rows) > cap
+        if truncated:
+            rows = rows[:cap]
         out: list[LiveInteractionInRange] = []
         for row in rows:
             scores = sorted(row.scores, key=lambda s: s.created_at)
@@ -1227,7 +1230,7 @@ class SqlAlchemyLiveInteractionRepository:
                     scores=[_live_score_to_domain(s) for s in scores],
                 )
             )
-        return out
+        return LiveInRangeResult(items=out, truncated=truncated)
 
     async def replace_scores(
         self, interaction_id: uuid.UUID, scores: list[LiveInteractionScore]

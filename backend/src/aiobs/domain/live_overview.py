@@ -40,3 +40,9 @@ class LiveInteractionInRange:
 
     interaction: LiveInteraction
     scores: list[LiveInteractionScore]
+
+
+@dataclass(frozen=True, slots=True)
+class LiveInRangeResult:
+    items: list[LiveInteractionInRange]
+    truncated: bool

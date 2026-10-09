@@ -278,10 +278,14 @@ class GetProjectOverview:
 
         warnings: list[str] = []
         bucket = bucket_size_for_range(since, until)
-        interactions = await self._live.list_in_range(
+        live_range = await self._live.list_in_range(
             project_id, since=since, until=until
         )
-        live = _aggregate_live(interactions, since=since, until=until, bucket=bucket)
+        if live_range.truncated:
+            warnings.append("live_truncated")
+        live = _aggregate_live(
+            live_range.items, since=since, until=until, bucket=bucket
+        )
 
         datasets = await self._datasets.list_by_project(project_id)
         metrics_set = await self._metrics_sets.get_project_default(project_id)
