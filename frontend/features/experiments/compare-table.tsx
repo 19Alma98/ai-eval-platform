@@ -7,7 +7,10 @@ import type { MetricComparison } from "@/lib/api/types";
 import { formatStatusLabel } from "@/components/status-badge";
 import { resolveLabel } from "@/lib/format";
 import { useEvaluators } from "./use-experiments";
-import { sortMetricsForDisplay } from "./sort-metrics";
+import {
+  groupMetricsByEvaluator,
+  type EvaluatorCompareRow,
+} from "./group-metrics-by-evaluator";
 
 export const METRIC_STATUS_STYLES: Record<string, string> = {
   regression: "bg-status-fail-bg text-status-fail",
@@ -24,6 +27,18 @@ function formatMetricValue(value: number | null): string {
     return value.toFixed(4);
   }
   return value.toFixed(2);
+}
+
+function formatPassRate(value: number | null): string {
+  if (value === null || value === undefined) return "—";
+  return `${(value * 100).toFixed(1)}%`;
+}
+
+function formatMeanWithPassRate(
+  mean: number | null,
+  passRate: number | null,
+): string {
+  return `${formatMetricValue(mean)} (${formatPassRate(passRate)})`;
 }
 
 function formatDelta(value: number | null): string {
@@ -55,7 +70,7 @@ type CompareTableProps = {
 
 export function CompareTable({ projectId, metrics }: CompareTableProps) {
   const evaluatorsQuery = useEvaluators(projectId);
-  const rows = useMemo(() => sortMetricsForDisplay(metrics), [metrics]);
+  const rows = useMemo(() => groupMetricsByEvaluator(metrics), [metrics]);
 
   const evaluatorNameById = useMemo(() => {
     const map = new Map<string, string>();
@@ -65,7 +80,7 @@ export function CompareTable({ projectId, metrics }: CompareTableProps) {
     return map;
   }, [evaluatorsQuery.data]);
 
-  const columns: DataTableColumn<MetricComparison>[] = useMemo(
+  const columns: DataTableColumn<EvaluatorCompareRow>[] = useMemo(
     () => [
       {
         id: "evaluator",
@@ -82,27 +97,21 @@ export function CompareTable({ projectId, metrics }: CompareTableProps) {
         ),
       },
       {
-        id: "metric",
-        header: "Metric",
-        cell: (row) => (
-          <span className="font-mono text-xs text-muted-foreground">
-            {row.metric}
-          </span>
-        ),
-      },
-      {
         id: "candidate",
         header: "Candidate",
-        headerClassName: "w-[100px] text-right",
+        headerClassName: "w-[160px] text-right",
         className: "text-right font-mono tabular-nums text-sm",
-        cell: (row) => formatMetricValue(row.candidate),
+        cell: (row) =>
+          formatMeanWithPassRate(row.candidate_mean, row.candidate_pass_rate),
       },
       {
         id: "baseline",
         header: "Baseline",
-        headerClassName: "w-[100px] text-right",
-        className: "text-right font-mono tabular-nums text-sm text-muted-foreground",
-        cell: (row) => formatMetricValue(row.baseline),
+        headerClassName: "w-[160px] text-right",
+        className:
+          "text-right font-mono tabular-nums text-sm text-muted-foreground",
+        cell: (row) =>
+          formatMeanWithPassRate(row.baseline_mean, row.baseline_pass_rate),
       },
       {
         id: "delta",
@@ -133,7 +142,7 @@ export function CompareTable({ projectId, metrics }: CompareTableProps) {
     <DataTable
       rows={rows}
       columns={columns}
-      getRowKey={(row) => `${row.evaluator_id}-${row.metric}`}
+      getRowKey={(row) => row.evaluator_id}
       selectedIndex={0}
       onSelectedIndexChange={() => {}}
       onRowActivate={() => {}}
