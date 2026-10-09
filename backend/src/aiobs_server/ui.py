@@ -3,9 +3,10 @@
 from __future__ import annotations
 
 import re
+from collections.abc import Awaitable, Callable
 from pathlib import Path
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, Request, Response
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
@@ -80,14 +81,20 @@ def mount_ui(app: FastAPI) -> bool:
     async def ui_index() -> FileResponse:
         return FileResponse(root / "index.html")
 
-    @app.get("/{full_path:path}", include_in_schema=False)
-    async def ui_spa(full_path: str) -> FileResponse:
-        # Let API / OTLP 404s stay with FastAPI when UI cannot claim the path.
-        if full_path.startswith("api/") or full_path.startswith("v1/"):
-            raise HTTPException(status_code=404, detail="Not Found")
-        target = resolve_ui_file(root, full_path)
+    @app.middleware("http")
+    async def ui_spa_fallback(
+        request: Request,
+        call_next: Callable[[Request], Awaitable[Response]],
+    ) -> Response:
+        response = await call_next(request)
+        if response.status_code != 404 or request.method not in ("GET", "HEAD"):
+            return response
+        path = request.url.path.lstrip("/")
+        if path.startswith("api/") or path.startswith("v1/") or path == "health":
+            return response
+        target = resolve_ui_file(root, path)
         if target is None:
-            raise HTTPException(status_code=404, detail="Not Found")
+            return response
         status = 404 if target.name == "404.html" else 200
         return FileResponse(target, status_code=status)
 

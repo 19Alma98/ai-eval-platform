@@ -6,7 +6,11 @@ from collections.abc import AsyncIterator
 import pytest
 from httpx2 import ASGITransport, AsyncClient
 
-from aiobs_server.api.deps import get_dataset_repository, get_project_repository, get_trace_repository
+from aiobs_server.api.deps import (
+    get_dataset_repository,
+    get_project_repository,
+    get_trace_repository,
+)
 from aiobs_server.domain.dataset import Dataset, DatasetItem
 from aiobs_server.domain.project import Project
 from aiobs_server.domain.trace import Trace
