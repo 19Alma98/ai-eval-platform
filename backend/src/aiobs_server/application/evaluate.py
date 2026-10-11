@@ -5,12 +5,12 @@ from dataclasses import dataclass
 from typing import Any
 
 from aiobs_server.application.evaluators import EvaluatorNotFoundError
-from aiobs_server.application.experiment_outputs import merge_dataset_item
 from aiobs_server.application.experiments import ExperimentNotFoundError
 from aiobs_server.application.metrics_sets import (
     MetricsSetValidationError,
     ResolveMetricsSetForScore,
 )
+from aiobs_server.application.scoring_inputs import INPUTS_FINGERPRINT_KEY, load_scoring_inputs
 from aiobs_server.domain.evaluation import EvaluationResultRecord, EvaluationRun
 from aiobs_server.domain.experiment import Experiment
 from aiobs_server.domain.metrics_set import assert_unique_evaluator_ids
@@ -69,23 +69,9 @@ class EvaluateExperiment:
         if experiment is None:
             raise ExperimentNotFoundError(command.experiment_id)
 
-        items = await self._datasets.list_items(experiment.dataset_id)
-        output_rows = await self._outputs.list_by_experiment(experiment.id)
-        by_item = {o.dataset_item_id: o for o in output_rows}
-        # Once an experiment records its own outputs, dataset-level actual_output/context
-        # belong to some other run: never fall back to them. Items without an output are
-        # failures of this experiment. Experiments with no outputs at all keep the legacy
-        # inline-dataset behavior (e.g. datasets built from traces).
-        has_outputs = bool(output_rows)
-        merged_items = [
-            merge_dataset_item(item, by_item.get(item.id), fallback_to_item=not has_outputs)
-            for item in items
-        ]
-        missing_output_item_ids = (
-            frozenset(item.id for item in items if item.id not in by_item)
-            if has_outputs
-            else frozenset()
-        )
+        inputs = await load_scoring_inputs(experiment, self._datasets, self._outputs)
+        merged_items = inputs.items
+        missing_output_item_ids = inputs.missing_output_item_ids
         evaluator_entities = await self._evaluators.get_by_ids(command.evaluator_ids)
         by_id = {e.id: e for e in evaluator_entities}
         missing = [eid for eid in command.evaluator_ids if eid not in by_id]
@@ -115,7 +101,12 @@ class EvaluateExperiment:
 
         for evaluator_id in command.evaluator_ids:
             entity = by_id[evaluator_id]
-            run = EvaluationRun.create(experiment.id, entity.id, status="PENDING")
+            run = EvaluationRun.create(
+                experiment.id,
+                entity.id,
+                status="PENDING",
+                metadata={INPUTS_FINGERPRINT_KEY: inputs.fingerprint},
+            )
             run = await self._runs.add_run(run)
             pass_threshold = (
                 None

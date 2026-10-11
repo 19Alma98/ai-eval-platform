@@ -6,11 +6,12 @@ EXPECTED_DOC_IDS_KEY = "expected_doc_ids"
 MUST_CONTAIN_KEY = "must_contain"
 
 
-def _normalize_string_list(value: Any, *, field: str) -> list[str]:
+def _normalize_string_list(value: Any, *, field: str, split_commas: bool) -> list[str]:
     if value is None:
         raise ValueError(f"{field} is required")
     if isinstance(value, str):
-        parts = [p.strip() for p in value.replace(",", "|").split("|") if p.strip()]
+        text = value.replace(",", "|") if split_commas else value
+        parts = [p.strip() for p in text.split("|") if p.strip()]
         if not parts:
             raise ValueError(f"{field} must be non-empty")
         return parts
@@ -23,11 +24,12 @@ def _normalize_string_list(value: Any, *, field: str) -> list[str]:
 
 
 def normalize_expected_doc_ids(value: Any) -> list[str]:
-    return _normalize_string_list(value, field=EXPECTED_DOC_IDS_KEY)
+    return _normalize_string_list(value, field=EXPECTED_DOC_IDS_KEY, split_commas=True)
 
 
 def normalize_must_contain(value: Any) -> list[str]:
-    return _normalize_string_list(value, field=MUST_CONTAIN_KEY)
+    # Phrases may contain commas ("$1,000"), so only the pipe separates them.
+    return _normalize_string_list(value, field=MUST_CONTAIN_KEY, split_commas=False)
 
 
 def validate_rag_qa_item(

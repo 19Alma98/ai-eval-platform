@@ -216,6 +216,10 @@ class SqlAlchemyTraceRepository:
                     current.events = list(span.events)
 
             await self._session.commit()
+            # New span rows were added outside the loaded collection; with
+            # expire_on_commit=False selectinload would return the stale list and
+            # run binding would miss spans from earlier OTLP batches.
+            self._session.expire(existing, ["spans"])
             refreshed = await self.get_by_trace_id(trace.project_id, trace.trace_id)
             assert refreshed is not None
             return refreshed

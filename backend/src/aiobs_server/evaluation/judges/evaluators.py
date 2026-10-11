@@ -166,6 +166,9 @@ class _LlmJudge:
         self._cache = claim_cache
         self.name = self.kind
         self.prompt_version = prompts.prompt_version(self.kind, self._config.method)
+        # Resolved model (entry override or server default): scores from different
+        # judge models are not comparable.
+        self.judge_model = self._config.options.model
 
     async def evaluate(self, sample: EvaluationSample) -> EvaluationResult:
         early = self._precheck(sample)

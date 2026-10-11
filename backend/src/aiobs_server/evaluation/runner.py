@@ -142,6 +142,9 @@ class EvaluationRunner:
         prompt_version = getattr(impl, "prompt_version", None)
         if prompt_version is not None:
             meta["prompt_version"] = prompt_version
+        judge_model = getattr(impl, "judge_model", None)
+        if judge_model is not None:
+            meta["judge_model"] = judge_model
         warning = unsuitable_model_warning(results)
         if warning is not None:
             meta["warnings"] = [JUDGE_MODEL_UNSUITABLE]

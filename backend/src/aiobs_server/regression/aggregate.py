@@ -59,13 +59,30 @@ def select_latest_runs(runs: Iterable[EvaluationRun]) -> dict[uuid.UUID, Evaluat
     return latest
 
 
+INPUTS_FINGERPRINT_KEY = "inputs_fingerprint"
+
+
+def run_is_stale(run: EvaluationRun, current_fingerprint: str) -> bool:
+    scored = run.metadata.get(INPUTS_FINGERPRINT_KEY)
+    return scored is not None and scored != current_fingerprint
+
+
 def select_runs(
     runs: Iterable[EvaluationRun],
     *,
     run_ids: list[uuid.UUID] | None = None,
     evaluator_ids: list[uuid.UUID] | None = None,
+    current_fingerprint: str | None = None,
 ) -> list[EvaluationRun]:
+    """Pick runs to report on: explicit ``run_ids``, else the latest fresh run per evaluator.
+
+    With ``current_fingerprint``, runs scored on different inputs (outputs or test set
+    changed since) are stale and skipped. Runs without a fingerprint predate it and
+    are kept.
+    """
     run_list = list(runs)
+    if run_ids is None and current_fingerprint is not None:
+        run_list = [run for run in run_list if not run_is_stale(run, current_fingerprint)]
     if run_ids is not None:
         wanted = set(run_ids)
         selected = [run for run in run_list if run.id in wanted]
@@ -134,13 +151,17 @@ def runs_config_mismatch(candidate: EvaluationRun | None, baseline: EvaluationRu
     """True when candidate and baseline were not scored the same way.
 
     Differs when both recorded a config_hash and it differs (e.g. k=3 vs k=5), or when
-    the judge prompt version differs. A missing prompt_version counts as its own
+    the judge prompt version or judge model differs. A missing prompt_version counts as its own
     version: judge runs from before v3 carry none and are not comparable with v3.
     Runs without a config_hash (legacy) are otherwise assumed comparable.
     """
     if candidate is None or baseline is None:
         return False
     if candidate.metadata.get("prompt_version") != baseline.metadata.get("prompt_version"):
+        return True
+    cand_model = candidate.metadata.get("judge_model")
+    base_model = baseline.metadata.get("judge_model")
+    if cand_model is not None and base_model is not None and cand_model != base_model:
         return True
     cand_hash = candidate.metadata.get("config_hash")
     base_hash = baseline.metadata.get("config_hash")

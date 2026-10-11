@@ -55,6 +55,12 @@ def test_prompt_version_reflects_method() -> None:
     assert _judge("answer_relevance", llm).prompt_version == "answer_relevance.rubric.v3"
 
 
+def test_judge_model_resolves_override_or_default() -> None:
+    llm = ScriptedJudgeLlm()
+    assert _judge("groundedness", llm).judge_model == _DEFAULTS.model
+    assert _judge("groundedness", llm, {"model": "ollama/x"}).judge_model == "ollama/x"
+
+
 # --- groundedness ----------------------------------------------------------------
 
 

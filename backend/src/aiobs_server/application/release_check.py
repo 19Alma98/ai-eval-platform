@@ -10,6 +10,10 @@ from aiobs_server.application.compare import (
 )
 from aiobs_server.application.experiments import ExperimentNotFoundError
 from aiobs_server.application.projects import ProjectNotFoundError
+from aiobs_server.application.scoring_inputs import (
+    CurrentScoringFingerprint,
+    current_fingerprint,
+)
 from aiobs_server.domain.evaluation import EvaluationRun
 from aiobs_server.domain.repositories import (
     EvaluationRunRepository,
@@ -62,11 +66,13 @@ class ReleaseCheck:
         experiments: ExperimentRepository,
         runs: EvaluationRunRepository,
         compare: CompareExperiments,
+        fingerprints: CurrentScoringFingerprint | None = None,
     ) -> None:
         self._projects = projects
         self._experiments = experiments
         self._runs = runs
         self._compare = compare
+        self._fingerprints = fingerprints
 
     async def execute(self, command: ReleaseCheckCommand) -> ReleaseCheckResult:
         project = await self._projects.get_by_id(command.project_id)
@@ -84,7 +90,12 @@ class ReleaseCheck:
 
         all_runs = await self._runs.list_runs_by_experiment(command.experiment_id)
         try:
-            selected = select_runs(all_runs)
+            # Stale runs (outputs or test set changed after scoring) must not gate a
+            # release: their metrics show up as unavailable until re-scored.
+            selected = select_runs(
+                all_runs,
+                current_fingerprint=await current_fingerprint(self._fingerprints, experiment),
+            )
         except ValueError as exc:
             raise InvalidCompareSelectionError(str(exc)) from exc
 

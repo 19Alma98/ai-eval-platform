@@ -374,7 +374,7 @@ def main(argv: list[str] | None = None) -> int:
 
     compare = client.experiments.compare(candidate_id, baseline_id)
     print("compare:")
-    print(json.dumps(compare, indent=2))
+    print(compare.model_dump_json(indent=2))
 
     policy = write_policy(
         base=base,
