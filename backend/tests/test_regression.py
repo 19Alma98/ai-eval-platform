@@ -275,6 +275,18 @@ def test_runs_config_mismatch_on_prompt_version() -> None:
     assert not runs_config_mismatch(legacy, _run_with_meta())
 
 
+def test_runs_config_mismatch_on_judge_model() -> None:
+    pv = "correctness.claims.v3"
+    gemma = _run_with_meta(prompt_version=pv, judge_model="ollama/gemma4:e2b")
+    claude = _run_with_meta(prompt_version=pv, judge_model="anthropic/claude-sonnet-5-5")
+    legacy = _run_with_meta(prompt_version=pv)  # scored before judge_model was recorded
+    assert runs_config_mismatch(gemma, claude)
+    assert not runs_config_mismatch(
+        gemma, _run_with_meta(prompt_version=pv, judge_model="ollama/gemma4:e2b")
+    )
+    assert not runs_config_mismatch(gemma, legacy)
+
+
 def test_select_runs_skips_runs_scored_on_other_inputs() -> None:
     evaluator = uuid.uuid4()
     t0 = datetime(2026, 1, 1, tzinfo=UTC)

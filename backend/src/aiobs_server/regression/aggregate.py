@@ -151,13 +151,17 @@ def runs_config_mismatch(candidate: EvaluationRun | None, baseline: EvaluationRu
     """True when candidate and baseline were not scored the same way.
 
     Differs when both recorded a config_hash and it differs (e.g. k=3 vs k=5), or when
-    the judge prompt version differs. A missing prompt_version counts as its own
+    the judge prompt version or judge model differs. A missing prompt_version counts as its own
     version: judge runs from before v3 carry none and are not comparable with v3.
     Runs without a config_hash (legacy) are otherwise assumed comparable.
     """
     if candidate is None or baseline is None:
         return False
     if candidate.metadata.get("prompt_version") != baseline.metadata.get("prompt_version"):
+        return True
+    cand_model = candidate.metadata.get("judge_model")
+    base_model = baseline.metadata.get("judge_model")
+    if cand_model is not None and base_model is not None and cand_model != base_model:
         return True
     cand_hash = candidate.metadata.get("config_hash")
     base_hash = baseline.metadata.get("config_hash")
