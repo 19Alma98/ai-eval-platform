@@ -1,3 +1,5 @@
+* text=auto eol=lf
+
 # Force LF for shell scripts so Windows checkouts still run in Linux containers.
 *.sh text eol=lf
 docker-entrypoint.sh text eol=lf
