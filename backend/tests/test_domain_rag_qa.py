@@ -40,3 +40,13 @@ def test_validate_normalizes_must_contain() -> None:
 def test_validate_rejects(kwargs: dict) -> None:
     with pytest.raises(ValueError):
         validate_rag_qa_item(**kwargs)
+
+
+def test_must_contain_keeps_commas_inside_phrases() -> None:
+    meta = validate_rag_qa_item(
+        input="q",
+        expected_output="a",
+        metadata={"expected_doc_ids": "a,b", "must_contain": "$1,000|10:00-16:00, local time"},
+    )
+    assert meta["expected_doc_ids"] == ["a", "b"]
+    assert meta["must_contain"] == ["$1,000", "10:00-16:00, local time"]
