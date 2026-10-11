@@ -5,6 +5,10 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from aiobs_server.application.experiments import ExperimentNotFoundError
+from aiobs_server.application.scoring_inputs import (
+    CurrentScoringFingerprint,
+    current_fingerprint,
+)
 from aiobs_server.domain.evaluation import EvaluationRun
 from aiobs_server.domain.repositories import (
     EvaluationRunRepository,
@@ -88,10 +92,12 @@ class SummarizeExperiment:
         experiments: ExperimentRepository,
         runs: EvaluationRunRepository,
         evaluators: EvaluatorRepository,
+        fingerprints: CurrentScoringFingerprint | None = None,
     ) -> None:
         self._experiments = experiments
         self._runs = runs
         self._evaluators = evaluators
+        self._fingerprints = fingerprints
 
     async def execute(
         self,
@@ -110,6 +116,7 @@ class SummarizeExperiment:
                 all_runs,
                 run_ids=run_ids,
                 evaluator_ids=evaluator_ids,
+                current_fingerprint=await current_fingerprint(self._fingerprints, experiment),
             )
         except ValueError as exc:
             raise InvalidCompareSelectionError(str(exc)) from exc
@@ -139,10 +146,12 @@ class CompareExperiments:
         experiments: ExperimentRepository,
         runs: EvaluationRunRepository,
         evaluators: EvaluatorRepository,
+        fingerprints: CurrentScoringFingerprint | None = None,
     ) -> None:
         self._experiments = experiments
         self._runs = runs
         self._evaluators = evaluators
+        self._fingerprints = fingerprints
 
     async def execute(
         self,
@@ -173,22 +182,26 @@ class CompareExperiments:
                 candidate_runs,
                 run_ids=candidate_run_ids,
                 evaluator_ids=evaluator_ids,
+                current_fingerprint=await current_fingerprint(self._fingerprints, experiment),
             )
             selected_baseline = select_runs(
                 baseline_runs,
                 run_ids=baseline_run_ids,
                 evaluator_ids=evaluator_ids,
+                current_fingerprint=await current_fingerprint(self._fingerprints, baseline),
             )
         except ValueError as exc:
             raise InvalidCompareSelectionError(str(exc)) from exc
 
         if not selected_candidate:
             raise InvalidCompareSelectionError(
-                f"No evaluation runs selected for experiment {experiment_id}"
+                f"No current evaluation runs for experiment {experiment_id}: "
+                "score it, or re-score if its outputs or test set changed"
             )
         if not selected_baseline:
             raise InvalidCompareSelectionError(
-                f"No evaluation runs selected for experiment {baseline_id}"
+                f"No current evaluation runs for experiment {baseline_id}: "
+                "score it, or re-score if its outputs or test set changed"
             )
 
         candidate_by_eval = {run.evaluator_id: run for run in selected_candidate}

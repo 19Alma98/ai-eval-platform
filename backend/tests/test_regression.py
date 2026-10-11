@@ -273,3 +273,23 @@ def test_runs_config_mismatch_on_prompt_version() -> None:
     assert runs_config_mismatch(v3, legacy)
     assert not runs_config_mismatch(v3, _run_with_meta(prompt_version="groundedness.claims.v3"))
     assert not runs_config_mismatch(legacy, _run_with_meta())
+
+
+def test_select_runs_skips_runs_scored_on_other_inputs() -> None:
+    evaluator = uuid.uuid4()
+    t0 = datetime(2026, 1, 1, tzinfo=UTC)
+    stale = replace(
+        _run(evaluator_id=evaluator, finished_at=t0.replace(hour=2)),
+        metadata={"inputs_fingerprint": "old"},
+    )
+    fresh = replace(
+        _run(evaluator_id=evaluator, finished_at=t0.replace(hour=1)),
+        metadata={"inputs_fingerprint": "new"},
+    )
+    legacy = _run(finished_at=t0)
+    selected = select_runs([stale, fresh, legacy], current_fingerprint="new")
+    assert {r.id for r in selected} == {fresh.id, legacy.id}
+    # Without a current fingerprint the newest run wins, as before.
+    assert stale in select_runs([stale, fresh])
+    # Explicit run ids are honored even when stale.
+    assert select_runs([stale, fresh], run_ids=[stale.id], current_fingerprint="new") == [stale]

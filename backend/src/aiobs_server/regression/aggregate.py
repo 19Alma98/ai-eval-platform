@@ -59,13 +59,30 @@ def select_latest_runs(runs: Iterable[EvaluationRun]) -> dict[uuid.UUID, Evaluat
     return latest
 
 
+INPUTS_FINGERPRINT_KEY = "inputs_fingerprint"
+
+
+def run_is_stale(run: EvaluationRun, current_fingerprint: str) -> bool:
+    scored = run.metadata.get(INPUTS_FINGERPRINT_KEY)
+    return scored is not None and scored != current_fingerprint
+
+
 def select_runs(
     runs: Iterable[EvaluationRun],
     *,
     run_ids: list[uuid.UUID] | None = None,
     evaluator_ids: list[uuid.UUID] | None = None,
+    current_fingerprint: str | None = None,
 ) -> list[EvaluationRun]:
+    """Pick runs to report on: explicit ``run_ids``, else the latest fresh run per evaluator.
+
+    With ``current_fingerprint``, runs scored on different inputs (outputs or test set
+    changed since) are stale and skipped. Runs without a fingerprint predate it and
+    are kept.
+    """
     run_list = list(runs)
+    if run_ids is None and current_fingerprint is not None:
+        run_list = [run for run in run_list if not run_is_stale(run, current_fingerprint)]
     if run_ids is not None:
         wanted = set(run_ids)
         selected = [run for run in run_list if run.id in wanted]

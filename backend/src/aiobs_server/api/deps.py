@@ -71,6 +71,7 @@ from aiobs_server.application.projects import (
     ListProjects,
 )
 from aiobs_server.application.release_check import ReleaseCheck
+from aiobs_server.application.scoring_inputs import CurrentScoringFingerprint
 from aiobs_server.application.traces import GetTrace, IngestNormalizedTraces, ResolveProject
 from aiobs_server.config import Settings, get_settings
 from aiobs_server.evaluation.runner import EvaluationRunner
@@ -458,20 +459,31 @@ def get_evaluation_run(
     return GetEvaluationRun(runs, experiments)
 
 
+def get_current_scoring_fingerprint(
+    datasets: SqlAlchemyDatasetRepository = Depends(get_dataset_repository),
+    outputs: SqlAlchemyExperimentItemOutputRepository = Depends(
+        get_experiment_item_output_repository
+    ),
+) -> CurrentScoringFingerprint:
+    return CurrentScoringFingerprint(datasets, outputs)
+
+
 def get_summarize_experiment(
     experiments: SqlAlchemyExperimentRepository = Depends(get_experiment_repository),
     runs: SqlAlchemyEvaluationRunRepository = Depends(get_evaluation_run_repository),
     evaluators: SqlAlchemyEvaluatorRepository = Depends(get_evaluator_repository),
+    fingerprints: CurrentScoringFingerprint = Depends(get_current_scoring_fingerprint),
 ) -> SummarizeExperiment:
-    return SummarizeExperiment(experiments, runs, evaluators)
+    return SummarizeExperiment(experiments, runs, evaluators, fingerprints)
 
 
 def get_compare_experiments(
     experiments: SqlAlchemyExperimentRepository = Depends(get_experiment_repository),
     runs: SqlAlchemyEvaluationRunRepository = Depends(get_evaluation_run_repository),
     evaluators: SqlAlchemyEvaluatorRepository = Depends(get_evaluator_repository),
+    fingerprints: CurrentScoringFingerprint = Depends(get_current_scoring_fingerprint),
 ) -> CompareExperiments:
-    return CompareExperiments(experiments, runs, evaluators)
+    return CompareExperiments(experiments, runs, evaluators, fingerprints)
 
 
 def get_compare_experiment_items(
@@ -509,8 +521,9 @@ def get_release_check(
     experiments: SqlAlchemyExperimentRepository = Depends(get_experiment_repository),
     runs: SqlAlchemyEvaluationRunRepository = Depends(get_evaluation_run_repository),
     compare: CompareExperiments = Depends(get_compare_experiments),
+    fingerprints: CurrentScoringFingerprint = Depends(get_current_scoring_fingerprint),
 ) -> ReleaseCheck:
-    return ReleaseCheck(projects, experiments, runs, compare)
+    return ReleaseCheck(projects, experiments, runs, compare, fingerprints)
 
 
 def get_live_interaction_repository(
