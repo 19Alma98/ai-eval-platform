@@ -168,7 +168,7 @@ async def test_overview_offline_compare_with_baseline(client: AsyncClient) -> No
             f"/api/v1/experiments/{experiment_id}/evaluate",
             json={"evaluator_ids": [evaluator_id]},
         )
-        assert evaluated.status_code == 200
+        assert evaluated.status_code == 202
 
     since = datetime.now(tz=UTC) - timedelta(hours=24)
     resp = await client.get(
@@ -255,7 +255,7 @@ async def test_overview_compare_failure_degraded(
             f"/api/v1/experiments/{experiment_id}/evaluate",
             json={"evaluator_ids": [evaluator_id]},
         )
-        assert evaluated.status_code == 200
+        assert evaluated.status_code == 202
 
     since = datetime.now(tz=UTC) - timedelta(hours=24)
     resp = await client.get(
@@ -336,7 +336,7 @@ async def test_overview_no_baseline_compare_null(client: AsyncClient) -> None:
         f"/api/v1/experiments/{experiment_id}/evaluate",
         json={"evaluator_ids": [evaluator_id]},
     )
-    assert evaluated.status_code == 200
+    assert evaluated.status_code == 202
 
     since = datetime.now(tz=UTC) - timedelta(hours=24)
     resp = await client.get(

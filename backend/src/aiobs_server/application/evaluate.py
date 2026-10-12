@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import logging
 import uuid
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from typing import Any
 
 from aiobs_server.application.evaluators import EvaluatorNotFoundError
@@ -23,10 +25,18 @@ from aiobs_server.domain.repositories import (
 )
 from aiobs_server.evaluation.runner import EvaluationRunner
 
+logger = logging.getLogger(__name__)
+
 
 class EmptyEvaluatorListError(Exception):
     def __init__(self) -> None:
         super().__init__("evaluator_ids must not be empty")
+
+
+class ExperimentAlreadyRunningError(Exception):
+    def __init__(self, experiment_id: uuid.UUID) -> None:
+        self.experiment_id = experiment_id
+        super().__init__(f"Experiment is already running: {experiment_id}")
 
 
 @dataclass(frozen=True, slots=True)
@@ -35,6 +45,7 @@ class EvaluateExperimentCommand:
     evaluator_ids: list[uuid.UUID]
     pass_thresholds: dict[uuid.UUID, float | None] | None = None
     config_overrides: dict[uuid.UUID, dict[str, Any]] | None = None
+    mark_running: bool = True
 
 
 @dataclass(frozen=True, slots=True)
@@ -42,6 +53,12 @@ class EvaluateExperimentResult:
     experiment: Experiment
     runs: list[EvaluationRun]
     results_by_run: dict[uuid.UUID, list[EvaluationResultRecord]]
+
+
+@dataclass(frozen=True, slots=True)
+class StartEvaluateResult:
+    experiment: Experiment
+    command: EvaluateExperimentCommand
 
 
 class EvaluateExperiment:
@@ -81,80 +98,80 @@ class EvaluateExperiment:
             if entity.project_id != experiment.project_id:
                 raise EvaluatorNotFoundError(entity.id)
 
-        experiment = Experiment(
-            id=experiment.id,
-            project_id=experiment.project_id,
-            name=experiment.name,
-            dataset_id=experiment.dataset_id,
-            model_config=dict(experiment.model_config),
-            version=experiment.version,
-            baseline_experiment_id=experiment.baseline_experiment_id,
-            status="running",
-            created_at=experiment.created_at,
-            app_config_id=experiment.app_config_id,
-            metrics_set_id=experiment.metrics_set_id,
-        )
-        experiment = await self._experiments.update(experiment)
+        if command.mark_running:
+            if experiment.status == "running":
+                raise ExperimentAlreadyRunningError(experiment.id)
+            experiment = await self._experiments.update(experiment.with_status("running"))
+        elif experiment.status != "running":
+            experiment = await self._experiments.update(experiment.with_status("running"))
 
         finished_runs: list[EvaluationRun] = []
         results_by_run: dict[uuid.UUID, list[EvaluationResultRecord]] = {}
 
-        for evaluator_id in command.evaluator_ids:
-            entity = by_id[evaluator_id]
-            run = EvaluationRun.create(
-                experiment.id,
-                entity.id,
-                status="PENDING",
-                metadata={INPUTS_FINGERPRINT_KEY: inputs.fingerprint},
-            )
-            run = await self._runs.add_run(run)
-            pass_threshold = (
-                None
-                if command.pass_thresholds is None
-                else command.pass_thresholds.get(evaluator_id)
-            )
-            config_override = (
-                None
-                if command.config_overrides is None
-                else command.config_overrides.get(evaluator_id)
-            )
-            run, results = await self._runner.run_evaluator(
-                run=run,
-                evaluator_entity=entity,
-                items=merged_items,
-                pass_threshold=pass_threshold,
-                config_override=config_override,
-                missing_output_item_ids=missing_output_item_ids,
-            )
-            run = await self._runs.update_run(run)
-            if results:
-                results = await self._runs.add_results(results)
-            finished_runs.append(run)
-            results_by_run[run.id] = results
+        try:
+            for evaluator_id in command.evaluator_ids:
+                entity = by_id[evaluator_id]
+                run = EvaluationRun.create(
+                    experiment.id,
+                    entity.id,
+                    status="PENDING",
+                    metadata={INPUTS_FINGERPRINT_KEY: inputs.fingerprint},
+                )
+                run = await self._runs.add_run(run)
+                pass_threshold = (
+                    None
+                    if command.pass_thresholds is None
+                    else command.pass_thresholds.get(evaluator_id)
+                )
+                config_override = (
+                    None
+                    if command.config_overrides is None
+                    else command.config_overrides.get(evaluator_id)
+                )
+                run, results = await self._runner.run_evaluator(
+                    run=run,
+                    evaluator_entity=entity,
+                    items=merged_items,
+                    pass_threshold=pass_threshold,
+                    config_override=config_override,
+                    missing_output_item_ids=missing_output_item_ids,
+                )
+                run = await self._runs.update_run(run)
+                if results:
+                    results = await self._runs.add_results(results)
+                finished_runs.append(run)
+                results_by_run[run.id] = results
 
-        final_status = "completed"
-        if any(r.status == "ERROR" for r in finished_runs):
-            final_status = "failed"
-        experiment = Experiment(
-            id=experiment.id,
-            project_id=experiment.project_id,
-            name=experiment.name,
-            dataset_id=experiment.dataset_id,
-            model_config=dict(experiment.model_config),
-            version=experiment.version,
-            baseline_experiment_id=experiment.baseline_experiment_id,
-            status=final_status,
-            created_at=experiment.created_at,
-            app_config_id=experiment.app_config_id,
-            metrics_set_id=experiment.metrics_set_id,
-        )
-        experiment = await self._experiments.update(experiment)
+            final_status = "completed"
+            if any(r.status == "ERROR" for r in finished_runs):
+                final_status = "failed"
+            experiment = await self._experiments.update(experiment.with_status(final_status))
+        except Exception as exc:
+            logger.exception("Experiment scoring failed: %s", command.experiment_id)
+            await self._fail_in_flight_runs(command.experiment_id, str(exc))
+            experiment = await self._experiments.get_by_id(command.experiment_id)
+            if experiment is not None and experiment.status == "running":
+                experiment = await self._experiments.update(experiment.with_status("failed"))
+            raise
 
         return EvaluateExperimentResult(
             experiment=experiment,
             runs=finished_runs,
             results_by_run=results_by_run,
         )
+
+    async def _fail_in_flight_runs(self, experiment_id: uuid.UUID, error_message: str) -> None:
+        now = datetime.now(UTC)
+        note = error_message[:500]
+        runs = await self._runs.list_runs_by_experiment(experiment_id)
+        for run in runs:
+            if run.status not in {"PENDING", "RUNNING"}:
+                continue
+            metadata = dict(run.metadata)
+            metadata["error"] = note
+            await self._runs.update_run(
+                run.with_status("ERROR", finished_at=now, metadata=metadata)
+            )
 
 
 @dataclass(frozen=True, slots=True)
@@ -176,9 +193,16 @@ class ScoreExperimentFromPack:
         self._evaluate_experiment = evaluate_experiment
 
     async def execute(self, command: ScoreExperimentFromPackCommand) -> EvaluateExperimentResult:
+        started = await self.start(command)
+        return await self._evaluate_experiment.execute(started.command)
+
+    async def start(self, command: ScoreExperimentFromPackCommand) -> StartEvaluateResult:
+        """Resolve pack, mark experiment running, return command for background scoring."""
         experiment = await self._experiments.get_by_id(command.experiment_id)
         if experiment is None:
             raise ExperimentNotFoundError(command.experiment_id)
+        if experiment.status == "running":
+            raise ExperimentAlreadyRunningError(experiment.id)
 
         resolved = await self._resolve.execute(
             experiment=experiment,
@@ -205,13 +229,70 @@ class ScoreExperimentFromPack:
             # Evaluators are shared per kind across metrics sets; the entry config
             # (k, max_ms, model, ...) is what this metrics set asks for.
             config_overrides[entry.evaluator_id] = dict(entry.config)
-        return await self._evaluate_experiment.execute(
-            EvaluateExperimentCommand(
+
+        if not evaluator_ids:
+            raise EmptyEvaluatorListError()
+
+        # Re-load in case save_as_default mutated metrics_set_id.
+        experiment = await self._experiments.get_by_id(command.experiment_id)
+        if experiment is None:
+            raise ExperimentNotFoundError(command.experiment_id)
+        if experiment.status == "running":
+            raise ExperimentAlreadyRunningError(experiment.id)
+        experiment = await self._experiments.update(experiment.with_status("running"))
+
+        return StartEvaluateResult(
+            experiment=experiment,
+            command=EvaluateExperimentCommand(
                 experiment_id=command.experiment_id,
                 evaluator_ids=evaluator_ids,
                 pass_thresholds=pass_thresholds,
                 config_overrides=config_overrides,
-            )
+                mark_running=False,
+            ),
+        )
+
+
+class StartEvaluateExperiment:
+    """Validate evaluators, mark running, return command for background scoring."""
+
+    def __init__(
+        self,
+        experiments: ExperimentRepository,
+        evaluators: EvaluatorRepository,
+    ) -> None:
+        self._experiments = experiments
+        self._evaluators = evaluators
+
+    async def execute(self, command: EvaluateExperimentCommand) -> StartEvaluateResult:
+        if not command.evaluator_ids:
+            raise EmptyEvaluatorListError()
+
+        experiment = await self._experiments.get_by_id(command.experiment_id)
+        if experiment is None:
+            raise ExperimentNotFoundError(command.experiment_id)
+        if experiment.status == "running":
+            raise ExperimentAlreadyRunningError(experiment.id)
+
+        evaluator_entities = await self._evaluators.get_by_ids(command.evaluator_ids)
+        by_id = {e.id: e for e in evaluator_entities}
+        missing = [eid for eid in command.evaluator_ids if eid not in by_id]
+        if missing:
+            raise EvaluatorNotFoundError(missing[0])
+        for entity in evaluator_entities:
+            if entity.project_id != experiment.project_id:
+                raise EvaluatorNotFoundError(entity.id)
+
+        experiment = await self._experiments.update(experiment.with_status("running"))
+        return StartEvaluateResult(
+            experiment=experiment,
+            command=EvaluateExperimentCommand(
+                experiment_id=command.experiment_id,
+                evaluator_ids=list(command.evaluator_ids),
+                pass_thresholds=command.pass_thresholds,
+                config_overrides=command.config_overrides,
+                mark_running=False,
+            ),
         )
 
 
@@ -246,3 +327,45 @@ class EvaluationRunNotFoundError(Exception):
     def __init__(self, run_id: uuid.UUID) -> None:
         self.run_id = run_id
         super().__init__(f"Evaluation run not found: {run_id}")
+
+
+async def schedule_evaluate_experiment(command: EvaluateExperimentCommand) -> None:
+    """BackgroundTasks entrypoint — opens a dedicated DB session."""
+    from aiobs_server.config import get_settings
+    from aiobs_server.evaluation.runner import EvaluationRunner
+    from aiobs_server.infrastructure.db import try_get_session_factory
+    from aiobs_server.infrastructure.repositories import (
+        SqlAlchemyDatasetRepository,
+        SqlAlchemyEvaluationRunRepository,
+        SqlAlchemyEvaluatorRepository,
+        SqlAlchemyExperimentItemOutputRepository,
+        SqlAlchemyExperimentRepository,
+    )
+
+    factory = try_get_session_factory()
+    if factory is None:
+        logger.warning(
+            "Skipping background experiment score; DB session factory not initialized (%s)",
+            command.experiment_id,
+        )
+        return
+
+    settings = get_settings()
+    async with factory() as session:
+        experiments = SqlAlchemyExperimentRepository(session)
+        datasets = SqlAlchemyDatasetRepository(session)
+        evaluators = SqlAlchemyEvaluatorRepository(session)
+        runs = SqlAlchemyEvaluationRunRepository(session)
+        outputs = SqlAlchemyExperimentItemOutputRepository(session)
+        scorer = EvaluateExperiment(
+            experiments,
+            datasets,
+            evaluators,
+            runs,
+            EvaluationRunner(max_concurrency=settings.llm_max_concurrency),
+            outputs,
+        )
+        try:
+            await scorer.execute(command)
+        except Exception:
+            logger.exception("Background experiment score failed: %s", command.experiment_id)

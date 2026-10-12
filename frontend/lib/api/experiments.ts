@@ -9,6 +9,38 @@ import type {
   ItemComparisonResponse,
 } from "./types";
 
+const TERMINAL_EXPERIMENT_STATUSES = new Set([
+  "completed",
+  "failed",
+  "cancelled",
+]);
+
+function sleep(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function waitUntilExperimentTerminal(
+  experimentId: string,
+  {
+    pollIntervalMs = 2000,
+    timeoutMs = 600_000,
+  }: { pollIntervalMs?: number; timeoutMs?: number } = {},
+): Promise<Experiment> {
+  const deadline = Date.now() + timeoutMs;
+  for (;;) {
+    const experiment = await getExperiment(experimentId);
+    if (TERMINAL_EXPERIMENT_STATUSES.has(experiment.status.toLowerCase())) {
+      return experiment;
+    }
+    if (Date.now() >= deadline) {
+      throw new Error(
+        `Timed out waiting for experiment scoring (status=${experiment.status}).`,
+      );
+    }
+    await sleep(pollIntervalMs);
+  }
+}
+
 export function listExperiments(projectId: string) {
   return apiGet<Experiment[]>(`/api/v1/projects/${projectId}/experiments`);
 }
@@ -60,21 +92,33 @@ export function compareExperimentItems(
   );
 }
 
-export function evaluateExperiment(
-  id: string,
-  body: { evaluator_ids: string[] },
-) {
-  return apiPost<EvaluateResponse>(`/api/v1/experiments/${id}/evaluate`, body);
+export function listExperimentRuns(experimentId: string) {
+  return apiGet<EvaluationRun[]>(
+    `/api/v1/experiments/${experimentId}/runs`,
+  );
 }
 
-export function evaluatePack(
+export async function evaluateExperiment(
+  id: string,
+  body: { evaluator_ids: string[] },
+): Promise<EvaluateResponse> {
+  await apiPost<Experiment>(`/api/v1/experiments/${id}/evaluate`, body);
+  const experiment = await waitUntilExperimentTerminal(id);
+  const runs = await listExperimentRuns(id);
+  return { experiment, runs };
+}
+
+export async function evaluatePack(
   experimentId: string,
   body?: { metrics_set_id?: string; save_as_default?: boolean },
-) {
-  return apiPost<EvaluateResponse>(
+): Promise<EvaluateResponse> {
+  await apiPost<Experiment>(
     `/api/v1/experiments/${experimentId}/evaluate-pack`,
     body ?? {},
   );
+  const experiment = await waitUntilExperimentTerminal(experimentId);
+  const runs = await listExperimentRuns(experimentId);
+  return { experiment, runs };
 }
 
 export function getEvaluationRun(runId: string) {

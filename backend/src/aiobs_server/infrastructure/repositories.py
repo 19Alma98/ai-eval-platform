@@ -721,6 +721,15 @@ class SqlAlchemyExperimentRepository:
         )
         return [_experiment_to_domain(row) for row in result.scalars().all()]
 
+    async def list_by_status(self, status: str, *, limit: int = 500) -> list[Experiment]:
+        result = await self._session.execute(
+            select(ExperimentModel)
+            .where(ExperimentModel.status == status)
+            .order_by(ExperimentModel.created_at.asc())
+            .limit(max(1, min(limit, 2000)))
+        )
+        return [_experiment_to_domain(row) for row in result.scalars().all()]
+
     async def update(self, experiment: Experiment) -> Experiment:
         row = await self._session.get(ExperimentModel, experiment.id)
         if row is None:
@@ -1199,6 +1208,22 @@ class SqlAlchemyLiveInteractionRepository:
             .limit(max(1, min(limit, 200)))
         )
         result = await self._session.execute(stmt)
+        return [_live_interaction_to_domain(row) for row in result.scalars().all()]
+
+    async def list_by_judge_statuses(
+        self,
+        statuses: frozenset[str] | set[str],
+        *,
+        limit: int = 500,
+    ) -> list[LiveInteraction]:
+        if not statuses:
+            return []
+        result = await self._session.execute(
+            select(LiveInteractionModel)
+            .where(LiveInteractionModel.judge_status.in_(tuple(statuses)))
+            .order_by(LiveInteractionModel.created_at.asc())
+            .limit(max(1, min(limit, 2000)))
+        )
         return [_live_interaction_to_domain(row) for row in result.scalars().all()]
 
     async def list_in_range(

@@ -77,7 +77,7 @@ async def _score(client: AsyncClient, experiment_id: str, metrics_set_id: str) -
         f"/api/v1/experiments/{experiment_id}/evaluate-pack",
         json={"metrics_set_id": metrics_set_id},
     )
-    assert resp.status_code == 200, resp.text
+    assert resp.status_code == 202, resp.text
 
 
 @pytest.mark.asyncio

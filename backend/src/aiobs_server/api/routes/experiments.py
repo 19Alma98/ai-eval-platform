@@ -2,18 +2,21 @@ from __future__ import annotations
 
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, status
+from fastapi.responses import JSONResponse
 
 from aiobs_server.api.deps import (
+    EvaluateBackgroundRunner,
     get_compare_experiment_items,
     get_compare_experiments,
     get_create_experiment,
-    get_evaluate_experiment,
+    get_evaluate_background_runner,
     get_get_experiment,
     get_list_experiment_outputs,
     get_list_experiment_runs,
     get_list_experiments,
     get_score_experiment_from_pack,
+    get_start_evaluate_experiment,
     get_summarize_experiment,
     get_upsert_experiment_outputs,
 )
@@ -25,7 +28,6 @@ from aiobs_server.api.schemas import (
     CreateExperimentRequest,
     EvaluatePackRequest,
     EvaluateRequest,
-    EvaluateResponse,
     EvaluationResultResponse,
     EvaluationRunResponse,
     EvaluatorSummaryResponse,
@@ -61,13 +63,14 @@ from aiobs_server.application.compare_items import (
 from aiobs_server.application.datasets import DatasetNotFoundError
 from aiobs_server.application.evaluate import (
     EmptyEvaluatorListError,
-    EvaluateExperiment,
     EvaluateExperimentCommand,
     EvaluationRunNotFoundError,
+    ExperimentAlreadyRunningError,
     GetEvaluationRun,
     ListExperimentRuns,
     ScoreExperimentFromPack,
     ScoreExperimentFromPackCommand,
+    StartEvaluateExperiment,
 )
 from aiobs_server.application.evaluators import EvaluatorNotFoundError
 from aiobs_server.application.experiment_outputs import (
@@ -354,15 +357,18 @@ async def list_experiment_outputs(
 
 @router.post(
     "/api/v1/experiments/{experiment_id}/evaluate",
-    response_model=EvaluateResponse,
+    status_code=status.HTTP_202_ACCEPTED,
+    response_model=ExperimentResponse,
 )
 async def evaluate_experiment(
     experiment_id: uuid.UUID,
     body: EvaluateRequest,
-    use_case: EvaluateExperiment = Depends(get_evaluate_experiment),
-) -> EvaluateResponse:
+    background_tasks: BackgroundTasks,
+    use_case: StartEvaluateExperiment = Depends(get_start_evaluate_experiment),
+    run_background: EvaluateBackgroundRunner = Depends(get_evaluate_background_runner),
+) -> JSONResponse:
     try:
-        outcome = await use_case.execute(
+        started = await use_case.execute(
             EvaluateExperimentCommand(
                 experiment_id=experiment_id,
                 evaluator_ids=body.evaluator_ids,
@@ -375,24 +381,28 @@ async def evaluate_experiment(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
     except EmptyEvaluatorListError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
-    return EvaluateResponse(
-        experiment=_experiment_response(outcome.experiment),
-        runs=[_run_response(run, outcome.results_by_run.get(run.id, [])) for run in outcome.runs],
-    )
+    except ExperimentAlreadyRunningError as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+    background_tasks.add_task(run_background, started.command)
+    payload = _experiment_response(started.experiment).model_dump(mode="json")
+    return JSONResponse(status_code=status.HTTP_202_ACCEPTED, content=payload)
 
 
 @router.post(
     "/api/v1/experiments/{experiment_id}/evaluate-pack",
-    response_model=EvaluateResponse,
+    status_code=status.HTTP_202_ACCEPTED,
+    response_model=ExperimentResponse,
 )
 async def evaluate_experiment_from_pack(
     experiment_id: uuid.UUID,
+    background_tasks: BackgroundTasks,
     body: EvaluatePackRequest | None = None,
     use_case: ScoreExperimentFromPack = Depends(get_score_experiment_from_pack),
-) -> EvaluateResponse:
+    run_background: EvaluateBackgroundRunner = Depends(get_evaluate_background_runner),
+) -> JSONResponse:
     payload = body or EvaluatePackRequest()
     try:
-        outcome = await use_case.execute(
+        started = await use_case.start(
             ScoreExperimentFromPackCommand(
                 experiment_id=experiment_id,
                 metrics_set_id=payload.metrics_set_id,
@@ -408,10 +418,11 @@ async def evaluate_experiment_from_pack(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
     except (EmptyEvaluatorListError, MetricsSetValidationError) as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
-    return EvaluateResponse(
-        experiment=_experiment_response(outcome.experiment),
-        runs=[_run_response(run, outcome.results_by_run.get(run.id, [])) for run in outcome.runs],
-    )
+    except ExperimentAlreadyRunningError as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+    background_tasks.add_task(run_background, started.command)
+    content = _experiment_response(started.experiment).model_dump(mode="json")
+    return JSONResponse(status_code=status.HTTP_202_ACCEPTED, content=content)
 
 
 @router.get(

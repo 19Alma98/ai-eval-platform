@@ -61,6 +61,9 @@ class FakeEvaluationRunRepository:
         self.runs[run.id] = run
         return run
 
+    async def list_runs_by_experiment(self, experiment_id: uuid.UUID) -> list[EvaluationRun]:
+        return [r for r in self.runs.values() if r.experiment_id == experiment_id]
+
     async def add_results(self, results: list) -> list:
         return results
 

@@ -64,6 +64,11 @@ class InMemoryExperimentRepository:
         rows.sort(key=lambda e: e.created_at, reverse=True)
         return rows
 
+    async def list_by_status(self, status: str, *, limit: int = 500) -> list[Experiment]:
+        rows = [e for e in self._items.values() if e.status == status]
+        rows.sort(key=lambda e: e.created_at)
+        return rows[: max(1, min(limit, 2000))]
+
 
 class InMemoryEvaluationRunRepository:
     def __init__(self) -> None:

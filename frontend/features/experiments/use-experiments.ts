@@ -47,6 +47,10 @@ export function useExperiment(experimentId: string | null) {
   return useQuery({
     ...experimentQueryOptions(key),
     enabled: Boolean(experimentId),
+    refetchInterval: (query) => {
+      const status = query.state.data?.status?.toLowerCase();
+      return status === "running" ? 3000 : false;
+    },
   });
 }
 

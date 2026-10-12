@@ -639,7 +639,7 @@ function ScorePackControls({
     mutationFn: () => evaluatePack(experimentId),
     onMutate: () => {
       toast.message("Scoring metrics pack…", {
-        description: "LLM judges can take a minute; keep this tab open.",
+        description: "Running in the background; this page will refresh when done.",
       });
     },
     onSuccess: async (data) => {

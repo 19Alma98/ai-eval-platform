@@ -131,6 +131,10 @@ class InMemoryExperimentRepository:
     async def list_by_project(self, project_id: uuid.UUID) -> list[Experiment]:
         return [e for e in self._items.values() if e.project_id == project_id]
 
+    async def list_by_status(self, status: str, *, limit: int = 500) -> list[Experiment]:
+        rows = [e for e in self._items.values() if e.status == status]
+        return rows[: max(1, min(limit, 2000))]
+
     async def update(self, experiment: Experiment) -> Experiment:
         self._items[experiment.id] = experiment
         return experiment
@@ -324,7 +328,7 @@ async def test_summary_and_compare_experiments(client: AsyncClient) -> None:
             f"/api/v1/experiments/{experiment_id}/evaluate",
             json={"evaluator_ids": [evaluator_id]},
         )
-        assert evaluated.status_code == 200, evaluated.text
+        assert evaluated.status_code == 202, evaluated.text
 
     summary = await client.get(f"/api/v1/experiments/{baseline_id}/summary")
     assert summary.status_code == 200, summary.text
@@ -392,7 +396,7 @@ async def test_compare_exposes_run_judge_warnings(
             f"/api/v1/experiments/{experiment_id}/evaluate",
             json={"evaluator_ids": [evaluator_id]},
         )
-        assert evaluated.status_code == 200, evaluated.text
+        assert evaluated.status_code == 202, evaluated.text
 
     cand_run = next(r for r in runs._runs.values() if r.experiment_id == uuid.UUID(candidate_id))
     updated = cand_run.with_status(
@@ -472,7 +476,7 @@ async def test_compare_rejects_different_dataset(client: AsyncClient) -> None:
             f"/api/v1/experiments/{experiment_id}/evaluate",
             json={"evaluator_ids": [evaluator_id]},
         )
-        assert evaluated.status_code == 200, evaluated.text
+        assert evaluated.status_code == 202, evaluated.text
 
     response = await client.get(f"/api/v1/experiments/{candidate_id}/compare/{baseline_id}")
     assert response.status_code == 400

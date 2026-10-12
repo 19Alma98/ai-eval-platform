@@ -139,6 +139,10 @@ class InMemoryExperimentRepository:
     async def list_by_project(self, project_id: uuid.UUID) -> list[Experiment]:
         return [e for e in self._items.values() if e.project_id == project_id]
 
+    async def list_by_status(self, status: str, *, limit: int = 500) -> list[Experiment]:
+        rows = [e for e in self._items.values() if e.status == status]
+        return rows[: max(1, min(limit, 2000))]
+
     async def update(self, experiment: Experiment) -> Experiment:
         self._items[experiment.id] = experiment
         return experiment
@@ -241,6 +245,21 @@ async def client() -> AsyncIterator[AsyncClient]:
     get_settings.cache_clear()
 
 
+async def _evaluate_outcome(client: AsyncClient, experiment_id: str) -> dict:
+    """After a 202 evaluate/evaluate-pack, load terminal experiment + detailed runs."""
+    exp = await client.get(f"/api/v1/experiments/{experiment_id}")
+    assert exp.status_code == 200, exp.text
+    assert exp.json()["status"] in {"completed", "failed"}, exp.json()
+    runs = await client.get(f"/api/v1/experiments/{experiment_id}/runs")
+    assert runs.status_code == 200, runs.text
+    detailed = []
+    for run in runs.json():
+        detail = await client.get(f"/api/v1/evaluation-runs/{run['id']}")
+        assert detail.status_code == 200, detail.text
+        detailed.append(detail.json())
+    return {"experiment": exp.json(), "runs": detailed}
+
+
 @pytest.mark.asyncio
 async def test_dataset_item_evaluate_flow(client: AsyncClient) -> None:
     project = await client.post("/api/v1/projects", json={"name": "Eval Demo"})
@@ -287,21 +306,14 @@ async def test_dataset_item_evaluate_flow(client: AsyncClient) -> None:
         f"/api/v1/experiments/{experiment_id}/evaluate",
         json={"evaluator_ids": [evaluator_id]},
     )
-    assert evaluated.status_code == 200, evaluated.text
-    body = evaluated.json()
+    assert evaluated.status_code == 202, evaluated.text
+    assert evaluated.json()["status"] == "running"
+    body = await _evaluate_outcome(client, experiment_id)
     assert body["experiment"]["status"] == "completed"
     assert len(body["runs"]) == 1
     assert body["runs"][0]["status"] == "PASSED"
     assert body["runs"][0]["results"][0]["score"] == 1.0
-
-    runs = await client.get(f"/api/v1/experiments/{experiment_id}/runs")
-    assert runs.status_code == 200
-    assert len(runs.json()) == 1
-
-    run_id = body["runs"][0]["id"]
-    detail = await client.get(f"/api/v1/evaluation-runs/{run_id}")
-    assert detail.status_code == 200
-    assert len(detail.json()["results"]) == 1
+    assert len(body["runs"][0]["results"]) == 1
 
 
 @pytest.mark.asyncio
@@ -358,8 +370,9 @@ async def test_evaluate_uses_experiment_output_not_legacy_actual(
         f"/api/v1/experiments/{experiment_id}/evaluate",
         json={"evaluator_ids": [evaluator_id]},
     )
-    assert evaluated.status_code == 200, evaluated.text
-    assert evaluated.json()["runs"][0]["results"][0]["score"] == 1.0
+    assert evaluated.status_code == 202, evaluated.text
+    body = await _evaluate_outcome(client, experiment_id)
+    assert body["runs"][0]["results"][0]["score"] == 1.0
 
 
 _DEFAULT_PACK_KINDS = (
@@ -437,8 +450,8 @@ async def test_evaluate_pack_uses_enabled_metrics_pack_evaluators(
     experiment_id = experiment.json()["id"]
 
     evaluated = await client.post(f"/api/v1/experiments/{experiment_id}/evaluate-pack")
-    assert evaluated.status_code == 200, evaluated.text
-    body = evaluated.json()
+    assert evaluated.status_code == 202, evaluated.text
+    body = await _evaluate_outcome(client, experiment_id)
     assert body["experiment"]["status"] == "completed"
     assert len(body["runs"]) == 1
     assert body["runs"][0]["status"] == "PASSED"
@@ -532,8 +545,9 @@ async def test_evaluate_pack_body_overrides_experiment_and_project_default(
         f"/api/v1/experiments/{experiment_id}/evaluate-pack",
         json={"metrics_set_id": custom_id},
     )
-    assert evaluated.status_code == 200, evaluated.text
-    kinds = await _evaluator_kinds_for_runs(client, project_id, evaluated.json()["runs"])
+    assert evaluated.status_code == 202, evaluated.text
+    body = await _evaluate_outcome(client, experiment_id)
+    kinds = await _evaluator_kinds_for_runs(client, project_id, body["runs"])
     assert kinds == {"latency"}
 
 
@@ -575,8 +589,9 @@ async def test_evaluate_pack_uses_experiment_metrics_set_id(client: AsyncClient)
         f"/api/v1/experiments/{experiment_id}/evaluate-pack",
         json={},
     )
-    assert evaluated.status_code == 200, evaluated.text
-    kinds = await _evaluator_kinds_for_runs(client, project_id, evaluated.json()["runs"])
+    assert evaluated.status_code == 202, evaluated.text
+    body = await _evaluate_outcome(client, experiment_id)
+    kinds = await _evaluator_kinds_for_runs(client, project_id, body["runs"])
     assert kinds == {"hit_at_k"}
 
 
@@ -606,7 +621,7 @@ async def test_evaluate_pack_save_as_default_persists(client: AsyncClient) -> No
         f"/api/v1/experiments/{experiment_id}/evaluate-pack",
         json={"metrics_set_id": custom_id, "save_as_default": True},
     )
-    assert scored.status_code == 200, scored.text
+    assert scored.status_code == 202, scored.text
 
     fetched = await client.get(f"/api/v1/experiments/{experiment_id}")
     assert fetched.status_code == 200
@@ -722,9 +737,10 @@ async def test_ad_hoc_evaluate_ignores_sets(client: AsyncClient) -> None:
         f"/api/v1/experiments/{experiment_id}/evaluate",
         json={"evaluator_ids": [evaluator_id]},
     )
-    assert evaluated.status_code == 200, evaluated.text
-    assert len(evaluated.json()["runs"]) == 1
-    assert str(evaluated.json()["runs"][0]["evaluator_id"]) == evaluator_id
+    assert evaluated.status_code == 202, evaluated.text
+    body = await _evaluate_outcome(client, experiment_id)
+    assert len(body["runs"]) == 1
+    assert str(body["runs"][0]["evaluator_id"]) == evaluator_id
 
 
 @pytest.mark.asyncio

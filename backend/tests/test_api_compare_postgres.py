@@ -64,7 +64,7 @@ async def test_compare_persisted(client: AsyncClient) -> None:
             f"/api/v1/experiments/{experiment_id}/evaluate",
             json={"evaluator_ids": [evaluator_id]},
         )
-        assert evaluated.status_code == 200
+        assert evaluated.status_code == 202
 
     summary = await client.get(f"/api/v1/experiments/{baseline_id}/summary")
     assert summary.status_code == 200

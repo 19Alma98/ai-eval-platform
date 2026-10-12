@@ -110,6 +110,8 @@ class ExperimentRepository(Protocol):
 
     async def list_by_project(self, project_id: uuid.UUID) -> list[Experiment]: ...
 
+    async def list_by_status(self, status: str, *, limit: int = 500) -> list[Experiment]: ...
+
     async def update(self, experiment: Experiment) -> Experiment: ...
 
     async def count_by_metrics_set_id(self, metrics_set_id: uuid.UUID) -> int: ...
@@ -182,6 +184,13 @@ class LiveInteractionRepository(Protocol):
         search: str | None = None,
         limit: int = 50,
         offset: int = 0,
+    ) -> list[LiveInteraction]: ...
+
+    async def list_by_judge_statuses(
+        self,
+        statuses: frozenset[str] | set[str],
+        *,
+        limit: int = 500,
     ) -> list[LiveInteraction]: ...
 
     async def list_in_range(

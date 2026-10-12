@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import builtins
+import time
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlencode
@@ -13,6 +14,7 @@ from aiobs.models import (
     DatasetItemResponse,
     DatasetResponse,
     EvaluateResponse,
+    EvaluationRunResponse,
     ExperimentCompareResponse,
     ExperimentItemOutputResponse,
     ExperimentResponse,
@@ -25,6 +27,8 @@ from aiobs.models import (
     ProjectResponse,
 )
 from aiobs.registry import AppConfigClient
+
+_TERMINAL_EXPERIMENT_STATUSES = frozenset({"completed", "failed", "cancelled"})
 
 
 class _ProjectsResource:
@@ -244,18 +248,59 @@ class _ExperimentsResource:
         *,
         metrics_set_id: str | None = None,
         save_as_default: bool = False,
+        poll_interval: float = 1.0,
+        timeout: float = 600.0,
     ) -> EvaluateResponse:
+        """Start pack scoring (202) and poll until the experiment finishes."""
         body: dict[str, Any] = {}
         if metrics_set_id is not None:
             body["metrics_set_id"] = metrics_set_id
         if save_as_default:
             body["save_as_default"] = True
-        return self._http.request_model(
+        self._http.request_model(
             "POST",
             f"/api/v1/experiments/{experiment_id}/evaluate-pack",
             body=body or None,
-            response_model=EvaluateResponse,
+            response_model=ExperimentResponse,
         )
+        experiment = self._wait_until_scored(
+            experiment_id, poll_interval=poll_interval, timeout=timeout
+        )
+        runs = self._http.request_model_list(
+            "GET",
+            f"/api/v1/experiments/{experiment_id}/runs",
+            response_model=EvaluationRunResponse,
+        )
+        detailed: builtins.list[EvaluationRunResponse] = []
+        for run in runs:
+            detailed.append(
+                self._http.request_model(
+                    "GET",
+                    f"/api/v1/evaluation-runs/{run.id}",
+                    response_model=EvaluationRunResponse,
+                )
+            )
+        return EvaluateResponse(experiment=experiment, runs=detailed)
+
+    def _wait_until_scored(
+        self,
+        experiment_id: str,
+        *,
+        poll_interval: float,
+        timeout: float,
+    ) -> ExperimentResponse:
+        deadline = time.monotonic() + timeout
+        while True:
+            experiment = self.get(experiment_id)
+            status = (experiment.status or "").lower()
+            if status in _TERMINAL_EXPERIMENT_STATUSES:
+                return experiment
+            if time.monotonic() >= deadline:
+                raise TimeoutError(
+                    f"Timed out waiting for experiment {experiment_id} "
+                    f"to leave status={experiment.status!r}"
+                )
+            time.sleep(poll_interval)
 
     def summary(
         self,

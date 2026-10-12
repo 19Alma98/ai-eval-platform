@@ -81,6 +81,16 @@ class InMemoryLiveRepository:
                 return item
         return None
 
+    async def list_by_judge_statuses(
+        self,
+        statuses: frozenset[str] | set[str],
+        *,
+        limit: int = 500,
+    ) -> list[LiveInteraction]:
+        rows = [i for i in self._items.values() if i.judge_status in statuses]
+        rows.sort(key=lambda i: i.created_at)
+        return rows[: max(1, min(limit, 2000))]
+
     async def list_by_project(
         self,
         project_id: uuid.UUID,

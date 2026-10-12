@@ -132,6 +132,10 @@ class InMemoryExperimentRepository:
     async def list_by_project(self, project_id: uuid.UUID) -> list[Experiment]:
         return [e for e in self._items.values() if e.project_id == project_id]
 
+    async def list_by_status(self, status: str, *, limit: int = 500) -> list[Experiment]:
+        rows = [e for e in self._items.values() if e.status == status]
+        return rows[: max(1, min(limit, 2000))]
+
     async def update(self, experiment: Experiment) -> Experiment:
         self._items[experiment.id] = experiment
         return experiment
@@ -286,7 +290,7 @@ async def test_release_check_passes_quality_min(
         f"/api/v1/experiments/{experiment_id}/evaluate",
         json={"evaluator_ids": [evaluator_id]},
     )
-    assert evaluated.status_code == 200
+    assert evaluated.status_code == 202
 
     response = await client.post(
         f"/api/v1/projects/{project_id}/release-check",
@@ -349,7 +353,7 @@ async def test_release_check_fails_quality_and_regression(
             f"/api/v1/experiments/{experiment_id}/evaluate",
             json={"evaluator_ids": [evaluator_id]},
         )
-        assert evaluated.status_code == 200
+        assert evaluated.status_code == 202
 
     response = await client.post(
         f"/api/v1/projects/{project_id}/release-check",

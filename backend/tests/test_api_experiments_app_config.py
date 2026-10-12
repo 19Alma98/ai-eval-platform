@@ -69,6 +69,10 @@ class InMemoryExperimentRepository:
     async def list_by_project(self, project_id: uuid.UUID) -> list[Experiment]:
         return [e for e in self._items.values() if e.project_id == project_id]
 
+    async def list_by_status(self, status: str, *, limit: int = 500) -> list[Experiment]:
+        rows = [e for e in self._items.values() if e.status == status]
+        return rows[: max(1, min(limit, 2000))]
+
     async def update(self, experiment: Experiment) -> Experiment:
         self._items[experiment.id] = experiment
         return experiment

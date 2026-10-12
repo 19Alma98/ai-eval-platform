@@ -83,11 +83,33 @@ def mock_transport(captured_requests: list[httpx2.Request]) -> httpx2.MockTransp
             return httpx2.Response(200, json=[])
         if method == "POST" and url.endswith("/evaluate-pack"):
             return httpx2.Response(
+                202,
+                json={
+                    "id": "exp-1",
+                    "name": "run",
+                    "status": "running",
+                    "dataset_id": "ds-1",
+                },
+            )
+        if method == "GET" and url.rstrip("/").endswith("/api/v1/experiments/exp-1"):
+            return httpx2.Response(
                 200,
                 json={
-                    "experiment": {"id": "exp-1", "name": "run", "status": "evaluated"},
-                    "runs": [{"id": "run-1", "status": "completed", "results": []}],
+                    "id": "exp-1",
+                    "name": "run",
+                    "status": "completed",
+                    "dataset_id": "ds-1",
                 },
+            )
+        if method == "GET" and url.endswith("/experiments/exp-1/runs"):
+            return httpx2.Response(
+                200,
+                json=[{"id": "run-1", "status": "PASSED", "results": []}],
+            )
+        if method == "GET" and "/evaluation-runs/run-1" in url:
+            return httpx2.Response(
+                200,
+                json={"id": "run-1", "status": "PASSED", "results": []},
             )
         if method == "GET" and url.endswith("/summary"):
             return httpx2.Response(200, json={"experiment_id": "exp-1", "evaluators": []})
@@ -255,7 +277,9 @@ def test_experiments_and_metrics_pack(
 
         assert client.experiments.list_outputs("exp-1") == []
         evaluated = client.experiments.evaluate_pack("exp-1")
-        assert evaluated.experiment.status == "evaluated"
+        assert evaluated.experiment.status == "completed"
+        assert len(evaluated.runs) == 1
+        assert evaluated.runs[0].status == "PASSED"
         assert client.experiments.summary("exp-1").experiment_id == "exp-1"
         compared = client.experiments.compare("exp-1", "exp-0")
         assert compared.experiment_id == "exp-1"

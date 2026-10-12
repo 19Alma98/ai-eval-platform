@@ -49,7 +49,7 @@ async def test_evaluate_persisted(client: AsyncClient) -> None:
         f"/api/v1/experiments/{experiment_id}/evaluate",
         json={"evaluator_ids": [evaluator_id]},
     )
-    assert evaluated.status_code == 200
+    assert evaluated.status_code == 202
     run_id = evaluated.json()["runs"][0]["id"]
 
     detail = await client.get(f"/api/v1/evaluation-runs/{run_id}")

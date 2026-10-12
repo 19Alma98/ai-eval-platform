@@ -1,4 +1,4 @@
-from collections.abc import AsyncGenerator
+from collections.abc import AsyncGenerator, Awaitable, Callable
 
 from fastapi import Depends
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -23,9 +23,11 @@ from aiobs_server.application.datasets import (
 )
 from aiobs_server.application.evaluate import (
     EvaluateExperiment,
+    EvaluateExperimentCommand,
     GetEvaluationRun,
     ListExperimentRuns,
     ScoreExperimentFromPack,
+    StartEvaluateExperiment,
 )
 from aiobs_server.application.evaluators import CreateEvaluator, ListEvaluators
 from aiobs_server.application.experiment_outputs import (
@@ -432,6 +434,39 @@ def get_evaluate_experiment(
     ),
 ) -> EvaluateExperiment:
     return EvaluateExperiment(experiments, datasets, evaluators, runs, runner, outputs)
+
+
+def get_start_evaluate_experiment(
+    experiments: SqlAlchemyExperimentRepository = Depends(get_experiment_repository),
+    evaluators: SqlAlchemyEvaluatorRepository = Depends(get_evaluator_repository),
+) -> StartEvaluateExperiment:
+    return StartEvaluateExperiment(experiments, evaluators)
+
+
+EvaluateBackgroundRunner = Callable[[EvaluateExperimentCommand], Awaitable[None]]
+
+
+def get_evaluate_background_runner(
+    evaluate_experiment: EvaluateExperiment = Depends(get_evaluate_experiment),
+) -> EvaluateBackgroundRunner:
+    """Run scoring in BackgroundTasks with the request-scoped use case.
+
+    FastAPI keeps yield-dependencies open until background tasks finish, so the
+    request session (or in-memory test repos) remains valid. Use
+    :func:`schedule_evaluate_experiment` only from non-request callers.
+    """
+
+    async def _run(command: EvaluateExperimentCommand) -> None:
+        try:
+            await evaluate_experiment.execute(command)
+        except Exception:
+            import logging
+
+            logging.getLogger(__name__).exception(
+                "Background experiment score failed: %s", command.experiment_id
+            )
+
+    return _run
 
 
 def get_score_experiment_from_pack(

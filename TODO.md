@@ -12,13 +12,10 @@ Open items from the RAG evaluation reviews (2026-10-08, 2026-10-11). Fixed items
 
 ## Robustness
 
-- [ ] **Async scoring.** `evaluate-pack` runs inside the HTTP request. With the 10-entry default
-  set (5 LLM judges) the portfolio demo hit the 120s client timeout on 8 items. Move to a
-  job/queue with status polling.
-- [ ] **Experiment stuck in `running`.** `EvaluateExperiment` sets `running` and has no
-  try/finally: any exception mid-scoring leaves it `running` forever.
-- [ ] **Live interactions stuck in `pending`.** Scoring uses in-process `BackgroundTasks`; after
-  an API restart nothing re-queues `pending`/`running` rows (only manual `rescore`).
+- [x] **Async scoring.** `evaluate` / `evaluate-pack` return 202; clients poll experiment status.
+- [x] **Experiment stuck in `running`.** `EvaluateExperiment` marks `failed` + orphan runs on crash;
+  startup recovery fails leftover `running` experiments.
+- [x] **Live interactions stuck in `pending`.** Lifespan re-queues `pending`/`running` live scores.
 
 ## Evaluation correctness / design
 

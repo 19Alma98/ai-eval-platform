@@ -27,9 +27,12 @@ def _ensure_evaluators_registered() -> None:
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
+    from aiobs_server.application.scoring_recovery import recover_scoring_after_restart
+
     init_db()
     await bootstrap_schema()
     _ensure_evaluators_registered()
+    await recover_scoring_after_restart()
     yield
     await dispose_db()
 
