@@ -74,6 +74,7 @@ class DatasetItemResponse(_ApiModel):
 
 class DatasetDetailResponse(DatasetResponse):
     items: list[DatasetItemResponse] = Field(default_factory=list)
+    immutable: bool = False
 
 
 class ImportDatasetItemErrorResponse(_ApiModel):
@@ -84,6 +85,9 @@ class ImportDatasetItemErrorResponse(_ApiModel):
 class ImportDatasetItemsResponse(_ApiModel):
     created: int
     errors: list[ImportDatasetItemErrorResponse] = Field(default_factory=list)
+    dataset_id: str | None = None
+    version: int | None = None
+    forked_from_dataset_id: str | None = None
 
 
 class ExperimentResponse(_ApiModel):

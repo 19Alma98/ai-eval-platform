@@ -133,7 +133,7 @@ async def get_dataset(
     use_case: GetDataset = Depends(get_get_dataset),
 ) -> DatasetDetailResponse:
     try:
-        dataset, items = await use_case.execute(dataset_id)
+        dataset, items, immutable = await use_case.execute(dataset_id)
     except DatasetNotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
     return DatasetDetailResponse(
@@ -145,6 +145,7 @@ async def get_dataset(
         task_type=dataset.task_type,
         created_at=dataset.created_at,
         items=[_item_response(i) for i in items],
+        immutable=immutable,
     )
 
 
@@ -213,4 +214,7 @@ async def import_dataset_items(
         errors=[
             ImportDatasetItemErrorResponse(row=e.row, message=e.message) for e in result.errors
         ],
+        dataset_id=result.dataset_id,
+        version=result.version,
+        forked_from_dataset_id=result.forked_from_dataset_id,
     )

@@ -256,20 +256,26 @@ def get_list_datasets(
 
 def get_get_dataset(
     datasets: SqlAlchemyDatasetRepository = Depends(get_dataset_repository),
+    experiments: SqlAlchemyExperimentRepository = Depends(get_experiment_repository),
+    runs: SqlAlchemyEvaluationRunRepository = Depends(get_evaluation_run_repository),
 ) -> GetDataset:
-    return GetDataset(datasets)
+    return GetDataset(datasets, experiments, runs)
 
 
 def get_add_dataset_item(
     datasets: SqlAlchemyDatasetRepository = Depends(get_dataset_repository),
+    experiments: SqlAlchemyExperimentRepository = Depends(get_experiment_repository),
+    runs: SqlAlchemyEvaluationRunRepository = Depends(get_evaluation_run_repository),
 ) -> AddDatasetItem:
-    return AddDatasetItem(datasets)
+    return AddDatasetItem(datasets, experiments, runs)
 
 
 def get_import_dataset_items(
     datasets: SqlAlchemyDatasetRepository = Depends(get_dataset_repository),
+    experiments: SqlAlchemyExperimentRepository = Depends(get_experiment_repository),
+    runs: SqlAlchemyEvaluationRunRepository = Depends(get_evaluation_run_repository),
 ) -> ImportDatasetItems:
-    return ImportDatasetItems(datasets)
+    return ImportDatasetItems(datasets, experiments, runs)
 
 
 def get_create_evaluator(

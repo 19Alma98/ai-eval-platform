@@ -63,6 +63,8 @@ POST /datasets/{dataset_id}/items/import
 
 `rag_qa` items require non-empty `metadata.expected_doc_ids` on create/import. CSV columns: `question`, `expected_answer`, `expected_doc_ids` (pipe-separated ids).
 
+Once a dataset has any evaluation run, item mutations (add, import, live promote) automatically create the next `name` version, copy existing items, and apply the write there. The original `dataset_id` stays immutable for historical experiments. `GET /datasets/{id}` includes `immutable`; import responses include `dataset_id`, `version`, and `forked_from_dataset_id`.
+
 ## App configs (registry)
 
 ```http

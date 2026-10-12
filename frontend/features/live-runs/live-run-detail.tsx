@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useRouter } from "next/navigation";
 import { useMemo, useState, type SubmitEvent } from "react";
 import { ArrowLeft } from "lucide-react";
 import { toast } from "sonner";
@@ -122,6 +123,7 @@ function ScoreReviewControls({
 export function LiveRunDetail({ interactionId }: { interactionId: string }) {
   const { projectId } = useProjectId();
   const queryClient = useQueryClient();
+  const router = useRouter();
   const query = useLiveRun(interactionId, projectId);
   const datasets = useDatasets(projectId);
   const [promoteOpen, setPromoteOpen] = useState(false);
@@ -151,13 +153,20 @@ export function LiveRunDetail({ interactionId }: { interactionId: string }) {
         expected_doc_ids: goldDocIds.length ? goldDocIds : undefined,
       }),
     onSuccess: (item) => {
-      toast.success("Promoted to test set");
+      const forked = item.dataset_id !== datasetId;
+      if (forked) {
+        toast.success("Created a new test set version and promoted");
+      } else {
+        toast.success("Promoted to test set");
+      }
       setPromoteOpen(false);
       setExpectedOutput("");
       setExpectedDocIds([]);
       setExtraDocIds("");
-      if (projectId) {
-        void item;
+      if (projectId && forked) {
+        router.push(
+          withProjectQuery(`/datasets/${item.dataset_id}`, projectId),
+        );
       }
     },
     onError: (err) => toast.error(formatErrorForUi(err)),

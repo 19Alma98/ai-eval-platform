@@ -110,9 +110,14 @@ async def test_import_csv_happy_path(client: AsyncClient) -> None:
     data = resp.json()
     assert data["created"] == 2
     assert data["errors"] == []
+    assert data["dataset_id"] == ds_id
+    assert data["version"] == 1
+    assert data["forked_from_dataset_id"] is None
 
     detail = await client.get(f"/api/v1/datasets/{ds_id}")
-    assert len(detail.json()["items"]) == 2
+    body = detail.json()
+    assert len(body["items"]) == 2
+    assert body["immutable"] is False
 
 
 @pytest.mark.asyncio

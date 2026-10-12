@@ -36,6 +36,10 @@ from aiobs_server.domain.project import Project
 from aiobs_server.evaluation import bootstrap_evaluators
 from aiobs_server.evaluation.registry import clear_registry
 from support.fake_llm import ScriptedJudgeLlm
+from tests.support.repositories import (
+    InMemoryEvaluationRunRepository,
+    InMemoryExperimentRepository,
+)
 
 FakeLlm = ScriptedJudgeLlm
 
@@ -377,7 +381,11 @@ async def test_score_goldless_and_review_promote() -> None:
     )
     assert review.verdict == "agree"
 
-    promote = PromoteLiveInteraction(live, datasets, AddDatasetItem(datasets))
+    experiments = InMemoryExperimentRepository()
+    runs = InMemoryEvaluationRunRepository()
+    promote = PromoteLiveInteraction(
+        live, datasets, AddDatasetItem(datasets, experiments, runs)
+    )
     item = await promote.execute(
         PromoteLiveInteractionCommand(
             interaction_id=scored.id,
@@ -411,7 +419,13 @@ async def _promote_setup(
             documents=[{"id": "doc-1", "text": "PTO"}],
         )
     )
-    return PromoteLiveInteraction(live, datasets, AddDatasetItem(datasets)), interaction, dataset
+    experiments = InMemoryExperimentRepository()
+    runs = InMemoryEvaluationRunRepository()
+    return (
+        PromoteLiveInteraction(live, datasets, AddDatasetItem(datasets, experiments, runs)),
+        interaction,
+        dataset,
+    )
 
 
 @pytest.mark.asyncio

@@ -111,6 +111,7 @@ class DatasetDetailResponse(BaseModel):
     task_type: str | None = None
     created_at: datetime
     items: list[DatasetItemResponse]
+    immutable: bool = False
 
 
 class TaskTypeResponse(BaseModel):
@@ -138,6 +139,9 @@ class ImportDatasetItemErrorResponse(BaseModel):
 class ImportDatasetItemsResponse(BaseModel):
     created: int
     errors: list[ImportDatasetItemErrorResponse]
+    dataset_id: uuid.UUID
+    version: int
+    forked_from_dataset_id: uuid.UUID | None = None
 
 
 class LlmJudgeConfigBody(BaseModel):

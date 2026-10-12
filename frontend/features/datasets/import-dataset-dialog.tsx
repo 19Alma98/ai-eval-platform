@@ -2,6 +2,7 @@
 
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Upload } from "lucide-react";
+import { useRouter } from "next/navigation";
 import { useState, type SubmitEvent } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -17,6 +18,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { formatErrorForUi } from "@/lib/api/client";
 import { importDatasetItems } from "@/lib/api/datasets";
+import { withProjectQuery } from "@/lib/project-href";
 import { RAG_QA_TASK } from "./rag-qa";
 import { datasetQueryKey, datasetsQueryKey } from "./use-datasets";
 
@@ -38,6 +40,7 @@ export function ImportDatasetDialog({
   showTrigger?: boolean;
 }) {
   const queryClient = useQueryClient();
+  const router = useRouter();
   const [file, setFile] = useState<File | null>(null);
   const [importErrors, setImportErrors] = useState<
     { row: number; message: string }[]
@@ -51,14 +54,26 @@ export function ImportDatasetDialog({
       return importDatasetItems(datasetId, file);
     },
     onSuccess: async (result) => {
+      const forked =
+        result.forked_from_dataset_id != null &&
+        result.dataset_id !== datasetId;
       await queryClient.invalidateQueries({
         queryKey: datasetQueryKey(datasetId),
       });
+      if (forked) {
+        await queryClient.invalidateQueries({
+          queryKey: datasetQueryKey(result.dataset_id),
+        });
+      }
       await queryClient.invalidateQueries({
         queryKey: datasetsQueryKey(projectId),
       });
       setImportErrors(result.errors);
-      if (result.created > 0) {
+      if (forked) {
+        toast.success(
+          `Created v${result.version} and imported ${result.created} item${result.created === 1 ? "" : "s"}`,
+        );
+      } else if (result.created > 0) {
         toast.success(
           `Imported ${result.created} item${result.created === 1 ? "" : "s"}`,
         );
@@ -71,6 +86,11 @@ export function ImportDatasetDialog({
       if (result.created > 0 && result.errors.length === 0) {
         setFile(null);
         onOpenChange(false);
+      }
+      if (forked) {
+        router.push(
+          withProjectQuery(`/datasets/${result.dataset_id}`, projectId),
+        );
       }
     },
     onError: (err) => {

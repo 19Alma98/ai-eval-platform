@@ -197,6 +197,11 @@ export function DatasetDetailView({
             <span className="rounded-md border border-border bg-surface px-2 py-0.5 font-mono text-xs text-muted-foreground">
               v{dataset.version}
             </span>
+            {dataset.immutable ? (
+              <span className="rounded-md border border-border bg-surface px-2 py-0.5 text-xs text-muted-foreground">
+                Has scored runs
+              </span>
+            ) : null}
           </div>
           <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-muted-foreground">
             {dataset.description ? (
@@ -212,6 +217,13 @@ export function DatasetDetailView({
               Created <RelativeTime date={dataset.created_at} />
             </span>
           </div>
+          {dataset.immutable ? (
+            <p className="mt-1 max-w-2xl text-xs text-muted-foreground">
+              This version has evaluation runs. Importing or promoting items
+              creates a new version automatically; existing experiments stay on
+              this one.
+            </p>
+          ) : null}
           <div className="mt-1 max-w-2xl rounded-md border border-border bg-surface px-3 py-2 text-xs text-muted-foreground">
             <p className="mb-1 font-medium text-foreground">
               Suggested item fields

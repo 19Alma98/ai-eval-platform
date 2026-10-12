@@ -4,11 +4,13 @@ import uuid
 
 from aiobs_server.api.deps import (
     get_app_config_repository,
+    get_evaluation_run_repository,
     get_evaluator_repository,
     get_experiment_repository,
     get_metrics_set_repository,
 )
 from aiobs_server.domain.app_config import AppConfig, AppConfigAlias
+from aiobs_server.domain.evaluation import EvaluationResultRecord, EvaluationRun
 from aiobs_server.domain.evaluator import Evaluator
 from aiobs_server.domain.experiment import Experiment
 from aiobs_server.domain.metrics_set import MetricsSet
@@ -138,6 +140,42 @@ class InMemoryExperimentRepository:
         return sum(1 for e in self._items.values() if e.metrics_set_id == metrics_set_id)
 
 
+class InMemoryEvaluationRunRepository:
+    """Empty evaluation-run stub so dataset mutations do not open a SQL session."""
+
+    def __init__(self) -> None:
+        self._runs: dict[uuid.UUID, EvaluationRun] = {}
+        self._results: dict[uuid.UUID, EvaluationResultRecord] = {}
+
+    async def add_run(self, run: EvaluationRun) -> EvaluationRun:
+        self._runs[run.id] = run
+        return run
+
+    async def update_run(self, run: EvaluationRun) -> EvaluationRun:
+        self._runs[run.id] = run
+        return run
+
+    async def get_run(self, run_id: uuid.UUID) -> EvaluationRun | None:
+        return self._runs.get(run_id)
+
+    async def list_runs_by_experiment(self, experiment_id: uuid.UUID) -> list[EvaluationRun]:
+        return [r for r in self._runs.values() if r.experiment_id == experiment_id]
+
+    async def add_result(self, result: EvaluationResultRecord) -> EvaluationResultRecord:
+        self._results[result.id] = result
+        return result
+
+    async def list_results(self, run_id: uuid.UUID) -> list[EvaluationResultRecord]:
+        return [r for r in self._results.values() if r.run_id == run_id]
+
+    async def add_results(
+        self, results: list[EvaluationResultRecord]
+    ) -> list[EvaluationResultRecord]:
+        for result in results:
+            self._results[result.id] = result
+        return results
+
+
 def wire_metrics_pack_repos(
     app,  # noqa: ANN001
 ) -> tuple[
@@ -149,8 +187,10 @@ def wire_metrics_pack_repos(
     metrics_sets = InMemoryMetricsSetRepository()
     experiments = InMemoryExperimentRepository()
     app_configs = InMemoryAppConfigRepository()
+    evaluation_runs = InMemoryEvaluationRunRepository()
     app.dependency_overrides[get_evaluator_repository] = lambda: evaluators
     app.dependency_overrides[get_metrics_set_repository] = lambda: metrics_sets
     app.dependency_overrides[get_experiment_repository] = lambda: experiments
     app.dependency_overrides[get_app_config_repository] = lambda: app_configs
+    app.dependency_overrides[get_evaluation_run_repository] = lambda: evaluation_runs
     return evaluators, metrics_sets, experiments

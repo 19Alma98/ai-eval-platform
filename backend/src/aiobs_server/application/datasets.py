@@ -9,7 +9,12 @@ from aiobs_server.application.metrics_packs import EnsureMetricsPack
 from aiobs_server.application.projects import ProjectNotFoundError
 from aiobs_server.domain.dataset import Dataset, DatasetItem
 from aiobs_server.domain.rag_qa import validate_rag_qa_item
-from aiobs_server.domain.repositories import DatasetRepository, ProjectRepository
+from aiobs_server.domain.repositories import (
+    DatasetRepository,
+    EvaluationRunRepository,
+    ExperimentRepository,
+    ProjectRepository,
+)
 
 
 class DatasetNotFoundError(Exception):
@@ -56,6 +61,9 @@ class ImportDatasetItemError:
 class ImportDatasetItemsResult:
     created: int
     errors: list[ImportDatasetItemError]
+    dataset_id: uuid.UUID
+    version: int
+    forked_from_dataset_id: uuid.UUID | None
 
 
 @dataclass(frozen=True, slots=True)
@@ -70,6 +78,88 @@ class ImportDatasetTaskTypeError(Exception):
     def __init__(self, task_type: str | None) -> None:
         self.task_type = task_type
         super().__init__(f"Import is only supported for rag_qa datasets (got {task_type!r})")
+
+
+def _is_unique_violation(exc: BaseException) -> bool:
+    text = str(exc).lower()
+    return "uq_datasets_project_name_version" in text or "unique" in text
+
+
+async def dataset_has_evaluation_runs(
+    experiments: ExperimentRepository,
+    runs: EvaluationRunRepository,
+    dataset: Dataset,
+) -> bool:
+    for experiment in await experiments.list_by_project(dataset.project_id):
+        if experiment.dataset_id != dataset.id:
+            continue
+        if await runs.list_runs_by_experiment(experiment.id):
+            return True
+    return False
+
+
+async def next_dataset_version(
+    datasets: DatasetRepository,
+    project_id: uuid.UUID,
+    name: str,
+) -> int:
+    versions = [
+        d.version for d in await datasets.list_by_project(project_id) if d.name == name
+    ]
+    return (max(versions) if versions else 0) + 1
+
+
+async def ensure_writable_dataset(
+    datasets: DatasetRepository,
+    experiments: ExperimentRepository,
+    runs: EvaluationRunRepository,
+    dataset_id: uuid.UUID,
+) -> tuple[Dataset, uuid.UUID | None]:
+    """Return a mutable dataset, forking to version+1 when evaluation runs exist.
+
+    Returns (target_dataset, forked_from_dataset_id). ``forked_from`` is None when
+    the original dataset is still writable.
+    """
+    dataset = await datasets.get_by_id(dataset_id)
+    if dataset is None:
+        raise DatasetNotFoundError(dataset_id)
+    if not await dataset_has_evaluation_runs(experiments, runs, dataset):
+        return dataset, None
+
+    source_items = await datasets.list_items(dataset.id)
+    last_conflict: Exception | None = None
+    for _ in range(3):
+        next_version = await next_dataset_version(datasets, dataset.project_id, dataset.name)
+        copy = Dataset.create(
+            dataset.project_id,
+            dataset.name,
+            version=next_version,
+            description=dataset.description,
+            task_type=dataset.task_type,
+        )
+        try:
+            created = await datasets.add(copy)
+        except Exception as exc:
+            if _is_unique_violation(exc):
+                last_conflict = exc
+                continue
+            raise
+        for item in source_items:
+            await datasets.add_item(
+                DatasetItem.create(
+                    created.id,
+                    item.input,
+                    expected_output=item.expected_output,
+                    actual_output=item.actual_output,
+                    context=item.context,
+                    metadata=dict(item.metadata),
+                    source_trace_id=item.source_trace_id,
+                    source_span_id=item.source_span_id,
+                )
+            )
+        return created, dataset.id
+
+    raise DatasetConflictError(dataset.name, dataset.version + 1) from last_conflict
 
 
 class CreateDataset:
@@ -98,10 +188,7 @@ class CreateDataset:
             created = await self._datasets.add(dataset)
         except Exception as exc:
             # Repository may raise IntegrityError; map in infra or re-raise as conflict
-            if (
-                "uq_datasets_project_name_version" in str(exc).lower()
-                or "unique" in str(exc).lower()
-            ):
+            if _is_unique_violation(exc):
                 raise DatasetConflictError(dataset.name, dataset.version) from exc
             raise
         if created.task_type == "rag_qa" and self._ensure_metrics_pack is not None:
@@ -123,25 +210,52 @@ class ListDatasets:
 
 
 class GetDataset:
-    def __init__(self, datasets: DatasetRepository) -> None:
+    def __init__(
+        self,
+        datasets: DatasetRepository,
+        experiments: ExperimentRepository,
+        runs: EvaluationRunRepository,
+    ) -> None:
         self._datasets = datasets
+        self._experiments = experiments
+        self._runs = runs
 
-    async def execute(self, dataset_id: uuid.UUID) -> tuple[Dataset, list[DatasetItem]]:
+    async def execute(
+        self, dataset_id: uuid.UUID
+    ) -> tuple[Dataset, list[DatasetItem], bool]:
         dataset = await self._datasets.get_by_id(dataset_id)
         if dataset is None:
             raise DatasetNotFoundError(dataset_id)
         items = await self._datasets.list_items(dataset_id)
-        return dataset, items
+        immutable = await dataset_has_evaluation_runs(
+            self._experiments, self._runs, dataset
+        )
+        return dataset, items, immutable
 
 
 class AddDatasetItem:
-    def __init__(self, datasets: DatasetRepository) -> None:
+    def __init__(
+        self,
+        datasets: DatasetRepository,
+        experiments: ExperimentRepository,
+        runs: EvaluationRunRepository,
+    ) -> None:
         self._datasets = datasets
+        self._experiments = experiments
+        self._runs = runs
 
     async def execute(self, command: AddDatasetItemCommand) -> DatasetItem:
-        dataset = await self._datasets.get_by_id(command.dataset_id)
-        if dataset is None:
-            raise DatasetNotFoundError(command.dataset_id)
+        target, _ = await ensure_writable_dataset(
+            self._datasets,
+            self._experiments,
+            self._runs,
+            command.dataset_id,
+        )
+        return await self._add_item_to(target, command)
+
+    async def _add_item_to(
+        self, dataset: Dataset, command: AddDatasetItemCommand
+    ) -> DatasetItem:
         metadata = command.metadata
         if dataset.task_type == "rag_qa":
             metadata = validate_rag_qa_item(
@@ -150,7 +264,7 @@ class AddDatasetItem:
                 metadata=dict(command.metadata or {}),
             )
         item = DatasetItem.create(
-            command.dataset_id,
+            dataset.id,
             command.input,
             expected_output=command.expected_output,
             actual_output=command.actual_output,
@@ -163,9 +277,16 @@ class AddDatasetItem:
 
 
 class ImportDatasetItems:
-    def __init__(self, datasets: DatasetRepository) -> None:
+    def __init__(
+        self,
+        datasets: DatasetRepository,
+        experiments: ExperimentRepository,
+        runs: EvaluationRunRepository,
+    ) -> None:
         self._datasets = datasets
-        self._add_item = AddDatasetItem(datasets)
+        self._experiments = experiments
+        self._runs = runs
+        self._add_item = AddDatasetItem(datasets, experiments, runs)
 
     async def execute(self, command: ImportDatasetItemsCommand) -> ImportDatasetItemsResult:
         dataset = await self._datasets.get_by_id(command.dataset_id)
@@ -181,6 +302,9 @@ class ImportDatasetItems:
         )
         created = 0
         errors: list[ImportDatasetItemError] = []
+        target: Dataset | None = None
+        forked_from: uuid.UUID | None = None
+
         for index, row in enumerate(parsed.rows):
             row_num = parsed.first_row_number + index
             if not isinstance(row, dict):
@@ -193,15 +317,31 @@ class ImportDatasetItems:
                 continue
             try:
                 question, answer, meta = row_to_item_fields(row)
-                await self._add_item.execute(
+                if target is None:
+                    target, forked_from = await ensure_writable_dataset(
+                        self._datasets,
+                        self._experiments,
+                        self._runs,
+                        command.dataset_id,
+                    )
+                await self._add_item._add_item_to(
+                    target,
                     AddDatasetItemCommand(
-                        dataset_id=command.dataset_id,
+                        dataset_id=target.id,
                         input=question,
                         expected_output=answer,
                         metadata=meta,
-                    )
+                    ),
                 )
                 created += 1
             except ValueError as exc:
                 errors.append(ImportDatasetItemError(row=row_num, message=str(exc)))
-        return ImportDatasetItemsResult(created=created, errors=errors)
+
+        result_dataset = target if target is not None else dataset
+        return ImportDatasetItemsResult(
+            created=created,
+            errors=errors,
+            dataset_id=result_dataset.id,
+            version=result_dataset.version,
+            forked_from_dataset_id=forked_from,
+        )

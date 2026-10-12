@@ -19,9 +19,8 @@ Open items from the RAG evaluation reviews (2026-10-08, 2026-10-11). Fixed items
 
 ## Evaluation correctness / design
 
-- [ ] **Test set versioning.** Items can still be added after runs exist (API, CSV import, live
-  promote). Stale runs are now detected and excluded, but the spec asks for immutable versions:
-  block edits on a dataset with runs, or create a new version.
+- [x] **Test set versioning.** After the first evaluation run, add/import/promote auto-forks
+  `name` v{N+1} (copied items + new write). Stale-run filtering kept for experiment output changes.
 - [ ] **Chunks from the same doc are dropped.** `_dedupe_by_id` in `evaluation/trace_context.py`
   keeps only the first chunk per doc id, so groundedness/context judges see partial context in
   chunked RAG. Dedupe ids for hit@k/MRR only; keep all texts for the judges.

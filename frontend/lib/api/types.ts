@@ -65,6 +65,7 @@ export type DatasetItem = {
 
 export type DatasetDetail = Dataset & {
   items: DatasetItem[];
+  immutable?: boolean;
 };
 
 export type ImportDatasetItemError = {
@@ -75,6 +76,9 @@ export type ImportDatasetItemError = {
 export type ImportDatasetItemsResult = {
   created: number;
   errors: ImportDatasetItemError[];
+  dataset_id: string;
+  version: number;
+  forked_from_dataset_id: string | null;
 };
 
 export type MetricsPackEntry = {
