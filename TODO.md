@@ -4,17 +4,11 @@ Open items from the RAG evaluation reviews (2026-10-08, 2026-10-11). Fixed items
 
 ## Before publishing on PyPI
 
-- [ ] **Verify the `httpx2` dependency** in `sdk/pyproject.toml` (`httpx2>=2.13.0`, plus
-  `httpcore2`). Not the standard `httpx`; check maintainer, repo and history on PyPI. A little-known
-  fork is a supply-chain risk for every SDK user. The backend uses plain `httpx`.
 - [ ] **Authentication.** No auth at all today. At minimum an API key for `/api/v1/*` and
   `/v1/traces`; people will expose it once it is on PyPI.
 - [ ] **Judge model config.**
-  - Code default `llm_model = "anthropic/claude-sonnet-5"` (`config.py`): verify the model id exists.
   - Document a minimum judge. `gemma4:e2b` discriminates well but returned invalid JSON on
     2/8 groundedness items in the hallucination test.
-- [ ] **Release as alpha**: `0.1.0a1`, classifier `Development Status :: 3 - Alpha`, and a
-  "do not expose without auth" note on the PyPI page.
 
 ## Robustness
 

@@ -16,7 +16,7 @@ class Settings(BaseSettings):
     project_slug_max_length: int = 200
     content_capture_enabled: bool = False
     otlp_max_body_bytes: int = 4 * 1024 * 1024
-    llm_model: str = "anthropic/claude-sonnet-5"
+    llm_model: str = "gemini/gemini-3.8-flash"
     llm_api_key: str | None = None
     llm_api_base: str | None = None
     llm_timeout_seconds: float = 60.0
