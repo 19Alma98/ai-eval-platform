@@ -118,24 +118,35 @@ async def test_compare_rejects_baseline_scored_before_test_set_changed(
     await _outputs(client, baseline_id, items, hit=True)
     await _score(client, baseline_id, ms)
 
-    items += await _add_items(client, dataset_id, 6, 6)
-    candidate_id = await _experiment(client, project_id, dataset_id, "candidate")
-    await _outputs(client, candidate_id, items, hit=True)
+    new_items = await _add_items(client, dataset_id, 6, 6)
+    forked_dataset_id = new_items[0]["dataset_id"]
+    assert forked_dataset_id != dataset_id
+
+    detail = await client.get(f"/api/v1/datasets/{forked_dataset_id}")
+    assert detail.status_code == 200
+    forked_items = detail.json()["items"]
+    assert len(forked_items) == 12
+
+    candidate_id = await _experiment(client, project_id, forked_dataset_id, "candidate")
+    await _outputs(client, candidate_id, forked_items, hit=True)
     await _score(client, candidate_id, ms)
 
     resp = await client.get(f"/api/v1/experiments/{candidate_id}/compare/{baseline_id}")
     assert resp.status_code == 400, resp.text
-    assert "re-score" in resp.text
+    assert "same dataset" in resp.text
 
     items_resp = await client.get(f"/api/v1/experiments/{candidate_id}/compare/{baseline_id}/items")
     assert items_resp.status_code == 400, items_resp.text
-    assert "re-score" in items_resp.text
+    assert "different datasets" in items_resp.text
 
-    # Re-scoring the baseline on the current test set makes the pair comparable again.
-    await _score(client, baseline_id, ms)
-    resp = await client.get(f"/api/v1/experiments/{candidate_id}/compare/{baseline_id}")
+    baseline_v2_id = await _experiment(client, project_id, forked_dataset_id, "baseline-v2")
+    await _outputs(client, baseline_v2_id, forked_items, hit=True)
+    await _score(client, baseline_v2_id, ms)
+    resp = await client.get(f"/api/v1/experiments/{candidate_id}/compare/{baseline_v2_id}")
     assert resp.status_code == 200, resp.text
 
-    items_resp = await client.get(f"/api/v1/experiments/{candidate_id}/compare/{baseline_id}/items")
+    items_resp = await client.get(
+        f"/api/v1/experiments/{candidate_id}/compare/{baseline_v2_id}/items"
+    )
     assert items_resp.status_code == 200, items_resp.text
     assert items_resp.json()["items"]

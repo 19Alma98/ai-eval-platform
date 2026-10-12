@@ -113,27 +113,31 @@ async def ensure_writable_dataset(
     runs: EvaluationRunRepository,
     dataset_id: uuid.UUID,
 ) -> tuple[Dataset, uuid.UUID | None]:
-    """Return a mutable dataset, forking to version+1 when evaluation runs exist.
-
-    Returns (target_dataset, forked_from_dataset_id). ``forked_from`` is None when
-    the original dataset is still writable.
-    """
+    """Return a mutable dataset, forking to version+1 when evaluation runs exist."""
     dataset = await datasets.get_by_id(dataset_id)
     if dataset is None:
         raise DatasetNotFoundError(dataset_id)
     if not await dataset_has_evaluation_runs(experiments, runs, dataset):
         return dataset, None
 
-    source_items = await datasets.list_items(dataset.id)
+    siblings = [
+        d for d in await datasets.list_by_project(dataset.project_id) if d.name == dataset.name
+    ]
+    tip = max(siblings, key=lambda d: d.version)
+    if tip.id != dataset.id and not await dataset_has_evaluation_runs(experiments, runs, tip):
+        return tip, None
+
+    source = tip
+    source_items = await datasets.list_items(source.id)
     last_conflict: Exception | None = None
     for _ in range(3):
-        next_version = await next_dataset_version(datasets, dataset.project_id, dataset.name)
+        next_version = await next_dataset_version(datasets, source.project_id, source.name)
         copy = Dataset.create(
-            dataset.project_id,
-            dataset.name,
+            source.project_id,
+            source.name,
             version=next_version,
-            description=dataset.description,
-            task_type=dataset.task_type,
+            description=source.description,
+            task_type=source.task_type,
         )
         try:
             created = await datasets.add(copy)
@@ -155,9 +159,9 @@ async def ensure_writable_dataset(
                     source_span_id=item.source_span_id,
                 )
             )
-        return created, dataset.id
+        return created, source.id
 
-    raise DatasetConflictError(dataset.name, dataset.version + 1) from last_conflict
+    raise DatasetConflictError(source.name, source.version + 1) from last_conflict
 
 
 class CreateDataset:

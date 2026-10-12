@@ -63,7 +63,7 @@ POST /datasets/{dataset_id}/items/import
 
 `rag_qa` items require non-empty `metadata.expected_doc_ids` on create/import. CSV columns: `question`, `expected_answer`, `expected_doc_ids` (pipe-separated ids).
 
-Once a dataset has any evaluation run, item mutations (add, import, live promote) automatically create the next `name` version, copy existing items, and apply the write there. The original `dataset_id` stays immutable for historical experiments. `GET /datasets/{id}` includes `immutable`; import responses include `dataset_id`, `version`, and `forked_from_dataset_id`.
+Once a dataset has any evaluation run, item mutations (add, import, live promote) automatically create the next `name` version (copying items from the latest tip), and apply the write there. Repeated writes against an immutable `dataset_id` reuse that writable tip instead of forking again. The original `dataset_id` stays immutable for historical experiments. `GET /datasets/{id}` includes `immutable`; import responses include `dataset_id`, `version`, and `forked_from_dataset_id`.
 
 ## App configs (registry)
 

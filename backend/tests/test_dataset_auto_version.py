@@ -183,6 +183,92 @@ async def test_add_item_after_run_forks_new_version() -> None:
 
 
 @pytest.mark.asyncio
+async def test_repeated_adds_on_frozen_dataset_reuse_same_fork() -> None:
+    """POSTing items to an immutable dataset_id must not create a version per item."""
+    datasets = InMemoryDatasetRepository()
+    experiments = InMemoryExperimentRepository()
+    runs = InMemoryEvaluationRunRepository()
+    dataset, _ = await _seed_dataset_with_item(datasets)
+
+    experiment = Experiment.create(dataset.project_id, "exp", dataset.id)
+    await experiments.add(experiment)
+    await runs.add_run(EvaluationRun.create(experiment.id, uuid.uuid4(), status="PASSED"))
+
+    uc = AddDatasetItem(datasets, experiments, runs)
+    first = await uc.execute(
+        AddDatasetItemCommand(
+            dataset_id=dataset.id,
+            input="Q2?",
+            expected_output="A2",
+            metadata={"expected_doc_ids": ["doc-2"]},
+        )
+    )
+    second = await uc.execute(
+        AddDatasetItemCommand(
+            dataset_id=dataset.id,
+            input="Q3?",
+            expected_output="A3",
+            metadata={"expected_doc_ids": ["doc-3"]},
+        )
+    )
+
+    assert first.dataset_id == second.dataset_id
+    assert first.dataset_id != dataset.id
+    forked = await datasets.get_by_id(first.dataset_id)
+    assert forked is not None
+    assert forked.version == 2
+    assert len(await datasets.list_items(forked.id)) == 3
+    siblings = [
+        d for d in await datasets.list_by_project(dataset.project_id) if d.name == dataset.name
+    ]
+    assert len(siblings) == 2
+
+
+@pytest.mark.asyncio
+async def test_add_on_frozen_dataset_forks_from_latest_scored_tip() -> None:
+    """When every version is scored, the next fork copies the latest tip's items."""
+    datasets = InMemoryDatasetRepository()
+    experiments = InMemoryExperimentRepository()
+    runs = InMemoryEvaluationRunRepository()
+    dataset, _ = await _seed_dataset_with_item(datasets)
+
+    exp_v1 = Experiment.create(dataset.project_id, "exp-v1", dataset.id)
+    await experiments.add(exp_v1)
+    await runs.add_run(EvaluationRun.create(exp_v1.id, uuid.uuid4(), status="PASSED"))
+
+    uc = AddDatasetItem(datasets, experiments, runs)
+    on_v2 = await uc.execute(
+        AddDatasetItemCommand(
+            dataset_id=dataset.id,
+            input="Q2?",
+            expected_output="A2",
+            metadata={"expected_doc_ids": ["doc-2"]},
+        )
+    )
+    v2 = await datasets.get_by_id(on_v2.dataset_id)
+    assert v2 is not None
+
+    exp_v2 = Experiment.create(dataset.project_id, "exp-v2", v2.id)
+    await experiments.add(exp_v2)
+    await runs.add_run(EvaluationRun.create(exp_v2.id, uuid.uuid4(), status="PASSED"))
+
+    on_v3 = await uc.execute(
+        AddDatasetItemCommand(
+            dataset_id=dataset.id,
+            input="Q3?",
+            expected_output="A3",
+            metadata={"expected_doc_ids": ["doc-3"]},
+        )
+    )
+    v3 = await datasets.get_by_id(on_v3.dataset_id)
+    assert v3 is not None
+    assert v3.version == 3
+    assert on_v3.dataset_id != v2.id
+    inputs = {i.input for i in await datasets.list_items(v3.id)}
+    assert inputs == {"Q1?", "Q2?", "Q3?"}
+
+
+@pytest.mark.asyncio
 async def test_import_on_frozen_dataset_forks_once() -> None:
     datasets = InMemoryDatasetRepository()
     experiments = InMemoryExperimentRepository()
