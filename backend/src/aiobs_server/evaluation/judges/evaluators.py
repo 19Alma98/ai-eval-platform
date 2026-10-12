@@ -299,7 +299,7 @@ async def _load_reference_claims(
     )
     if judge._cache is not None:
         cached = await judge._cache.get(key)
-        if cached is not None:
+        if cached:
             return ExtractedClaims(claims=cached, calls=0, cache_hit=True)
     extracted = await extract_claims(
         judge._llm,
@@ -307,7 +307,7 @@ async def _load_reference_claims(
         user=prompts.sections(question=question, reference_answer=reference),
         options=judge._config.options,
     )
-    if judge._cache is not None:
+    if judge._cache is not None and extracted.claims:
         await judge._cache.put(
             key, prompt_version=judge.prompt_version, model=model, claims=extracted.claims
         )

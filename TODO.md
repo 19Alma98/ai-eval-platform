@@ -31,12 +31,11 @@ Open items from the RAG evaluation reviews (2026-10-08, 2026-10-11). Fixed items
 - [x] **Latency p95 ignores missing-output items** (no `latency_ms` in metadata).
   Missing-output without `latency_ms` fails `latency.p95`; SKIPPED rows stay excluded.
 - [x] **Live groundedness with no documents → FAIL 0.** Live: SKIPPED; offline keeps FAIL 0.
-- [ ] **Claim cache stores empty extractions forever** (first write wins): one bad extraction makes
+- [x] **Claim cache stores empty extractions forever** (first write wins): one bad extraction makes
   correctness permanently SKIPPED (`no_gold_claims`) for that item/model/prompt.
-- [ ] **Compare-items drill-down** (`compare_items.py`) does not apply the stale-run filter yet.
-- [ ] **Default metrics set differs between projects.** One demo project got a 5-entry pack,
-  a new one got 10 entries (`DEFAULT_RAG_SET_ENTRIES`). Verify `metrics-pack/ensure` vs
-  dataset-creation ensure.
+  Empty extracts are not cached; stored `[]` is treated as a miss.
+- [x] **Compare-items drill-down** (`compare_items.py`) does not apply the stale-run filter yet.
+  Uses `select_runs` + fingerprint like aggregate compare.
 
 ## Judge validation (meta-eval)
 

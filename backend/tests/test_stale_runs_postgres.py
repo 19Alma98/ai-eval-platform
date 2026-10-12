@@ -127,7 +127,15 @@ async def test_compare_rejects_baseline_scored_before_test_set_changed(
     assert resp.status_code == 400, resp.text
     assert "re-score" in resp.text
 
+    items_resp = await client.get(f"/api/v1/experiments/{candidate_id}/compare/{baseline_id}/items")
+    assert items_resp.status_code == 400, items_resp.text
+    assert "re-score" in items_resp.text
+
     # Re-scoring the baseline on the current test set makes the pair comparable again.
     await _score(client, baseline_id, ms)
     resp = await client.get(f"/api/v1/experiments/{candidate_id}/compare/{baseline_id}")
     assert resp.status_code == 200, resp.text
+
+    items_resp = await client.get(f"/api/v1/experiments/{candidate_id}/compare/{baseline_id}/items")
+    assert items_resp.status_code == 200, items_resp.text
+    assert items_resp.json()["items"]

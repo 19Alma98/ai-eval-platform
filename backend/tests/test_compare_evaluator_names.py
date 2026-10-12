@@ -5,7 +5,12 @@ from datetime import UTC, datetime
 
 import pytest
 
-from aiobs_server.application.compare import CompareExperiments, SummarizeExperiment
+from aiobs_server.application.compare import (
+    CompareExperiments,
+    InvalidCompareSelectionError,
+    SummarizeExperiment,
+)
+from aiobs_server.application.compare_items import CompareExperimentItems
 from aiobs_server.domain.evaluation import EvaluationResultRecord, EvaluationRun
 from aiobs_server.domain.evaluator import Evaluator
 from aiobs_server.domain.experiment import Experiment
@@ -143,3 +148,46 @@ async def test_compare_resolves_evaluator_name_from_registry() -> None:
 
     assert comparison.metrics
     assert all(m.evaluator_name == "exact" for m in comparison.metrics)
+
+
+class _FakeDatasets:
+    async def list_items(self, dataset_id: uuid.UUID) -> list:
+        return []
+
+
+class _FakeOutputs:
+    async def list_by_experiment(self, experiment_id: uuid.UUID) -> list:
+        return []
+
+
+class _FixedFingerprint:
+    def __init__(self, value: str) -> None:
+        self._value = value
+
+    async def execute(self, experiment: Experiment) -> str:
+        return self._value
+
+
+@pytest.mark.asyncio
+async def test_compare_items_rejects_stale_baseline_runs() -> None:
+    dataset_id = uuid.uuid4()
+    baseline = _experiment(dataset_id)
+    candidate = Experiment.create(
+        project_id=baseline.project_id,
+        name="candidate",
+        dataset_id=dataset_id,
+        baseline_experiment_id=baseline.id,
+    )
+    evaluator = _evaluator("exact")
+    base_run = _run(baseline.id, evaluator.id, metadata={"inputs_fingerprint": "old"})
+    cand_run = _run(candidate.id, evaluator.id, metadata={"inputs_fingerprint": "new"})
+
+    use_case = CompareExperimentItems(
+        _FakeExperiments(baseline, candidate),
+        _FakeDatasets(),
+        _FakeRuns([base_run, cand_run], {}),
+        _FakeOutputs(),
+        _FixedFingerprint("new"),
+    )
+    with pytest.raises(InvalidCompareSelectionError, match="re-score"):
+        await use_case.execute(candidate.id, baseline.id)

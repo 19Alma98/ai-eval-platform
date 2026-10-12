@@ -276,6 +276,23 @@ async def test_correctness_invalid_extract_is_not_cached() -> None:
 
 
 @pytest.mark.asyncio
+async def test_correctness_empty_extract_is_not_cached() -> None:
+    cache = InMemoryJudgeClaimCache()
+    empty = ScriptedJudgeLlm({"extract_reference_claims": {"claims": []}})
+    skipped = await _judge("correctness", empty, cache=cache).evaluate(_sample())
+    assert skipped.label == "SKIPPED"
+    assert skipped.explanation.startswith("no_gold_claims")
+    assert skipped.metadata["cache_hit"] is False
+
+    # A later non-empty extract must not be blocked by a poisoned empty cache row.
+    good = ScriptedJudgeLlm({"extract_reference_claims": {"claims": ["26 days"]}})
+    result = await _judge("correctness", good, cache=cache).evaluate(_sample())
+    assert result.label != "SKIPPED"
+    assert result.metadata["cache_hit"] is False
+    assert result.metadata["n_gold"] == 1
+
+
+@pytest.mark.asyncio
 async def test_correctness_skips_without_expected_or_gold_claims() -> None:
     llm = ScriptedJudgeLlm({"extract_reference_claims": {"claims": []}})
     judge = _judge("correctness", llm)

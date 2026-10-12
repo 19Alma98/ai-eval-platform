@@ -132,7 +132,7 @@ Entry config keys (part of `config_hash`). Invalid values raise `ValueError` whe
 
 ### Gold-claim cache
 
-Gold claims extracted from `expected_output` are stored in `judge_claim_cache` (migration `0011_judge_claim_cache`), keyed by a SHA-256 of question + expected output + `prompt_version` + model. A hit skips the extract call, so candidate and baseline experiments are scored against identical gold claims. Entries are written only after the extract output passed validation.
+Gold claims extracted from `expected_output` are stored in `judge_claim_cache`, keyed by a SHA-256 of question + expected output + `prompt_version` + model. A hit skips the extract call, so candidate and baseline experiments are scored against identical gold claims. Entries are written only after the extract output passed validation and produced at least one claim; empty extractions are not cached, and a stored empty list is treated as a miss so a flaky empty extract cannot lock an item into permanent `no_gold_claims` SKIPPED.
 
 ### Output validation and errors
 

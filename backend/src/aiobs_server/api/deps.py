@@ -534,8 +534,9 @@ def get_compare_experiment_items(
     outputs: SqlAlchemyExperimentItemOutputRepository = Depends(
         get_experiment_item_output_repository
     ),
+    fingerprints: CurrentScoringFingerprint = Depends(get_current_scoring_fingerprint),
 ) -> CompareExperimentItems:
-    return CompareExperimentItems(experiments, datasets, runs, outputs)
+    return CompareExperimentItems(experiments, datasets, runs, outputs, fingerprints)
 
 
 def get_upsert_experiment_outputs(

@@ -4,8 +4,13 @@ import uuid
 from dataclasses import dataclass
 from typing import Any
 
+from aiobs_server.application.compare import InvalidCompareSelectionError
 from aiobs_server.application.experiment_outputs import resolve_item_fields
 from aiobs_server.application.experiments import ExperimentNotFoundError
+from aiobs_server.application.scoring_inputs import (
+    CurrentScoringFingerprint,
+    current_fingerprint,
+)
 from aiobs_server.domain.evaluation import EvaluationResultRecord
 from aiobs_server.domain.repositories import (
     DatasetRepository,
@@ -17,7 +22,7 @@ from aiobs_server.regression.aggregate import (
     MetricStatus,
     classify_delta,
     runs_config_mismatch,
-    select_latest_runs,
+    select_runs,
 )
 
 
@@ -130,11 +135,13 @@ class CompareExperimentItems:
         datasets: DatasetRepository,
         runs: EvaluationRunRepository,
         outputs: ExperimentItemOutputRepository,
+        fingerprints: CurrentScoringFingerprint | None = None,
     ) -> None:
         self._experiments = experiments
         self._datasets = datasets
         self._runs = runs
         self._outputs = outputs
+        self._fingerprints = fingerprints
 
     async def execute(
         self,
@@ -154,10 +161,31 @@ class CompareExperimentItems:
         if experiment.dataset_id != baseline.dataset_id:
             raise DatasetMismatchError(experiment_id, baseline_id)
 
-        candidate_latest = select_latest_runs(
-            await self._runs.list_runs_by_experiment(experiment_id)
-        )
-        baseline_latest = select_latest_runs(await self._runs.list_runs_by_experiment(baseline_id))
+        try:
+            selected_candidate = select_runs(
+                await self._runs.list_runs_by_experiment(experiment_id),
+                current_fingerprint=await current_fingerprint(self._fingerprints, experiment),
+            )
+            selected_baseline = select_runs(
+                await self._runs.list_runs_by_experiment(baseline_id),
+                current_fingerprint=await current_fingerprint(self._fingerprints, baseline),
+            )
+        except ValueError as exc:
+            raise InvalidCompareSelectionError(str(exc)) from exc
+
+        if not selected_candidate:
+            raise InvalidCompareSelectionError(
+                f"No current evaluation runs for experiment {experiment_id}: "
+                "score it, or re-score if its outputs or test set changed"
+            )
+        if not selected_baseline:
+            raise InvalidCompareSelectionError(
+                f"No current evaluation runs for experiment {baseline_id}: "
+                "score it, or re-score if its outputs or test set changed"
+            )
+
+        candidate_latest = {run.evaluator_id: run for run in selected_candidate}
+        baseline_latest = {run.evaluator_id: run for run in selected_baseline}
         selected_evaluator = _resolve_evaluator_id(
             evaluator_id=evaluator_id,
             candidate_latest=candidate_latest,

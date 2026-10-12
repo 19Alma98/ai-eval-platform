@@ -273,7 +273,7 @@ Query params:
 - `evaluator_id` — required when both experiments have results from more than one evaluator; otherwise defaults to the sole shared evaluator
 - `regressions_only` — default `false`; when `true`, only rows with `status == regression`
 
-Preconditions: both experiments exist (404); same `dataset_id` (400 on mismatch); ambiguous evaluator without `evaluator_id` (400).
+Preconditions: both experiments exist (404); same `dataset_id` (400 on mismatch); ambiguous evaluator without `evaluator_id` (400). Like aggregate compare, only current (non-stale) runs are used — runs scored before outputs or the test set changed are skipped; if either side has no current run, the response is 400 with guidance to score or re-score.
 
 Each item row includes `input`, `expected_output`, `baseline` / `candidate` sides (`actual_output`, `context`, `score`, `label`, `explanation`, `run_id`), per-item `delta`, and `status` (`regression` | `improved` | `unchanged` | `unavailable`). Outputs resolve from experiment item outputs with fallback to legacy dataset item fields.
 
