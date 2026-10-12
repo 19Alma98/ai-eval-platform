@@ -62,6 +62,35 @@ async def test_sqlite_ui_index_served(sqlite_client: AsyncClient) -> None:
     assert "text/html" in response.headers.get("content-type", "")
 
 
+def _otlp_span(
+    *,
+    trace_id: str,
+    span_id: str,
+    name: str,
+    start_nano: str,
+    end_nano: str,
+    parent_span_id: str | None = None,
+) -> dict:
+    span: dict = {
+        "traceId": trace_id,
+        "spanId": span_id,
+        "name": name,
+        "startTimeUnixNano": start_nano,
+        "endTimeUnixNano": end_nano,
+        "status": {"code": "STATUS_CODE_OK"},
+        "attributes": [
+            {"key": "openinference.span.kind", "value": {"stringValue": "CHAIN"}},
+        ],
+    }
+    if parent_span_id is not None:
+        span["parentSpanId"] = parent_span_id
+    return span
+
+
+def _otlp_payload(spans: list[dict]) -> dict:
+    return {"resourceSpans": [{"scopeSpans": [{"spans": spans}]}]}
+
+
 @pytest.mark.asyncio
 async def test_sqlite_otlp_minimal(sqlite_client: AsyncClient) -> None:
     project = await sqlite_client.post(
@@ -70,35 +99,72 @@ async def test_sqlite_otlp_minimal(sqlite_client: AsyncClient) -> None:
     )
     assert project.status_code == 201
 
-    payload = {
-        "resourceSpans": [
-            {
-                "scopeSpans": [
-                    {
-                        "spans": [
-                            {
-                                "traceId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-                                "spanId": "bbbbbbbbbbbbbbbb",
-                                "name": "hello",
-                                "startTimeUnixNano": "1700000000000000000",
-                                "endTimeUnixNano": "1700000001000000000",
-                                "status": {"code": "STATUS_CODE_OK"},
-                                "attributes": [
-                                    {
-                                        "key": "openinference.span.kind",
-                                        "value": {"stringValue": "CHAIN"},
-                                    }
-                                ],
-                            }
-                        ]
-                    }
-                ]
-            }
-        ]
-    }
     response = await sqlite_client.post(
         "/v1/traces",
-        json=payload,
+        json=_otlp_payload(
+            [
+                _otlp_span(
+                    trace_id="aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                    span_id="bbbbbbbbbbbbbbbb",
+                    name="hello",
+                    start_nano="1700000000000000000",
+                    end_nano="1700000001000000000",
+                )
+            ]
+        ),
         headers={"X-Project-Slug": "otlp-sqlite"},
     )
     assert response.status_code == 200
+
+
+@pytest.mark.asyncio
+async def test_sqlite_otlp_upsert_same_trace_merges(sqlite_client: AsyncClient) -> None:
+    """Second batch for the same trace must merge (SQLite naive vs aware datetimes)."""
+    project = await sqlite_client.post(
+        "/api/v1/projects",
+        json={"name": "OTLP Merge", "slug": "otlp-sqlite-merge"},
+    )
+    assert project.status_code == 201
+
+    headers = {"X-Project-Slug": "otlp-sqlite-merge"}
+    trace_id = "cccccccccccccccccccccccccccccccc"
+
+    first = await sqlite_client.post(
+        "/v1/traces",
+        json=_otlp_payload(
+            [
+                _otlp_span(
+                    trace_id=trace_id,
+                    span_id="1111111111111111",
+                    name="parent",
+                    start_nano="1700000000000000000",
+                    end_nano="1700000002000000000",
+                )
+            ]
+        ),
+        headers=headers,
+    )
+    assert first.status_code == 200
+
+    second = await sqlite_client.post(
+        "/v1/traces",
+        json=_otlp_payload(
+            [
+                _otlp_span(
+                    trace_id=trace_id,
+                    span_id="2222222222222222",
+                    name="child",
+                    start_nano="1700000000500000000",
+                    end_nano="1700000001500000000",
+                    parent_span_id="1111111111111111",
+                )
+            ]
+        ),
+        headers=headers,
+    )
+    assert second.status_code == 200
+
+    project_id = project.json()["id"]
+    listed = await sqlite_client.get(f"/api/v1/projects/{project_id}/traces/{trace_id}")
+    assert listed.status_code == 200
+    assert len(listed.json()["spans"]) == 2

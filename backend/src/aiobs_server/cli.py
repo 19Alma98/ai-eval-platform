@@ -91,7 +91,7 @@ def ui(
     reload: Annotated[bool, typer.Option("--reload", help="Auto-reload (dev)")] = False,
     open_browser: Annotated[
         bool, typer.Option("--open/--no-open", help="Open the UI in a browser")
-    ] = True,
+    ] = False,
 ) -> None:
     """Start the local API + packaged UI."""
     uri = backend_store_uri or os.environ.get("DATABASE_URL") or DEFAULT_SQLITE_URL

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import logging
 import uuid
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any
 
 from sqlalchemy import func, select
@@ -55,6 +55,11 @@ from aiobs_server.infrastructure.models import (
 def escape_like(value: str) -> str:
     """Escape LIKE/ILIKE wildcards so user input matches literally (escape char: backslash)."""
     return value.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+
+
+def _as_utc(value: datetime) -> datetime:
+    """Normalize for comparison; SQLite often returns naive UTC from DateTime(timezone=True)."""
+    return value if value.tzinfo is not None else value.replace(tzinfo=UTC)
 
 
 def _project_to_domain(row: ProjectModel) -> Project:
@@ -166,10 +171,13 @@ class SqlAlchemyTraceRepository:
             else:
                 existing.status = trace.status or existing.status
             if trace.start_time and (
-                existing.start_time is None or trace.start_time < existing.start_time
+                existing.start_time is None
+                or _as_utc(trace.start_time) < _as_utc(existing.start_time)
             ):
                 existing.start_time = trace.start_time
-            if trace.end_time and (existing.end_time is None or trace.end_time > existing.end_time):
+            if trace.end_time and (
+                existing.end_time is None or _as_utc(trace.end_time) > _as_utc(existing.end_time)
+            ):
                 existing.end_time = trace.end_time
             if trace.input is not None:
                 existing.input = trace.input
