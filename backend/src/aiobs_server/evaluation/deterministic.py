@@ -236,6 +236,18 @@ class CostEvaluator:
         )
 
 
+def _dedupe_ids_first_occurrence(ids: list[str]) -> list[str]:
+    """Unique ids preserving first rank (chunked RAG may repeat parent doc ids)."""
+    seen: set[str] = set()
+    out: list[str] = []
+    for doc_id in ids:
+        if doc_id in seen:
+            continue
+        seen.add(doc_id)
+        out.append(doc_id)
+    return out
+
+
 def _retrieved_doc_ids(ctx: dict[str, Any]) -> list[str] | None:
     if "documents" in ctx:
         documents = ctx["documents"]
@@ -247,14 +259,14 @@ def _retrieved_doc_ids(ctx: dict[str, Any]) -> list[str] | None:
         for doc in documents:
             if isinstance(doc, dict) and doc.get("id") is not None:
                 ids.append(str(doc["id"]))
-        return ids
+        return _dedupe_ids_first_occurrence(ids)
     if "retrieved_doc_ids" in ctx:
         retrieved = ctx["retrieved_doc_ids"]
         if retrieved is None:
             return None
         if not isinstance(retrieved, list):
             return None
-        return [str(doc_id) for doc_id in retrieved]
+        return _dedupe_ids_first_occurrence([str(doc_id) for doc_id in retrieved])
     return None
 
 

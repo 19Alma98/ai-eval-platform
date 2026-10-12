@@ -89,8 +89,9 @@ def build_eval_context_from_trace(
         context["tool_calls"] = tool_calls
 
     # Use the final retrieval stage (e.g. reranker after retriever): those are the
-    # documents the model actually saw, so hit@k ranks against them. Stages that did
-    # not record documents are skipped; if none did, documents is an empty list.
+    # documents the model actually saw (all chunks; judges need full text). Retrieval
+    # metrics dedupe ids separately. Stages that did not record documents are skipped;
+    # if none did, documents is an empty list.
     stages = [s for s in spans if s.kind.upper() in _RETRIEVAL_KINDS]
     if stages:
         recorded = [
@@ -99,7 +100,7 @@ def build_eval_context_from_trace(
             if (docs := _span_documents(span)) is not None
         ]
         final_docs = max(recorded, key=lambda row: (row[0], row[1]))[2] if recorded else []
-        context["documents"] = _dedupe_by_id(final_docs)
+        context["documents"] = final_docs
 
     return context
 
@@ -130,17 +131,6 @@ def _span_documents(span: Span) -> list[dict[str, Any]] | None:
                 return []
         return normalize_documents(raw)
     return None
-
-
-def _dedupe_by_id(docs: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    seen: set[str] = set()
-    out: list[dict[str, Any]] = []
-    for doc in docs:
-        if doc["id"] in seen:
-            continue
-        seen.add(doc["id"])
-        out.append(doc)
-    return out
 
 
 def _trace_latency_ms(trace: Trace) -> float | None:

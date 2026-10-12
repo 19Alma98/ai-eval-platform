@@ -178,6 +178,29 @@ async def test_hit_at_k_default_k() -> None:
     assert result.label == "PASS"
 
 
+@pytest.mark.asyncio
+async def test_hit_at_k_dedupes_same_id_chunks_for_rank() -> None:
+    """Same parent doc id across chunks must not consume multiple top-k slots."""
+    ev = HitAtKEvaluator({"k": 2})
+    sample = EvaluationSample(
+        input="q",
+        expected_output="a",
+        actual_output="ans",
+        context={
+            "documents": [
+                {"id": "docA", "text": "chunk 1"},
+                {"id": "docA", "text": "chunk 2"},
+                {"id": "docB", "text": "other"},
+            ]
+        },
+        metadata={"expected_doc_ids": ["docB"]},
+    )
+    result = await ev.evaluate(sample)
+    assert result.score == 1.0
+    assert result.label == "PASS"
+    assert result.metadata["retrieved_top_k"] == ["docA", "docB"]
+
+
 def test_hit_at_k_k_must_be_at_least_one() -> None:
     with pytest.raises(ValueError, match="k"):
         HitAtKEvaluator({"k": 0})

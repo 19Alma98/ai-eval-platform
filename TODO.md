@@ -21,7 +21,7 @@ Open items from the RAG evaluation reviews (2026-10-08, 2026-10-11). Fixed items
 
 - [x] **Test set versioning.** After the first evaluation run, add/import/promote auto-forks
   `name` v{N+1} (copied items + new write). Stale-run filtering kept for experiment output changes.
-- [ ] **Chunks from the same doc are dropped.** `_dedupe_by_id` in `evaluation/trace_context.py`
+- [x] **Chunks from the same doc are dropped.** `_dedupe_by_id` in `evaluation/trace_context.py`
   keeps only the first chunk per doc id, so groundedness/context judges see partial context in
   chunked RAG. Dedupe ids for hit@k/MRR only; keep all texts for the judges.
 - [ ] **Compare has no statistics.** Fixed delta 0.01 with n >= 5. On 8 binary items one flip = 0.125

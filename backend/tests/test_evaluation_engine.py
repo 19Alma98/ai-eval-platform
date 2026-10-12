@@ -497,7 +497,43 @@ def test_build_eval_context_uses_last_retrieval_stage() -> None:
         spans=(rerank, retrieve),
     )
     ctx = build_eval_context_from_trace(trace)
-    assert ctx["documents"] == [{"id": "doc-7"}, {"id": "doc-2"}]
+    # Keep all chunks (including duplicate ids); retrieval metrics dedupe separately.
+    assert ctx["documents"] == [{"id": "doc-7"}, {"id": "doc-2"}, {"id": "doc-7"}]
+
+
+def test_build_eval_context_keeps_same_id_chunk_texts() -> None:
+    start = datetime(2024, 1, 1, tzinfo=UTC)
+    end = datetime(2024, 1, 1, 0, 0, 1, tzinfo=UTC)
+    retriever = Span(
+        id=uuid.uuid4(),
+        span_id="c" * 16,
+        parent_span_id=None,
+        name="retrieve",
+        kind="RETRIEVER",
+        start_time=start,
+        end_time=end,
+        status="ok",
+        attributes={
+            "retrieval.documents": [
+                {"id": "pto", "text": "Full-time staff get 26 days of PTO."},
+                {"id": "pto", "text": "PTO must be requested two weeks ahead."},
+            ],
+        },
+    )
+    trace = Trace(
+        id=uuid.uuid4(),
+        project_id=uuid.uuid4(),
+        trace_id="e" * 32,
+        name="rag",
+        status="ok",
+        start_time=start,
+        end_time=end,
+        spans=(retriever,),
+    )
+    assert build_eval_context_from_trace(trace)["documents"] == [
+        {"id": "pto", "text": "Full-time staff get 26 days of PTO."},
+        {"id": "pto", "text": "PTO must be requested two weeks ahead."},
+    ]
 
 
 def test_build_eval_context_empty_retrieval_sets_documents_list() -> None:
