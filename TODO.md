@@ -6,7 +6,6 @@ Open items from the RAG evaluation reviews (2026-10-08, 2026-10-11). Fixed items
 
 - [ ] **Authentication.** No auth at all today. At minimum an API key for `/api/v1/*` and
   `/v1/traces`; people will expose it once it is on PyPI.
-- [] better prompts
 
 ## Judge validation (meta-eval)
 

@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import json
 import re
+from pathlib import Path
 
 import pytest
 
@@ -8,6 +10,32 @@ from aiobs_server.evaluation.judges import prompts
 from support.fake_llm import claim_count, step_of
 
 _VERSION_RE = re.compile(r"^[a-z_]+\.[a-z]+\.[0-9a-f]{12}$")
+_GOLDEN_PROMPTS = (
+    Path(__file__).resolve().parent / "fixtures" / "judge_prompts" / "system_templates.json"
+)
+
+
+def _live_system_templates() -> dict[str, str]:
+    templates = {
+        "extract_answer_claims": prompts.EXTRACT_ANSWER_CLAIMS,
+        "extract_reference_claims": prompts.EXTRACT_REFERENCE_CLAIMS,
+        "verify_against_documents": prompts.VERIFY_AGAINST_DOCUMENTS,
+        "verify_against_reference": prompts.VERIFY_AGAINST_REFERENCE,
+        "verify_reference_coverage": prompts.VERIFY_REFERENCE_COVERAGE,
+        "verify_context_relevance": prompts.VERIFY_CONTEXT_RELEVANCE,
+        "verify_context_coverage": prompts.VERIFY_CONTEXT_COVERAGE,
+    }
+    for kind, text in prompts.RUBRICS.items():
+        templates[f"rubric_{kind}"] = text
+    return templates
+
+
+def test_system_templates_match_golden_fixture() -> None:
+    expected = json.loads(_GOLDEN_PROMPTS.read_text(encoding="utf-8"))
+    actual = _live_system_templates()
+    assert set(actual) == set(expected)
+    for name in sorted(actual):
+        assert actual[name] == expected[name], f"prompt drift in {name}"
 
 
 def test_prompt_version_format() -> None:
@@ -40,6 +68,16 @@ def test_bundle_for_claims_and_rubric() -> None:
     assert prompts.content_hash(claims) != prompts.content_hash(rubric)
 
 
+_MARKDOWN_SECTIONS = (
+    "# Role",
+    "# Task",
+    "# Steps",
+    "# Rules",
+    "# Examples",
+    "# Output",
+)
+
+
 @pytest.mark.parametrize(
     ("template", "step"),
     [
@@ -60,6 +98,12 @@ def test_bundle_for_claims_and_rubric() -> None:
 def test_every_template_is_tagged_and_demands_json(template: str, step: str) -> None:
     assert step_of(template) == step
     assert "Respond with JSON only" in template
+    for heading in _MARKDOWN_SECTIONS:
+        assert heading in template
+    if "rubric_" in step:
+        assert "# Scale" in template
+    elif step.startswith("verify_"):
+        assert "# Labels" in template
 
 
 def test_reasoning_comes_before_the_decision_in_formats() -> None:
