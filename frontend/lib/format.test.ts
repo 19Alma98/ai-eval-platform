@@ -1,7 +1,10 @@
 import assert from "node:assert/strict";
-import { describe, it } from "node:test";
+import { describe, it, test } from "node:test";
 import {
+  formatDeltaPoints,
   formatDurationMs,
+  formatPercent,
+  formatScore,
   formatRelativeTime,
   parseTimestamp,
   resolveLabel,
@@ -57,4 +60,21 @@ describe("resolveLabel", () => {
     assert.equal(resolveLabel(null, new Map([["a", "A"]])), "Unknown");
     assert.equal(resolveLabel(undefined), "Unknown");
   });
+});
+
+test("formatScore uses two decimals", () => {
+  assert.equal(formatScore(0.70833), "0.71");
+  assert.equal(formatScore(null), "—");
+});
+
+test("formatPercent drops needless decimals", () => {
+  assert.equal(formatPercent(0.5), "50%");
+  assert.equal(formatPercent(0.583333), "58.3%");
+  assert.equal(formatPercent(undefined), "—");
+});
+
+test("formatDeltaPoints is signed", () => {
+  assert.equal(formatDeltaPoints(-0.1667), "−17 pts");
+  assert.equal(formatDeltaPoints(0.05), "+5 pts");
+  assert.equal(formatDeltaPoints(0.001), "±0");
 });

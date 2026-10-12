@@ -1,19 +1,20 @@
 "use client";
 
 import Link from "next/link";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { useMemo, useState, type SubmitEvent, type ReactNode } from "react";
+import { useMutation, useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMemo, useState, type SubmitEvent } from "react";
+import { ChevronDown, GitCompare, Play, ShieldCheck } from "lucide-react";
+import { toast } from "sonner";
 import { formatConfigValue } from "@/features/app-configs/format-config-value";
 import { RAG_RECOMMENDED_EVALUATOR_KINDS } from "@/features/datasets/rag-qa";
 import { useDatasets, useDataset } from "@/features/datasets/use-datasets";
 import { CreateEvaluatorDialog } from "./create-evaluator-dialog";
 import { withProjectQuery } from "@/lib/project-href";
-import { ArrowLeft, GitCompare, ShieldCheck } from "lucide-react";
-import { toast } from "sonner";
 import { DataTable, type DataTableColumn } from "@/components/data-table";
 import { EmptyState } from "@/components/empty-state";
 import { ErrorState } from "@/components/error-state";
 import { LoadingBlock } from "@/components/loading-block";
+import { MetaItem, PageHeader } from "@/components/page-header";
 import { RefreshControl } from "@/components/refresh-control";
 import { RelativeTime } from "@/components/relative-time";
 import { StatusBadge } from "@/components/status-badge";
@@ -26,9 +27,16 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-  DialogTrigger,
 } from "@/components/ui/dialog";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { Input } from "@/components/ui/input";
 import {
   Select,
   SelectContent,
@@ -38,34 +46,34 @@ import {
 } from "@/components/ui/select";
 import { formatErrorForUi } from "@/lib/api/client";
 import { evaluateExperiment, evaluatePack } from "@/lib/api/experiments";
-import type { Dataset, EvaluatorSummary } from "@/lib/api/types";
+import type { EvaluationRun } from "@/lib/api/types";
 import { toastEvaluateOutcome } from "@/features/experiments/evaluate-outcome";
 import { evaluatePackBody } from "@/features/metrics/metrics-set-submit";
 import {
   useMetricsSet,
   useMetricsSets,
 } from "@/features/metrics/use-metrics-sets";
-import { CopyTechnicalId } from "@/components/copy-technical-id";
-import { JudgeClaimsTable } from "@/components/judge-claims-table";
 import { runJudgeWarning } from "@/features/judges/judge-metadata";
+import { cn } from "@/lib/cn";
 import { resolveLabel } from "@/lib/format";
+import { metricInfo, metricLabel } from "@/lib/metrics-catalog";
+import { projectsQueryOptions } from "@/lib/queries/projects";
 import {
+  evaluationRunQueryOptions,
   experimentQueryOptions,
   experimentOutputsQueryKey,
   experimentSummaryQueryKey,
   experimentSummaryQueryOptions,
   useEvaluators,
-  useEvaluationRun,
   useExperiment,
   useExperimentOutputs,
   useExperimentSummary,
+  useExperiments,
 } from "./use-experiments";
-import { RunItemTimeline } from "./run-item-timeline";
-import {
-  buildRunItemViews,
-  shouldRenderRunItemsSection,
-  type RunItemView,
-} from "./run-items";
+import { buildCaseViews, type CaseView } from "./case-results";
+import { CaseDetail } from "./case-detail";
+import { ConnectAppCard } from "./connect-app-card";
+import { MetricScorecard } from "./metric-scorecard";
 import {
   experimentAppConfigChip,
   experimentAppConfigSnapshot,
@@ -74,20 +82,13 @@ import {
   metricsSetBoundLabel,
 } from "./experiment-meta";
 
-function formatScore(value: number | null): string {
-  if (value === null || value === undefined) return "—";
-  return value.toFixed(4);
+function evaluatorKind(ev: { config: Record<string, unknown> }): string | null {
+  const kind = ev.config?.kind;
+  return typeof kind === "string" && kind.trim() ? kind.trim() : null;
 }
 
-function formatPassRate(value: number | null): string {
-  if (value === null || value === undefined) return "—";
-  return `${(value * 100).toFixed(1)}%`;
-}
-
-const PREVIEW_MAX = 96;
-
-function valuePreview(value: unknown): string {
-  if (value === null || value === undefined) return "—";
+function textOf(value: unknown): string {
+  if (value === null || value === undefined) return "";
   if (typeof value === "string") return value;
   try {
     return JSON.stringify(value);
@@ -96,52 +97,7 @@ function valuePreview(value: unknown): string {
   }
 }
 
-function truncatePreview(text: string, max = PREVIEW_MAX): string {
-  if (text === "—") return text;
-  if (text.length <= max) return text;
-  return `${text.slice(0, max)}…`;
-}
-
-function runContextWithoutDocuments(context: unknown): unknown {
-  if (typeof context !== "object" || context === null || Array.isArray(context)) {
-    return context;
-  }
-  const rest = { ...(context as Record<string, unknown>) };
-  delete rest.documents;
-  return rest;
-}
-
-function formatJson(value: unknown): string {
-  if (value === null || value === undefined) return "—";
-  if (typeof value === "string") return value;
-  try {
-    return JSON.stringify(value, null, 2);
-  } catch {
-    return String(value);
-  }
-}
-
-function DetailBlock({
-  title,
-  children,
-}: {
-  title: string;
-  children: ReactNode;
-}) {
-  return (
-    <div className="flex flex-col gap-1.5">
-      <h3 className="text-xs font-medium text-muted-foreground">{title}</h3>
-      <div className="max-h-[200px] overflow-auto rounded-md border border-border bg-surface p-3 text-sm whitespace-pre-wrap break-words text-foreground">
-        {children}
-      </div>
-    </div>
-  );
-}
-
-function evaluatorKind(ev: { config: Record<string, unknown> }): string | null {
-  const kind = ev.config?.kind;
-  return typeof kind === "string" && kind.trim() ? kind.trim() : null;
-}
+type CaseFilter = "all" | "failing" | "passing";
 
 type ExperimentDetailViewProps = {
   projectId: string;
@@ -155,6 +111,8 @@ export function ExperimentDetailView({
   const experimentQuery = useExperiment(experimentId);
   const summaryQuery = useExperimentSummary(experimentId);
   const datasetsQuery = useDatasets(projectId);
+  const experimentsQuery = useExperiments(projectId);
+  const projectsQuery = useQuery(projectsQueryOptions());
   const metricsSetsQuery = useMetricsSets(projectId);
   const boundMetricsSetId = experimentQuery.data?.metrics_set_id ?? null;
   const boundSetInList = useMemo(
@@ -169,206 +127,102 @@ export function ExperimentDetailView({
   );
   const summaryOpts = experimentSummaryQueryOptions(experimentId);
   const [evaluateOpen, setEvaluateOpen] = useState(false);
+  const [overrideOpen, setOverrideOpen] = useState(false);
   const [createEvaluatorOpen, setCreateEvaluatorOpen] = useState(false);
-  const [selectedIndex, setSelectedIndex] = useState(0);
-  const [selectedItemIndex, setSelectedItemIndex] = useState(0);
+  const [focusedRunId, setFocusedRunId] = useState<string | null>(null);
+  const [caseFilter, setCaseFilter] = useState<CaseFilter>("all");
+  const [search, setSearch] = useState("");
+  const [selectedCaseIndex, setSelectedCaseIndex] = useState(0);
 
   const experiment = experimentQuery.data;
-  const evaluators = summaryQuery.data?.evaluators ?? [];
-  const selectedRunId = evaluators[selectedIndex]?.run_id ?? null;
-  const runQuery = useEvaluationRun(selectedRunId);
+  const evaluators = useMemo(
+    () => summaryQuery.data?.evaluators ?? [],
+    [summaryQuery.data?.evaluators],
+  );
   const outputsQuery = useExperimentOutputs(experimentId);
   const datasetDetailQuery = useDataset(experiment?.dataset_id ?? null);
-  const evaluatorsRegistryQuery = useEvaluators(projectId);
 
-  const datasetById = useMemo(() => {
-    const map = new Map<string, Dataset>();
-    for (const d of datasetsQuery.data ?? []) {
-      map.set(d.id, d);
+  const runQueries = useQueries({
+    queries: evaluators.map((ev) => ({
+      ...evaluationRunQueryOptions(ev.run_id),
+      enabled: Boolean(ev.run_id),
+    })),
+  });
+  const runsById = useMemo(() => {
+    const map = new Map<string, EvaluationRun>();
+    for (const q of runQueries) {
+      if (q.data) map.set(q.data.id, q.data);
     }
     return map;
-  }, [datasetsQuery.data]);
-
-  const evaluatorNameById = useMemo(() => {
-    const map = new Map<string, string>();
-    for (const ev of evaluatorsRegistryQuery.data ?? []) {
-      map.set(ev.id, ev.name);
+  }, [runQueries]);
+  const runsLoading = runQueries.some((q) => q.isLoading);
+  const judgeWarning = useMemo(() => {
+    for (const run of runsById.values()) {
+      const warning = runJudgeWarning(run.metadata);
+      if (warning) return warning;
     }
-    return map;
-  }, [evaluatorsRegistryQuery.data]);
+    return null;
+  }, [runsById]);
 
-  const compareHref = useMemo(() => {
-    let href = `/experiments/${encodeURIComponent(experimentId)}/compare`;
-    if (experiment?.baseline_experiment_id) {
-      href += `?baseline=${encodeURIComponent(experiment.baseline_experiment_id)}`;
-    }
-    return withProjectQuery(href, projectId);
-  }, [experiment, experimentId, projectId]);
-
-  const releaseHref = withProjectQuery(
-    `/release?experiment=${encodeURIComponent(experimentId)}`,
-    projectId,
+  const cases = useMemo(
+    () =>
+      buildCaseViews(
+        datasetDetailQuery.data?.items ?? [],
+        outputsQuery.data ?? [],
+        evaluators,
+        runsById,
+      ),
+    [datasetDetailQuery.data?.items, outputsQuery.data, evaluators, runsById],
   );
 
-  const runItemViews = useMemo(() => {
-    const items = datasetDetailQuery.data?.items ?? [];
-    const outputs = outputsQuery.data ?? [];
-    const results = runQuery.data?.results ?? [];
-    return buildRunItemViews(items, outputs, results);
-  }, [datasetDetailQuery.data?.items, outputsQuery.data, runQuery.data?.results]);
+  const visibleCases = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    return cases
+      .map((c, index) => ({ c, index }))
+      .filter(({ c }) => {
+        if (q && !textOf(c.question).toLowerCase().includes(q)) return false;
+        const relevant = focusedRunId
+          ? c.results.filter((r) => r.metric.runId === focusedRunId)
+          : c.results;
+        const failing = relevant.some((r) => r.outcome === "fail" || r.outcome === "error");
+        if (caseFilter === "failing") return failing;
+        if (caseFilter === "passing") return !failing && relevant.some((r) => r.outcome === "pass");
+        return true;
+      });
+  }, [cases, caseFilter, focusedRunId, search]);
 
-  const runItemsResetKey = `${selectedRunId ?? ""}:${runItemViews.length}`;
-  const [prevRunItemsResetKey, setPrevRunItemsResetKey] =
-    useState(runItemsResetKey);
-  if (runItemsResetKey !== prevRunItemsResetKey) {
-    setPrevRunItemsResetKey(runItemsResetKey);
-    setSelectedItemIndex(0);
-  }
+  const nFailingCases = cases.filter((c) => c.failed.length > 0).length;
+  const nAnswered = (outputsQuery.data ?? []).length;
+  const scored = evaluators.length > 0;
 
-  const itemColumns: DataTableColumn<RunItemView>[] = useMemo(
+  const scorePack = useScorePack(experimentId);
+
+  const caseColumns: DataTableColumn<{ c: CaseView; index: number }>[] = useMemo(
     () => [
+      {
+        id: "index",
+        header: "#",
+        headerClassName: "w-[44px]",
+        className: "tabular-nums text-muted-foreground",
+        cell: (row) => row.index + 1,
+      },
       {
         id: "question",
         header: "Question",
+        wrap: true,
         cell: (row) => (
-          <span className="line-clamp-2 font-mono text-xs text-foreground">
-            {truncatePreview(valuePreview(row.question))}
-          </span>
+          <span className="line-clamp-2 text-foreground">{textOf(row.c.question)}</span>
         ),
       },
       {
-        id: "answer",
-        header: "Answer",
-        cell: (row) => (
-          <span className="line-clamp-2 font-mono text-xs text-muted-foreground">
-            {truncatePreview(valuePreview(row.actualOutput))}
-          </span>
-        ),
-      },
-      {
-        id: "score",
-        header: "Score",
-        headerClassName: "w-[88px] text-right",
-        className: "text-right font-mono tabular-nums text-sm",
-        cell: (row) => formatScore(row.score),
-      },
-      {
-        id: "label",
-        header: "Label",
-        headerClassName: "w-[104px]",
-        cell: (row) => {
-          const label = row.label?.trim();
-          if (!label) return "—";
-          return <StatusBadge status={label} />;
-        },
-      },
-      {
-        id: "explanation",
-        header: "Explanation",
-        cell: (row) => {
-          const text = row.explanation?.trim() || "";
-          if (!text) return "—";
-          return (
-            <span
-              className="line-clamp-2 text-xs text-muted-foreground"
-              title={text}
-            >
-              {text}
-            </span>
-          );
-        },
+        id: "result",
+        header: "Result",
+        headerClassName: "w-[220px]",
+        wrap: true,
+        cell: (row) => <CaseResultCell item={row.c} focusedRunId={focusedRunId} />,
       },
     ],
-    [],
-  );
-
-  const columns: DataTableColumn<EvaluatorSummary>[] = useMemo(
-    () => [
-      {
-        id: "evaluator",
-        header: "Evaluator",
-        cell: (row) => (
-          <span className="font-medium text-foreground">
-            {row.evaluator_name?.trim() ||
-              resolveLabel(
-                row.evaluator_id,
-                evaluatorNameById,
-                "Unknown evaluator",
-              )}
-          </span>
-        ),
-      },
-      {
-        id: "status",
-        header: "Status",
-        headerClassName: "w-[104px]",
-        cell: (row) =>
-          row.status?.trim() ? <StatusBadge status={row.status} /> : "—",
-      },
-      {
-        id: "mean_score",
-        header: "Mean score",
-        headerClassName: "w-[112px] text-right",
-        className: "text-right font-mono tabular-nums text-sm",
-        cell: (row) => formatScore(row.mean_score),
-      },
-      {
-        id: "pass_rate",
-        header: "Pass rate",
-        headerClassName: "w-[96px] text-right",
-        className: "text-right font-mono tabular-nums text-sm",
-        cell: (row) => formatPassRate(row.pass_rate),
-      },
-      {
-        id: "n_scored",
-        header: "Scored",
-        headerClassName: "w-[72px] text-right",
-        className: "text-right font-mono tabular-nums text-muted-foreground",
-        cell: (row) => row.n_scored,
-      },
-      {
-        id: "n_error",
-        header: "Errors",
-        headerClassName: "w-[72px] text-right",
-        className: "text-right font-mono tabular-nums text-muted-foreground",
-        cell: (row) => (
-          <span
-            className={
-              row.n_error > 0
-                ? "font-medium text-status-fail"
-                : undefined
-            }
-          >
-            {row.n_error}
-          </span>
-        ),
-      },
-      {
-        id: "n_skipped",
-        header: "Skipped",
-        headerClassName: "w-[80px] text-right",
-        className: "text-right font-mono tabular-nums text-muted-foreground",
-        cell: (row) => (
-          <span
-            className={
-              row.n_skipped > 0
-                ? "font-medium text-status-warn"
-                : undefined
-            }
-          >
-            {row.n_skipped}
-          </span>
-        ),
-      },
-      {
-        id: "n_items",
-        header: "Items",
-        headerClassName: "w-[72px] text-right",
-        className: "text-right font-mono tabular-nums text-muted-foreground",
-        cell: (row) => row.n_items,
-      },
-    ],
-    [evaluatorNameById],
+    [focusedRunId],
   );
 
   const isLoading = experimentQuery.isLoading || summaryQuery.isLoading;
@@ -380,11 +234,10 @@ export function ExperimentDetailView({
 
   if (isError) {
     const err = experimentQuery.error ?? summaryQuery.error;
-    const message = formatErrorForUi(err);
     return (
       <ErrorState
         title="Could not load experiment"
-        message={message}
+        message={formatErrorForUi(err)}
         onRetry={() => {
           void experimentQuery.refetch();
           void summaryQuery.refetch();
@@ -397,17 +250,30 @@ export function ExperimentDetailView({
     return null;
   }
 
-  const backHref = withProjectQuery("/experiments", projectId);
-
-  const dataset = datasetById.get(experiment.dataset_id);
-  const datasetLabel =
-    dataset?.name?.trim() ||
-    resolveLabel(experiment.dataset_id, undefined, "Unknown dataset");
+  const listHref = withProjectQuery("/experiments", projectId);
+  const dataset = (datasetsQuery.data ?? []).find((d) => d.id === experiment.dataset_id);
+  const datasetLabel = dataset?.name?.trim() || "Deleted test set";
   const datasetHref = withProjectQuery(
     `/datasets/${encodeURIComponent(experiment.dataset_id)}`,
     projectId,
   );
-  const recommendedKinds = [...RAG_RECOMMENDED_EVALUATOR_KINDS];
+  const experimentNames = new Map(
+    (experimentsQuery.data ?? []).map((e) => [e.id, e.name] as const),
+  );
+  const baselineId = experiment.baseline_experiment_id;
+  const otherExperiments = (experimentsQuery.data ?? []).filter(
+    (e) => e.id !== experiment.id && e.dataset_id === experiment.dataset_id,
+  );
+  const compareHref = withProjectQuery(
+    `/experiments/${encodeURIComponent(experimentId)}/compare${
+      baselineId ? `?baseline=${encodeURIComponent(baselineId)}` : ""
+    }`,
+    projectId,
+  );
+  const releaseHref = withProjectQuery(
+    `/release?experiment=${encodeURIComponent(experimentId)}`,
+    projectId,
+  );
   const modelLabel = experimentModel(experiment);
   const versionLabel = experimentVersion(experiment);
   const appConfigChip = experimentAppConfigChip(experiment);
@@ -417,190 +283,350 @@ export function ExperimentDetailView({
     metricsSetsQuery.data,
     boundSetDetailQuery.data,
   );
-  const appConfigHref = appConfigChip
-    ? withProjectQuery(
-        `/app-configs/${encodeURIComponent(appConfigChip.familyName)}`,
-        projectId,
-      )
-    : null;
+  const projectSlug =
+    (projectsQuery.data ?? []).find((p) => p.id === projectId)?.slug ?? null;
+  const nQuestions = datasetDetailQuery.data?.items.length ?? 0;
+  const itemsLoading = outputsQuery.isLoading || datasetDetailQuery.isLoading;
+  const selected = visibleCases[Math.min(selectedCaseIndex, Math.max(visibleCases.length - 1, 0))];
+  const focusedMetric = focusedRunId
+    ? evaluators.find((e) => e.run_id === focusedRunId)
+    : undefined;
 
   return (
-    <div className="flex flex-col gap-3">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div className="flex min-w-0 flex-col gap-1">
-          <div className="flex flex-wrap items-center gap-2">
-            <Button
-              variant="ghost"
-              size="sm"
-              nativeButton={false}
-              render={<Link href={backHref} />}
-            >
-              <ArrowLeft className="size-4" />
-              Back
-            </Button>
-            <h1 className="text-lg font-semibold text-foreground">
-              {experiment.name}
-            </h1>
-            <StatusBadge status={experiment.status} kind="experiment" />
-          </div>
-          <p className="text-sm text-muted-foreground">
-            Flow: Evaluate (scores) → Compare (delta vs baseline) → Release
-            (gate).
-          </p>
-          <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-muted-foreground">
-            <span className="inline-flex items-center gap-2">
-              Dataset{" "}
-              <Link
-                href={datasetHref}
-                className="text-primary hover:underline"
-              >
+    <div className="flex flex-col gap-6">
+      <PageHeader
+        breadcrumbs={[{ label: "Experiments", href: listHref }, { label: experiment.name }]}
+        title={experiment.name}
+        badges={<StatusBadge status={experiment.status} kind="experiment" />}
+        meta={
+          <>
+            <MetaItem label="Test set">
+              <Link href={datasetHref} className="hover:text-primary hover:underline">
                 {datasetLabel}
               </Link>
-            </span>
-            {appConfigChip && appConfigHref ? (
-              <span className="inline-flex items-center gap-2">
-                App config{" "}
-                <Link href={appConfigHref} className="text-primary hover:underline">
-                  <Badge variant="secondary" className="font-mono text-xs">
-                    {appConfigChip.label}
-                  </Badge>
+            </MetaItem>
+            {appConfigChip ? (
+              <MetaItem label="App config">
+                <Link
+                  href={withProjectQuery(
+                    `/app-configs/${encodeURIComponent(appConfigChip.familyName)}`,
+                    projectId,
+                  )}
+                  className="hover:text-primary hover:underline"
+                >
+                  {appConfigChip.label}
                 </Link>
-              </span>
+              </MetaItem>
             ) : null}
-            {modelLabel ? <span>Model {modelLabel}</span> : null}
-            {versionLabel ? <span>Version {versionLabel}</span> : null}
-            <span>Metrics set {metricsSetLabel}</span>
-            <span>
-              Created <RelativeTime date={experiment.created_at} />
-            </span>
-          </div>
+            {modelLabel ? <MetaItem label="Model">{modelLabel}</MetaItem> : null}
+            {versionLabel && versionLabel !== experiment.name ? (
+              <MetaItem label="Version">{versionLabel}</MetaItem>
+            ) : null}
+            <MetaItem label="Metrics">{metricsSetLabel}</MetaItem>
+            {baselineId ? (
+              <MetaItem label="Baseline">
+                <Link
+                  href={withProjectQuery(`/experiments/${encodeURIComponent(baselineId)}`, projectId)}
+                  className="hover:text-primary hover:underline"
+                >
+                  {resolveLabel(baselineId, experimentNames, "Earlier experiment")}
+                </Link>
+              </MetaItem>
+            ) : null}
+            <MetaItem label="Created">
+              <RelativeTime date={experiment.created_at} />
+            </MetaItem>
+          </>
+        }
+        actions={
+          <>
+            <RefreshControl
+              queryKey={summaryOpts.queryKey}
+              dataUpdatedAt={summaryQuery.dataUpdatedAt}
+            />
+            {otherExperiments.length > 0 ? (
+              <Button
+                variant="outline"
+                size="sm"
+                nativeButton={false}
+                render={<Link href={compareHref} />}
+              >
+                <GitCompare className="size-4" />
+                Compare
+              </Button>
+            ) : null}
+            {scored ? (
+              <Button
+                variant="outline"
+                size="sm"
+                nativeButton={false}
+                render={<Link href={releaseHref} />}
+              >
+                <ShieldCheck className="size-4" />
+                Release check
+              </Button>
+            ) : null}
+            <div className="flex items-center">
+              <Button
+                type="button"
+                size="sm"
+                className="rounded-r-none"
+                disabled={scorePack.isPending || nAnswered === 0}
+                title={nAnswered === 0 ? "No answers to score yet" : undefined}
+                onClick={() => scorePack.mutate()}
+              >
+                <Play className="size-4" />
+                {scorePack.isPending ? "Scoring…" : scored ? "Re-score answers" : "Score answers"}
+              </Button>
+              <DropdownMenu>
+                <DropdownMenuTrigger
+                  render={
+                    <Button
+                      type="button"
+                      size="sm"
+                      className="rounded-l-none border-l border-primary-foreground/20 px-2"
+                      aria-label="More scoring options"
+                      disabled={scorePack.isPending}
+                    />
+                  }
+                >
+                  <ChevronDown className="size-4" />
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-[260px]">
+                  <DropdownMenuItem onClick={() => setOverrideOpen(true)}>
+                    Score with other metrics…
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => setEvaluateOpen(true)}>
+                    Run individual metrics…
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem onClick={() => setCreateEvaluatorOpen(true)}>
+                    Create custom metric…
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </div>
+          </>
+        }
+        className="mb-0"
+      />
+
+      {judgeWarning ? (
+        <div
+          role="status"
+          className="rounded-md border border-status-warn bg-status-warn-bg px-3 py-2 text-sm text-status-warn"
+        >
+          <strong>Judge results may be unreliable.</strong> {judgeWarning}
         </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <ScorePackControls projectId={projectId} experimentId={experimentId} />
-          <EvaluateDialog
-            projectId={projectId}
-            experimentId={experimentId}
-            recommendedKinds={recommendedKinds}
-            open={evaluateOpen}
-            onOpenChange={setEvaluateOpen}
-            onCreateEvaluator={() => {
-              setEvaluateOpen(false);
-              setCreateEvaluatorOpen(true);
+      ) : null}
+
+      {!itemsLoading && nAnswered === 0 ? (
+        <ConnectAppCard
+          experimentId={experiment.id}
+          datasetId={experiment.dataset_id}
+          projectSlug={projectSlug}
+          nQuestions={nQuestions}
+        />
+      ) : null}
+
+      {scored ? (
+        <section className="flex flex-col gap-3">
+          <div className="flex flex-wrap items-baseline justify-between gap-2">
+            <h2 className="text-base font-semibold text-foreground">Results by metric</h2>
+            <p className="text-xs text-muted-foreground">
+              Share of answers that reach each metric&apos;s target. Click a metric to see
+              the answers that failed it.
+            </p>
+          </div>
+          <MetricScorecard
+            evaluators={evaluators}
+            focusedRunId={focusedRunId}
+            onFocus={(runId) => {
+              setFocusedRunId(runId);
+              setCaseFilter(runId ? "failing" : "all");
+              setSelectedCaseIndex(0);
             }}
           />
-          <Button
-            variant="outline"
-            size="sm"
-            nativeButton={false}
-            render={<Link href={compareHref} />}
-          >
-            <GitCompare className="size-4" />
-            Compare
-          </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            nativeButton={false}
-            render={<Link href={releaseHref} />}
-          >
-            <ShieldCheck className="size-4" />
-            Release
-          </Button>
-          <RefreshControl
-            queryKey={summaryOpts.queryKey}
-            dataUpdatedAt={summaryQuery.dataUpdatedAt}
-          />
-        </div>
-      </div>
+        </section>
+      ) : nAnswered > 0 ? (
+        <EmptyState
+          title={`${nAnswered} answer${nAnswered === 1 ? "" : "s"} received — not scored yet`}
+          description="Score the answers to see correctness, groundedness and retrieval quality for every question."
+          action={
+            <Button
+              type="button"
+              size="sm"
+              disabled={scorePack.isPending}
+              onClick={() => scorePack.mutate()}
+            >
+              <Play className="size-4" />
+              {scorePack.isPending ? "Scoring…" : "Score answers"}
+            </Button>
+          }
+        />
+      ) : null}
 
-      {appConfigSnapshot ? (
-        <div className="flex flex-col gap-2">
-          <div className="flex flex-wrap items-baseline justify-between gap-2">
-            <h2 className="text-sm font-medium text-foreground">
-              App config snapshot
-            </h2>
-            {appConfigSnapshot.contentHash ? (
-              <span className="font-mono text-xs text-muted-foreground">
-                hash {appConfigSnapshot.contentHash.slice(0, 12)}…
+      <section className="flex flex-col gap-3">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="flex flex-wrap items-baseline gap-2">
+            <h2 className="text-base font-semibold text-foreground">Answers</h2>
+            {scored ? (
+              <span className="text-sm text-muted-foreground">
+                {nFailingCases === 0
+                  ? "Every question passed all metrics"
+                  : `${nFailingCases} of ${cases.length} questions fail at least one metric`}
               </span>
             ) : null}
           </div>
-          <div className="grid gap-3 md:grid-cols-3">
-            <DetailBlock title="Prompt">
-              {formatConfigValue(appConfigSnapshot.prompt)}
-            </DetailBlock>
-            <DetailBlock title="Model">
-              {formatConfigValue(appConfigSnapshot.model)}
-            </DetailBlock>
-            <DetailBlock title="Retrieval">
-              {formatConfigValue(appConfigSnapshot.retrieval)}
-            </DetailBlock>
+          <div className="flex flex-wrap items-center gap-2">
+            {focusedMetric ? (
+              <Badge variant="secondary" className="h-7 gap-1.5 px-2.5">
+                Metric: {metricLabel(focusedMetric.evaluator_name)}
+                <button
+                  type="button"
+                  aria-label="Clear metric filter"
+                  className="text-muted-foreground hover:text-foreground"
+                  onClick={() => {
+                    setFocusedRunId(null);
+                    setCaseFilter("all");
+                  }}
+                >
+                  ×
+                </button>
+              </Badge>
+            ) : null}
+            {scored ? (
+              <div role="radiogroup" aria-label="Filter answers" className="flex rounded-md border border-border bg-surface p-0.5">
+                {(["all", "failing", "passing"] as const).map((key) => (
+                  <button
+                    key={key}
+                    type="button"
+                    role="radio"
+                    aria-checked={caseFilter === key}
+                    onClick={() => {
+                      setCaseFilter(key);
+                      setSelectedCaseIndex(0);
+                    }}
+                    className={cn(
+                      "rounded px-2.5 py-1 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground",
+                      caseFilter === key && "bg-row-selected text-foreground",
+                    )}
+                  >
+                    {key === "all" ? "All" : key === "failing" ? "Failing" : "Passing"}
+                  </button>
+                ))}
+              </div>
+            ) : null}
+            <Input
+              type="search"
+              placeholder="Search questions…"
+              value={search}
+              onChange={(e) => {
+                setSearch(e.target.value);
+                setSelectedCaseIndex(0);
+              }}
+              className="h-8 w-56"
+              aria-label="Search questions"
+            />
           </div>
         </div>
+
+        {itemsLoading || (runsLoading && cases.length === 0) ? (
+          <LoadingBlock className="min-h-[160px]" />
+        ) : datasetDetailQuery.isError || outputsQuery.isError ? (
+          <ErrorState
+            title="Could not load answers"
+            message={formatErrorForUi(datasetDetailQuery.error ?? outputsQuery.error)}
+            onRetry={() => {
+              void outputsQuery.refetch();
+              void datasetDetailQuery.refetch();
+            }}
+          />
+        ) : cases.length === 0 ? (
+          <EmptyState
+            title="The test set is empty"
+            description="Add questions to the test set, then run your app on it."
+          />
+        ) : visibleCases.length === 0 ? (
+          <EmptyState
+            title="Nothing to show"
+            description={
+              caseFilter === "failing"
+                ? "No answers fail with the current filter."
+                : "No questions match your filters."
+            }
+          />
+        ) : (
+          <div className="grid gap-4 lg:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]">
+            <DataTable
+              rows={visibleCases}
+              columns={caseColumns}
+              getRowKey={(row) => row.c.datasetItemId}
+              selectedIndex={Math.min(selectedCaseIndex, visibleCases.length - 1)}
+              onSelectedIndexChange={setSelectedCaseIndex}
+              onRowActivate={() => {}}
+              selectionMode="persistent"
+              className="max-h-[min(75vh,760px)] self-start"
+              aria-label="Answers"
+            />
+            {selected ? (
+              <ScrollArea className="max-h-[min(75vh,760px)] rounded-lg border border-border bg-background p-4">
+                <div className="pr-3">
+                  <CaseDetail
+                    projectId={projectId}
+                    item={selected.c}
+                    position={selected.index + 1}
+                    total={cases.length}
+                  />
+                </div>
+              </ScrollArea>
+            ) : null}
+          </div>
+        )}
+      </section>
+
+      {appConfigSnapshot ? (
+        <details className="rounded-lg border border-border bg-surface px-4 py-3">
+          <summary className="cursor-pointer text-sm font-medium text-foreground">
+            App configuration used
+          </summary>
+          <div className="mt-3 grid gap-3 md:grid-cols-3">
+            {(
+              [
+                ["Prompt", appConfigSnapshot.prompt],
+                ["Model", appConfigSnapshot.model],
+                ["Retrieval", appConfigSnapshot.retrieval],
+              ] as const
+            ).map(([title, value]) => (
+              <div key={title} className="flex flex-col gap-1.5">
+                <h3 className="text-xs font-medium text-muted-foreground">{title}</h3>
+                <div className="max-h-[200px] overflow-auto rounded-md border border-border bg-background p-3 text-sm whitespace-pre-wrap break-words text-foreground">
+                  {formatConfigValue(value)}
+                </div>
+              </div>
+            ))}
+          </div>
+        </details>
       ) : null}
 
-      <h2 className="text-sm font-medium text-foreground">Summary</h2>
-
-      {evaluators.length === 0 ? (
-        <EmptyState
-          title="No evaluation runs"
-          description="Score with the project metrics pack or run selected evaluators to see aggregated metrics. Dataset questions and bound answers are listed below."
-        />
-      ) : (
-        <DataTable
-          rows={evaluators}
-          columns={columns}
-          getRowKey={(row) => row.run_id}
-          selectedIndex={selectedIndex}
-          onSelectedIndexChange={setSelectedIndex}
-          onRowActivate={() => {}}
-          aria-label="Experiment evaluator summary"
-        />
-      )}
-
-      {shouldRenderRunItemsSection({
-        hasEvaluationRun: Boolean(selectedRunId),
-      }) ? (
-        <RunItemsSection
-          projectId={projectId}
-          runId={selectedRunId}
-          evaluatorName={
-            selectedRunId
-              ? evaluators[selectedIndex]?.evaluator_name?.trim() ||
-                resolveLabel(
-                  evaluators[selectedIndex]?.evaluator_id,
-                  evaluatorNameById,
-                  "Unknown evaluator",
-                )
-              : null
-          }
-          runStatus={runQuery.data?.status}
-          runWarning={runJudgeWarning(runQuery.data?.metadata)}
-          itemsLoading={
-            (selectedRunId ? runQuery.isLoading : false) ||
-            outputsQuery.isLoading ||
-            datasetDetailQuery.isLoading
-          }
-          itemsError={
-            selectedRunId && runQuery.isError
-              ? runQuery.error
-              : outputsQuery.isError
-                ? outputsQuery.error
-                : datasetDetailQuery.isError
-                  ? datasetDetailQuery.error
-                  : null
-          }
-          onRetryItems={() => {
-            if (selectedRunId) void runQuery.refetch();
-            void outputsQuery.refetch();
-            void datasetDetailQuery.refetch();
-          }}
-          runItems={runItemViews}
-          itemColumns={itemColumns}
-          selectedItemIndex={selectedItemIndex}
-          onSelectedItemIndexChange={setSelectedItemIndex}
-        />
-      ) : null}
+      <ScorePackOverrideDialog
+        projectId={projectId}
+        experimentId={experimentId}
+        open={overrideOpen}
+        onOpenChange={setOverrideOpen}
+        scoringPending={scorePack.isPending}
+      />
+      <EvaluateDialog
+        projectId={projectId}
+        experimentId={experimentId}
+        recommendedKinds={[...RAG_RECOMMENDED_EVALUATOR_KINDS]}
+        open={evaluateOpen}
+        onOpenChange={setEvaluateOpen}
+        onCreateEvaluator={() => {
+          setEvaluateOpen(false);
+          setCreateEvaluatorOpen(true);
+        }}
+      />
       <CreateEvaluatorDialog
         projectId={projectId}
         open={createEvaluatorOpen}
@@ -608,6 +634,73 @@ export function ExperimentDetailView({
       />
     </div>
   );
+}
+
+function CaseResultCell({
+  item,
+  focusedRunId,
+}: {
+  item: CaseView;
+  focusedRunId: string | null;
+}) {
+  if (item.actualOutput === null || item.actualOutput === undefined) {
+    return <span className="text-xs text-muted-foreground">No answer yet</span>;
+  }
+  if (item.nScored === 0) {
+    return <span className="text-xs text-muted-foreground">Not scored</span>;
+  }
+  const focused = focusedRunId
+    ? item.results.find((r) => r.metric.runId === focusedRunId)
+    : null;
+  if (focused) {
+    return <StatusBadge status={focused.outcome} />;
+  }
+  if (item.failed.length === 0) {
+    return (
+      <span className="text-xs font-medium text-status-ok">
+        All {item.nScored} passed
+      </span>
+    );
+  }
+  const shown = item.failed.slice(0, 2);
+  const extra = item.failed.length - shown.length;
+  return (
+    <span className="flex flex-wrap items-center gap-1">
+      {shown.map((r) => (
+        <span
+          key={r.metric.runId}
+          className="rounded bg-status-fail-bg px-1.5 py-0.5 text-xs font-medium text-status-fail"
+        >
+          {r.metric.label}
+        </span>
+      ))}
+      {extra > 0 ? (
+        <span className="text-xs text-muted-foreground">+{extra}</span>
+      ) : null}
+    </span>
+  );
+}
+
+function useScorePack(experimentId: string) {
+  const invalidate = useInvalidateExperimentScoring(experimentId);
+  return useMutation({
+    mutationFn: () => evaluatePack(experimentId),
+    onMutate: () => {
+      toast.message("Scoring answers…", {
+        description: "This can take a minute with LLM judges. The page updates when done.",
+      });
+    },
+    onSuccess: async (data) => {
+      await invalidate();
+      toastEvaluateOutcome(data, {
+        success: "Answers scored",
+        withErrors: "Scoring finished with errors",
+      });
+    },
+    onError: (err) => {
+      toast.error(formatErrorForUi(err));
+    },
+  });
 }
 
 function useInvalidateExperimentScoring(experimentId: string) {
@@ -623,66 +716,6 @@ function useInvalidateExperimentScoring(experimentId: string) {
       queryKey: experimentOutputsQueryKey(experimentId),
     });
   };
-}
-
-function ScorePackControls({
-  projectId,
-  experimentId,
-}: {
-  projectId: string;
-  experimentId: string;
-}) {
-  const invalidate = useInvalidateExperimentScoring(experimentId);
-  const [overrideOpen, setOverrideOpen] = useState(false);
-
-  const scorePack = useMutation({
-    mutationFn: () => evaluatePack(experimentId),
-    onMutate: () => {
-      toast.message("Scoring metrics pack…", {
-        description: "Running in the background; this page will refresh when done.",
-      });
-    },
-    onSuccess: async (data) => {
-      await invalidate();
-      toastEvaluateOutcome(data, {
-        success: "Metrics pack scoring complete",
-        withErrors: "Metrics pack scoring finished with errors",
-      });
-    },
-    onError: (err) => {
-      toast.error(formatErrorForUi(err));
-    },
-  });
-
-  return (
-    <>
-      <Button
-        type="button"
-        variant="outline"
-        size="sm"
-        disabled={scorePack.isPending}
-        onClick={() => scorePack.mutate()}
-      >
-        {scorePack.isPending ? "Scoring…" : "Score with metrics pack"}
-      </Button>
-      <ScorePackOverrideDialog
-        projectId={projectId}
-        experimentId={experimentId}
-        open={overrideOpen}
-        onOpenChange={setOverrideOpen}
-        scoringPending={scorePack.isPending}
-      />
-      <Button
-        type="button"
-        variant="outline"
-        size="sm"
-        onClick={() => setOverrideOpen(true)}
-        disabled={scorePack.isPending}
-      >
-        Override metrics set…
-      </Button>
-    </>
-  );
 }
 
 function ScorePackOverrideDialog({
@@ -728,8 +761,8 @@ function ScorePackOverrideDialog({
     onSuccess: async (data) => {
       await invalidate();
       toastEvaluateOutcome(data, {
-        success: "Metrics pack scoring complete",
-        withErrors: "Metrics pack scoring finished with errors",
+        success: "Answers scored",
+        withErrors: "Scoring finished with errors",
       });
       onOpenChange(false);
     },
@@ -751,10 +784,10 @@ function ScorePackOverrideDialog({
       <DialogContent className="sm:max-w-md">
         <form onSubmit={handleSubmit}>
           <DialogHeader>
-            <DialogTitle>Score with another metrics set</DialogTitle>
+            <DialogTitle>Score with other metrics</DialogTitle>
             <DialogDescription>
-              Run the metrics pack using a different set for this scoring run.
-              Optionally pin that set as this experiment&apos;s default.
+              Score this experiment&apos;s answers with a different metrics set,
+              for example stricter thresholds.
             </DialogDescription>
           </DialogHeader>
           <div className="flex flex-col gap-3 py-4">
@@ -771,7 +804,7 @@ function ScorePackOverrideDialog({
                     htmlFor="score-override-metrics-set"
                     className="text-sm font-medium"
                   >
-                    Metrics set
+                    Metrics
                   </label>
                   <Select
                     value={overrideSetId}
@@ -783,7 +816,7 @@ function ScorePackOverrideDialog({
                     <SelectContent>
                       {metricsSets.map((s) => (
                         <SelectItem key={s.id} value={s.id}>
-                          {s.name} v{s.version}
+                          {s.name} · v{s.version}
                         </SelectItem>
                       ))}
                     </SelectContent>
@@ -797,7 +830,7 @@ function ScorePackOverrideDialog({
                     onChange={(e) => setSaveAsDefault(e.target.checked)}
                   />
                   <span className="text-sm text-foreground">
-                    Salva come default di questo esperimento
+                    Always use these metrics for this experiment
                   </span>
                 </label>
               </>
@@ -825,169 +858,6 @@ function ScorePackOverrideDialog({
     </Dialog>
   );
 }
-
-function RunItemsSection({
-  projectId,
-  runId,
-  evaluatorName,
-  runStatus,
-  runWarning,
-  itemsLoading,
-  itemsError,
-  onRetryItems,
-  runItems,
-  itemColumns,
-  selectedItemIndex,
-  onSelectedItemIndexChange,
-}: {
-  projectId: string;
-  runId: string | null;
-  evaluatorName: string | null;
-  runStatus?: string;
-  runWarning?: string | null;
-  itemsLoading: boolean;
-  itemsError: unknown;
-  onRetryItems: () => void;
-  runItems: RunItemView[];
-  itemColumns: DataTableColumn<RunItemView>[];
-  selectedItemIndex: number;
-  onSelectedItemIndexChange: (index: number) => void;
-}) {
-  const selectedItemIndexClamped = Math.min(
-    selectedItemIndex,
-    Math.max(runItems.length - 1, 0),
-  );
-  const selectedItem = runItems[selectedItemIndexClamped] ?? null;
-  const caseNumber =
-    selectedItem && runItems.length > 0 ? selectedItemIndexClamped + 1 : null;
-
-  return (
-    <section className="flex flex-col gap-3 border-t border-border pt-4">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <h2 className="text-sm font-medium text-foreground">Run items</h2>
-        <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-          {runId ? (
-            <>
-              <span>
-                Evaluator{" "}
-                <span className="font-medium text-foreground">
-                  {evaluatorName ?? "—"}
-                </span>
-              </span>
-              {runStatus ? <StatusBadge status={runStatus} /> : null}
-              {runWarning ? (
-                <Badge
-                  variant="outline"
-                  className="border-status-warn text-status-warn"
-                  title={runWarning}
-                >
-                  Judge model unsuitable
-                </Badge>
-              ) : null}
-              <CopyTechnicalId id={runId} label="Copy run ID" />
-            </>
-          ) : (
-            <span>
-              Not scored yet — questions and bound answers from this run.
-            </span>
-          )}
-        </div>
-      </div>
-
-      {itemsLoading ? (
-        <LoadingBlock className="min-h-[160px]" />
-      ) : itemsError ? (
-        <ErrorState
-          title="Could not load run items"
-          message={formatErrorForUi(itemsError)}
-          onRetry={onRetryItems}
-        />
-      ) : runItems.length === 0 ? (
-        <EmptyState
-          title="No dataset items"
-          description="This experiment's dataset has no cases to score."
-        />
-      ) : (
-        <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)]">
-          <DataTable
-            rows={runItems}
-            columns={itemColumns}
-            getRowKey={(row) => row.datasetItemId}
-            selectedIndex={Math.min(
-              selectedItemIndex,
-              Math.max(runItems.length - 1, 0),
-            )}
-            onSelectedIndexChange={onSelectedItemIndexChange}
-            onRowActivate={() => {}}
-            aria-label="Evaluation run items"
-          />
-          {selectedItem ? (
-            <ScrollArea className="max-h-[min(70vh,640px)] rounded-md border border-border p-4">
-              <div className="flex flex-col gap-4 pr-3">
-                <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-                  <span className="font-medium text-foreground">
-                    Case {caseNumber} of {runItems.length}
-                  </span>
-                  <CopyTechnicalId
-                    id={selectedItem.datasetItemId}
-                    label="Copy case ID"
-                  />
-                </div>
-                <DetailBlock title="Question">
-                  {formatJson(selectedItem.question)}
-                </DetailBlock>
-                <DetailBlock title="Expected answer">
-                  {formatJson(selectedItem.expectedAnswer)}
-                </DetailBlock>
-                <DetailBlock title="Expected doc IDs">
-                  {selectedItem.expectedDocIds.length > 0
-                    ? selectedItem.expectedDocIds.join(", ")
-                    : "—"}
-                </DetailBlock>
-                <DetailBlock title="Retrieved documents">
-                  {selectedItem.retrievedDocuments != null
-                    ? Array.isArray(selectedItem.retrievedDocuments) &&
-                      selectedItem.retrievedDocuments.length === 0
-                      ? "None (empty retrieval)"
-                      : formatJson(selectedItem.retrievedDocuments)
-                    : "—"}
-                </DetailBlock>
-                <DetailBlock title="Run context">
-                  {selectedItem.context != null
-                    ? formatJson(runContextWithoutDocuments(selectedItem.context))
-                    : "—"}
-                </DetailBlock>
-                <DetailBlock title="Actual output">
-                  {formatJson(selectedItem.actualOutput)}
-                </DetailBlock>
-                <DetailBlock title="Scores">
-                  {formatScore(selectedItem.score)}
-                  {selectedItem.label ? ` · ${selectedItem.label}` : ""}
-                  {selectedItem.explanation?.trim()
-                    ? `\n\n${selectedItem.explanation.trim()}`
-                    : ""}
-                </DetailBlock>
-                <JudgeClaimsTable metadata={selectedItem.resultMetadata} />
-                <JudgeClaimsTable
-                  metadata={selectedItem.resultMetadata}
-                  claimsKey="answer_claims"
-                  title="Answer claims (vs reference)"
-                />
-                {selectedItem.sourceTraceId ? (
-                  <RunItemTimeline
-                    projectId={projectId}
-                    traceId={selectedItem.sourceTraceId}
-                  />
-                ) : null}
-              </div>
-            </ScrollArea>
-          ) : null}
-        </div>
-      )}
-    </section>
-  );
-}
-
 function EvaluateDialog({
   projectId,
   experimentId,
@@ -1027,8 +897,8 @@ function EvaluateDialog({
         queryKey: experimentOutputsQueryKey(experimentId),
       });
       toastEvaluateOutcome(data, {
-        success: "Evaluation complete",
-        withErrors: "Evaluation finished with errors",
+        success: "Answers scored",
+        withErrors: "Scoring finished with errors",
       });
       setSelectedIds(new Set());
       onOpenChange(false);
@@ -1083,31 +953,22 @@ function EvaluateDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogTrigger
-        render={
-          <Button type="button" size="sm">
-            Evaluate
-          </Button>
-        }
-      />
       <DialogContent className="sm:max-w-md">
         <form onSubmit={handleSubmit}>
           <DialogHeader>
-            <DialogTitle>Run evaluators</DialogTitle>
+            <DialogTitle>Run individual metrics</DialogTitle>
             <DialogDescription>
-              Select one or more evaluators to run against this experiment.
-              {recommendedKinds.length > 0
-                ? ` Recommended for RAG Q&A: ${recommendedKinds.join(", ")}.`
-                : ""}
+              Score the answers with only the metrics you pick, for example to
+              re-check one metric after changing its judge.
             </DialogDescription>
           </DialogHeader>
           <div className="flex max-h-[280px] flex-col gap-2 overflow-y-auto py-4">
             {evaluatorsQuery.isLoading ? (
-              <p className="text-sm text-muted-foreground">Loading evaluators…</p>
+              <p className="text-sm text-muted-foreground">Loading metrics…</p>
             ) : evaluators.length === 0 ? (
               <div className="flex flex-col gap-3">
                 <p className="text-sm text-muted-foreground">
-                  No evaluators in this project yet.
+                  No metrics in this project yet.
                 </p>
                 <Button
                   type="button"
@@ -1116,7 +977,7 @@ function EvaluateDialog({
                   className="self-start"
                   onClick={onCreateEvaluator}
                 >
-                  Create evaluator
+                  Create metric
                 </Button>
               </div>
             ) : (
@@ -1133,8 +994,7 @@ function EvaluateDialog({
                   </Button>
                 ) : recommendedKinds.length > 0 ? (
                   <p className="text-xs text-muted-foreground">
-                    No project evaluators match recommended kinds yet. Create
-                    ones with config.kind in: {recommendedKinds.join(", ")}.
+                    None of the recommended RAG metrics exist in this project yet.
                   </p>
                 ) : null}
                 {sortedEvaluators.map((ev) => {
@@ -1153,14 +1013,13 @@ function EvaluateDialog({
                       />
                       <span className="flex min-w-0 flex-1 flex-col">
                         <span className="flex items-center gap-2 text-sm font-medium text-foreground">
-                          {ev.name}
+                          {metricLabel(kind ?? ev.name)}
                           {isRecommended ? (
-                            <Badge variant="secondary">recommended</Badge>
+                            <Badge variant="secondary">Recommended</Badge>
                           ) : null}
                         </span>
-                        <span className="font-mono text-xs text-muted-foreground">
-                          {ev.type}
-                          {kind ? ` · ${kind}` : ""} · v{ev.version}
+                        <span className="text-xs text-muted-foreground">
+                          {metricInfo(kind ?? ev.name).description || ev.name}
                         </span>
                       </span>
                     </label>
@@ -1181,7 +1040,7 @@ function EvaluateDialog({
               type="submit"
               disabled={selectedIds.size === 0 || evaluate.isPending}
             >
-              {evaluate.isPending ? "Running…" : "Run selected"}
+              {evaluate.isPending ? "Scoring…" : "Score with selected"}
             </Button>
           </DialogFooter>
         </form>

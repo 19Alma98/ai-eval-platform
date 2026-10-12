@@ -20,11 +20,21 @@ type SelectRootProps = {
   disabled?: boolean
   children: React.ReactNode
   className?: string
+  /** Accessible name when there is no visible <label>. */
+  "aria-label"?: string
 }
 
-function Select({ value, defaultValue, onValueChange, disabled, children }: SelectRootProps) {
+function Select({
+  value,
+  defaultValue,
+  onValueChange,
+  disabled,
+  children,
+  "aria-label": ariaLabel,
+}: SelectRootProps) {
   return (
     <RacSelect
+      aria-label={ariaLabel}
       selectedKey={value || undefined}
       defaultSelectedKey={defaultValue || undefined}
       onSelectionChange={(key) => onValueChange?.(key == null ? null : String(key))}

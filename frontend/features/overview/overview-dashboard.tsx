@@ -6,8 +6,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { TimeRangePicker } from "@/components/time-range-picker";
 import { RefreshControl } from "@/components/refresh-control";
 import { ErrorState } from "@/components/error-state";
-import { PageIntro } from "@/components/page-intro";
-import { RelativeTime } from "@/components/relative-time";
+import { PageHeader } from "@/components/page-header";
 import { formatErrorForUi } from "@/lib/api/client";
 import { useProjectId } from "@/lib/project-store";
 import { rangeFromPreset, type Preset } from "@/lib/time-range";
@@ -87,29 +86,25 @@ export function OverviewDashboard() {
   const attentionRows = overview ? mergeAttentionItems(overview) : [];
   const warningMessages = overview ? overviewWarningMessages(overview.warnings) : [];
 
+  const setupIncomplete = loopCards?.some((c) => c.status === "empty") ?? false;
+
   return (
     <div className="flex flex-col gap-6">
-      <div className="sticky top-0 z-20 -mx-1 flex flex-wrap items-center justify-between gap-3 border-b border-border bg-background px-1 pb-3">
-        <div className="flex flex-wrap items-center gap-2">
-          <TimeRangePicker preset={preset} onPresetChange={setPreset} />
-          {overview?.generated_at ? (
-            <span className="text-xs text-muted-foreground">
-              Snapshot{" "}
-              <RelativeTime date={overview.generated_at} className="text-xs" />
-            </span>
-          ) : null}
-        </div>
-        {projectId ? (
-          <RefreshControl
-            dataUpdatedAt={overviewQuery.dataUpdatedAt}
-            onRefresh={onRefresh}
-          />
-        ) : null}
-      </div>
-
-      <PageIntro
+      <PageHeader
         title="Overview"
-        glossary="Where you are in the quality loop — live signal and offline readiness in one place."
+        description="How your AI app is doing in production and how the next version scores before release."
+        actions={
+          <>
+            <TimeRangePicker preset={preset} onPresetChange={setPreset} />
+            {projectId ? (
+              <RefreshControl
+                dataUpdatedAt={overviewQuery.dataUpdatedAt}
+                onRefresh={onRefresh}
+              />
+            ) : null}
+          </>
+        }
+        className="mb-0"
       />
 
       {warningMessages.length > 0 ? (
@@ -142,34 +137,29 @@ export function OverviewDashboard() {
               <OverviewSkeleton className="h-64" />
               <OverviewSkeleton className="h-64" />
             </div>
-            <div className="grid gap-4 lg:grid-cols-2">
-              <OverviewSkeleton className="h-48" />
-              <OverviewSkeleton className="h-48" />
-            </div>
           </>
         ) : overview ? (
           <>
+            {setupIncomplete && loopCards ? (
+              <section className="flex flex-col gap-2">
+                <h2 className="text-sm font-semibold text-foreground">Getting started</h2>
+                <LoopProgress projectId={projectId} cards={loopCards} />
+              </section>
+            ) : null}
+
             <DualKpi projectId={projectId} model={dualKpi} />
 
             <div className="grid gap-4 lg:grid-cols-2">
-              <LiveQualityChart
-                projectId={projectId}
-                series={overview.live.series}
-                referenceThreshold={overview.offline.reference_threshold}
-                onWidenRange={widenRange}
-              />
+              <AttentionQueue projectId={projectId} rows={attentionRows} />
               <CompareBars projectId={projectId} overview={overview} />
             </div>
 
-            <div className="grid gap-4 lg:grid-cols-2">
-              <AttentionQueue projectId={projectId} rows={attentionRows} />
-              <div className="flex flex-col gap-2">
-                <h2 className="text-sm font-semibold text-foreground">Quality loop</h2>
-                {loopCards ? (
-                  <LoopProgress projectId={projectId} cards={loopCards} />
-                ) : null}
-              </div>
-            </div>
+            <LiveQualityChart
+              projectId={projectId}
+              series={overview.live.series}
+              referenceThreshold={overview.offline.reference_threshold}
+              onWidenRange={widenRange}
+            />
           </>
         ) : null}
       </div>

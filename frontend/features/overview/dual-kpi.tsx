@@ -3,31 +3,55 @@
 import Link from "next/link";
 import { cn } from "@/lib/cn";
 import { withProjectQuery } from "@/lib/project-href";
-import type { DualKpiViewModel } from "./map-overview";
+import type { DualKpiItem, DualKpiViewModel } from "./map-overview";
 
-function KpiCell({
-  label,
-  value,
-  href,
+function KpiCell({ item, projectId }: { item: DualKpiItem; projectId: string }) {
+  return (
+    <Link
+      href={withProjectQuery(item.href, projectId)}
+      title={item.hint}
+      className="group flex flex-col gap-1 rounded-lg border border-border bg-surface px-4 py-3 transition-colors hover:border-primary/40 hover:bg-row-hover"
+    >
+      <p className="text-xs font-medium text-muted-foreground">{item.label}</p>
+      <p
+        className={cn(
+          "truncate text-xl font-semibold tabular-nums text-foreground",
+          item.tone === "fail" && "text-status-fail",
+          item.tone === "ok" && "text-status-ok",
+        )}
+      >
+        {item.value}
+      </p>
+      {item.hint ? (
+        <p className="line-clamp-1 text-xs text-muted-foreground">{item.hint}</p>
+      ) : null}
+    </Link>
+  );
+}
+
+function KpiGroup({
+  title,
+  description,
+  items,
   projectId,
 }: {
-  label: string;
-  value: string;
-  href: string;
+  title: string;
+  description: string;
+  items: DualKpiItem[];
   projectId: string;
 }) {
   return (
-    <Link
-      href={withProjectQuery(href, projectId)}
-      className={cn(
-        "rounded-md border border-border bg-surface px-3 py-2.5 transition-colors hover:bg-row-hover",
-      )}
-    >
-      <p className="text-xs font-medium text-muted-foreground">{label}</p>
-      <p className="mt-1 font-mono text-lg tabular-nums text-foreground">
-        {value}
-      </p>
-    </Link>
+    <div className="flex flex-col gap-2">
+      <div className="flex flex-wrap items-baseline gap-2">
+        <h2 className="text-sm font-semibold text-foreground">{title}</h2>
+        <span className="text-xs text-muted-foreground">{description}</span>
+      </div>
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        {items.map((item) => (
+          <KpiCell key={item.label} item={item} projectId={projectId} />
+        ))}
+      </div>
+    </div>
   );
 }
 
@@ -39,41 +63,19 @@ export function DualKpi({
   model: DualKpiViewModel;
 }) {
   return (
-    <section aria-label="Key metrics" className="flex flex-col gap-4">
-      <div className="flex flex-col gap-2">
-        <h2 className="text-sm font-semibold text-foreground">Live</h2>
-        <div
-          className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4"
-          style={{ gap: "var(--grid-gap, 8px)" }}
-        >
-          {model.live.map((item) => (
-            <KpiCell
-              key={item.label}
-              label={item.label}
-              value={item.value}
-              href={item.href}
-              projectId={projectId}
-            />
-          ))}
-        </div>
-      </div>
-      <div className="flex flex-col gap-2">
-        <h2 className="text-sm font-semibold text-foreground">Offline</h2>
-        <div
-          className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4"
-          style={{ gap: "var(--grid-gap, 8px)" }}
-        >
-          {model.offline.map((item) => (
-            <KpiCell
-              key={item.label}
-              label={item.label}
-              value={item.value}
-              href={item.href}
-              projectId={projectId}
-            />
-          ))}
-        </div>
-      </div>
+    <section aria-label="Key metrics" className="flex flex-col gap-5">
+      <KpiGroup
+        title="Live"
+        description="Real user traffic in the selected time range"
+        items={model.live}
+        projectId={projectId}
+      />
+      <KpiGroup
+        title="Offline"
+        description="Test sets and experiments before release"
+        items={model.offline}
+        projectId={projectId}
+      />
     </section>
   );
 }

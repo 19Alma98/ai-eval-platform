@@ -1,18 +1,10 @@
 "use client";
 
 import Link from "next/link";
+import { ArrowRight, CheckCircle2, CircleDashed, XCircle } from "lucide-react";
 import { cn } from "@/lib/cn";
 import type { ReleaseCheckResponse } from "@/lib/api/types";
-import { resolveLabel } from "@/lib/format";
-
-function formatValue(value: number | null): string {
-  if (value === null || value === undefined) return "—";
-  return Number.isInteger(value) ? String(value) : value.toFixed(4);
-}
-
-function overallLabel(status: string): "PASS" | "FAIL" {
-  return status.toLowerCase() === "passed" ? "PASS" : "FAIL";
-}
+import { describeCheck, type CheckView } from "./describe-check";
 
 type ReleaseResultProps = {
   projectId: string;
@@ -21,106 +13,117 @@ type ReleaseResultProps = {
   baselineName?: string | null;
 };
 
+function OutcomeIcon({ outcome }: { outcome: CheckView["outcome"] }) {
+  if (outcome === "passed") return <CheckCircle2 className="size-4 shrink-0 text-status-ok" aria-label="Passed" />;
+  if (outcome === "failed") return <XCircle className="size-4 shrink-0 text-status-fail" aria-label="Failed" />;
+  return <CircleDashed className="size-4 shrink-0 text-status-warn" aria-label="Not available" />;
+}
+
 export function ReleaseResult({
   projectId,
   result,
   experimentName,
   baselineName,
 }: ReleaseResultProps) {
-  const label = overallLabel(result.status);
-  const passed = label === "PASS";
+  const passed = result.status.toLowerCase() === "passed";
+  const checks = result.checks.map(describeCheck);
+  const order = { failed: 0, unavailable: 1, passed: 2 } as const;
+  checks.sort((a, b) => order[a.outcome] - order[b.outcome]);
+  const nFailed = checks.filter((c) => c.outcome === "failed").length;
+  const nUnavailable = checks.filter((c) => c.outcome === "unavailable").length;
 
-  const nameById = new Map<string, string>();
-  if (experimentName?.trim()) {
-    nameById.set(result.experiment_id, experimentName.trim());
-  }
-  if (result.baseline_experiment_id && baselineName?.trim()) {
-    nameById.set(result.baseline_experiment_id, baselineName.trim());
-  }
-
-  const experimentLabel = resolveLabel(
-    result.experiment_id,
-    nameById,
-    "Unknown experiment",
-  );
-  const baselineLabel = result.baseline_experiment_id
-    ? resolveLabel(
-        result.baseline_experiment_id,
-        nameById,
-        "Unknown experiment",
-      )
-    : null;
-
+  const experimentHref = `/experiments/${encodeURIComponent(result.experiment_id)}?project=${encodeURIComponent(projectId)}`;
   const compareHref =
     result.baseline_experiment_id != null
       ? `/experiments/${encodeURIComponent(result.experiment_id)}/compare?${new URLSearchParams(
-          {
-            project: projectId,
-            baseline: result.baseline_experiment_id,
-          },
+          { project: projectId, baseline: result.baseline_experiment_id },
         ).toString()}`
       : null;
 
   return (
-    <div className="flex flex-col gap-4 rounded-md border border-border bg-surface p-4">
-      <div className="flex flex-col gap-1">
-        <p
-          className={cn(
-            "flex items-center gap-2 text-base font-semibold",
-            passed ? "text-status-ok" : "text-status-fail",
-          )}
-        >
-          <span aria-hidden>●</span>
-          {label}
-        </p>
-        <p className="text-sm text-muted-foreground">
-          Experiment{" "}
-          <span className="font-medium text-foreground">{experimentLabel}</span>
-          {baselineLabel ? (
-            <>
-              {" "}
-              · Baseline{" "}
-              <span className="font-medium text-foreground">{baselineLabel}</span>
-            </>
-          ) : null}
-        </p>
+    <div className="flex flex-col gap-4 rounded-lg border border-border bg-surface p-5">
+      <div
+        className={cn(
+          "flex items-start gap-3 rounded-md px-4 py-3",
+          passed ? "bg-status-ok-bg" : "bg-status-fail-bg",
+        )}
+      >
+        {passed ? (
+          <CheckCircle2 className="mt-0.5 size-6 shrink-0 text-status-ok" />
+        ) : (
+          <XCircle className="mt-0.5 size-6 shrink-0 text-status-fail" />
+        )}
+        <div className="flex flex-col">
+          <p
+            className={cn(
+              "text-lg font-semibold",
+              passed ? "text-status-ok" : "text-status-fail",
+            )}
+          >
+            {passed ? "Ready to ship" : "Not ready to ship"}
+          </p>
+          <p className="text-sm text-foreground">
+            {passed
+              ? `All ${checks.length} rules are met.`
+              : [
+                  nFailed > 0 ? `${nFailed} rule${nFailed === 1 ? "" : "s"} failed` : null,
+                  nUnavailable > 0 ? `${nUnavailable} could not be checked` : null,
+                ]
+                  .filter(Boolean)
+                  .join(" · ")}
+          </p>
+        </div>
       </div>
 
-      <div>
-        <h3 className="mb-2 text-sm font-medium text-foreground">Checks</h3>
-        <ul className="flex flex-col gap-2" role="list">
-          {result.checks.map((check) => {
-            const failed = check.status.toLowerCase() === "failed";
-            const row = (
-              <span className="flex flex-wrap items-baseline gap-x-3 gap-y-1 font-mono text-sm">
-                <span className="min-w-[10rem] text-foreground">{check.metric}</span>
-                <span className="text-muted-foreground">{check.status}</span>
-                <span className="text-muted-foreground">
-                  actual {formatValue(check.actual)}
-                </span>
-                <span className="text-muted-foreground">
-                  threshold {formatValue(check.threshold)}
-                </span>
+      <p className="text-sm text-muted-foreground">
+        Candidate{" "}
+        <Link href={experimentHref} className="font-medium text-foreground hover:underline">
+          {experimentName?.trim() || "this experiment"}
+        </Link>
+        {result.baseline_experiment_id ? (
+          <>
+            {" "}vs baseline{" "}
+            <span className="font-medium text-foreground">
+              {baselineName?.trim() || "an earlier experiment"}
+            </span>
+          </>
+        ) : null}
+      </p>
+
+      <ul className="flex flex-col divide-y divide-border rounded-md border border-border" role="list">
+        {checks.map((check) => {
+          const href = check.isRegression && check.outcome === "failed" ? compareHref : null;
+          const body = (
+            <span className="flex items-center gap-3 px-3 py-2 text-sm">
+              <OutcomeIcon outcome={check.outcome} />
+              <span className="min-w-0 flex-1 truncate text-foreground">{check.title}</span>
+              <span
+                className={cn(
+                  "shrink-0 tabular-nums",
+                  check.outcome === "failed" ? "font-medium text-status-fail" : "text-foreground",
+                )}
+              >
+                {check.outcome === "unavailable" && check.actual === "—" ? "Not available" : check.actual}
               </span>
-            );
-
-            if (failed && compareHref) {
-              return (
-                <li key={check.metric}>
-                  <Link
-                    href={compareHref}
-                    className="block rounded px-1 -mx-1 hover:bg-muted/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                  >
-                    {row}
-                  </Link>
-                </li>
-              );
-            }
-
-            return <li key={check.metric}>{row}</li>;
-          })}
-        </ul>
-      </div>
+              <span className="w-36 shrink-0 text-right text-xs text-muted-foreground">
+                {check.target}
+              </span>
+              {href ? <ArrowRight className="size-3.5 shrink-0 text-muted-foreground" /> : null}
+            </span>
+          );
+          return (
+            <li key={check.key}>
+              {href ? (
+                <Link href={href} className="block hover:bg-row-hover" title="See which answers got worse">
+                  {body}
+                </Link>
+              ) : (
+                body
+              )}
+            </li>
+          );
+        })}
+      </ul>
     </div>
   );
 }

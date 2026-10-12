@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, Trash2 } from "lucide-react";
+import { Trash2 } from "lucide-react";
 import { useMemo, useState, type ReactNode } from "react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
@@ -10,6 +10,7 @@ import { DataTable, type DataTableColumn } from "@/components/data-table";
 import { EmptyState } from "@/components/empty-state";
 import { ErrorState } from "@/components/error-state";
 import { LoadingBlock } from "@/components/loading-block";
+import { PageHeader } from "@/components/page-header";
 import { RefreshControl } from "@/components/refresh-control";
 import { RelativeTime } from "@/components/relative-time";
 import { Button } from "@/components/ui/button";
@@ -61,7 +62,6 @@ function configPlainSnapshot(config: AppConfig): string {
     `prompt\n${formatConfigValue(config.prompt)}`,
     `model\n${formatConfigValue(config.model)}`,
     `retrieval\n${formatConfigValue(config.retrieval)}`,
-    `content_hash: ${config.content_hash}`,
   ];
   return parts.filter(Boolean).join("\n\n");
 }
@@ -149,18 +149,8 @@ export function AppConfigFamilyDetail({
         id: "version",
         header: "Version",
         headerClassName: "w-[88px]",
-        className: "font-mono tabular-nums",
+        className: "tabular-nums",
         cell: (row) => `v${row.version}`,
-      },
-      {
-        id: "hash",
-        header: "Hash",
-        headerClassName: "w-[120px]",
-        cell: (row) => (
-          <span className="font-mono text-xs text-muted-foreground">
-            {row.content_hash.slice(0, 12)}…
-          </span>
-        ),
       },
       {
         id: "description",
@@ -193,7 +183,7 @@ export function AppConfigFamilyDetail({
     const message = formatErrorForUi(err);
     return (
       <ErrorState
-        title="Could not load config family"
+        title="Could not load app config"
         message={message}
         onRetry={() => {
           void versionsQuery.refetch();
@@ -217,28 +207,18 @@ export function AppConfigFamilyDetail({
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div className="flex min-w-0 flex-col gap-1">
-          <div className="flex flex-wrap items-center gap-2">
-            <Button
-              variant="ghost"
-              size="sm"
-              nativeButton={false}
-              render={<Link href={backHref} />}
-            >
-              <ArrowLeft className="size-4" />
-              Back
-            </Button>
-            <h1 className="text-lg font-semibold text-foreground">
-              {familyName}
-            </h1>
-            <span className="rounded-md border border-border bg-surface px-2 py-0.5 font-mono text-xs text-muted-foreground">
-              {versions.length} version{versions.length === 1 ? "" : "s"}
-            </span>
-          </div>
-          {familyAliases.length > 0 ? (
-            <div className="flex flex-wrap items-center gap-2 text-sm">
-              <span className="text-muted-foreground">Aliases:</span>
+      <PageHeader
+        breadcrumbs={[{ label: "App configs", href: backHref }, { label: familyName }]}
+        title={familyName}
+        badges={
+          <Badge variant="outline">
+            {versions.length} version{versions.length === 1 ? "" : "s"}
+          </Badge>
+        }
+        meta={
+          familyAliases.length > 0 ? (
+            <span className="flex flex-wrap items-center gap-2">
+              <span className="text-muted-foreground">Aliases</span>
               {familyAliases.map((a) => (
                 <AliasChip
                   key={a.name}
@@ -247,14 +227,17 @@ export function AppConfigFamilyDetail({
                   deleting={deleteAliasMutation.isPending}
                 />
               ))}
-            </div>
-          ) : null}
-        </div>
-        <RefreshControl
-          queryKey={queryOpts.queryKey}
-          dataUpdatedAt={versionsQuery.dataUpdatedAt}
-        />
-      </div>
+            </span>
+          ) : null
+        }
+        actions={
+          <RefreshControl
+            queryKey={queryOpts.queryKey}
+            dataUpdatedAt={versionsQuery.dataUpdatedAt}
+          />
+        }
+        className="mb-0"
+      />
 
       <section className="rounded-md border border-border bg-surface p-3">
         <h2 className="mb-3 text-sm font-medium text-foreground">Set alias</h2>
@@ -351,6 +334,7 @@ export function AppConfigFamilyDetail({
             selectedIndex={selectedIndex}
             onSelectedIndexChange={setSelectedIndex}
             onRowActivate={(_row, index) => setSelectedIndex(index)}
+            selectionMode="persistent"
             aria-label="App config versions"
           />
 
@@ -360,9 +344,7 @@ export function AppConfigFamilyDetail({
                 <h2 className="text-sm font-medium text-foreground">
                   Version detail · v{selectedVersion.version}
                 </h2>
-                <span className="font-mono text-xs text-muted-foreground">
-                  hash {selectedVersion.content_hash.slice(0, 12)}…
-                </span>
+
               </div>
               {selectedVersion.description?.trim() ? (
                 <p className="text-sm text-muted-foreground">

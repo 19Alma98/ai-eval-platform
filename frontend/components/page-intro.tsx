@@ -1,14 +1,15 @@
+import type { ReactNode } from "react";
+import { PageHeader } from "@/components/page-header";
+
+/** Top-level page title + one-line explanation of what the page is for. */
 export function PageIntro({
   title,
   glossary,
+  actions,
 }: {
   title: string;
   glossary: string;
+  actions?: ReactNode;
 }) {
-  return (
-    <div className="mb-4">
-      <h1 className="text-lg font-semibold tracking-tight text-foreground">{title}</h1>
-      <p className="mt-1 max-w-2xl text-sm text-muted-foreground">{glossary}</p>
-    </div>
-  );
+  return <PageHeader title={title} description={glossary} actions={actions} />;
 }

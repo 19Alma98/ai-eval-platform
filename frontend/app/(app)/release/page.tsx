@@ -20,8 +20,8 @@ function ReleasePageContent() {
   return (
     <>
       <PageIntro
-        title="Release"
-        glossary="PASS/FAIL against YAML thresholds — whether to ship."
+        title="Release gate"
+        glossary="Check a candidate experiment against your quality bar and your baseline before you ship."
       />
       <ReleaseCheckForm
         projectId={projectId}

@@ -2,20 +2,21 @@
 
 import Link from "next/link";
 import { useMemo, useState } from "react";
-import { ArrowLeft } from "lucide-react";
+import { FlaskConical, Lock } from "lucide-react";
 import { DataTable, type DataTableColumn } from "@/components/data-table";
 import { EmptyState } from "@/components/empty-state";
 import { ErrorState } from "@/components/error-state";
 import { LoadingBlock } from "@/components/loading-block";
 import { RefreshControl } from "@/components/refresh-control";
 import { RelativeTime } from "@/components/relative-time";
+import { MetaItem, PageHeader } from "@/components/page-header";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { formatErrorForUi } from "@/lib/api/client";
 import type { DatasetItem } from "@/lib/api/types";
 import { withProjectQuery } from "@/lib/project-href";
 import { ImportDatasetDialog } from "./import-dataset-dialog";
-import { RAG_FIELD_HINTS } from "./rag-qa";
 import { datasetQueryOptions, useDataset } from "./use-datasets";
 
 const PREVIEW_MAX = 96;
@@ -34,6 +35,33 @@ function truncatePreview(text: string, max = PREVIEW_MAX): string {
   if (text === "—") return text;
   if (text.length <= max) return text;
   return `${text.slice(0, max)}…`;
+}
+
+function stringList(metadata: Record<string, unknown>, key: string): string[] {
+  const raw = metadata[key];
+  if (Array.isArray(raw)) {
+    return raw.filter((v): v is string => typeof v === "string" && v.trim() !== "");
+  }
+  if (typeof raw === "string" && raw.trim()) {
+    return raw
+      .split("|")
+      .map((v) => v.trim())
+      .filter(Boolean);
+  }
+  return [];
+}
+
+function DocChips({ ids }: { ids: string[] }) {
+  if (ids.length === 0) return <span className="text-muted-foreground">—</span>;
+  return (
+    <span className="flex flex-wrap gap-1">
+      {ids.map((id) => (
+        <Badge key={id} variant="outline" className="font-normal">
+          {id}
+        </Badge>
+      ))}
+    </span>
+  );
 }
 
 function formatStringList(
@@ -75,13 +103,19 @@ export function DatasetDetailView({
     );
   }, [items, inputFilter]);
 
-  const columns: DataTableColumn<DatasetItem>[] = useMemo(
-    () => [
+  const hasActual = items.some((item) => item.actual_output != null);
+  const hasLiveOrigin = items.some((item) => Boolean(item.source_trace_id));
+  const hasMustContain = items.some(
+    (item) => formatStringList(item.metadata ?? {}, "must_contain") !== "—",
+  );
+
+  const columns: DataTableColumn<DatasetItem>[] = useMemo(() => {
+    const out: DataTableColumn<DatasetItem>[] = [
       {
         id: "index",
         header: "#",
         headerClassName: "w-[48px]",
-        className: "font-mono tabular-nums text-muted-foreground",
+        className: "tabular-nums text-muted-foreground",
         cell: (row) => {
           const idx = filteredItems.findIndex((item) => item.id === row.id);
           return idx >= 0 ? idx + 1 : "—";
@@ -89,71 +123,70 @@ export function DatasetDetailView({
       },
       {
         id: "input",
-        header: "Input preview",
+        header: "Question",
+        wrap: true,
         cell: (row) => (
-          <span className="line-clamp-2 font-mono text-xs text-foreground">
-            {truncatePreview(valuePreview(row.input))}
+          <span className="line-clamp-2 text-foreground">
+            {valuePreview(row.input)}
           </span>
         ),
       },
       {
         id: "expected",
-        header: "Expected",
+        header: "Expected answer",
+        wrap: true,
         cell: (row) => (
-          <span className="line-clamp-2 font-mono text-xs text-muted-foreground">
-            {truncatePreview(valuePreview(row.expected_output))}
+          <span className="line-clamp-2 text-muted-foreground">
+            {valuePreview(row.expected_output)}
           </span>
         ),
       },
       {
         id: "expected_doc_ids",
-        header: "Expected doc IDs",
-        headerClassName: "w-[160px]",
-        cell: (row) => (
-          <span className="line-clamp-2 font-mono text-xs text-muted-foreground">
-            {truncatePreview(
-              formatStringList(row.metadata ?? {}, "expected_doc_ids"),
-            )}
-          </span>
-        ),
+        header: "Source documents",
+        headerClassName: "w-[180px]",
+        wrap: true,
+        cell: (row) => <DocChips ids={stringList(row.metadata ?? {}, "expected_doc_ids")} />,
       },
-      {
+    ];
+    if (hasMustContain) {
+      out.push({
         id: "must_contain",
-        header: "Must contain",
-        headerClassName: "w-[160px]",
+        header: "Required phrases",
+        headerClassName: "w-[180px]",
+        wrap: true,
         cell: (row) => (
-          <span className="line-clamp-2 font-mono text-xs text-muted-foreground">
-            {truncatePreview(
-              formatStringList(row.metadata ?? {}, "must_contain"),
-            )}
+          <span className="line-clamp-2 text-muted-foreground">
+            {formatStringList(row.metadata ?? {}, "must_contain")}
           </span>
         ),
-      },
-      {
+      });
+    }
+    if (hasActual) {
+      out.push({
         id: "actual",
-        header: "Actual",
+        header: "Recorded answer",
+        wrap: true,
         cell: (row) => (
-          <span className="line-clamp-2 font-mono text-xs text-muted-foreground">
+          <span className="line-clamp-2 text-muted-foreground">
             {truncatePreview(valuePreview(row.actual_output))}
           </span>
         ),
-      },
-      {
-        id: "source_trace",
-        header: "Source trace",
-        headerClassName: "w-[112px]",
-        cell: (row) =>
-          row.source_trace_id ? (
-            <span className="font-mono text-xs text-muted-foreground">
-              {row.source_trace_id.slice(0, 8)}…
-            </span>
-          ) : (
-            <span className="text-muted-foreground">—</span>
-          ),
-      },
-    ],
-    [filteredItems],
-  );
+      });
+    }
+    if (hasLiveOrigin) out.push({
+      id: "origin",
+      header: "Origin",
+      headerClassName: "w-[120px]",
+      cell: (row) =>
+        row.source_trace_id ? (
+          <Badge variant="secondary">Live traffic</Badge>
+        ) : (
+          <span className="text-muted-foreground">Imported</span>
+        ),
+    });
+    return out;
+  }, [filteredItems, hasActual, hasMustContain, hasLiveOrigin]);
 
   if (query.isLoading) {
     return <LoadingBlock className="min-h-[240px]" />;
@@ -164,7 +197,7 @@ export function DatasetDetailView({
     const message = formatErrorForUi(err);
     return (
       <ErrorState
-        title="Could not load dataset"
+        title="Could not load test set"
         message={message}
         onRetry={() => query.refetch()}
       />
@@ -175,116 +208,109 @@ export function DatasetDetailView({
     return null;
   }
 
-  const backHref = withProjectQuery("/datasets", projectId);
+  const listHref = withProjectQuery("/datasets", projectId);
 
   return (
-    <div className="flex flex-col gap-3">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div className="flex min-w-0 flex-col gap-1">
-          <div className="flex flex-wrap items-center gap-2">
+    <div className="flex flex-col gap-4">
+      <PageHeader
+        breadcrumbs={[{ label: "Test sets", href: listHref }, { label: dataset.name }]}
+        title={dataset.name}
+        badges={
+          <>
+            <Badge variant="outline">v{dataset.version}</Badge>
+            {dataset.immutable ? (
+              <Badge
+                variant="secondary"
+                title="Experiments were scored on this version. Importing questions creates a new version, so past results stay comparable."
+              >
+                <Lock className="size-3" />
+                Locked
+              </Badge>
+            ) : null}
+          </>
+        }
+        description={dataset.description || undefined}
+        meta={
+          <>
+            <MetaItem label="Questions">{items.length}</MetaItem>
+            <MetaItem label="Created">
+              <RelativeTime date={dataset.created_at} />
+            </MetaItem>
+          </>
+        }
+        actions={
+          <>
+            <RefreshControl
+              queryKey={queryOpts.queryKey}
+              dataUpdatedAt={query.dataUpdatedAt}
+            />
             <Button
-              variant="ghost"
+              variant="outline"
               size="sm"
               nativeButton={false}
-              render={<Link href={backHref} />}
+              render={
+                <Link href={withProjectQuery(`/experiments?new=1&dataset=${encodeURIComponent(datasetId)}`, projectId)} />
+              }
             >
-              <ArrowLeft className="size-4" />
-              Back
+              <FlaskConical className="size-4" />
+              Run experiment
             </Button>
-            <h1 className="text-lg font-semibold text-foreground">
-              {dataset.name}
-            </h1>
-            <span className="rounded-md border border-border bg-surface px-2 py-0.5 font-mono text-xs text-muted-foreground">
-              v{dataset.version}
-            </span>
-            {dataset.immutable ? (
-              <span className="rounded-md border border-border bg-surface px-2 py-0.5 text-xs text-muted-foreground">
-                Has scored runs
-              </span>
-            ) : null}
-          </div>
-          <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-muted-foreground">
-            {dataset.description ? (
-              <span className="max-w-xl">{dataset.description}</span>
-            ) : null}
-            <span>
-              Items{" "}
-              <span className="font-mono tabular-nums text-foreground">
-                {items.length}
-              </span>
-            </span>
-            <span>
-              Created <RelativeTime date={dataset.created_at} />
-            </span>
-          </div>
-          {dataset.immutable ? (
-            <p className="mt-1 max-w-2xl text-xs text-muted-foreground">
-              This version has evaluation runs. Importing or promoting items
-              creates a new version automatically; existing experiments stay on
-              this one.
-            </p>
-          ) : null}
-          <div className="mt-1 max-w-2xl rounded-md border border-border bg-surface px-3 py-2 text-xs text-muted-foreground">
-            <p className="mb-1 font-medium text-foreground">
-              Suggested item fields
-            </p>
-            <ul className="list-inside list-disc">
-              {RAG_FIELD_HINTS.map((hint) => (
-                <li key={hint}>{hint}</li>
-              ))}
-            </ul>
-          </div>
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <ImportDatasetDialog
-            projectId={projectId}
-            datasetId={datasetId}
-            datasetName={dataset.name}
-            taskType={dataset.task_type}
-            open={importOpen}
-            onOpenChange={setImportOpen}
-          />
-          <RefreshControl
-            queryKey={queryOpts.queryKey}
-            dataUpdatedAt={query.dataUpdatedAt}
-          />
-        </div>
-      </div>
+            <ImportDatasetDialog
+              projectId={projectId}
+              datasetId={datasetId}
+              datasetName={dataset.name}
+              taskType={dataset.task_type}
+              open={importOpen}
+              onOpenChange={setImportOpen}
+            />
+          </>
+        }
+        className="mb-0"
+      />
 
-      <div className="sticky top-0 z-20 -mx-1 border-b border-border bg-background px-1 pb-3">
-        <label htmlFor="dataset-item-filter" className="sr-only">
-          Filter by input preview
-        </label>
-        <Input
-          id="dataset-item-filter"
-          type="search"
-          placeholder="Filter items by input text…"
-          value={inputFilter}
-          onChange={(e) => {
-            setInputFilter(e.target.value);
-            setSelectedIndex(0);
-          }}
-          className="max-w-md"
-        />
-      </div>
+      {items.length > 0 ? (
+        <div>
+          <label htmlFor="dataset-item-filter" className="sr-only">
+            Search questions
+          </label>
+          <Input
+            id="dataset-item-filter"
+            type="search"
+            placeholder="Search questions…"
+            value={inputFilter}
+            onChange={(e) => {
+              setInputFilter(e.target.value);
+              setSelectedIndex(0);
+            }}
+            className="max-w-md"
+          />
+        </div>
+      ) : null}
 
       {items.length === 0 ? (
         <EmptyState
-          title="No items in this dataset"
-          description="Promote a live run into an evaluation example, or import CSV/JSON."
+          title="This test set is empty"
+          description="Import a CSV or JSON file with your questions, or add failing answers from Live traffic."
           action={
-            <Link
-              href={withProjectQuery("/live-runs", projectId)}
-              className="text-sm font-medium text-foreground underline-offset-4 hover:underline"
-            >
-              Open live runs
-            </Link>
+            <div className="flex flex-wrap items-center justify-center gap-2">
+              <Button type="button" size="sm" onClick={() => setImportOpen(true)}>
+                Import questions
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                nativeButton={false}
+                render={<Link href={withProjectQuery("/live-runs", projectId)} />}
+              >
+                Open live traffic
+              </Button>
+            </div>
           }
         />
       ) : filteredItems.length === 0 ? (
         <EmptyState
           title="No matches"
-          description="No items match the input filter."
+          description="No questions match your search."
         />
       ) : (
         <DataTable
@@ -294,7 +320,7 @@ export function DatasetDetailView({
           selectedIndex={selectedIndex}
           onSelectedIndexChange={setSelectedIndex}
           onRowActivate={() => {}}
-          aria-label="Dataset items"
+          aria-label="Questions in this test set"
         />
       )}
     </div>

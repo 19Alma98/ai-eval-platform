@@ -2,6 +2,8 @@ import type {
   LiveSeriesBucket,
   ProjectOverview,
 } from "@/lib/api/types";
+import { formatDeltaPoints } from "@/lib/format";
+import { metricLabel } from "@/lib/metrics-catalog";
 
 export const OVERVIEW_ATTENTION_LIMIT = 8;
 
@@ -49,7 +51,7 @@ export function mapPassRateBars(
   return compare.metrics
     .filter((m) => m.metric === "pass_rate")
     .map((m) => ({
-      name: m.name,
+      name: metricLabel(m.name),
       candidate: m.candidate,
       baseline: m.baseline,
       delta: m.delta,
@@ -63,6 +65,8 @@ export type DualKpiItem = {
   label: string;
   value: string;
   href: string;
+  hint?: string;
+  tone?: "ok" | "fail" | "neutral";
 };
 
 export type DualKpiViewModel = {
@@ -85,28 +89,39 @@ export function mapOverviewToDualKpi(
 ): DualKpiViewModel {
   const { live, offline } = overview;
   const latest = offline.latest_experiment;
+  const failRate = formatPercent(live.fail_rate, live.n_interactions);
 
   return {
     live: [
       {
-        label: "Interactions",
+        label: "Questions answered",
         value: String(live.n_interactions),
         href: "/live-runs",
+        hint: "Live questions received in this time range",
       },
       {
-        label: "Fail rate",
-        value: formatPercent(live.fail_rate, live.n_interactions),
-        href: "/live-runs",
+        label: "Failing answers",
+        value: failRate,
+        href: "/live-runs?failed=1",
+        hint: "Answers the judge marked as failing",
+        tone:
+          live.n_interactions === 0 || live.fail_rate == null
+            ? "neutral"
+            : live.fail_rate > 0
+              ? "fail"
+              : "ok",
       },
       {
-        label: "In progress",
-        value: String(live.n_pending),
-        href: "/live-runs",
-      },
-      {
-        label: "Mean score",
+        label: "Average quality",
         value: formatScore(live.mean_score),
         href: "/live-runs",
+        hint: "Mean judge score from 0 (bad) to 1 (good)",
+      },
+      {
+        label: "Waiting for judge",
+        value: String(live.n_pending),
+        href: "/live-runs",
+        hint: "Answers not scored yet",
       },
     ],
     offline: [
@@ -114,23 +129,29 @@ export function mapOverviewToDualKpi(
         label: "Test sets",
         value: String(offline.n_datasets),
         href: "/datasets",
+        hint: "Questions with expected answers",
       },
       {
-        label: "Metrics set",
+        label: "Metrics",
         value: offline.metrics_set
-          ? `${offline.metrics_set.name} v${offline.metrics_set.version}`
-          : "—",
+          ? `${offline.metrics_set.name} · v${offline.metrics_set.version}`
+          : "Not set up",
         href: "/metrics",
+        hint: "What every experiment is scored on",
       },
       {
-        label: "Last run",
-        value: latest?.name ?? "—",
+        label: "Latest experiment",
+        value: latest?.name ?? "None yet",
         href: latest ? `/experiments/${latest.id}` : "/experiments",
+        hint: "Most recent run of your app on a test set",
       },
       {
-        label: "Release ready",
-        value: offline.release_ready ? "Yes" : "No",
+        label: "Release gate",
+        value: offline.release_ready ? "Ready to check" : "Not ready",
         href: "/release",
+        hint: offline.release_ready
+          ? "Check the latest experiment against your quality bar"
+          : "Finish an experiment first",
       },
     ],
   };
@@ -173,7 +194,8 @@ export function mergeAttentionItems(
       id: `live-${item.interaction_id}`,
       kind: "live_fail",
       title: item.question,
-      subtitle: item.reason,
+      subtitle:
+        item.reason === "fail" ? "The judge marked this answer as failing" : item.reason,
       href: `/live-runs/${item.interaction_id}`,
       createdAt: item.created_at,
     });
@@ -185,10 +207,10 @@ export function mergeAttentionItems(
     rows.push({
       id: `regression-${regression.name}`,
       kind: "regression",
-      title: regression.name,
+      title: `${metricLabel(regression.name)} got worse`,
       subtitle:
         regression.delta != null
-          ? `Δ ${regression.delta.toFixed(3)}`
+          ? `${formatDeltaPoints(regression.delta)} vs baseline`
           : regression.status,
       href: regressionHref,
     });
@@ -198,8 +220,8 @@ export function mergeAttentionItems(
     rows.push({
       id: `calibration-${alert.kind}`,
       kind: "calibration",
-      title: alert.kind,
-      subtitle: `${(alert.agreement_rate * 100).toFixed(0)}% agreement (${alert.n_reviewed} reviewed)`,
+      title: `Reviewers often disagree with the ${metricLabel(alert.kind)} judge`,
+      subtitle: `${(alert.agreement_rate * 100).toFixed(0)}% agreement across ${alert.n_reviewed} reviews`,
     });
   }
 
@@ -223,45 +245,39 @@ export function buildLoopCards(overview: ProjectOverview): LoopCard[] {
 
   return [
     {
-      title: "Test set",
-      measure: "Reusable test cases (input + expected/actual).",
+      title: "1. Add a test set",
+      measure: "Questions your app must answer well, with expected answers and source documents.",
       status: nDatasets === 0 ? "empty" : "ready",
       summary:
         nDatasets === 0
-          ? "No test sets yet."
+          ? "No test sets yet"
           : `${nDatasets} test set${nDatasets === 1 ? "" : "s"}`,
       href: "/datasets",
-      cta: nDatasets === 0 ? "Create test set" : "Open test set",
+      cta: "Create test set",
     },
     {
-      title: "Metrics",
-      measure: "Metrics sets — what you measure on each run.",
+      title: "2. Choose metrics",
+      measure: "What “good” means: correctness, groundedness, retrieval quality and their thresholds.",
       status: metricsSet ? "ready" : "empty",
-      summary: metricsSet
-        ? `${metricsSet.name} v${metricsSet.version}`
-        : "No default metrics set yet.",
+      summary: metricsSet ? `${metricsSet.name} · v${metricsSet.version}` : "Not set up",
       href: "/metrics",
-      cta: metricsSet ? "Open metrics" : "Configure metrics",
+      cta: "Set up metrics",
     },
     {
-      title: "Runs",
-      measure: "Evaluation runs — scores per evaluator.",
+      title: "3. Run an experiment",
+      measure: "Run your app on the test set and score every answer.",
       status: latest ? "ready" : "empty",
-      summary: latest
-        ? `${latest.name} (${latest.status})`
-        : "No runs yet.",
+      summary: latest ? latest.name : "No experiments yet",
       href: latest ? `/experiments/${latest.id}` : "/experiments",
-      cta: latest ? "Open run" : "Create run",
+      cta: "New experiment",
     },
     {
-      title: "Release readiness",
-      measure: "PASS/FAIL against YAML thresholds.",
+      title: "4. Check the release",
+      measure: "Compare against your baseline and decide if it is safe to ship.",
       status: offline.release_ready ? "ready" : "empty",
-      summary: offline.release_ready
-        ? "At least one completed run — ready to run release check."
-        : "Complete a run before running release check.",
+      summary: offline.release_ready ? "Ready to check" : "Needs a finished experiment",
       href: "/release",
-      cta: "Open release",
+      cta: "Open release gate",
     },
   ];
 }

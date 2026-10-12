@@ -1,15 +1,15 @@
 "use client";
 
-import Link from "next/link";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
 import { useMemo, useState, type SubmitEvent } from "react";
-import { ArrowLeft } from "lucide-react";
+import { Plus, RotateCcw, ThumbsDown, ThumbsUp } from "lucide-react";
 import { toast } from "sonner";
 import { useDatasets } from "@/features/datasets/use-datasets";
 import { ErrorState } from "@/components/error-state";
 import { JudgeClaimsTable } from "@/components/judge-claims-table";
 import { LoadingBlock } from "@/components/loading-block";
+import { MetaItem, PageHeader } from "@/components/page-header";
 import { RelativeTime } from "@/components/relative-time";
 import { StatusBadge } from "@/components/status-badge";
 import { Badge } from "@/components/ui/badge";
@@ -23,6 +23,14 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { ApiError, formatErrorForUi } from "@/lib/api/client";
 import {
@@ -31,8 +39,12 @@ import {
   reviewLiveScore,
 } from "@/lib/api/live-runs";
 import type { LiveInteractionScore } from "@/lib/api/types";
+import { cn } from "@/lib/cn";
+import { formatScore } from "@/lib/format";
+import { metricInfo } from "@/lib/metrics-catalog";
 import { withProjectQuery } from "@/lib/project-href";
 import { useProjectId } from "@/lib/project-store";
+import { LIVE_VERDICT_LABELS, liveVerdict } from "./live-verdict";
 import { liveRunQueryKey, useLiveRun } from "./use-live-runs";
 
 function ScoreReviewControls({
@@ -47,6 +59,7 @@ function ScoreReviewControls({
   const queryClient = useQueryClient();
   const judgeExplanation = score.explanation ?? "";
   const existing = score.review;
+  const [disagreeOpen, setDisagreeOpen] = useState(false);
   const [explanation, setExplanation] = useState(
     existing?.corrected_explanation ?? judgeExplanation,
   );
@@ -56,7 +69,7 @@ function ScoreReviewControls({
     mutationFn: (verdict: "agree" | "disagree") => {
       const trimmed = explanation.trim();
       const changed =
-        trimmed.length > 0 && trimmed !== judgeExplanation.trim();
+        verdict === "disagree" && trimmed.length > 0 && trimmed !== judgeExplanation.trim();
       return reviewLiveScore(score.id, {
         verdict,
         corrected_explanation: changed ? trimmed : undefined,
@@ -64,7 +77,8 @@ function ScoreReviewControls({
       });
     },
     onSuccess: async () => {
-      toast.success(`Review saved for ${score.kind}`);
+      toast.success("Review saved");
+      setDisagreeOpen(false);
       await queryClient.invalidateQueries({
         queryKey: liveRunQueryKey(interactionId, projectId ?? ""),
       });
@@ -73,49 +87,71 @@ function ScoreReviewControls({
   });
 
   return (
-    <div className="mt-3 space-y-2 border-t border-border pt-3">
+    <div className="mt-3 flex flex-col gap-2 border-t border-border pt-3">
       <div className="flex flex-wrap items-center gap-2">
-        <span className="text-xs font-medium text-muted-foreground">
-          Human review
+        <span className="text-xs text-muted-foreground">
+          {existing
+            ? existing.verdict === "agree"
+              ? "You confirmed this verdict."
+              : "You marked this verdict as wrong."
+            : "Is the judge right?"}
         </span>
-        {existing ? (
-          <Badge variant="outline">{existing.verdict}</Badge>
-        ) : null}
-      </div>
-      <label className="block text-xs text-muted-foreground">
-        Explanation (edit if incomplete)
-        <Textarea
-          className="mt-1"
-          value={explanation}
-          onChange={(e) => setExplanation(e.target.value)}
-          rows={3}
-        />
-      </label>
-      <Textarea
-        placeholder="Optional note"
-        value={note}
-        onChange={(e) => setNote(e.target.value)}
-        rows={2}
-      />
-      <div className="flex flex-wrap gap-2">
+        <div className="flex-1" />
         <Button
           type="button"
           size="sm"
+          variant={existing?.verdict === "agree" ? "default" : "outline"}
+          className="h-7"
           disabled={mutation.isPending}
           onClick={() => mutation.mutate("agree")}
         >
-          Agree
+          <ThumbsUp className="size-3.5" />
+          Correct
         </Button>
         <Button
           type="button"
           size="sm"
-          variant="outline"
+          variant={existing?.verdict === "disagree" ? "default" : "outline"}
+          className="h-7"
           disabled={mutation.isPending}
-          onClick={() => mutation.mutate("disagree")}
+          onClick={() => setDisagreeOpen((o) => !o)}
+          aria-expanded={disagreeOpen}
         >
-          Disagree
+          <ThumbsDown className="size-3.5" />
+          Wrong
         </Button>
       </div>
+      {disagreeOpen ? (
+        <div className="flex flex-col gap-2 rounded-md bg-surface-2 p-3">
+          <label className="flex flex-col gap-1 text-xs text-muted-foreground">
+            What should the judge have said?
+            <Textarea
+              value={explanation}
+              onChange={(e) => setExplanation(e.target.value)}
+              rows={3}
+              className="bg-background text-sm"
+            />
+          </label>
+          <label className="flex flex-col gap-1 text-xs text-muted-foreground">
+            Note (optional)
+            <Textarea
+              value={note}
+              onChange={(e) => setNote(e.target.value)}
+              rows={2}
+              className="bg-background text-sm"
+            />
+          </label>
+          <Button
+            type="button"
+            size="sm"
+            className="self-end"
+            disabled={mutation.isPending}
+            onClick={() => mutation.mutate("disagree")}
+          >
+            {mutation.isPending ? "Saving…" : "Save review"}
+          </Button>
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -137,7 +173,7 @@ export function LiveRunDetail({ interactionId }: { interactionId: string }) {
   const rescoreMutation = useMutation({
     mutationFn: () => rescoreLiveInteraction(interactionId),
     onSuccess: async () => {
-      toast.success("Rescored");
+      toast.success("Judge re-run");
       await queryClient.invalidateQueries({
         queryKey: liveRunQueryKey(interactionId, projectId ?? ""),
       });
@@ -155,9 +191,9 @@ export function LiveRunDetail({ interactionId }: { interactionId: string }) {
     onSuccess: (item) => {
       const forked = item.dataset_id !== datasetId;
       if (forked) {
-        toast.success("Created a new test set version and promoted");
+        toast.success("Added to a new version of the test set");
       } else {
-        toast.success("Promoted to test set");
+        toast.success("Added to the test set");
       }
       setPromoteOpen(false);
       setExpectedOutput("");
@@ -202,8 +238,8 @@ export function LiveRunDetail({ interactionId }: { interactionId: string }) {
       <ErrorState
         message={
           wrongProject
-            ? "This live interaction is not in the selected project."
-            : "Could not load live interaction."
+            ? "This answer belongs to another project."
+            : "Could not load this answer."
         }
       />
     );
@@ -212,240 +248,307 @@ export function LiveRunDetail({ interactionId }: { interactionId: string }) {
   function onPromote(e: SubmitEvent) {
     e.preventDefault();
     if (!datasetId) {
-      toast.error("Select a dataset");
+      toast.error("Choose a test set");
       return;
     }
     if (!expectedOutput.trim()) {
-      toast.error("Write the expected (gold) answer");
+      toast.error("Write the correct answer");
       return;
     }
     promoteMutation.mutate();
   }
 
+  const verdict = liveVerdict(row);
+  const title =
+    row.question.length > 90 ? `${row.question.slice(0, 90).trimEnd()}…` : row.question;
+
   return (
-    <div className="space-y-6">
-      <div className="flex flex-wrap items-center gap-3">
-        <Link
-          href={withProjectQuery("/live-runs", projectId)}
-          className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
-        >
-          <ArrowLeft className="size-4" />
-          Live runs
-        </Link>
-        <StatusBadge status={row.judge_status} />
-        <span className="text-sm text-muted-foreground">
-          <RelativeTime date={row.created_at} />
-        </span>
-        {reviewedKinds > 0 ? (
-          <Badge variant="outline">
-            reviewed {reviewedKinds}/{row.scores.length}
-          </Badge>
-        ) : null}
-        <div className="flex-1" />
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          disabled={rescoreMutation.isPending}
-          onClick={() => rescoreMutation.mutate()}
-        >
-          Rescore
-        </Button>
-        <Dialog open={promoteOpen} onOpenChange={setPromoteOpen}>
-          <DialogTrigger
-            render={
-              <Button type="button" size="sm" variant="secondary">
-                Promote to TestSet
-              </Button>
-            }
-          />
-          <DialogContent>
-            <form onSubmit={onPromote}>
-              <DialogHeader>
-                <DialogTitle>Promote to test set</DialogTitle>
-                <DialogDescription>
-                  Creates a dataset item from this question. Gold must be
-                  written by you: the production answer and retrieved docs
-                  are what is being evaluated, so they are never copied in.
-                </DialogDescription>
-              </DialogHeader>
-              <div className="space-y-3 py-3">
-                <label className="block text-sm">
-                  Dataset
-                  <select
-                    className="mt-1 h-9 w-full rounded-md border border-border bg-background px-2 text-sm"
-                    value={datasetId}
-                    onChange={(e) => setDatasetId(e.target.value)}
-                    required
+    <div className="flex flex-col gap-6">
+      <PageHeader
+        breadcrumbs={[
+          { label: "Live traffic", href: withProjectQuery("/live-runs", projectId) },
+          { label: "Answer" },
+        ]}
+        title={title}
+        badges={
+          <span
+            className={cn(
+              "inline-flex items-center rounded px-1.5 py-0.5 text-xs font-medium",
+              verdict === "failing"
+                ? "bg-status-fail-bg text-status-fail"
+                : verdict === "passing"
+                  ? "bg-status-ok-bg text-status-ok"
+                  : "bg-status-unset-bg text-status-unset",
+            )}
+          >
+            {LIVE_VERDICT_LABELS[verdict]}
+          </span>
+        }
+        meta={
+          <>
+            <MetaItem label="Received">
+              <RelativeTime date={row.created_at} />
+            </MetaItem>
+            {row.scores.length > 0 ? (
+              <MetaItem label="Reviewed">
+                {reviewedKinds} of {row.scores.length} verdicts
+              </MetaItem>
+            ) : null}
+          </>
+        }
+        actions={
+          <>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              disabled={rescoreMutation.isPending}
+              onClick={() => rescoreMutation.mutate()}
+              title="Ask the judge to score this answer again"
+            >
+              <RotateCcw className="size-4" />
+              {rescoreMutation.isPending ? "Re-scoring…" : "Re-run judge"}
+            </Button>
+            <Dialog open={promoteOpen} onOpenChange={setPromoteOpen}>
+              <DialogTrigger
+                render={
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant={verdict === "failing" ? "default" : "outline"}
                   >
-                    <option value="">Select…</option>
-                    {(datasets.data ?? []).map((ds) => (
-                      <option key={ds.id} value={ds.id}>
-                        {ds.name} v{ds.version}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <label className="block text-sm">
-                  Expected output (gold)
-                  <Textarea
-                    className="mt-1"
-                    value={expectedOutput}
-                    onChange={(e) => setExpectedOutput(e.target.value)}
-                    placeholder={`Production answer: ${row.answer}`}
-                    required
-                  />
-                </label>
-                {docPreview.length > 0 ? (
-                  <fieldset className="text-sm">
-                    <legend>Expected doc ids (check only truly relevant)</legend>
-                    <div className="mt-1 space-y-1">
-                      {docPreview.map((d) => (
-                        <label key={d.id} className="flex items-center gap-2">
-                          <input
-                            type="checkbox"
-                            checked={expectedDocIds.includes(d.id)}
-                            onChange={(e) =>
-                              setExpectedDocIds((prev) =>
-                                e.target.checked
-                                  ? [...prev, d.id]
-                                  : prev.filter((x) => x !== d.id),
-                              )
-                            }
-                          />
-                          <span className="font-mono">{d.id}</span>
-                          {d.title ? (
-                            <span className="text-muted-foreground">
-                              {d.title}
-                            </span>
-                          ) : null}
-                        </label>
-                      ))}
+                    <Plus className="size-4" />
+                    Add to test set
+                  </Button>
+                }
+              />
+              <DialogContent className="sm:max-w-lg">
+                <form onSubmit={onPromote}>
+                  <DialogHeader>
+                    <DialogTitle>Add this question to a test set</DialogTitle>
+                    <DialogDescription>
+                      Future experiments will be checked on it. Write the correct
+                      answer yourself — the production answer is what is being
+                      tested, so it is never copied.
+                    </DialogDescription>
+                  </DialogHeader>
+                  <div className="flex flex-col gap-4 py-4">
+                    <div className="flex flex-col gap-1.5">
+                      <label htmlFor="promote-dataset" className="text-sm font-medium">
+                        Test set
+                      </label>
+                      <Select value={datasetId} onValueChange={(v) => setDatasetId(v ?? "")}>
+                        <SelectTrigger id="promote-dataset" className="w-full">
+                          <SelectValue placeholder="Choose a test set" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {(datasets.data ?? []).map((ds) => (
+                            <SelectItem key={ds.id} value={ds.id}>
+                              {ds.name} · v{ds.version}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
                     </div>
-                  </fieldset>
-                ) : null}
-                <label className="block text-sm">
-                  Other expected doc ids (not retrieved, comma-separated)
-                  <input
-                    className="mt-1 h-9 w-full rounded-md border border-border bg-background px-2 text-sm"
-                    value={extraDocIds}
-                    onChange={(e) => setExtraDocIds(e.target.value)}
-                    placeholder="e.g. pto-policy, benefits-faq"
-                  />
-                </label>
-              </div>
-              <DialogFooter>
-                <Button type="submit" disabled={promoteMutation.isPending}>
-                  Promote
-                </Button>
-              </DialogFooter>
-            </form>
-          </DialogContent>
-        </Dialog>
-      </div>
+                    <div className="flex flex-col gap-1.5">
+                      <label htmlFor="promote-expected" className="text-sm font-medium">
+                        Correct answer
+                      </label>
+                      <Textarea
+                        id="promote-expected"
+                        value={expectedOutput}
+                        onChange={(e) => setExpectedOutput(e.target.value)}
+                        placeholder="What should the app have answered?"
+                        rows={3}
+                        required
+                      />
+                    </div>
+                    {docPreview.length > 0 ? (
+                      <fieldset className="flex flex-col gap-1.5 text-sm">
+                        <legend className="mb-1.5 font-medium">
+                          Which documents contain the answer?
+                        </legend>
+                        {docPreview.map((d) => (
+                          <label key={d.id} className="flex items-center gap-2">
+                            <input
+                              type="checkbox"
+                              className="size-4 accent-primary"
+                              checked={expectedDocIds.includes(d.id)}
+                              onChange={(e) =>
+                                setExpectedDocIds((prev) =>
+                                  e.target.checked
+                                    ? [...prev, d.id]
+                                    : prev.filter((x) => x !== d.id),
+                                )
+                              }
+                            />
+                            <span className="text-foreground">{d.title ?? d.id}</span>
+                            {d.title ? (
+                              <Badge variant="outline" className="font-normal">
+                                {d.id}
+                              </Badge>
+                            ) : null}
+                          </label>
+                        ))}
+                      </fieldset>
+                    ) : null}
+                    <div className="flex flex-col gap-1.5">
+                      <label htmlFor="promote-extra" className="text-sm font-medium">
+                        Other documents that should have been found{" "}
+                        <span className="font-normal text-muted-foreground">(optional)</span>
+                      </label>
+                      <Input
+                        id="promote-extra"
+                        value={extraDocIds}
+                        onChange={(e) => setExtraDocIds(e.target.value)}
+                        placeholder="Document IDs, comma-separated"
+                      />
+                    </div>
+                  </div>
+                  <DialogFooter>
+                    <Button type="button" variant="outline" onClick={() => setPromoteOpen(false)}>
+                      Cancel
+                    </Button>
+                    <Button type="submit" disabled={promoteMutation.isPending}>
+                      {promoteMutation.isPending ? "Adding…" : "Add to test set"}
+                    </Button>
+                  </DialogFooter>
+                </form>
+              </DialogContent>
+            </Dialog>
+          </>
+        }
+        className="mb-0"
+      />
 
       {row.score_warning ? (
-        <p className="rounded-md border border-border bg-surface px-3 py-2 text-sm text-muted-foreground">
+        <p className="rounded-md border border-status-warn bg-status-warn-bg px-3 py-2 text-sm text-status-warn">
           {row.score_warning}
         </p>
       ) : null}
       {row.error_message ? (
-        <p className="rounded-md border border-destructive/40 bg-surface px-3 py-2 text-sm text-destructive">
+        <p className="rounded-md border border-status-fail bg-status-fail-bg px-3 py-2 text-sm text-status-fail">
           {row.error_message}
         </p>
       ) : null}
 
-      <section className="space-y-2">
-        <h2 className="text-sm font-medium text-foreground">Question</h2>
-        <p className="whitespace-pre-wrap text-sm">{row.question}</p>
-      </section>
-      <section className="space-y-2">
-        <h2 className="text-sm font-medium text-foreground">Answer</h2>
-        <p className="whitespace-pre-wrap text-sm">{row.answer}</p>
-      </section>
-      <section className="space-y-2">
-        <h2 className="text-sm font-medium text-foreground">Documents</h2>
-        {docPreview.length === 0 ? (
-          <p className="text-sm text-muted-foreground">No documents</p>
-        ) : (
-          <ul className="space-y-2">
-            {docPreview.map((doc) => (
-              <li
-                key={doc.id}
-                className="rounded-md border border-border bg-surface p-3 text-sm"
-              >
-                <div className="font-mono text-xs text-muted-foreground">
-                  {doc.id}
-                  {doc.title ? ` — ${doc.title}` : ""}
-                </div>
-                {doc.text ? (
-                  <p className="mt-1 whitespace-pre-wrap text-foreground">
-                    {doc.text}
-                  </p>
-                ) : null}
-              </li>
-            ))}
-          </ul>
-        )}
-      </section>
+      <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+        <div className="flex flex-col gap-4">
+          {title !== row.question ? (
+            <section className="flex flex-col gap-1.5">
+              <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                Question
+              </h2>
+              <p className="rounded-md border border-border bg-surface px-3 py-2 text-sm whitespace-pre-wrap">
+                {row.question}
+              </p>
+            </section>
+          ) : null}
+          <section className="flex flex-col gap-1.5">
+            <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+              App answer
+            </h2>
+            <p className="rounded-md border border-border bg-surface px-3 py-2 text-sm whitespace-pre-wrap">
+              {row.answer}
+            </p>
+          </section>
+          <section className="flex flex-col gap-1.5">
+            <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+              Retrieved documents
+            </h2>
+            {docPreview.length === 0 ? (
+              <p className="text-sm text-status-warn">
+                No documents were retrieved for this answer.
+              </p>
+            ) : (
+              <ul className="flex flex-col gap-1.5">
+                {docPreview.map((doc) => (
+                  <li
+                    key={doc.id}
+                    className="rounded-md border border-border bg-surface px-3 py-2 text-sm"
+                  >
+                    <div className="flex items-center gap-2">
+                      <span className="font-medium text-foreground">{doc.title ?? doc.id}</span>
+                      {doc.title ? (
+                        <Badge variant="outline" className="font-normal">
+                          {doc.id}
+                        </Badge>
+                      ) : null}
+                    </div>
+                    {doc.text ? (
+                      <p className="mt-1 line-clamp-4 whitespace-pre-wrap text-muted-foreground">
+                        {doc.text}
+                      </p>
+                    ) : null}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>
+        </div>
 
-      <section className="space-y-2">
-        <h2 className="text-sm font-medium text-foreground">Judge scores</h2>
-        <p className="text-xs text-muted-foreground">
-          Agree or disagree with each judge label. Edit the explanation when the
-          rationale is incomplete; the original judge text is kept on the score.
-        </p>
-        {row.scores.length === 0 ? (
-          <p className="text-sm text-muted-foreground">No scores yet</p>
-        ) : (
-          <div className="grid gap-2">
-            {row.scores.map((score) => (
-              <div
-                key={score.id}
-                className="rounded-md border border-border bg-surface p-3 text-sm"
-              >
-                <div className="flex items-center justify-between gap-2">
-                  <span className="font-medium">{score.kind}</span>
-                  <Badge variant="outline">{score.label ?? "—"}</Badge>
-                </div>
-                <div className="mt-1 font-mono tabular-nums">
-                  {score.score == null ? "—" : score.score.toFixed(3)}
-                  {score.threshold != null
-                    ? ` (threshold ${score.threshold})`
-                    : ""}
-                </div>
-                {score.explanation ? (
-                  <p className="mt-2 text-muted-foreground">
-                    {score.explanation}
-                  </p>
-                ) : null}
-                {score.review?.corrected_explanation ? (
-                  <p className="mt-2 text-foreground">
-                    <span className="text-xs font-medium text-muted-foreground">
-                      Corrected explanation:{" "}
+        <section className="flex flex-col gap-2">
+          <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+            Judge verdicts
+          </h2>
+          {row.scores.length === 0 ? (
+            <p className="text-sm text-muted-foreground">
+              The judge has not scored this answer yet.
+            </p>
+          ) : (
+            row.scores.map((score) => {
+              const info = metricInfo(score.kind);
+              return (
+                <div
+                  key={score.id}
+                  className="rounded-lg border border-border bg-surface p-4 text-sm"
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="font-medium text-foreground" title={info.description}>
+                      {info.label}
                     </span>
-                    {score.review.corrected_explanation}
-                  </p>
-                ) : null}
-                <div className="mt-2">
-                  <JudgeClaimsTable metadata={score.metadata} />
+                    <span className="flex items-center gap-2">
+                      <span className="tabular-nums text-muted-foreground">
+                        {formatScore(score.score)}
+                        {score.threshold != null ? ` / needs ${formatScore(score.threshold)}` : ""}
+                      </span>
+                      {score.label ? <StatusBadge status={score.label} /> : null}
+                    </span>
+                  </div>
+                  {info.description ? (
+                    <p className="mt-0.5 text-xs text-muted-foreground">{info.description}</p>
+                  ) : null}
+                  {score.explanation ? (
+                    <p className="mt-2 text-foreground">{score.explanation}</p>
+                  ) : null}
+                  {score.review?.corrected_explanation ? (
+                    <p className="mt-2 rounded-md bg-surface-2 px-2 py-1.5 text-foreground">
+                      <span className="text-xs font-medium text-muted-foreground">
+                        Reviewer correction:{" "}
+                      </span>
+                      {score.review.corrected_explanation}
+                    </p>
+                  ) : null}
+                  <div className="mt-2">
+                    <JudgeClaimsTable metadata={score.metadata} title="Claims checked" />
+                  </div>
+                  <ScoreReviewControls
+                    key={[
+                      score.id,
+                      score.explanation ?? "",
+                      score.review?.corrected_explanation ?? "",
+                      score.review?.note ?? "",
+                    ].join("|")}
+                    score={score}
+                    interactionId={interactionId}
+                    projectId={projectId}
+                  />
                 </div>
-                <ScoreReviewControls
-                  key={[
-                    score.id,
-                    score.explanation ?? "",
-                    score.review?.corrected_explanation ?? "",
-                    score.review?.note ?? "",
-                  ].join("|")}
-                  score={score}
-                  interactionId={interactionId}
-                  projectId={projectId}
-                />
-              </div>
-            ))}
-          </div>
-        )}
-      </section>
+              );
+            })
+          )}
+        </section>
+      </div>
     </div>
   );
 }

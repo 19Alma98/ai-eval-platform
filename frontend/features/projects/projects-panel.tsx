@@ -87,7 +87,7 @@ export function ProjectsPanel({
       {!compact ? (
         <PageIntro
           title="Projects"
-          glossary="Create and select a project to scope traces, datasets, metrics, and evaluation runs."
+          glossary="A project holds everything for one AI app: its test sets, experiments, metrics and live traffic."
         />
       ) : (
         <div className="mb-3 flex items-center justify-between gap-3">
@@ -109,7 +109,7 @@ export function ProjectsPanel({
       {projects.length === 0 ? (
         <EmptyState
           title="No projects yet"
-          description="Create a project to get started with traces and evaluations."
+          description="A project groups the test sets, experiments and live traffic of one AI application. Create one to get started."
           action={
             <CreateProjectDialog open={createOpen} onOpenChange={setCreateOpen} />
           }
@@ -134,9 +134,8 @@ export function ProjectsPanel({
                   <span className="block truncate text-sm font-medium text-foreground">
                     {p.name}
                   </span>
-                  <span className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 font-mono text-xs text-muted-foreground">
-                    <span>{p.slug}</span>
-                    <RelativeTime date={p.created_at} />
+                  <span className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-muted-foreground">
+                    <span>Created <RelativeTime date={p.created_at} /></span>
                   </span>
                 </button>
                 <Button

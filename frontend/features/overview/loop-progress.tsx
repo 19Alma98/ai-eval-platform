@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { CheckCircle2 } from "lucide-react";
 import { buttonVariants } from "@/components/ui/button";
 import { cn } from "@/lib/cn";
 import { withProjectQuery } from "@/lib/project-href";
@@ -27,18 +28,23 @@ export function LoopProgress({
           <div
             key={c.title}
             className={cn(
-              "rounded-md border border-border bg-surface p-3",
+              "rounded-lg border border-border bg-surface p-4",
               c.status === "empty" && "border-dashed",
             )}
           >
-            <p className="text-xs font-medium text-muted-foreground">{c.title}</p>
-            <p className="mt-1 text-sm text-foreground">{c.summary}</p>
+            <div className="flex items-center justify-between gap-2">
+              <p className="text-sm font-medium text-foreground">{c.title}</p>
+              {c.status === "ready" ? (
+                <CheckCircle2 className="size-4 shrink-0 text-status-ok" aria-label="Done" />
+              ) : null}
+            </div>
             <p className="mt-1 text-xs text-muted-foreground">{c.measure}</p>
+            <p className="mt-2 text-sm text-foreground">{c.summary}</p>
             {showCta ? (
               <Link
                 href={withProjectQuery(c.href, projectId)}
                 className={cn(
-                  buttonVariants({ variant: "outline", size: "sm" }),
+                  buttonVariants({ variant: "default", size: "sm" }),
                   "mt-3",
                 )}
               >

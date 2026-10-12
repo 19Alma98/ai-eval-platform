@@ -27,7 +27,7 @@ export function RelativeTime({
     <time
       dateTime={parsed.toISOString()}
       title={formatTs(parsed)}
-      className={cn("font-mono tabular-nums", className)}
+      className={cn("tabular-nums", className)}
     >
       {label}
     </time>

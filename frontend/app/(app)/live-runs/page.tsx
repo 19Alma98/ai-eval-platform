@@ -1,11 +1,13 @@
 "use client";
 
+import { Suspense } from "react";
+import { LoadingBlock } from "@/components/loading-block";
 import { PageIntro } from "@/components/page-intro";
 import { LiveRunList } from "@/features/live-runs/live-run-list";
 import { ProjectRequired } from "@/components/project-required";
 import { useProjectId } from "@/lib/project-store";
 
-export default function LiveRunsPage() {
+function LiveRunsPageContent() {
   const { projectId } = useProjectId();
 
   if (!projectId) {
@@ -15,10 +17,18 @@ export default function LiveRunsPage() {
   return (
     <>
       <PageIntro
-        title="Live runs"
-        glossary="Prod-like interactions pushed via the SDK — gold-less LLM judge for groundedness / hallucination risk, plus light human review."
+        title="Live traffic"
+        glossary="Real questions from production, scored automatically by an LLM judge. Review the verdicts and turn failures into test cases."
       />
       <LiveRunList />
     </>
+  );
+}
+
+export default function LiveRunsPage() {
+  return (
+    <Suspense fallback={<LoadingBlock className="min-h-[240px]" />}>
+      <LiveRunsPageContent />
+    </Suspense>
   );
 }

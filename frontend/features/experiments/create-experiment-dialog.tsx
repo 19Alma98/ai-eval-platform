@@ -55,10 +55,12 @@ export function CreateExperimentDialog({
   projectId,
   open,
   onOpenChange,
+  initialDatasetId,
 }: {
   projectId: string;
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  initialDatasetId?: string;
 }) {
   const router = useRouter();
   const queryClient = useQueryClient();
@@ -70,7 +72,7 @@ export function CreateExperimentDialog({
   const hasDatasets = datasets.length > 0;
 
   const [name, setName] = useState("");
-  const [datasetId, setDatasetId] = useState("");
+  const [datasetId, setDatasetId] = useState(initialDatasetId ?? "");
   const [appConfigPick, setAppConfigPick] = useState<AppConfigPick>("none");
   const [model, setModel] = useState("");
   const [version, setVersion] = useState("");
@@ -149,7 +151,7 @@ export function CreateExperimentDialog({
       });
       toast.success("Experiment created");
       setName("");
-      setDatasetId("");
+      setDatasetId(initialDatasetId ?? "");
       setAppConfigPick("none");
       setModel("");
       setVersion("");
@@ -208,9 +210,10 @@ export function CreateExperimentDialog({
       <DialogContent className="sm:max-w-md">
         <form onSubmit={handleSubmit}>
           <DialogHeader>
-            <DialogTitle>Create experiment</DialogTitle>
+            <DialogTitle>New experiment</DialogTitle>
             <DialogDescription>
-              Run evaluators against a dataset and compare scores over time.
+              An experiment runs one version of your app on a test set. Next you
+              run your app with the SDK, then score the answers here.
             </DialogDescription>
           </DialogHeader>
           <div className="flex flex-col gap-3 py-4">
@@ -222,13 +225,13 @@ export function CreateExperimentDialog({
                 id="experiment-create-name"
                 value={name}
                 onChange={(e) => setName(e.target.value)}
-                placeholder="Baseline v1"
+                placeholder="e.g. gpt-4o with new prompt"
                 required
               />
             </div>
             <div className="flex flex-col gap-2">
               <label htmlFor="experiment-create-dataset" className="text-sm font-medium">
-                Dataset
+                Test set
               </label>
               <Select
                 value={datasetId}
@@ -236,7 +239,7 @@ export function CreateExperimentDialog({
                 disabled={!hasDatasets}
               >
                 <SelectTrigger id="experiment-create-dataset">
-                  <SelectValue placeholder="Select dataset" />
+                  <SelectValue placeholder="Choose a test set" />
                 </SelectTrigger>
                 <SelectContent>
                   {datasets.map((d) => (
@@ -248,12 +251,12 @@ export function CreateExperimentDialog({
               </Select>
               {!hasDatasets ? (
                 <p className="text-xs text-muted-foreground">
-                  No datasets yet —{" "}
+                  No test sets yet —{" "}
                   <Link
                     href={withProjectQuery("/datasets", projectId)}
                     className="text-primary hover:underline"
                   >
-                    create a dataset
+                    create a test set
                   </Link>{" "}
                   first.
                 </p>
@@ -261,11 +264,12 @@ export function CreateExperimentDialog({
             </div>
             <div className="flex flex-col gap-2">
               <label htmlFor="experiment-create-app-pick" className="text-sm font-medium">
-                App config{" "}
+                App version{" "}
                 <span className="font-normal text-muted-foreground">(optional)</span>
               </label>
               <p className="text-xs text-muted-foreground">
-                Versioned prompt, model, and retrieval settings for this run.
+                Link a registered app config so you can see which prompt, model and
+                retrieval settings produced these results.
               </p>
               <Select
                 value={appConfigPick}
@@ -277,19 +281,19 @@ export function CreateExperimentDialog({
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="none">None — use advanced below</SelectItem>
+                  <SelectItem value="none">Not linked — describe it below</SelectItem>
                   <SelectItem value="alias" disabled={aliases.length === 0}>
-                    Alias
+                    By alias (e.g. production)
                   </SelectItem>
                   <SelectItem value="family" disabled={familyNames.length === 0}>
-                    Family + version
+                    Specific config version
                   </SelectItem>
                 </SelectContent>
               </Select>
               {!hasRegistry ? (
                 <p className="text-xs text-muted-foreground">
-                  No app configs in this project yet. Register them from your app
-                  via the SDK or API, then refresh. Or use Advanced below.
+                  No app configs registered yet. You can still describe the model
+                  below.
                 </p>
               ) : null}
             </div>
@@ -320,7 +324,7 @@ export function CreateExperimentDialog({
               <>
                 <div className="flex flex-col gap-2">
                   <label htmlFor="experiment-create-family" className="text-sm font-medium">
-                    Config family
+                    App config
                   </label>
                   <Select
                     value={selectedFamily}
@@ -331,7 +335,7 @@ export function CreateExperimentDialog({
                     disabled={familyNames.length === 0}
                   >
                     <SelectTrigger id="experiment-create-family">
-                      <SelectValue placeholder="Select family" />
+                      <SelectValue placeholder="Choose a config" />
                     </SelectTrigger>
                     <SelectContent>
                       {familyNames.map((family) => (
@@ -347,7 +351,7 @@ export function CreateExperimentDialog({
                     htmlFor="experiment-create-config-version"
                     className="text-sm font-medium"
                   >
-                    Config version
+                    Version
                   </label>
                   <Select
                     value={selectedConfigId}
@@ -370,7 +374,7 @@ export function CreateExperimentDialog({
             ) : null}
             <div className="flex flex-col gap-2">
               <label htmlFor="experiment-create-metrics-set" className="text-sm font-medium">
-                Metrics set
+                Metrics
               </label>
               <Select
                 value={selectedMetricsSet}
@@ -383,7 +387,7 @@ export function CreateExperimentDialog({
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value={PROJECT_DEFAULT_SELECT}>
-                    Default progetto (fallback)
+                    Project default
                   </SelectItem>
                   {metricsSets.map((s) => (
                     <SelectItem key={s.id} value={s.id}>
@@ -394,11 +398,8 @@ export function CreateExperimentDialog({
               </Select>
             </div>
             {appConfigPick === "none" ? (
-              <details className="rounded-md border border-border px-3 py-2" open>
-                <summary className="cursor-pointer text-sm font-medium text-foreground">
-                  Advanced — without registry
-                </summary>
-                <div className="mt-3 flex flex-col gap-3">
+              <div className="rounded-md border border-border px-3 py-3">
+                <div className="flex flex-col gap-3">
                   <div className="flex flex-col gap-2">
                     <label htmlFor="experiment-create-model" className="text-sm font-medium">
                       Model{" "}
@@ -413,7 +414,7 @@ export function CreateExperimentDialog({
                   </div>
                   <div className="flex flex-col gap-2">
                     <label htmlFor="experiment-create-version" className="text-sm font-medium">
-                      Version{" "}
+                      Version label{" "}
                       <span className="font-normal text-muted-foreground">(optional)</span>
                     </label>
                     <Input
@@ -424,7 +425,7 @@ export function CreateExperimentDialog({
                     />
                   </div>
                 </div>
-              </details>
+              </div>
             ) : null}
           </div>
           <DialogFooter>
@@ -436,7 +437,7 @@ export function CreateExperimentDialog({
               Cancel
             </Button>
             <Button type="submit" disabled={!canSubmit || create.isPending}>
-              {create.isPending ? "Creating…" : "Create"}
+              {create.isPending ? "Creating…" : "Create experiment"}
             </Button>
           </DialogFooter>
         </form>
