@@ -39,7 +39,7 @@ LLM judge tests must not rely on live providers for every CI run.
 Use:
 - mocked provider
 - recorded fixtures
-- small scheduled live smoke suite
+- small scheduled / manual live smoke suite (`scripts/judge_sanity.py`; see `docs/03-evaluation-engine.md` and `.github/workflows/judge-sanity.yml.example`)
 
 ## Frontend
 

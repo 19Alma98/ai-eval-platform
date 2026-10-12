@@ -1,0 +1,57 @@
+# Example workflow: offline judge sanity suite against a real LLM.
+# This file is intentionally named *.yml.example so GitHub Actions does not run it.
+# Copy to judge-sanity.yml and set repository secrets / variables for the judge provider.
+#
+# Exit codes from scripts/judge_sanity.py:
+#   0 pass | 1 threshold failure | 2 config / runtime error
+#
+# Default PR CI (ci.yml) stays provider-free; run this on workflow_dispatch or a schedule.
+
+name: Judge sanity example
+
+on:
+  workflow_dispatch:
+    inputs:
+      variants:
+        description: Comma-separated variants (or all)
+        required: false
+        default: all
+      method:
+        description: Judge method (claims or rubric; empty = default)
+        required: false
+        default: ""
+      llm_model:
+        description: LiteLLM model id (overrides LLM_MODEL secret/var)
+        required: false
+        default: ""
+
+jobs:
+  judge-sanity:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          version: "0.8.4"
+
+      - name: Set up Python
+        run: uv python install 3.12
+
+      - name: Install backend
+        working-directory: backend
+        run: uv sync
+
+      - name: Run judge sanity suite
+        working-directory: backend
+        env:
+          LLM_MODEL: ${{ inputs.llm_model != '' && inputs.llm_model || secrets.LLM_MODEL }}
+          LLM_API_BASE: ${{ secrets.LLM_API_BASE }}
+          LLM_API_KEY: ${{ secrets.LLM_API_KEY }}
+        run: |
+          ARGS=(../scripts/judge_sanity.py --variants "${{ inputs.variants }}")
+          if [ -n "${{ inputs.method }}" ]; then
+            ARGS+=(--method "${{ inputs.method }}")
+          fi
+          uv run python "${ARGS[@]}"

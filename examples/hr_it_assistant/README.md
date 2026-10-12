@@ -2,6 +2,8 @@
 
 Keyword-retrieval RAG over a fictional HR/IT policy knowledge base. Calls local **Ollama** via the OpenAI-compatible API, exports OpenInference spans through the **aiobs SDK** (`bind_evaluation`, `set_retrieval_documents`), and pairs with `scripts/portfolio_demo.py` to build a `rag_qa` test set, score with the project metrics pack, and compare two models on the same exam.
 
+Canonical gold lives in `knowledge.json` (full `expected_answer` + `must_contain` per question). `eval_import.csv` is a derived CSV of the same rows for API/UI import.
+
 ## Prerequisites
 
 1. Platform running from the repo root: `docker compose up --build`.

@@ -38,24 +38,52 @@ def retrieve(
     return [item for _, item in scored[:top_k]]
 
 
+def _expected_answer(gold: dict[str, Any]) -> str:
+    answer = gold.get("expected_answer")
+    if isinstance(answer, str) and answer.strip():
+        return answer.strip()
+    return str(gold["must_contain"])
+
+
 def iter_gold(docs: list[dict[str, Any]]) -> list[tuple[str, str, str]]:
     """Return (question, expected_answer, doc_id) for each gold row."""
     out: list[tuple[str, str, str]] = []
     for doc in docs:
         doc_id = str(doc["id"])
         for g in doc.get("gold") or []:
-            out.append((str(g["question"]), str(g["must_contain"]), doc_id))
+            out.append((str(g["question"]), _expected_answer(g), doc_id))
     return out
+
+
+def gold_rows_for_api(docs: list[dict[str, Any]] | None = None) -> list[dict[str, Any]]:
+    """Rows shaped for rag_qa dataset create / demo scripts."""
+    knowledge = docs if docs is not None else load_knowledge()
+    rows: list[dict[str, Any]] = []
+    for doc in knowledge:
+        doc_id = str(doc["id"])
+        for g in doc.get("gold") or []:
+            phrase = str(g["must_contain"])
+            rows.append(
+                {
+                    "question": str(g["question"]),
+                    "expected_output": _expected_answer(g),
+                    "expected_doc_ids": [doc_id],
+                    "must_contain": [phrase],
+                }
+            )
+    if not rows:
+        raise RuntimeError(f"no gold rows in {DEFAULT_KB}")
+    return rows
 
 
 def expected_for_question(docs: list[dict[str, Any]], question: str) -> str | None:
     q = question.lower().strip()
-    for gq, must, _doc_id in iter_gold(docs):
+    for gq, answer, _doc_id in iter_gold(docs):
         if gq.lower().strip() == q:
-            return must
+            return answer
     hits = retrieve(docs, question, top_k=1)
     if hits:
         gold = hits[0].get("gold") or []
         if gold:
-            return str(gold[0]["must_contain"])
+            return _expected_answer(gold[0])
     return None

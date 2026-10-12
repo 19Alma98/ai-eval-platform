@@ -7,6 +7,7 @@
     "gold": [
       {
         "question": "How many PTO days do full-time employees get per year?",
+        "expected_answer": "Full-time employees receive 20 days of PTO per calendar year.",
         "must_contain": "20 days"
       }
     ]
@@ -14,11 +15,12 @@
   {
     "id": "remote",
     "title": "Hybrid and Remote Work",
-    "body": "Acme default schedule is hybrid: at least 3 office days per week. Fully remote roles must be approved by HRBP and the department VP. Core collaboration hours are 10:00–16:00 in the employee's local timezone.",
+    "body": "Acme default schedule is hybrid: at least 3 office days per week. Fully remote roles must be approved by HRBP and the department VP. Core collaboration hours are 10:00-16:00 in the employee's local timezone.",
     "keywords": ["remote", "hybrid", "office", "wfh", "work from home"],
     "gold": [
       {
         "question": "How many office days per week does the hybrid policy require?",
+        "expected_answer": "The hybrid policy requires at least 3 office days per week.",
         "must_contain": "3 office days"
       }
     ]
@@ -31,6 +33,7 @@
     "gold": [
       {
         "question": "Which VPN client should I use for remote access?",
+        "expected_answer": "Use the Acme GlobalProtect VPN for remote access.",
         "must_contain": "GlobalProtect"
       }
     ]
@@ -43,6 +46,7 @@
     "gold": [
       {
         "question": "Where do I submit expense reports?",
+        "expected_answer": "Submit expense reports in Concur within 30 days of the purchase date.",
         "must_contain": "Concur"
       }
     ]
@@ -55,6 +59,7 @@
     "gold": [
       {
         "question": "How do I request a laptop replacement?",
+        "expected_answer": "Replacement or upgrade requests go through the ServiceNow catalog item Hardware Request.",
         "must_contain": "ServiceNow"
       }
     ]
@@ -67,6 +72,7 @@
     "gold": [
       {
         "question": "Where can I reset my password?",
+        "expected_answer": "Password resets are self-service at https://aka.ms/sspr.",
         "must_contain": "aka.ms/sspr"
       }
     ]
@@ -79,6 +85,7 @@
     "gold": [
       {
         "question": "Who do I contact if I lose my badge?",
+        "expected_answer": "Report lost badges within 24 hours to security@acme.example.",
         "must_contain": "security@acme.example"
       }
     ]
@@ -91,7 +98,60 @@
     "gold": [
       {
         "question": "Through which provider is Acme health insurance offered?",
+        "expected_answer": "Acme offers medical dental and vision coverage through Northwind Health.",
         "must_contain": "Northwind Health"
+      }
+    ]
+  },
+  {
+    "id": "parental",
+    "title": "Parental Leave",
+    "body": "Birth and adoptive parents receive 16 weeks of paid parental leave. Leave may begin up to 2 weeks before the expected arrival date. Employees request parental leave in Workday under Life Events. Short-term disability may run concurrently for birth parents as determined by HR.",
+    "keywords": ["parental", "leave", "maternity", "paternity", "adoption", "life events"],
+    "gold": [
+      {
+        "question": "How many weeks of paid parental leave does Acme provide?",
+        "expected_answer": "Birth and adoptive parents receive 16 weeks of paid parental leave.",
+        "must_contain": "16 weeks"
+      }
+    ]
+  },
+  {
+    "id": "travel",
+    "title": "Business Travel",
+    "body": "Book flights and hotels through the Contoso Travel portal. Economy class is the standard for flights under 6 hours. Trips over $2,000 require manager pre-approval in Contoso Travel before booking. Submit travel expenses in Concur within 14 days of return.",
+    "keywords": ["travel", "flight", "hotel", "contoso", "trip", "booking"],
+    "gold": [
+      {
+        "question": "Where should I book company flights and hotels?",
+        "expected_answer": "Book flights and hotels through the Contoso Travel portal.",
+        "must_contain": "Contoso Travel"
+      }
+    ]
+  },
+  {
+    "id": "slack",
+    "title": "Slack and Internal Messaging",
+    "body": "Acme uses Slack workspace acme-corp for day-to-day messaging. Do not share customer PII or secrets in public channels. Use #it-help for IT questions and #people-ops for HR questions. External guests require IT approval before they are invited to any channel.",
+    "keywords": ["slack", "messaging", "chat", "channels", "it-help", "people-ops"],
+    "gold": [
+      {
+        "question": "Which Slack workspace does Acme use for internal messaging?",
+        "expected_answer": "Acme uses Slack workspace acme-corp for day-to-day messaging.",
+        "must_contain": "acme-corp"
+      }
+    ]
+  },
+  {
+    "id": "onboarding",
+    "title": "New Hire Onboarding",
+    "body": "New hires complete Day-1 onboarding in Workday before receiving system access. IT accounts are provisioned within 1 business day after Workday onboarding is marked complete. Managers schedule a 30-day check-in in Workday. The People Ops buddy program assigns a peer mentor during week one.",
+    "keywords": ["onboarding", "new hire", "workday", "buddy", "day-1", "provision"],
+    "gold": [
+      {
+        "question": "Where do new hires complete Day-1 onboarding?",
+        "expected_answer": "New hires complete Day-1 onboarding in Workday before receiving system access.",
+        "must_contain": "Workday"
       }
     ]
   }

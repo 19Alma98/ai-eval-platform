@@ -1,0 +1,28 @@
+# Aggregate floors/ceilings for scripts/judge_sanity.py (offline synthetic variants).
+# Derived from the 2026-10 meta-eval table with slack for judge variance.
+# Only listed metrics are checked; omit a metric to skip it.
+
+variants:
+  good:
+    correctness: { min: 0.70 }
+    groundedness: { min: 0.85 }
+    answer_relevance: { min: 0.85 }
+    hit_at_k: { min: 0.95 }
+    context_recall: { min: 0.85 }
+
+  wrong_fact:
+    correctness: { max: 0.25 }
+    groundedness: { max: 0.35 }
+    answer_relevance: { min: 0.70 }
+    hit_at_k: { min: 0.95 }
+
+  hallucination:
+    # Correctness may stay high (answer covers gold); groundedness must drop.
+    groundedness: { max: 0.60 }
+    answer_relevance: { min: 0.70 }
+    hit_at_k: { min: 0.95 }
+
+  bad_retrieval:
+    hit_at_k: { max: 0.20 }
+    context_recall: { max: 0.35 }
+    groundedness: { max: 0.35 }

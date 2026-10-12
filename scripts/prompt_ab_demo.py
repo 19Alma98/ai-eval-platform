@@ -16,13 +16,14 @@ from typing import Any
 ROOT = Path(__file__).resolve().parents[1]
 SDK_DIR = ROOT / "sdk"
 APP_DIR = ROOT / "examples" / "hr_it_assistant"
-KNOWLEDGE_PATH = APP_DIR / "knowledge.json"
 POLICY_PATH = APP_DIR / "aiobs.prompt-ab.yaml"
 BACKEND_DIR = ROOT / "backend"
 
 sys.path.insert(0, str(SDK_DIR / "src"))
+sys.path.insert(0, str(APP_DIR))
 
 from aiobs import Client  # noqa: E402
+from kb import gold_rows_for_api  # noqa: E402
 
 CONFIG_FAMILY = "people-ops-rag"
 
@@ -49,26 +50,6 @@ def ensure_project(client: Client, slug: str, name: str) -> dict[str, Any]:
     return project
 
 
-def load_gold_rows() -> list[dict[str, Any]]:
-    data = json.loads(KNOWLEDGE_PATH.read_text(encoding="utf-8"))
-    rows: list[dict[str, Any]] = []
-    for doc in data:
-        doc_id = str(doc["id"])
-        for g in doc.get("gold") or []:
-            phrase = str(g["must_contain"])
-            rows.append(
-                {
-                    "question": str(g["question"]),
-                    "expected_output": phrase,
-                    "expected_doc_ids": [doc_id],
-                    "must_contain": [phrase],
-                }
-            )
-    if not rows:
-        raise RuntimeError(f"no gold rows in {KNOWLEDGE_PATH}")
-    return rows
-
-
 def create_rag_dataset(client: Client, project_id: str, *, name: str) -> tuple[str, dict[str, str]]:
     dataset = client.datasets.create(
         project_id,
@@ -78,7 +59,7 @@ def create_rag_dataset(client: Client, project_id: str, *, name: str) -> tuple[s
     )
     dataset_id = dataset["id"]
     item_map: dict[str, str] = {}
-    for row in load_gold_rows():
+    for row in gold_rows_for_api():
         item = client.datasets.add_item(
             dataset_id,
             input=row["question"],

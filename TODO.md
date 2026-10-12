@@ -10,33 +10,6 @@ Open items from the RAG evaluation reviews (2026-10-08, 2026-10-11). Fixed items
   - Document a minimum judge. `gemma4:e2b` discriminates well but returned invalid JSON on
     2/8 groundedness items in the hallucination test.
 
-## Robustness
-
-- [x] **Async scoring.** `evaluate` / `evaluate-pack` return 202; clients poll experiment status.
-- [x] **Experiment stuck in `running`.** `EvaluateExperiment` marks `failed` + orphan runs on crash;
-  startup recovery fails leftover `running` experiments.
-- [x] **Live interactions stuck in `pending`.** Lifespan re-queues `pending`/`running` live scores.
-
-## Evaluation correctness / design
-
-- [x] **Test set versioning.** After the first evaluation run, add/import/promote auto-forks
-  `name` v{N+1} (copied items + new write). Stale-run filtering kept for experiment output changes.
-- [x] **Chunks from the same doc are dropped.** `_dedupe_by_id` in `evaluation/trace_context.py`
-  keeps only the first chunk per doc id, so groundedness/context judges see partial context in
-  chunked RAG. Dedupe ids for hit@k/MRR only; keep all texts for the judges.
-- [x] **Compare has no statistics.** Paired bootstrap 95% CI on item diffs; n=8 one-flip stays
-  `unchanged` with delta shown (not false `regression`).
-- [x] **Release gate passes regression on `insufficient_n`.** Default: check `unavailable`
-  (gate fails). Opt-in `regression.allow_insufficient_n: true` soft-passes for small demos.
-- [x] **Latency p95 ignores missing-output items** (no `latency_ms` in metadata).
-  Missing-output without `latency_ms` fails `latency.p95`; SKIPPED rows stay excluded.
-- [x] **Live groundedness with no documents → FAIL 0.** Live: SKIPPED; offline keeps FAIL 0.
-- [x] **Claim cache stores empty extractions forever** (first write wins): one bad extraction makes
-  correctness permanently SKIPPED (`no_gold_claims`) for that item/model/prompt.
-  Empty extracts are not cached; stored `[]` is treated as a miss.
-- [x] **Compare-items drill-down** (`compare_items.py`) does not apply the stale-run filter yet.
-  Uses `select_runs` + fingerprint like aggregate compare.
-
 ## Judge validation (meta-eval)
 
 Synthetic runs with known truth on the 8-item gold set, judge `gemma4:e2b`:
@@ -49,11 +22,6 @@ Synthetic runs with known truth on the 8-item gold set, judge `gemma4:e2b`:
 | bad_retrieval | 0.86 | 0.0 | 1.0 | 0.0 | 0.0 |
 
 - [ ] Run the missing **refusal** variant and the **live** mode (groundedness + answer_relevance).
-- [ ] Turn the meta-eval into a repo script / optional CI job (judge sanity suite) so judge or prompt
-  changes are checked against known-good/known-bad answers.
-- [ ] Demo gold set is weak: `expected_output` is only the `must_contain` phrase and n = 8.
-  Write full reference answers and more items.
-- [ ] Check `examples/hr_it_assistant/knowledge.json` encoding.
 
 ## Tooling
 

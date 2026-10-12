@@ -1,5 +1,5 @@
 question,expected_answer,expected_doc_ids,must_contain
-How many PTO days do full-time employees get per year?,Full-time employees receive 20 days of PTO per calendar year.,pto,20 days | 20 | days
+How many PTO days do full-time employees get per year?,Full-time employees receive 20 days of PTO per calendar year.,pto,20 days
 How many office days per week does the hybrid policy require?,The hybrid policy requires at least 3 office days per week.,remote,3 office days
 Which VPN client should I use for remote access?,Use the Acme GlobalProtect VPN for remote access.,vpn,GlobalProtect
 Where do I submit expense reports?,Submit expense reports in Concur within 30 days of the purchase date.,expenses,Concur
@@ -7,3 +7,7 @@ How do I request a laptop replacement?,Replacement or upgrade requests go throug
 Where can I reset my password?,Password resets are self-service at https://aka.ms/sspr.,password,aka.ms/sspr
 Who do I contact if I lose my badge?,Report lost badges within 24 hours to security@acme.example.,badge,security@acme.example
 Through which provider is Acme health insurance offered?,Acme offers medical dental and vision coverage through Northwind Health.,benefits,Northwind Health
+How many weeks of paid parental leave does Acme provide?,Birth and adoptive parents receive 16 weeks of paid parental leave.,parental,16 weeks
+Where should I book company flights and hotels?,Book flights and hotels through the Contoso Travel portal.,travel,Contoso Travel
+Which Slack workspace does Acme use for internal messaging?,Acme uses Slack workspace acme-corp for day-to-day messaging.,slack,acme-corp
+Where do new hires complete Day-1 onboarding?,New hires complete Day-1 onboarding in Workday before receiving system access.,onboarding,Workday

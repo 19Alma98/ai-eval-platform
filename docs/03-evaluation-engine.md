@@ -160,6 +160,18 @@ LLM_MODEL=ollama/gemma4:e2b LLM_API_BASE=http://localhost:11434 \
 
 A capable model should give groundedness about 0.5, correctness about 0.5 and answer_relevance 1.0.
 
+### Judge sanity suite (meta-eval)
+
+`scripts/judge_sanity.py` scores the HR gold set (`examples/hr_it_assistant/knowledge.json`) under synthetic variants (`good`, `wrong_fact`, `hallucination`, `bad_retrieval`) and checks aggregates against `examples/hr_it_assistant/judge_sanity_thresholds.yaml`. In-process judges only — no API server. Not part of default PR CI.
+
+```bash
+cd backend
+LLM_MODEL=ollama/gemma4:e2b LLM_API_BASE=http://localhost:11434 \
+  uv run python ../scripts/judge_sanity.py [--variants good,wrong_fact] [--method rubric]
+```
+
+Optional GitHub Actions template: `.github/workflows/judge-sanity.yml.example` (`workflow_dispatch`; copy to `judge-sanity.yml` and set `LLM_*` secrets).
+
 ## Evaluator execution
 
 ```text
