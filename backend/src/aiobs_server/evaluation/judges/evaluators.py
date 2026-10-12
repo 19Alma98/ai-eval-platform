@@ -178,7 +178,7 @@ class _LlmJudge:
             return await self._evaluate(sample)
         except JudgeOutputError as exc:
             return error(
-                f"judge output invalid after repair: {exc}",
+                f"judge output invalid after format repair: {exc}",
                 error_type=JUDGE_OUTPUT_INVALID,
                 metadata=self._meta(raw_output=exc.raw[:_RAW_OUTPUT_LIMIT]),
             )

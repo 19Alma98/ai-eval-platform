@@ -85,10 +85,10 @@ async def test_call_structured_repairs_once_with_validation_error() -> None:
     result = await call_structured(llm, system=_SYSTEM, user="u", schema=_Pick, options=_OPTS)
     assert result.value.choice == "b"
     assert result.calls == 2
-    history = llm.calls[1]["history"]
-    assert history[0] == {"role": "assistant", "content": '{"choice": "zzz"}'}
-    assert history[1]["role"] == "user"
-    assert "choice" in history[1]["content"]
+    assert llm.calls[1]["step"] == "format_repair"
+    assert llm.calls[1]["history"] is None
+    assert "choice" in llm.calls[1]["user"]
+    assert '{"choice": "zzz"}' in llm.calls[1]["user"]
 
 
 @pytest.mark.asyncio
@@ -98,6 +98,7 @@ async def test_call_structured_raises_after_second_failure() -> None:
         await call_structured(llm, system=_SYSTEM, user="u", schema=_Pick, options=_OPTS)
     assert exc_info.value.raw == "still not json"
     assert len(llm.calls) == 2
+    assert llm.calls[1]["step"] == "format_repair"
 
 
 @pytest.mark.asyncio
@@ -111,7 +112,8 @@ async def test_call_structured_check_failure_triggers_repair() -> None:
         llm, system=_SYSTEM, user="u", schema=_Pick, options=_OPTS, check=check
     )
     assert result.calls == 2
-    assert "must pick b" in llm.calls[1]["history"][1]["content"]
+    assert llm.calls[1]["step"] == "format_repair"
+    assert "must pick b" in llm.calls[1]["user"]
 
 
 def test_schemas_normalize_lenient_model_output() -> None:
@@ -184,8 +186,9 @@ def test_doc_ids_bare_value_becomes_list() -> None:
 
 
 @pytest.mark.asyncio
-async def test_call_structured_empty_first_reply_uses_placeholder_in_history() -> None:
+async def test_call_structured_empty_first_reply_uses_placeholder_in_repair_user() -> None:
     llm = ScriptedJudgeLlm({"rubric_test": ["  ", {"choice": "a"}]})
     result = await call_structured(llm, system=_SYSTEM, user="u", schema=_Pick, options=_OPTS)
     assert result.calls == 2
-    assert llm.calls[1]["history"][0] == {"role": "assistant", "content": "(empty reply)"}
+    assert llm.calls[1]["step"] == "format_repair"
+    assert "(empty reply)" in llm.calls[1]["user"]

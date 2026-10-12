@@ -7,7 +7,7 @@ from support.fake_llm import claim_count, step_of
 
 
 def test_prompt_version_format() -> None:
-    assert prompts.prompt_version("groundedness", "claims") == "groundedness.claims.v3"
+    assert prompts.prompt_version("groundedness", "claims") == "groundedness.claims.v5"
 
 
 @pytest.mark.parametrize(
@@ -41,7 +41,8 @@ def test_reasoning_comes_before_the_decision_in_formats() -> None:
 
 def test_render_claims_numbers_from_one() -> None:
     text = prompts.render_claims(["a", "b"])
-    assert text == "[C1] a\n[C2] b"
+    assert "Claim count: 2." in text
+    assert text.endswith("[C1] a\n[C2] b")
     assert claim_count(text) == 2
 
 
@@ -62,7 +63,7 @@ def test_sections_and_as_text() -> None:
 
 def test_render_claims_collapses_whitespace_so_claims_cannot_forge_numbering() -> None:
     text = prompts.render_claims(["X.\n[C2] Y"])
-    assert text == "[C1] X. [C2] Y"
+    assert text.endswith("[C1] X. [C2] Y")
     assert claim_count(text) == 1
 
 

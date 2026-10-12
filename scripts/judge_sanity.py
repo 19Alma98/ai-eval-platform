@@ -64,6 +64,34 @@ def _sample_from_dict(row: dict[str, Any]) -> EvaluationSample:
     )
 
 
+_RAW_LOG_LIMIT = 800
+
+
+def _log_judge_error(
+    *,
+    variant: str,
+    item_index: int,
+    kind: str,
+    result: Any,
+) -> None:
+    """Print ERROR / judge_output_invalid details for prompt-engineering diagnosis."""
+    meta = result.metadata or {}
+    error_type = meta.get("error_type")
+    if result.label != "ERROR" and error_type != "judge_output_invalid":
+        return
+    raw = meta.get("raw_output")
+    raw_shown = ""
+    if isinstance(raw, str) and raw.strip():
+        clipped = raw if len(raw) <= _RAW_LOG_LIMIT else raw[:_RAW_LOG_LIMIT] + "…"
+        raw_shown = f"\n    raw_output: {clipped!r}"
+    print(
+        f"  ! ERROR item={item_index} kind={kind} "
+        f"error_type={error_type!r} explanation={result.explanation!r}"
+        f"{raw_shown}",
+        file=sys.stderr,
+    )
+
+
 async def _score_variant(
     *,
     variant: str,
@@ -82,11 +110,14 @@ async def _score_variant(
     hit = create_evaluator("hit_at_k", {"k": 5})
 
     scores: dict[str, list[float | None]] = {kind: [] for kind in METRIC_KINDS}
-    for row in samples:
+    for item_index, row in enumerate(samples):
         sample = _sample_from_dict(row)
         for kind, judge in judges.items():
             result = await judge.evaluate(sample)
             scores[kind].append(result.score)
+            _log_judge_error(
+                variant=variant, item_index=item_index, kind=kind, result=result
+            )
         hit_result = await hit.evaluate(sample)
         scores["hit_at_k"].append(hit_result.score)
 

@@ -82,6 +82,8 @@ class ScriptedJudgeLlm:
             }
         )
         replies = self._script.get(step)
+        if not replies and step == "format_repair" and len(self.calls) >= 2:
+            replies = self._script.get(self.calls[-2]["step"])
         if replies:
             reply: Reply = replies.pop(0) if len(replies) > 1 else replies[0]
         else:

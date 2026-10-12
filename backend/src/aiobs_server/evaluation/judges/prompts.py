@@ -9,7 +9,7 @@ from __future__ import annotations
 import json
 from typing import Any
 
-PROMPT_REVISION = "v3"
+PROMPT_REVISION = "v5"
 STEP_PREFIX = "STEP: "
 
 
@@ -23,7 +23,7 @@ def _system(step: str, body: str) -> str:
 
 _EXTRACT_RULES = """
 Rules:
-- One fact per claim. Split compound sentences into separate claims.
+- One fact per claim. Split compound sentences and unrelated facts into separate claims.
 - Each claim must be understandable on its own: replace pronouns and references with
   what they refer to, using the QUESTION for context.
 - Keep the original wording, numbers, dates and names. Do not add, infer or correct facts.
@@ -33,11 +33,24 @@ Rules:
   empty list.
 """
 
+_EXTRACT_EXAMPLE = """
+Example input: "Full-time employees get 20 PTO days and free downtown parking."
+Example output: {"claims": ["Full-time employees get 20 PTO days.",
+"Full-time employees get free downtown parking."]}
+"""
+
+_VERIFY_LENGTH = """
+CRITICAL: If there are N labeled items, "verdicts" MUST be a JSON array of length exactly N,
+in the same order (index 0 = first label, index N-1 = last). Never omit, merge, or skip an
+item. Unsupported or missing facts still need their own verdict object.
+"""
+
 EXTRACT_ANSWER_CLAIMS = _system(
     "extract_answer_claims",
     f"""
 You are an evaluation assistant. Break the ANSWER into atomic factual claims.
 {_EXTRACT_RULES}
+{_EXTRACT_EXAMPLE}
 Respond with JSON only: {{"claims": ["<claim>", ...]}}
 """,
 )
@@ -47,98 +60,115 @@ EXTRACT_REFERENCE_CLAIMS = _system(
     f"""
 You are an evaluation assistant. Break the REFERENCE ANSWER into atomic factual claims.
 {_EXTRACT_RULES}
+{_EXTRACT_EXAMPLE}
 Respond with JSON only: {{"claims": ["<claim>", ...]}}
 """,
 )
 
 VERIFY_AGAINST_DOCUMENTS = _system(
     "verify_against_documents",
-    """
+    f"""
 You are an evaluation judge. For each CLAIM ([C1], [C2], ...) decide whether the
 DOCUMENTS support it.
+{_VERIFY_LENGTH}
 Verdicts:
 - "supported": the documents state it, or it follows directly from them.
 - "contradicted": the documents state something incompatible with it.
 - "not_supported": the documents do not mention it, or support it only partially.
-Use only the documents, never outside knowledge. Judge each claim independently.
-Return exactly one verdict per claim, in the same order. Write your reasoning before
-choosing the verdict. List the ids of the documents you relied on in "doc_ids" and copy
-the shortest supporting or contradicting passage into "quote" (null if none).
-Respond with JSON only: {"verdicts": [{"reasoning": "<why>", "verdict": "supported" |
-"contradicted" | "not_supported", "doc_ids": ["<id>"], "quote": "<passage>" | null}, ...]}
+Use only the documents, never outside knowledge. Judge each claim independently —
+including claims the documents never mention (use "not_supported").
+List the ids of the documents you relied on in "doc_ids" and copy the shortest supporting
+or contradicting passage into "quote" (null if none). Keep reasoning short.
+Example for two claims: {{"verdicts": [{{"reasoning": "stated in doc", "verdict":
+"supported", "doc_ids": ["pto"], "quote": "20 days"}}, {{"reasoning": "not in docs",
+"verdict": "not_supported", "doc_ids": [], "quote": null}}]}}
+Respond with JSON only: {{"verdicts": [{{"reasoning": "<why>", "verdict": "supported" |
+"contradicted" | "not_supported", "doc_ids": ["<id>"], "quote": "<passage>" | null}}, ...]}}
 """,
 )
 
 VERIFY_AGAINST_REFERENCE = _system(
     "verify_against_reference",
-    """
+    f"""
 You are an evaluation judge. For each CLAIM ([C1], [C2], ...) taken from an answer,
 decide whether the REFERENCE ANSWER supports it.
+{_VERIFY_LENGTH}
 Verdicts:
 - "supported": the reference states it, or it follows directly from it.
 - "contradicted": the reference states something incompatible with it.
 - "not_supported": the reference does not mention it.
-Use only the reference answer, never outside knowledge. Return exactly one verdict per
-claim, in the same order. Write your reasoning before choosing the verdict.
-Respond with JSON only: {"verdicts": [{"reasoning": "<why>", "verdict": "supported" |
-"contradicted" | "not_supported"}, ...]}
+Use only the reference answer, never outside knowledge. Keep reasoning short.
+Example for two claims: {{"verdicts": [{{"reasoning": "matches reference", "verdict":
+"supported"}}, {{"reasoning": "extra detail absent from reference", "verdict":
+"not_supported"}}]}}
+Respond with JSON only: {{"verdicts": [{{"reasoning": "<why>", "verdict": "supported" |
+"contradicted" | "not_supported"}}, ...]}}
 """,
 )
 
 VERIFY_REFERENCE_COVERAGE = _system(
     "verify_reference_coverage",
-    """
+    f"""
 You are an evaluation judge. For each REFERENCE CLAIM ([C1], [C2], ...) decide whether
 the ANSWER conveys it.
+{_VERIFY_LENGTH}
 Verdicts:
 - "covered": the answer states the same fact. Wording may differ; numbers, dates, names
   and conditions must match.
 - "contradicted": the answer states something incompatible with it.
 - "missing": the answer does not state it.
-Extra information in the answer is not your concern. Return exactly one verdict per
-reference claim, in the same order. Write your reasoning before choosing the verdict.
-Respond with JSON only: {"verdicts": [{"reasoning": "<why>", "verdict": "covered" |
-"contradicted" | "missing"}, ...]}
+Extra information in the answer is not your concern. Keep reasoning short.
+Example for two gold claims: {{"verdicts": [{{"reasoning": "answer states the same fact",
+"verdict": "covered"}}, {{"reasoning": "answer omits this fact", "verdict": "missing"}}]}}
+Respond with JSON only: {{"verdicts": [{{"reasoning": "<why>", "verdict": "covered" |
+"contradicted" | "missing"}}, ...]}}
 """,
 )
 
 VERIFY_CONTEXT_RELEVANCE = _system(
     "verify_context_relevance",
-    """
+    f"""
 You are an evaluation judge. For each DOCUMENT ([D1], [D2], ...) decide whether it is
 useful for producing the REFERENCE ANSWER to the QUESTION.
+{_VERIFY_LENGTH}
 Verdicts:
 - "relevant": the document contains information needed to arrive at the reference answer
   (facts, conditions, or details the reference relies on).
 - "not_relevant": the document is off-topic, redundant noise, or does not help produce
   the reference answer.
 Use only the question, reference answer and documents. Judge each document independently.
-Return exactly one verdict per document, in the same order. Write your reasoning before
-choosing the verdict.
-Respond with JSON only: {"verdicts": [{"reasoning": "<why>", "verdict": "relevant" |
-"not_relevant"}, ...]}
+Keep reasoning short.
+Example for two documents: {{"verdicts": [{{"reasoning": "contains the needed policy fact",
+"verdict": "relevant"}}, {{"reasoning": "unrelated topic", "verdict": "not_relevant"}}]}}
+Respond with JSON only: {{"verdicts": [{{"reasoning": "<why>", "verdict": "relevant" |
+"not_relevant"}}, ...]}}
 """,
 )
 
 VERIFY_CONTEXT_COVERAGE = _system(
     "verify_context_coverage",
-    """
+    f"""
 You are an evaluation judge. For each REFERENCE CLAIM ([C1], [C2], ...) decide whether
 the DOCUMENTS convey it (context recall).
+{_VERIFY_LENGTH}
 Verdicts:
 - "covered": the documents state the same fact. Wording may differ; numbers, dates, names
   and conditions must match.
 - "contradicted": the documents state something incompatible with it.
 - "missing": the documents do not state it.
 Use only the documents, never outside knowledge. Extra information in the documents is
-not your concern. Return exactly one verdict per reference claim, in the same order.
-Write your reasoning before choosing the verdict.
-Respond with JSON only: {"verdicts": [{"reasoning": "<why>", "verdict": "covered" |
-"contradicted" | "missing"}, ...]}
+not your concern. Keep reasoning short.
+Example for two gold claims: {{"verdicts": [{{"reasoning": "fact appears in retrieved docs",
+"verdict": "covered"}}, {{"reasoning": "docs do not mention it", "verdict": "missing"}}]}}
+Respond with JSON only: {{"verdicts": [{{"reasoning": "<why>", "verdict": "covered" |
+"contradicted" | "missing"}}, ...]}}
 """,
 )
 
 _RUBRIC_FORMAT = 'Respond with JSON only: {"reasoning": "<why>", "level": <1-5>}'
+_RUBRIC_EXAMPLE = (
+    'Example: {"reasoning": "Fully addresses the question with the key detail.", "level": 5}'
+)
 
 RUBRICS: dict[str, str] = {
     "answer_relevance": _system(
@@ -152,6 +182,7 @@ relevance only, not factual accuracy.
 2: tangential, mostly about something else
 1: does not answer the question, or is off-topic
 Write your reasoning before choosing the level.
+{_RUBRIC_EXAMPLE}
 {_RUBRIC_FORMAT}
 """,
     ),
@@ -166,6 +197,7 @@ Use only the documents, never outside knowledge.
 2: most statements are unsupported
 1: unsupported, or contradicts the documents
 Write your reasoning before choosing the level.
+{_RUBRIC_EXAMPLE}
 {_RUBRIC_FORMAT}
 """,
     ),
@@ -180,6 +212,7 @@ Extra correct details in the answer are fine; contradictions are not.
 2: conveys few of the facts
 1: conveys none of the facts, or contradicts the reference
 Write your reasoning before choosing the level.
+{_RUBRIC_EXAMPLE}
 {_RUBRIC_FORMAT}
 """,
     ),
@@ -194,6 +227,7 @@ REFERENCE ANSWER to the QUESTION. Prefer early relevant documents; penalize nois
 2: most documents are irrelevant
 1: documents are irrelevant or actively misleading for the reference answer
 Write your reasoning before choosing the level.
+{_RUBRIC_EXAMPLE}
 {_RUBRIC_FORMAT}
 """,
     ),
@@ -208,6 +242,7 @@ REFERENCE ANSWER to the QUESTION (context recall). Use only the documents.
 2: few reference facts are present
 1: documents omit the reference facts, or contradict them
 Write your reasoning before choosing the level.
+{_RUBRIC_EXAMPLE}
 {_RUBRIC_FORMAT}
 """,
     ),
@@ -223,7 +258,13 @@ def as_text(value: Any) -> str:
 
 
 def render_claims(claims: list[str]) -> str:
-    return "\n".join(f"[C{i}] {' '.join(claim.split())}" for i, claim in enumerate(claims, 1))
+    n = len(claims)
+    header = (
+        f'Claim count: {n}. Emit exactly {n} objects in "verdicts", '
+        f"one each for [C1]..[C{n}] in order."
+    )
+    body = "\n".join(f"[C{i}] {' '.join(claim.split())}" for i, claim in enumerate(claims, 1))
+    return f"{header}\n{body}" if body else header
 
 
 def render_documents(documents: list[Any]) -> str:
@@ -247,7 +288,13 @@ def render_numbered_documents(documents: list[Any]) -> str:
         if doc.get("title"):
             header += " " + " ".join(str(doc["title"]).split())
         blocks.append(f"{header}\n{as_text(doc.get('text'))}")
-    return "\n\n".join(blocks)
+    n = len(blocks)
+    count_line = (
+        f'Document count: {n}. Emit exactly {n} objects in "verdicts", '
+        f"one each for [D1]..[D{n}] in order."
+    )
+    body = "\n\n".join(blocks)
+    return f"{count_line}\n\n{body}" if body else count_line
 
 
 def sections(**parts: str) -> str:

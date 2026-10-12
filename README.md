@@ -157,6 +157,8 @@ LLM_MODEL=ollama/gemma4:e2b
 LLM_API_BASE=http://localhost:11434
 ```
 
+**Minimum judge:** `ollama/gemma4:e2b` is fine for local smoke and demos (`claims` method + one format-repair retry). For release gates or CI, use a stronger model or set `method: rubric` on claim-based kinds — invalid JSON after repair surfaces as `judge_output_invalid` / `judge_model_unsuitable`, not a silent fallback. Check a model with `scripts/judge_sanity.py` (see [`docs/03-evaluation-engine.md`](docs/03-evaluation-engine.md)).
+
 When creating an evaluator, use `"type": "llm_judge"` and `"config": {"kind": "correctness"}` (or `answer_relevance` / `groundedness` / `context_precision` / `context_recall`).
 
 ### RAG metrics naming (Ragas ↔ aiobs)

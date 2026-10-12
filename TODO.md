@@ -6,20 +6,18 @@ Open items from the RAG evaluation reviews (2026-10-08, 2026-10-11). Fixed items
 
 - [ ] **Authentication.** No auth at all today. At minimum an API key for `/api/v1/*` and
   `/v1/traces`; people will expose it once it is on PyPI.
-- [ ] **Judge model config.**
-  - Document a minimum judge. `gemma4:e2b` discriminates well but returned invalid JSON on
-    2/8 groundedness items in the hallucination test.
+- [] better prompt versioning
 
 ## Judge validation (meta-eval)
 
-Synthetic runs with known truth on the 8-item gold set, judge `gemma4:e2b`:
+Synthetic runs on the 12-item HR gold set, judge `gemma4:e2b`, prompts v5 + format repair
+(2026-10-12). Thresholds: `examples/hr_it_assistant/judge_sanity_thresholds.yaml`.
 
 | variant | correctness | groundedness | answer_relevance | hit@k | context_recall |
 |---|---|---|---|---|---|
-| good | 0.86 | 1.0 | 1.0 | 1.0 | 1.0 |
-| wrong_fact | 0.0 | 0.0 | 1.0 | 1.0 | 1.0 |
-| hallucination | 1.0 | 0.35 (2 err) | 0.94 | 1.0 | 1.0 |
-| bad_retrieval | 0.86 | 0.0 | 1.0 | 0.0 | 0.0 |
+| good | 1.0 | 1.0 | 1.0 | 1.0 | 1.0 |
+| wrong_fact | 0.17 | 0.08 | 1.0 | 1.0 | — |
+| hallucination | 1.0 | 0.58 | 0.83 | 1.0 | 1.0 |
 
 - [ ] Run the missing **refusal** variant and the **live** mode (groundedness + answer_relevance).
 

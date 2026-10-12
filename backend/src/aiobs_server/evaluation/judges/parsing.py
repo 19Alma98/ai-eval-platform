@@ -13,10 +13,18 @@ from aiobs_server.evaluation.protocol import LlmClient
 
 _FENCE_RE = re.compile(r"```(?:json)?\s*(.*?)```", re.DOTALL | re.IGNORECASE)
 
-REPAIR_INSTRUCTION = (
-    "Your previous reply could not be used: {error}\n"
-    "Reply again with JSON only, following exactly the format in the instructions."
-)
+FORMAT_REPAIR_SYSTEM = """STEP: format_repair
+You rewrite invalid model output into valid JSON that matches the required schema.
+Rules:
+- Output JSON only (a single object). No markdown fences, no commentary.
+- Preserve the draft's intended facts, verdicts, levels, claims, and quotes.
+- Do not invent new claims or change verdict/level meanings beyond fixing format.
+- Fix structural issues called out in the error (missing fields, wrong types,
+  wrong number of verdicts, invalid enum values).
+- If the error says expected N verdicts (or list items), the array MUST have length
+  exactly N. Add missing entries with a conservative verdict (not_supported / missing /
+  not_relevant) and short reasoning; never drop existing entries to shrink the list.
+"""
 
 
 def extract_json_object(text: str) -> dict[str, Any]:
@@ -96,6 +104,23 @@ class StructuredResult[T: BaseModel]:
     calls: int
 
 
+def _schema_hint(schema: type[BaseModel]) -> str:
+    """Compact JSON-schema-ish shape for the format-repair prompt."""
+    try:
+        return json.dumps(schema.model_json_schema(), indent=2, default=str)
+    except Exception:  # noqa: BLE001 — hint is best-effort
+        return schema.__name__
+
+
+def _format_repair_user(*, draft: str, error: str, schema: type[BaseModel]) -> str:
+    draft_shown = draft.strip() if draft.strip() else "(empty reply)"
+    return (
+        f"Validation error:\n{error}\n\n"
+        f"Required schema ({schema.__name__}):\n{_schema_hint(schema)}\n\n"
+        f"Draft to rewrite:\n{draft_shown}"
+    )
+
+
 async def call_structured[T: BaseModel](
     llm: LlmClient,
     *,
@@ -105,7 +130,7 @@ async def call_structured[T: BaseModel](
     options: CallOptions,
     check: Callable[[T], None] | None = None,
 ) -> StructuredResult[T]:
-    """Call the judge and validate its reply; on failure retry once with the error.
+    """Call the judge and validate its reply; on failure run one format-only repair.
 
     Raises JudgeOutputError when the repaired reply is still unusable.
     """
@@ -117,16 +142,11 @@ async def call_structured[T: BaseModel](
     except ValueError as exc:
         first_error = _describe(exc)
 
-    history = [
-        {"role": "assistant", "content": raw if raw.strip() else "(empty reply)"},
-        {"role": "user", "content": REPAIR_INSTRUCTION.format(error=first_error)},
-    ]
     repaired = await llm.complete(
-        system=system,
-        user=user,
+        system=FORMAT_REPAIR_SYSTEM,
+        user=_format_repair_user(draft=raw, error=first_error, schema=schema),
         model=options.model,
         temperature=options.temperature,
-        history=history,
     )
     try:
         return StructuredResult(_parse(repaired, schema, check), 2)

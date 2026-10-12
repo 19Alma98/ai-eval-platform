@@ -91,7 +91,8 @@ async def test_verify_support_repairs_wrong_verdict_count() -> None:
     )
     assert [v.verdict for v in verdicts] == ["supported", "contradicted"]
     assert calls == 2
-    assert "expected 2 verdicts" in llm.calls[1]["history"][1]["content"]
+    assert llm.calls[1]["step"] == "format_repair"
+    assert "expected 2 verdicts" in llm.calls[1]["user"]
 
 
 @pytest.mark.asyncio

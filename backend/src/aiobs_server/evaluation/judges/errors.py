@@ -7,7 +7,7 @@ LLM_ERROR = "llm_error"
 
 
 class JudgeOutputError(Exception):
-    """The judge model's reply could not be used, even after one repair retry."""
+    """The judge model's reply could not be used, even after one format repair."""
 
     def __init__(self, message: str, *, raw: str) -> None:
         super().__init__(message)

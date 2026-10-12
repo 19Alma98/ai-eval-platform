@@ -55,7 +55,7 @@ class Evaluator(Protocol):
 - context_precision
 - context_recall
 
-LLM judges return structured, validated output and are versioned by `prompt_version` (see [LLM judges (v3)](#llm-judges-v3)).
+LLM judges return structured, validated output and are versioned by `prompt_version` (see [LLM judges (v5)](#llm-judges-v5)).
 
 ### Naming vs Ragas
 
@@ -83,11 +83,11 @@ Groundedness reads retrieved chunk text from run `context.documents` (populated 
 
 PASS/FAIL rule (offline runs and live scoring): an item passes only if the evaluator label is not `FAIL` **and** the score meets the entry threshold. The stored label is that effective verdict; when it overrides the evaluator's own label, the original is kept in `metadata.judge_label` (live: appended to the explanation). LLM judges never emit a label, so for them the verdict comes from the threshold alone. A run is `FAILED` if any item fails.
 
-LLM judges only receive the fields their rubric needs: `answer_relevance` gets input + answer, `groundedness` adds `context.documents`, `correctness` adds `expected_output`, `context_precision` and `context_recall` add `expected_output` + `context.documents`. Item `metadata` (e.g. `expected_doc_ids`) is never sent to a judge. Prompt versions are `{kind}.{method}.v3`.
+LLM judges only receive the fields their rubric needs: `answer_relevance` gets input + answer, `groundedness` adds `context.documents`, `correctness` adds `expected_output`, `context_precision` and `context_recall` add `expected_output` + `context.documents`. Item `metadata` (e.g. `expected_doc_ids`) is never sent to a judge. Prompt versions are `{kind}.{method}.v5`.
 
 Live scoring: a failing judge records an `ERROR` score for its kind without discarding the others (`score_warning` lists the failed kinds; status is `error` only if every judge failed).
 
-## LLM judges (v3)
+## LLM judges (v5)
 
 Code: `aiobs.evaluation.judges` (`prompts`, `parsing`, `claims`, `rubric`, `evaluators`, `cache`, `warnings`). Judges return `label=None`; `explanation` is a short human-readable summary and structured details go into `metadata`.
 
@@ -126,7 +126,7 @@ Entry config keys (part of `config_hash`). Invalid values raise `ValueError` whe
 ### Determinism and versioning
 
 - `LLM_TEMPERATURE` (default `0.0`) and `LLM_SEED` (default `42`) are sent on every judge call; `LiteLlmClient` passes `drop_params=True` so providers without `seed` ignore it. Entry `temperature` / `model` override them per entry.
-- `prompt_version = "{kind}.{method}.v3"` (e.g. `groundedness.claims.v3`) is stored in each result's metadata and in `run.metadata.prompt_version`. Compare flags a `prompt_version` mismatch between candidate and baseline as a config mismatch (flagged, not blocked); runs from before v3 carry none and count as a different version.
+- `prompt_version = "{kind}.{method}.v5"` (e.g. `groundedness.claims.v5`) is stored in each result's metadata and in `run.metadata.prompt_version`. Compare flags a `prompt_version` mismatch between candidate and baseline as a config mismatch (flagged, not blocked); older runs (v4 or earlier) carry a different version and are flagged accordingly.
 - Result metadata: `method`, `prompt_version`, `model`, `claims` (per claim `text` and `verdict`, plus `doc_ids`/`quote`/`reasoning` where applicable), counts (`n_claims`, `n_supported`, `n_contradicted`; correctness: `n_gold`, `n_covered`, `n_missing`, `recall`, and `precision` for f1), `claims_truncated`, `llm_calls`, `cache_hit`. Rubric results store `level` and `reasoning`.
 - Explanations are capped at 1000 characters (claim lists are abbreviated).
 
@@ -136,12 +136,18 @@ Gold claims extracted from `expected_output` are stored in `judge_claim_cache`, 
 
 ### Output validation and errors
 
-Every step parses tolerantly (code fences, JSON wrapped in prose), validates against a schema (enum verdicts, `level` 1-5, one verdict per claim sent) and gets one repair retry in the same conversation. Failures produce an `ERROR` result with `metadata.error_type`:
+Every step parses tolerantly (code fences, JSON wrapped in prose) and validates against a schema (enum verdicts, `level` 1-5, one verdict per claim sent). On failure, a **format-only repair** call rewrites the invalid draft into schema-shaped JSON (max 2 LLM calls per step; the judge task is not re-asked). Failures after repair produce an `ERROR` result with `metadata.error_type`:
 
-- `judge_output_invalid`: the model did not follow the format after repair; `metadata.raw_output` holds the first 2000 characters.
+- `judge_output_invalid`: the model did not follow the format after format repair; `metadata.raw_output` holds the first 2000 characters.
 - `llm_unavailable`: timeout, connection, rate-limit or provider 5xx after LiteLLM retries.
 - `context_overflow`: context window exceeded. Documents are never truncated silently.
 - `llm_error`: any other provider error.
+
+### Minimum judge model
+
+- **Dev / smoke / local Ollama:** `ollama/gemma4:e2b` is a workable minimum for `claims` judges: it discriminates good vs wrong_fact vs hallucination on the HR sanity suite, with format repair covering most schema glitches.
+- **Release gates / CI / production scoring:** prefer a stronger chat model that reliably emits structured JSON, or set `method: rubric` on groundedness/correctness/context_* for small models. There is no silent fallback from `claims` to `rubric`.
+- Verify a candidate judge with `scripts/judge_sanity.py` (and optionally `scripts/judge_smoke.py`) using the same `LLM_MODEL` / `LLM_API_BASE` as the API.
 
 ### Unsuitable-model warning
 
@@ -162,7 +168,7 @@ A capable model should give groundedness about 0.5, correctness about 0.5 and an
 
 ### Judge sanity suite (meta-eval)
 
-`scripts/judge_sanity.py` scores the HR gold set (`examples/hr_it_assistant/knowledge.json`) under synthetic variants (`good`, `wrong_fact`, `hallucination`, `bad_retrieval`) and checks aggregates against `examples/hr_it_assistant/judge_sanity_thresholds.yaml`. In-process judges only — no API server. Not part of default PR CI.
+`scripts/judge_sanity.py` scores the HR gold set (`examples/hr_it_assistant/knowledge.json`) under synthetic variants (`good`, `wrong_fact`, `hallucination`, `bad_retrieval`) and checks aggregates against `examples/hr_it_assistant/judge_sanity_thresholds.yaml`. On `ERROR` / `judge_output_invalid` it prints `kind`, item index, explanation, and truncated `raw_output` to stderr for diagnosis. In-process judges only — no API server. Not part of default PR CI.
 
 ```bash
 cd backend

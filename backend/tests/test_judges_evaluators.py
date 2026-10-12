@@ -48,11 +48,11 @@ def test_unknown_kind_and_invalid_config_raise() -> None:
 
 def test_prompt_version_reflects_method() -> None:
     llm = ScriptedJudgeLlm()
-    assert _judge("groundedness", llm).prompt_version == "groundedness.claims.v3"
+    assert _judge("groundedness", llm).prompt_version == "groundedness.claims.v5"
     assert _judge("groundedness", llm, {"method": "rubric"}).prompt_version == (
-        "groundedness.rubric.v3"
+        "groundedness.rubric.v5"
     )
-    assert _judge("answer_relevance", llm).prompt_version == "answer_relevance.rubric.v3"
+    assert _judge("answer_relevance", llm).prompt_version == "answer_relevance.rubric.v5"
 
 
 def test_judge_model_resolves_override_or_default() -> None:
@@ -89,7 +89,7 @@ async def test_groundedness_claims_scores_supported_ratio() -> None:
     assert result.explanation == '1/2 claims supported; not supported: "Requested by email"'
     meta = result.metadata
     assert meta["method"] == "claims"
-    assert meta["prompt_version"] == "groundedness.claims.v3"
+    assert meta["prompt_version"] == "groundedness.claims.v5"
     assert meta["model"] == "judge-x"
     assert meta["n_claims"] == 2 and meta["n_supported"] == 1
     assert meta["claims"][0]["doc_ids"] == ["kb-1"]
@@ -407,7 +407,7 @@ async def test_numeric_string_temperature_and_model_strip() -> None:
 async def test_precheck_results_carry_judge_metadata() -> None:
     judge = _judge("groundedness", ScriptedJudgeLlm())
     skipped = await judge.evaluate(_sample(context=None))
-    assert skipped.metadata["prompt_version"] == "groundedness.claims.v3"
+    assert skipped.metadata["prompt_version"] == "groundedness.claims.v5"
     failed = await judge.evaluate(_sample(context={"documents": []}))
     assert failed.metadata["method"] == "claims"
     missing = await _judge("correctness", ScriptedJudgeLlm()).evaluate(
@@ -477,7 +477,7 @@ async def test_context_precision_claims_average_precision() -> None:
     result = await _judge("context_precision", llm).evaluate(_sample(context=docs))
     assert result.score == pytest.approx(5 / 6)
     assert result.label is None
-    assert result.metadata["prompt_version"] == "context_precision.claims.v3"
+    assert result.metadata["prompt_version"] == "context_precision.claims.v5"
     assert result.metadata["n_documents"] == 3
     assert result.metadata["n_relevant"] == 2
     assert result.metadata["documents"][1]["verdict"] == "not_relevant"
@@ -513,7 +513,7 @@ async def test_context_precision_rubric_method() -> None:
     llm = ScriptedJudgeLlm({"rubric_context_precision": {"reasoning": "noisy", "level": 3}})
     result = await _judge("context_precision", llm, {"method": "rubric"}).evaluate(_sample())
     assert result.score == 0.5
-    assert result.metadata["prompt_version"] == "context_precision.rubric.v3"
+    assert result.metadata["prompt_version"] == "context_precision.rubric.v5"
     assert llm.steps() == ["rubric_context_precision"]
 
 
@@ -549,7 +549,7 @@ async def test_context_recall_claims_scores_covered_ratio() -> None:
     assert result.label is None
     assert result.explanation == '1/2 reference facts in context; missing: "via the portal"'
     meta = result.metadata
-    assert meta["prompt_version"] == "context_recall.claims.v3"
+    assert meta["prompt_version"] == "context_recall.claims.v5"
     assert (meta["n_gold"], meta["n_covered"], meta["n_missing"]) == (2, 1, 1)
     assert meta["recall"] == 0.5
     assert meta["cache_hit"] is False
@@ -613,7 +613,7 @@ async def test_context_recall_rubric_method() -> None:
     llm = ScriptedJudgeLlm({"rubric_context_recall": {"reasoning": "partial", "level": 3}})
     result = await _judge("context_recall", llm, {"method": "rubric"}).evaluate(_sample())
     assert result.score == 0.5
-    assert result.metadata["prompt_version"] == "context_recall.rubric.v3"
+    assert result.metadata["prompt_version"] == "context_recall.rubric.v5"
     assert llm.steps() == ["rubric_context_recall"]
 
 
@@ -624,12 +624,12 @@ async def test_bootstrap_registers_new_judges() -> None:
     bootstrap_evaluators(llm, default_model="judge-default")
     try:
         judge = create_evaluator("groundedness", {"kind": "groundedness"})
-        assert judge.prompt_version == "groundedness.claims.v3"
+        assert judge.prompt_version == "groundedness.claims.v5"
         result = await judge.evaluate(_sample())
         assert result.metadata["model"] == "judge-default"
         cp = create_evaluator("context_precision", {"kind": "context_precision"})
-        assert cp.prompt_version == "context_precision.claims.v3"
+        assert cp.prompt_version == "context_precision.claims.v5"
         cr = create_evaluator("context_recall", {"kind": "context_recall"})
-        assert cr.prompt_version == "context_recall.claims.v3"
+        assert cr.prompt_version == "context_recall.claims.v5"
     finally:
         clear_registry()
