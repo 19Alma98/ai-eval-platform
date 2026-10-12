@@ -141,9 +141,7 @@ async def test_evaluate_exception_marks_experiment_failed() -> None:
 async def test_evaluate_rejects_already_running() -> None:
     project_id = uuid.uuid4()
     dataset_id = uuid.uuid4()
-    experiment = Experiment.create(
-        project_id, "exp", dataset_id, model_config={}, status="running"
-    )
+    experiment = Experiment.create(project_id, "exp", dataset_id, model_config={}, status="running")
     item = DatasetItem.create(dataset_id, input="q", expected_output="a", actual_output="a")
     evaluator = Evaluator.create(project_id, "exact", "deterministic", {"kind": "exact_match"})
     use_case = EvaluateExperiment(

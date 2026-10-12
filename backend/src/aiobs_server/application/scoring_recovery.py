@@ -36,9 +36,7 @@ async def fail_stuck_experiments(
                 continue
             metadata = dict(run.metadata)
             metadata["error"] = "Interrupted by API restart"
-            await runs.update_run(
-                run.with_status("ERROR", finished_at=now, metadata=metadata)
-            )
+            await runs.update_run(run.with_status("ERROR", finished_at=now, metadata=metadata))
         await experiments.update(experiment.with_status("failed"))
         logger.warning("Marked stuck experiment as failed after restart: %s", experiment.id)
     return len(stuck)
