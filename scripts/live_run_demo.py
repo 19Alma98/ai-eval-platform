@@ -209,10 +209,7 @@ def main() -> int:
             expected_output="Full-time employees get 20 PTO days per calendar year.",
             expected_doc_ids=["pto"],
         )
-        print(
-            f"\npromoted [{target['_label']}] → dataset {dataset.name} "
-            f"item {item.id[:8]}…"
-        )
+        print(f"\npromoted [{target['_label']}] → dataset {dataset.name} item {item.id[:8]}…")
 
     listed = client.live_runs.list(project_id, limit=20)
     print(f"\nLive interactions in project: {len(listed.items)}")

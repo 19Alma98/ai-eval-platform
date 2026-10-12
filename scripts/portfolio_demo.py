@@ -1,6 +1,4 @@
 #!/usr/bin/env python3
-"""Portfolio demo: RAG test set → metrics pack → bound SDK runs → evaluate-pack → compare → aiobs check."""
-
 from __future__ import annotations
 
 import argparse
@@ -55,9 +53,7 @@ def load_gold_rows() -> list[dict[str, Any]]:
     return rows
 
 
-def create_rag_dataset(
-    client: Client, project_id: str, *, name: str
-) -> tuple[str, dict[str, str]]:
+def create_rag_dataset(client: Client, project_id: str, *, name: str) -> tuple[str, dict[str, str]]:
     dataset = client.datasets.create(
         project_id,
         name=name,
@@ -243,13 +239,9 @@ def run_aiobs_check(policy: Path, base: str) -> int:
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument(
-        "--base-url", default=os.getenv("AIOBS_BASE_URL", "http://localhost:8000")
-    )
+    parser.add_argument("--base-url", default=os.getenv("AIOBS_BASE_URL", "http://localhost:8000"))
     parser.add_argument("--project-slug", default="hr-it-assistant")
-    parser.add_argument(
-        "--skip-check", action="store_true", help="Skip aiobs check subprocess"
-    )
+    parser.add_argument("--skip-check", action="store_true", help="Skip aiobs check subprocess")
     args = parser.parse_args(argv)
 
     base = args.base_url.rstrip("/")
@@ -274,9 +266,7 @@ def main(argv: list[str] | None = None) -> int:
     }
 
     print(f"creating rag_qa test set people-ops-gold-{stamp} …")
-    dataset_id, item_map = create_rag_dataset(
-        client, project_id, name=f"people-ops-gold-{stamp}"
-    )
+    dataset_id, item_map = create_rag_dataset(client, project_id, name=f"people-ops-gold-{stamp}")
     expected_items = len(item_map)
 
     baseline_id = create_experiment(

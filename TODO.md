@@ -68,8 +68,6 @@ Synthetic runs with known truth on the 8-item gold set, judge `gemma4:e2b`:
 - [ ] **UI packaging tests fail locally** without a packaged UI
   (`test_sqlite_smoke.py::test_sqlite_ui_index_served`, `test_ui_resolve.py::test_ui_root_detects_packaged_index`).
   Skip them when the UI is not built.
-- [ ] **`scripts/` is not linted** and has ruff errors (`live_run_demo.py` imports,
-  `portfolio_demo.py` line length); `tests/test_ui_resolve.py` is not ruff-formatted.
 
 
 ## Performance

@@ -19,7 +19,9 @@ async def test_spa_fallback_does_not_405_missing_api_post() -> None:
     app = create_app(mount_packaged_ui=True)
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as client:
-        missing_get = await client.get("/api/v1/projects/00000000-0000-0000-0000-000000000001/traces")
+        missing_get = await client.get(
+            "/api/v1/projects/00000000-0000-0000-0000-000000000001/traces"
+        )
         missing_post = await client.post(
             "/api/v1/projects/00000000-0000-0000-0000-000000000001/traces",
             json={},
