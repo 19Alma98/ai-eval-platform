@@ -196,6 +196,9 @@ export type MetricComparison = {
   baseline: number | null;
   delta: number | null;
   status: string;
+  ci_low?: number | null;
+  ci_high?: number | null;
+  n_paired?: number | null;
 };
 
 export type CompareRunRef = {

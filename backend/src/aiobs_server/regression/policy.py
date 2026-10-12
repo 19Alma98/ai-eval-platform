@@ -23,7 +23,7 @@ META_KEYS = frozenset(
 _LATENCY_KEYS = frozenset({"p95_max_ms"})
 _COST_KEYS = frozenset({"max_per_request_usd"})
 _MIN_KEYS = frozenset({"min"})
-_REGRESSION_KEYS = frozenset({"max_delta"})
+_REGRESSION_KEYS = frozenset({"max_delta", "allow_insufficient_n"})
 
 
 class InvalidPolicyError(ValueError):
@@ -51,6 +51,7 @@ class CostMeanRule:
 @dataclass(frozen=True, slots=True)
 class RegressionRule:
     max_delta: float
+    allow_insufficient_n: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -87,6 +88,7 @@ class EvaluatorMetricInput:
 class RegressionDeltaInput:
     evaluator_name: str
     mean_score_delta: float | None
+    insufficient_n: bool = False
 
 
 def strip_meta_keys(raw: dict[str, Any]) -> dict[str, Any]:
@@ -176,7 +178,13 @@ def _parse_regression(value: dict[str, Any]) -> RegressionRule:
         raise InvalidPolicyError(f"policy.regression has unsupported keys: {sorted(unknown)}")
     if "max_delta" not in value:
         raise InvalidPolicyError("policy.regression requires max_delta")
-    return RegressionRule(max_delta=_require_float("regression", "max_delta", value["max_delta"]))
+    allow = value.get("allow_insufficient_n", False)
+    if not isinstance(allow, bool):
+        raise InvalidPolicyError("policy.regression.allow_insufficient_n must be a boolean")
+    return RegressionRule(
+        max_delta=_require_float("regression", "max_delta", value["max_delta"]),
+        allow_insufficient_n=allow,
+    )
 
 
 def percentile_nearest_rank(values: list[float], percentile: float) -> float:
@@ -269,6 +277,22 @@ def evaluate_policy(
     return PolicyEvaluation(status=overall, checks=tuple(checks))
 
 
+def _usable_latency_ms(result: EvaluationResultRecord) -> float | None:
+    raw = result.metadata.get("latency_ms")
+    if raw is None or isinstance(raw, bool) or not isinstance(raw, int | float):
+        return None
+    return float(raw)
+
+
+def _has_missing_output_without_latency(
+    results: tuple[EvaluationResultRecord, ...] | list[EvaluationResultRecord],
+) -> bool:
+    for result in results:
+        if result.metadata.get("missing_output") is True and _usable_latency_ms(result) is None:
+            return True
+    return False
+
+
 def _eval_latency(
     rule: LatencyP95Rule,
     metric: EvaluatorMetricInput | None,
@@ -279,6 +303,17 @@ def _eval_latency(
             actual=None,
             threshold=rule.p95_max_ms,
             status="unavailable",
+        )
+    # Missing app output is a quality failure for the latency gate: do not compute
+    # p95 on the remaining subset alone (that would green-light incomplete runs).
+    if _has_missing_output_without_latency(metric.results):
+        values = _metadata_floats(metric.results, "latency_ms")
+        actual = percentile_nearest_rank(values, 95.0) if values else None
+        return PolicyCheck(
+            metric="latency.p95",
+            actual=actual,
+            threshold=rule.p95_max_ms,
+            status="failed",
         )
     values = _metadata_floats(metric.results, "latency_ms")
     if not values:
@@ -327,6 +362,13 @@ def _eval_cost(
 
 def _eval_regression(rule: RegressionRule, delta: RegressionDeltaInput) -> PolicyCheck:
     metric = f"regression.{delta.evaluator_name}.mean_score"
+    if delta.insufficient_n:
+        return PolicyCheck(
+            metric=metric,
+            actual=delta.mean_score_delta,
+            threshold=rule.max_delta,
+            status="unavailable",
+        )
     if delta.mean_score_delta is None:
         return PolicyCheck(
             metric=metric,

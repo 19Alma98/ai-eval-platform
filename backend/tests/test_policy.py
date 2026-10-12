@@ -20,12 +20,15 @@ def _result(
     *,
     latency_ms: float | None = None,
     cost_usd: float | None = None,
+    missing_output: bool = False,
 ) -> EvaluationResultRecord:
-    metadata: dict[str, float] = {}
+    metadata: dict[str, float | bool] = {}
     if latency_ms is not None:
         metadata["latency_ms"] = latency_ms
     if cost_usd is not None:
         metadata["cost_usd"] = cost_usd
+    if missing_output:
+        metadata["missing_output"] = True
     return EvaluationResultRecord.create(uuid.uuid4(), uuid.uuid4(), metadata=metadata)
 
 
@@ -59,13 +62,25 @@ def test_parse_full_policy() -> None:
             "groundedness": {"min": 0.9},
             "latency": {"p95_max_ms": 2000},
             "cost": {"max_per_request_usd": 0.03},
-            "regression": {"max_delta": -0.03},
+            "regression": {"max_delta": -0.03, "allow_insufficient_n": True},
         }
     )
     assert len(policy.absolute_mins) == 2
     assert policy.latency is not None and policy.latency.p95_max_ms == 2000
     assert policy.cost is not None and policy.cost.max_per_request_usd == 0.03
     assert policy.regression is not None and policy.regression.max_delta == -0.03
+    assert policy.regression.allow_insufficient_n is True
+
+
+def test_parse_regression_allow_insufficient_n_defaults_false() -> None:
+    policy = parse_release_policy({"regression": {"max_delta": -0.05}})
+    assert policy.regression is not None
+    assert policy.regression.allow_insufficient_n is False
+
+
+def test_parse_regression_rejects_non_bool_allow_insufficient_n() -> None:
+    with pytest.raises(InvalidPolicyError, match="allow_insufficient_n"):
+        parse_release_policy({"regression": {"max_delta": -0.05, "allow_insufficient_n": 1}})
 
 
 def test_parse_rejects_unknown_keys_and_empty() -> None:
@@ -146,3 +161,67 @@ def test_evaluate_regression_max_delta() -> None:
     empty = evaluate_policy(policy, candidate=[], regression_deltas=[])
     assert empty.status == "failed"
     assert empty.checks[0].status == "unavailable"
+
+
+def test_evaluate_regression_insufficient_n_is_unavailable() -> None:
+    policy = parse_release_policy({"regression": {"max_delta": -0.03}})
+    result = evaluate_policy(
+        policy,
+        candidate=[],
+        regression_deltas=[
+            RegressionDeltaInput(
+                evaluator_name="quality",
+                mean_score_delta=-0.4,
+                insufficient_n=True,
+            )
+        ],
+    )
+    assert result.status == "failed"
+    assert result.checks[0].status == "unavailable"
+    assert result.checks[0].actual == -0.4
+
+
+def test_evaluate_latency_fails_on_missing_output_without_latency() -> None:
+    policy = parse_release_policy({"latency": {"p95_max_ms": 2000}})
+    results = [
+        _result(latency_ms=100.0),
+        _result(missing_output=True),
+        _result(latency_ms=200.0),
+    ]
+    eval_result = evaluate_policy(
+        policy,
+        candidate=[_metric("latency", mean_score=0.0, results=results)],
+    )
+    check = eval_result.checks[0]
+    assert check.metric == "latency.p95"
+    assert check.status == "failed"
+    assert check.actual == 200.0
+
+
+def test_evaluate_latency_fails_when_only_missing_output() -> None:
+    policy = parse_release_policy({"latency": {"p95_max_ms": 2000}})
+    results = [_result(missing_output=True), _result(missing_output=True)]
+    eval_result = evaluate_policy(
+        policy,
+        candidate=[_metric("latency", mean_score=0.0, results=results)],
+    )
+    check = eval_result.checks[0]
+    assert check.status == "failed"
+    assert check.actual is None
+
+
+def test_evaluate_latency_skips_rows_without_latency_ms() -> None:
+    """SKIPPED / missing context latency stays excluded; p95 on remaining values."""
+    policy = parse_release_policy({"latency": {"p95_max_ms": 2000}})
+    results = [
+        _result(latency_ms=100.0),
+        _result(),  # no latency_ms, not missing_output
+        _result(latency_ms=150.0),
+    ]
+    eval_result = evaluate_policy(
+        policy,
+        candidate=[_metric("latency", mean_score=1.0, results=results)],
+    )
+    check = eval_result.checks[0]
+    assert check.status == "passed"
+    assert check.actual == 150.0

@@ -301,6 +301,21 @@ class ScoreLiveInteraction:
                 kind = str(entity.config.get("kind", entry.kind)).strip()
                 # Entry config (e.g. judge model) overrides the shared per-kind evaluator.
                 config = {**entity.config, **entry.config, "kind": kind}
+                # Live-only: empty retrieval is non-applicable (not ungrounded). Offline
+                # GroundednessJudge still FAIL 0 on empty documents (RAG assumption).
+                if kind == "groundedness" and not interaction.documents:
+                    scores.append(
+                        LiveInteractionScore.create(
+                            interaction.id,
+                            kind=entry.kind,
+                            evaluator_id=entity.id,
+                            score=None,
+                            label="SKIPPED",
+                            explanation="no retrieved documents (live)",
+                            threshold=entry.threshold,
+                        )
+                    )
+                    continue
                 try:
                     evaluator = create_evaluator(kind, config)
                     result = await evaluator.evaluate(sample)

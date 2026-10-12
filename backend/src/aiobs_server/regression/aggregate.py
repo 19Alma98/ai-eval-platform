@@ -1,12 +1,13 @@
 from __future__ import annotations
 
 import uuid
-from collections.abc import Iterable
+from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Literal
 
 from aiobs_server.domain.evaluation import EvaluationResultRecord, EvaluationRun
+from aiobs_server.regression.bootstrap import comparison_seed, paired_mean_ci
 
 DELTA_THRESHOLD = 0.01
 MIN_APPLICABLE_ITEMS = 5
@@ -39,6 +40,9 @@ class MetricComparison:
     baseline: float | None
     delta: float | None
     status: MetricStatus
+    ci_low: float | None = None
+    ci_high: float | None = None
+    n_paired: int | None = None
 
 
 def _run_recency(run: EvaluationRun) -> datetime:
@@ -168,12 +172,48 @@ def runs_config_mismatch(candidate: EvaluationRun | None, baseline: EvaluationRu
     return cand_hash is not None and base_hash is not None and cand_hash != base_hash
 
 
+def _metric_value(result: EvaluationResultRecord, metric: MetricName) -> float:
+    if metric == "pass_rate":
+        return 1.0 if _normalize_label(result.label) == "PASS" else 0.0
+    return result.score if result.score is not None else 0.0
+
+
+def paired_item_diffs(
+    candidate_results: Iterable[EvaluationResultRecord],
+    baseline_results: Iterable[EvaluationResultRecord],
+    *,
+    metric: MetricName,
+) -> list[float]:
+    """Paired cand−base values for applicable items present on both sides."""
+    cand = {
+        r.dataset_item_id: r for r in candidate_results if _normalize_label(r.label) != "SKIPPED"
+    }
+    base = {
+        r.dataset_item_id: r for r in baseline_results if _normalize_label(r.label) != "SKIPPED"
+    }
+    shared = sorted(set(cand) & set(base), key=str)
+    return [_metric_value(cand[i], metric) - _metric_value(base[i], metric) for i in shared]
+
+
+def _status_from_ci(ci_low: float, ci_high: float) -> MetricStatus:
+    if ci_low > 0:
+        return "improved"
+    if ci_high < 0:
+        return "regression"
+    return "unchanged"
+
+
 def compare_evaluator_metrics(
     *,
     evaluator_id: uuid.UUID,
     evaluator_name: str | None,
     candidate: Aggregates,
     baseline: Aggregates,
+    candidate_results: Sequence[EvaluationResultRecord] | None = None,
+    baseline_results: Sequence[EvaluationResultRecord] | None = None,
+    candidate_run_id: uuid.UUID | None = None,
+    baseline_run_id: uuid.UUID | None = None,
+    seed: int | None = None,
     threshold: float = DELTA_THRESHOLD,
     config_mismatch: bool = False,
 ) -> list[MetricComparison]:
@@ -182,27 +222,55 @@ def compare_evaluator_metrics(
         ("mean_score", candidate.mean_score, baseline.mean_score),
         ("pass_rate", candidate.pass_rate, baseline.pass_rate),
     ):
+        metric_name: MetricName = metric  # type: ignore[assignment]
         delta: float | None
         status: MetricStatus
+        ci_low: float | None = None
+        ci_high: float | None = None
+        n_paired: int | None = None
         if config_mismatch:
             # Scores measured under different configs: a delta would be meaningless.
             delta, status = None, "config_mismatch"
         else:
             delta, status = classify_delta(cand_value, base_value, threshold=threshold)
-            if (
-                status in ("regression", "improved", "unchanged")
-                and min(candidate.n_applicable, baseline.n_applicable) < MIN_APPLICABLE_ITEMS
-            ):
-                status = "insufficient_n"
+            if status in ("regression", "improved", "unchanged"):
+                if candidate_results is not None and baseline_results is not None:
+                    diffs = paired_item_diffs(
+                        candidate_results,
+                        baseline_results,
+                        metric=metric_name,
+                    )
+                    n_paired = len(diffs)
+                    if n_paired < MIN_APPLICABLE_ITEMS:
+                        status = "insufficient_n"
+                    elif status != "unchanged":
+                        # Non-trivial aggregate delta: require CI to exclude 0.
+                        metric_seed = (
+                            seed
+                            if seed is not None
+                            else comparison_seed(
+                                evaluator_id,
+                                candidate_run_id or uuid.UUID(int=0),
+                                baseline_run_id or uuid.UUID(int=0),
+                                metric_name,
+                            )
+                        )
+                        ci_low, ci_high = paired_mean_ci(diffs, seed=metric_seed)
+                        status = _status_from_ci(ci_low, ci_high)
+                elif min(candidate.n_applicable, baseline.n_applicable) < MIN_APPLICABLE_ITEMS:
+                    status = "insufficient_n"
         rows.append(
             MetricComparison(
                 evaluator_id=evaluator_id,
                 evaluator_name=evaluator_name,
-                metric=metric,  # type: ignore[arg-type]
+                metric=metric_name,
                 candidate=cand_value,
                 baseline=base_value,
                 delta=delta,
                 status=status,
+                ci_low=ci_low,
+                ci_high=ci_high,
+                n_paired=n_paired,
             )
         )
     return rows

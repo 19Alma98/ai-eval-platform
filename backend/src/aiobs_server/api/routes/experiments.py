@@ -172,6 +172,9 @@ def _metric_response(metric: MetricComparison) -> MetricComparisonResponse:
         baseline=metric.baseline,
         delta=metric.delta,
         status=metric.status,
+        ci_low=metric.ci_low,
+        ci_high=metric.ci_high,
+        n_paired=metric.n_paired,
     )
 
 

@@ -383,9 +383,7 @@ async def test_score_goldless_and_review_promote() -> None:
 
     experiments = InMemoryExperimentRepository()
     runs = InMemoryEvaluationRunRepository()
-    promote = PromoteLiveInteraction(
-        live, datasets, AddDatasetItem(datasets, experiments, runs)
-    )
+    promote = PromoteLiveInteraction(live, datasets, AddDatasetItem(datasets, experiments, runs))
     item = await promote.execute(
         PromoteLiveInteractionCommand(
             interaction_id=scored.id,
@@ -621,6 +619,47 @@ async def _score_with(llm: object, entries: tuple[MetricsSetEntry, ...]):
     scores = {s.kind: s for s in await live.list_scores(scored.id)}
     clear_registry()
     return scored, scores, live, scorer
+
+
+@pytest.mark.asyncio
+async def test_live_groundedness_empty_documents_is_skipped() -> None:
+    clear_registry()
+    bootstrap_evaluators(FakeLlm())
+    projects = InMemoryProjectRepository()
+    live = InMemoryLiveRepository()
+    metrics = InMemoryMetricsSetRepository()
+    evaluators = InMemoryEvaluatorRepository()
+    project = Project.create("Demo", slug=f"demo-{uuid.uuid4().hex[:8]}")
+    await projects.add(project)
+    ms = await metrics.add(
+        MetricsSet.create(
+            project.id,
+            "live",
+            entries=(_goldless_entry("groundedness"), _goldless_entry("answer_relevance")),
+        )
+    )
+    create_eval = CreateEvaluator(evaluators, projects)
+    ensure = EnsureProjectDefaultMetricsSet(metrics, evaluators, projects, create_eval)
+    submitted = await SubmitLiveInteraction(projects, live, metrics).execute(
+        SubmitLiveInteractionCommand(
+            project_id=project.id,
+            question="q",
+            answer="a relevant answer",
+            documents=[],
+            metrics_set_id=ms.id,
+        )
+    )
+    scored = await ScoreLiveInteraction(live, metrics, evaluators, create_eval, ensure).execute(
+        submitted.interaction.id
+    )
+    scores = {s.kind: s for s in await live.list_scores(scored.id)}
+    clear_registry()
+    assert scored.judge_status == "scored"
+    assert scores["groundedness"].label == "SKIPPED"
+    assert scores["groundedness"].score is None
+    assert "no retrieved documents" in (scores["groundedness"].explanation or "")
+    assert not score_is_failed(scores["groundedness"])
+    assert scores["answer_relevance"].label == "PASS"
 
 
 @pytest.mark.asyncio

@@ -103,9 +103,7 @@ async def next_dataset_version(
     project_id: uuid.UUID,
     name: str,
 ) -> int:
-    versions = [
-        d.version for d in await datasets.list_by_project(project_id) if d.name == name
-    ]
+    versions = [d.version for d in await datasets.list_by_project(project_id) if d.name == name]
     return (max(versions) if versions else 0) + 1
 
 
@@ -220,16 +218,12 @@ class GetDataset:
         self._experiments = experiments
         self._runs = runs
 
-    async def execute(
-        self, dataset_id: uuid.UUID
-    ) -> tuple[Dataset, list[DatasetItem], bool]:
+    async def execute(self, dataset_id: uuid.UUID) -> tuple[Dataset, list[DatasetItem], bool]:
         dataset = await self._datasets.get_by_id(dataset_id)
         if dataset is None:
             raise DatasetNotFoundError(dataset_id)
         items = await self._datasets.list_items(dataset_id)
-        immutable = await dataset_has_evaluation_runs(
-            self._experiments, self._runs, dataset
-        )
+        immutable = await dataset_has_evaluation_runs(self._experiments, self._runs, dataset)
         return dataset, items, immutable
 
 
@@ -253,9 +247,7 @@ class AddDatasetItem:
         )
         return await self._add_item_to(target, command)
 
-    async def _add_item_to(
-        self, dataset: Dataset, command: AddDatasetItemCommand
-    ) -> DatasetItem:
+    async def _add_item_to(self, dataset: Dataset, command: AddDatasetItemCommand) -> DatasetItem:
         metadata = command.metadata
         if dataset.task_type == "rag_qa":
             metadata = validate_rag_qa_item(

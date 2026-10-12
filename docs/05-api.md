@@ -254,7 +254,13 @@ Response includes:
 - `regressions`, `improved`, `unchanged`, `config_mismatches`, `insufficient_n` subsets
 - `candidate_runs` / `baseline_runs`: per shared evaluator `{ evaluator_id, run_id, metadata }` (includes run-level `warnings` / `warning_detail` when the judge model was unsuitable)
 
-Classification uses higher-is-better with `|delta| < 0.01` treated as unchanged. When either side has fewer than 5 applicable items (`n_applicable`), aggregate metrics use status `insufficient_n` instead of regression/improved/unchanged.
+Classification is higher-is-better. Aggregate `delta = candidate − baseline` is always populated when both means exist. Status uses a paired bootstrap 95% CI on per-item differences (same `dataset_item_id`, both sides applicable / non-`SKIPPED`):
+
+- `n_paired < 5` → `insufficient_n` (delta still shown)
+- `|delta| < 0.01` → `unchanged` (trivial band; bootstrap skipped)
+- otherwise bootstrap (`B=2000`, deterministic seed from evaluator + run ids + metric): CI entirely above 0 → `improved`; entirely below 0 → `regression`; CI includes 0 → `unchanged`
+
+Optional fields `ci_low`, `ci_high`, and `n_paired` are set when the bootstrap runs (or `n_paired` whenever item results are paired).
 
 ### Item-level compare
 
@@ -295,6 +301,8 @@ Input:
 ```
 
 `baseline_experiment_id` is required when `policy.regression` is set unless the experiment already has `baseline_experiment_id`.
+
+Regression compare status `insufficient_n` (paired n < 5) produces a check with status `unavailable` and fails the gate. Set `regression.allow_insufficient_n: true` to soft-pass those evaluators (small demo sets only). Latency p95 fails when any result has `missing_output: true` without `latency_ms`.
 
 Response (HTTP 200 for both pass and fail):
 ```json

@@ -118,6 +118,9 @@ class ReleaseCheck:
         baseline_id: uuid.UUID | None = None
         regression_deltas: list[RegressionDeltaInput] = []
         saw_insufficient_n = False
+        allow_insufficient_n = (
+            policy.regression is not None and policy.regression.allow_insufficient_n
+        )
         if policy.regression is not None:
             baseline_id = command.baseline_experiment_id or experiment.baseline_experiment_id
             if baseline_id is None:
@@ -129,10 +132,20 @@ class ReleaseCheck:
             for metric in comparison.metrics:
                 if metric.metric != "mean_score":
                     continue
+                name = metric.evaluator_name or str(metric.evaluator_id)
                 if metric.status == "insufficient_n":
                     saw_insufficient_n = True
+                    if allow_insufficient_n:
+                        # Demo/small-n escape hatch: omit from regression enforcement.
+                        continue
+                    regression_deltas.append(
+                        RegressionDeltaInput(
+                            evaluator_name=name,
+                            mean_score_delta=metric.delta,
+                            insufficient_n=True,
+                        )
+                    )
                     continue
-                name = metric.evaluator_name or str(metric.evaluator_id)
                 regression_deltas.append(
                     RegressionDeltaInput(
                         evaluator_name=name,
@@ -141,7 +154,12 @@ class ReleaseCheck:
                 )
 
         policy_for_eval = policy
-        if policy.regression is not None and not regression_deltas and saw_insufficient_n:
+        if (
+            policy.regression is not None
+            and allow_insufficient_n
+            and not regression_deltas
+            and saw_insufficient_n
+        ):
             policy_for_eval = replace(policy, regression=None)
 
         evaluation = evaluate_policy(
@@ -151,6 +169,7 @@ class ReleaseCheck:
         )
         if (
             policy.regression is not None
+            and allow_insufficient_n
             and not regression_deltas
             and saw_insufficient_n
             and not evaluation.checks

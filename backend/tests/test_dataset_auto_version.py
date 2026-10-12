@@ -194,10 +194,10 @@ async def test_import_on_frozen_dataset_forks_once() -> None:
     await runs.add_run(EvaluationRun.create(experiment.id, uuid.uuid4(), status="RUNNING"))
 
     csv_body = (
-        "question,expected_answer,expected_doc_ids\n"
-        "What is X?,Answer X,doc-x\n"
-        "What is Y?,Answer Y,doc-y\n"
-    ).encode()
+        b"question,expected_answer,expected_doc_ids\n"
+        b"What is X?,Answer X,doc-x\n"
+        b"What is Y?,Answer Y,doc-y\n"
+    )
 
     uc = ImportDatasetItems(datasets, experiments, runs)
     result = await uc.execute(

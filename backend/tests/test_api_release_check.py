@@ -500,3 +500,58 @@ async def test_release_check_latency_pass_with_seeded_metadata(
     assert body["status"] == "passed"
     assert body["checks"][0]["metric"] == "latency.p95"
     assert body["checks"][0]["actual"] == 300.0
+
+
+@pytest.mark.asyncio
+async def test_release_check_latency_fails_with_missing_output(
+    release_env: tuple[AsyncClient, InMemoryEvaluationRunRepository],
+) -> None:
+    client, runs = release_env
+    project_id, dataset_id, _, _item_id = await _seed_quality(client)
+    experiment = await client.post(
+        f"/api/v1/projects/{project_id}/experiments",
+        json={"name": "cand", "dataset_id": dataset_id},
+    )
+    experiment_id = uuid.UUID(experiment.json()["id"])
+
+    run = EvaluationRun(
+        id=uuid.uuid4(),
+        experiment_id=experiment_id,
+        evaluator_id=uuid.uuid4(),
+        status="PASSED",
+        started_at=datetime.now(UTC),
+        finished_at=datetime.now(UTC),
+        metadata={"evaluator_name": "latency"},
+    )
+    await runs.add_run(run)
+    await runs.add_result(
+        EvaluationResultRecord.create(
+            run.id,
+            uuid.uuid4(),
+            score=1.0,
+            label="PASS",
+            metadata={"latency_ms": 100.0},
+        )
+    )
+    await runs.add_result(
+        EvaluationResultRecord.create(
+            run.id,
+            uuid.uuid4(),
+            score=0.0,
+            label="FAIL",
+            metadata={"missing_output": True},
+        )
+    )
+
+    response = await client.post(
+        f"/api/v1/projects/{project_id}/release-check",
+        json={
+            "experiment_id": str(experiment_id),
+            "policy": {"latency": {"p95_max_ms": 2000}},
+        },
+    )
+    assert response.status_code == 200
+    body = response.json()
+    assert body["status"] == "failed"
+    assert body["checks"][0]["metric"] == "latency.p95"
+    assert body["checks"][0]["status"] == "failed"

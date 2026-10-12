@@ -387,6 +387,9 @@ class MetricComparisonResponse(BaseModel):
     baseline: float | None
     delta: float | None
     status: str
+    ci_low: float | None = None
+    ci_high: float | None = None
+    n_paired: int | None = None
 
 
 class CompareRunRefResponse(BaseModel):

@@ -51,7 +51,7 @@ def _metric(*, status: str, delta: float | None) -> MetricComparison:
 
 
 @pytest.mark.asyncio
-async def test_release_check_regression_only_soft_passes_insufficient_n() -> None:
+async def test_release_check_regression_fails_insufficient_n_by_default() -> None:
     project = Project.create("p")
     dataset_id = uuid.uuid4()
     baseline = Experiment.create(project.id, "baseline", dataset_id)
@@ -85,6 +85,53 @@ async def test_release_check_regression_only_soft_passes_insufficient_n() -> Non
             project_id=project.id,
             experiment_id=candidate.id,
             policy={"regression": {"max_delta": -0.03}},
+            baseline_experiment_id=baseline.id,
+        )
+    )
+    assert result.status == "failed"
+    assert any(
+        c.metric == "regression.quality.mean_score"
+        and c.status == "unavailable"
+        and c.actual == -0.4
+        for c in result.checks.checks
+    )
+
+
+@pytest.mark.asyncio
+async def test_release_check_allow_insufficient_n_soft_passes() -> None:
+    project = Project.create("p")
+    dataset_id = uuid.uuid4()
+    baseline = Experiment.create(project.id, "baseline", dataset_id)
+    candidate = Experiment.create(
+        project.id,
+        "candidate",
+        dataset_id,
+        baseline_experiment_id=baseline.id,
+    )
+    metric = _metric(status="insufficient_n", delta=-0.4)
+    comparison = ExperimentComparison(
+        experiment_id=candidate.id,
+        baseline_experiment_id=baseline.id,
+        metrics=[metric],
+        regressions=[],
+        improved=[],
+        unchanged=[],
+        config_mismatches=[],
+        insufficient_n=[metric],
+    )
+    compare = AsyncMock()
+    compare.execute = AsyncMock(return_value=comparison)
+
+    result = await ReleaseCheck(
+        _Projects(project),
+        _Experiments(candidate, baseline),
+        _Runs(),
+        compare,
+    ).execute(
+        ReleaseCheckCommand(
+            project_id=project.id,
+            experiment_id=candidate.id,
+            policy={"regression": {"max_delta": -0.03, "allow_insufficient_n": True}},
             baseline_experiment_id=baseline.id,
         )
     )

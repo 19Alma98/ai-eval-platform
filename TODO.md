@@ -24,13 +24,13 @@ Open items from the RAG evaluation reviews (2026-10-08, 2026-10-11). Fixed items
 - [x] **Chunks from the same doc are dropped.** `_dedupe_by_id` in `evaluation/trace_context.py`
   keeps only the first chunk per doc id, so groundedness/context judges see partial context in
   chunked RAG. Dedupe ids for hit@k/MRR only; keep all texts for the judges.
-- [ ] **Compare has no statistics.** Fixed delta 0.01 with n >= 5. On 8 binary items one flip = 0.125
-  = "regression". Add a paired test / bootstrap CI, or a larger min-n for judge metrics.
-- [ ] **Release gate passes regression on `insufficient_n`.** Regression silently dropped when
-  n < 5 (`release_check.py`). At least surface it as a warning; consider failing by default.
-- [ ] **Latency p95 ignores missing-output items** (no `latency_ms` in metadata).
-- [ ] **Live groundedness with no documents → FAIL 0.** OK for RAG; consider SKIPPED for
-  interactions that never retrieved anything.
+- [x] **Compare has no statistics.** Paired bootstrap 95% CI on item diffs; n=8 one-flip stays
+  `unchanged` with delta shown (not false `regression`).
+- [x] **Release gate passes regression on `insufficient_n`.** Default: check `unavailable`
+  (gate fails). Opt-in `regression.allow_insufficient_n: true` soft-passes for small demos.
+- [x] **Latency p95 ignores missing-output items** (no `latency_ms` in metadata).
+  Missing-output without `latency_ms` fails `latency.p95`; SKIPPED rows stay excluded.
+- [x] **Live groundedness with no documents → FAIL 0.** Live: SKIPPED; offline keeps FAIL 0.
 - [ ] **Claim cache stores empty extractions forever** (first write wins): one bad extraction makes
   correctness permanently SKIPPED (`no_gold_claims`) for that item/model/prompt.
 - [ ] **Compare-items drill-down** (`compare_items.py`) does not apply the stale-run filter yet.

@@ -225,8 +225,10 @@ class CompareExperiments:
         for evaluator_id in shared:
             cand_run = candidate_by_eval[evaluator_id]
             base_run = baseline_by_eval[evaluator_id]
-            cand_agg = aggregate_results(await self._runs.list_results(cand_run.id))
-            base_agg = aggregate_results(await self._runs.list_results(base_run.id))
+            cand_results = await self._runs.list_results(cand_run.id)
+            base_results = await self._runs.list_results(base_run.id)
+            cand_agg = aggregate_results(cand_results)
+            base_agg = aggregate_results(base_results)
             name = names.get(evaluator_id)
             metrics.extend(
                 compare_evaluator_metrics(
@@ -234,6 +236,10 @@ class CompareExperiments:
                     evaluator_name=name,
                     candidate=cand_agg,
                     baseline=base_agg,
+                    candidate_results=cand_results,
+                    baseline_results=base_results,
+                    candidate_run_id=cand_run.id,
+                    baseline_run_id=base_run.id,
                     config_mismatch=runs_config_mismatch(cand_run, base_run),
                 )
             )

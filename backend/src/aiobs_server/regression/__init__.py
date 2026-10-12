@@ -8,9 +8,11 @@ from aiobs_server.regression.aggregate import (
     aggregate_results,
     classify_delta,
     compare_evaluator_metrics,
+    paired_item_diffs,
     select_latest_runs,
     select_runs,
 )
+from aiobs_server.regression.bootstrap import comparison_seed, paired_mean_ci
 from aiobs_server.regression.policy import (
     EvaluatorMetricInput,
     InvalidPolicyError,
@@ -38,7 +40,10 @@ __all__ = [
     "aggregate_results",
     "classify_delta",
     "compare_evaluator_metrics",
+    "comparison_seed",
     "evaluate_policy",
+    "paired_item_diffs",
+    "paired_mean_ci",
     "parse_release_policy",
     "percentile_nearest_rank",
     "select_latest_runs",

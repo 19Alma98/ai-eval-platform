@@ -218,9 +218,9 @@ Machine-readable quality gate. Phase 4 evaluates it statelessly (YAML/file or in
 
 Semantics:
 - `{name}.min` — pass if latest-run `mean_score >= min`
-- `latency.p95_max_ms` — pass if p95 of result `metadata.latency_ms` (nearest-rank) `<=` threshold
+- `latency.p95_max_ms` — pass if p95 of result `metadata.latency_ms` (nearest-rank) `<=` threshold. Rows without `latency_ms` (e.g. SKIPPED) are excluded from the sample. Any result with `metadata.missing_output: true` and no usable `latency_ms` fails the check (do not green-light incomplete runs on a latency subset).
 - `cost.max_per_request_usd` — pass if mean of result `metadata.cost_usd` `<=` threshold
-- `regression.max_delta` — for each shared evaluator, pass if `mean_score` delta (candidate − baseline) `>= max_delta`
+- `regression.max_delta` — for each shared evaluator, pass if `mean_score` delta (candidate − baseline) `>= max_delta`. Compare status `insufficient_n` (n < 5) yields check `unavailable` → overall failed. Opt-in `regression.allow_insufficient_n: true` restores soft-pass (skip those evaluators) for small demo sets.
 - Missing run/metadata/score → check `unavailable` → overall failed
 
 Example (RAG portfolio uses pack metric names):
@@ -236,6 +236,7 @@ latency:
   p95_max_ms: 30000
 regression:
   max_delta: -0.05
+  # allow_insufficient_n: true   # optional; demos with n < 5 only
 ```
 
 Legacy/custom evaluator names (for example `quality` with a `contains` evaluator) remain valid when those evaluators exist on the project.
