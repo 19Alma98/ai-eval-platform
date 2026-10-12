@@ -58,8 +58,7 @@ Synthetic runs with known truth on the 8-item gold set, judge `gemma4:e2b`:
   changes are checked against known-good/known-bad answers.
 - [ ] Demo gold set is weak: `expected_output` is only the `must_contain` phrase and n = 8.
   Write full reference answers and more items.
-- [ ] Check `examples/hr_it_assistant/knowledge.json` encoding (`10:00�16:00` showed up in
-  the terminal; may just be the console code page).
+- [ ] Check `examples/hr_it_assistant/knowledge.json` encoding.
 
 ## Tooling
 
