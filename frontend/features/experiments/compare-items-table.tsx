@@ -7,16 +7,11 @@ import { DataTable, type DataTableColumn } from "@/components/data-table";
 import { EmptyState } from "@/components/empty-state";
 import { ErrorState } from "@/components/error-state";
 import { LoadingBlock } from "@/components/loading-block";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { ApiError, formatErrorForUi } from "@/lib/api/client";
 import type { ItemComparisonRow, MetricComparison } from "@/lib/api/types";
-import { resolveLabel } from "@/lib/format";
+import { cn } from "@/lib/cn";
+import { formatScore, resolveLabel } from "@/lib/format";
+import { metricLabel } from "@/lib/metrics-catalog";
 import { withProjectQuery } from "@/lib/project-href";
 import { CompareItemDetail } from "./compare-item-detail";
 import { CompareStatusCell } from "./compare-table";
@@ -43,15 +38,11 @@ function truncatePreview(text: string, max = PREVIEW_MAX): string {
   return `${text.slice(0, max)}…`;
 }
 
-function formatScore(value: number | null): string {
-  if (value === null || value === undefined) return "—";
-  return value.toFixed(4);
-}
-
 function formatDelta(value: number | null): string {
   if (value === null || value === undefined) return "—";
-  const sign = value > 0 ? "+" : "";
-  return `${sign}${value.toFixed(4)}`;
+  if (Math.abs(value) < 0.005) return "±0";
+  const sign = value > 0 ? "+" : "−";
+  return `${sign}${Math.abs(value).toFixed(2)}`;
 }
 
 function hasResolvableOutput(row: ItemComparisonRow): boolean {
@@ -69,6 +60,8 @@ type CompareItemsTableProps = {
   metrics: MetricComparison[];
   candidateName?: string;
   baselineName?: string;
+  /** Metric picked in the summary table above. */
+  evaluatorId: string | null;
 };
 
 export function CompareItemsTable({
@@ -78,10 +71,11 @@ export function CompareItemsTable({
   metrics,
   candidateName,
   baselineName,
+  evaluatorId,
 }: CompareItemsTableProps) {
   const evaluatorsQuery = useEvaluators(projectId);
   const [regressionsOnly, setRegressionsOnly] = useState(false);
-  const [userEvaluatorId, setUserEvaluatorId] = useState<string>("");
+  const userEvaluatorId = evaluatorId ?? "";
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [detailRow, setDetailRow] = useState<ItemComparisonRow | null>(null);
   const [detailOpen, setDetailOpen] = useState(false);
@@ -169,56 +163,67 @@ export function CompareItemsTable({
     () => [
       {
         id: "input",
-        header: "Input",
+        header: "Question",
+        wrap: true,
         cell: (row) => (
-          <span className="line-clamp-2 font-mono text-xs text-foreground">
-            {truncatePreview(valuePreview(row.input))}
+          <span className="line-clamp-2 text-foreground">
+            {valuePreview(row.input)}
           </span>
         ),
       },
       {
         id: "baseline_output",
-        header: "Baseline output",
+        header: "Baseline answer",
+        wrap: true,
         cell: (row) => (
-          <span className="line-clamp-2 font-mono text-xs text-muted-foreground">
+          <span className="line-clamp-2 text-muted-foreground">
             {truncatePreview(valuePreview(row.baseline.actual_output))}
           </span>
         ),
       },
       {
         id: "candidate_output",
-        header: "Candidate output",
+        header: "Candidate answer",
+        wrap: true,
         cell: (row) => (
-          <span className="line-clamp-2 font-mono text-xs text-muted-foreground">
+          <span className="line-clamp-2 text-muted-foreground">
             {truncatePreview(valuePreview(row.candidate.actual_output))}
           </span>
         ),
       },
       {
-        id: "baseline_score",
-        header: "Baseline score",
-        headerClassName: "w-[112px] text-right",
-        className: "text-right font-mono tabular-nums text-sm text-muted-foreground",
-        cell: (row) => formatScore(row.baseline.score),
-      },
-      {
-        id: "candidate_score",
-        header: "Candidate score",
+        id: "scores",
+        header: "Score",
         headerClassName: "w-[120px] text-right",
-        className: "text-right font-mono tabular-nums text-sm",
-        cell: (row) => formatScore(row.candidate.score),
+        className: "text-right tabular-nums text-sm",
+        cell: (row) => (
+          <span>
+            <span className="text-muted-foreground">{formatScore(row.baseline.score)}</span>
+            {" → "}
+            <span className="font-medium text-foreground">{formatScore(row.candidate.score)}</span>
+          </span>
+        ),
       },
       {
         id: "delta",
-        header: "Delta",
-        headerClassName: "w-[88px] text-right",
-        className: "text-right font-mono tabular-nums text-sm",
-        cell: (row) => formatDelta(row.delta),
+        header: "Change",
+        headerClassName: "w-[80px] text-right",
+        className: "text-right tabular-nums text-sm",
+        cell: (row) => (
+          <span
+            className={cn(
+              row.delta != null && row.delta < -0.005 && "text-status-fail",
+              row.delta != null && row.delta > 0.005 && "text-status-ok",
+            )}
+          >
+            {formatDelta(row.delta)}
+          </span>
+        ),
       },
       {
         id: "status",
-        header: "Status",
-        headerClassName: "w-[112px]",
+        header: "Verdict",
+        headerClassName: "w-[130px]",
         cell: (row) => <CompareStatusCell status={row.status} />,
       },
     ],
@@ -236,50 +241,30 @@ export function CompareItemsTable({
   }
 
   return (
-    <section className="mt-4 flex flex-col gap-3 border-t border-border pt-4">
-      <h2 className="text-sm font-medium text-foreground">Item responses</h2>
-
-      <div className="flex flex-wrap items-end gap-4">
-        {!singleEvaluator && evaluatorOptions.length > 0 ? (
-          <div className="flex flex-col gap-1 sm:min-w-[220px]">
-            <label
-              htmlFor="compare-items-evaluator"
-              className="text-xs font-medium text-muted-foreground"
-            >
-              Evaluator
-            </label>
-            <Select
-              value={selectedEvaluatorId}
-              onValueChange={(v) => {
-                if (v) setUserEvaluatorId(v);
-              }}
-              disabled={evaluatorsQuery.isLoading && evaluatorOptions.length === 0}
-            >
-              <SelectTrigger
-                id="compare-items-evaluator"
-                className="w-full sm:w-[260px]"
-              >
-                <SelectValue placeholder="Select evaluator" />
-              </SelectTrigger>
-              <SelectContent>
-                {evaluatorOptions.map((opt) => (
-                  <SelectItem key={opt.id} value={opt.id}>
-                    {opt.name?.trim() || "Unknown evaluator"}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-        ) : null}
-
-        <label className="flex cursor-pointer items-center gap-2 pb-2 text-sm text-foreground">
+    <section className="flex flex-col gap-3">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex flex-col">
+          <h2 className="text-base font-semibold text-foreground">
+            Answers side by side
+          </h2>
+          <p className="text-sm text-muted-foreground">
+            Scores for{" "}
+            <span className="font-medium text-foreground">
+              {metricLabel(
+                evaluatorOptions.find((o) => o.id === selectedEvaluatorId)?.name,
+              )}
+            </span>
+            . Pick another metric in the table above. Click a row to read both answers.
+          </p>
+        </div>
+        <label className="flex cursor-pointer items-center gap-2 text-sm text-foreground">
           <input
             type="checkbox"
             className="size-4 rounded border-border"
             checked={regressionsOnly}
             onChange={(e) => setRegressionsOnly(e.target.checked)}
           />
-          Regressions only
+          Only answers that got worse
         </label>
       </div>
 
@@ -288,14 +273,14 @@ export function CompareItemsTable({
       !itemsQuery.isFetching &&
       !itemsQuery.data ? (
         <EmptyState
-          title="No evaluation runs yet"
-          description="Run evaluators on both experiments before comparing item-level responses."
+          title="Not scored yet"
+          description="Score the answers of both experiments to compare them question by question."
           action={
             <Link
               href={experimentDetailHref}
               className="text-sm font-medium text-foreground underline-offset-4 hover:underline"
             >
-              Open experiment to evaluate
+              Open experiment
             </Link>
           }
         />
@@ -309,25 +294,25 @@ export function CompareItemsTable({
       ) : rows.length === 0 ? (
         regressionsOnly ? (
           <EmptyState
-            title="No regressions"
-            description="No items regressed for this evaluator with the current filter."
+            title="Nothing got worse"
+            description="No answer scores lower than in the baseline for this metric."
           />
         ) : (
           <EmptyState
-            title="No dataset items"
-            description="This dataset has no cases to compare."
+            title="No questions"
+            description="This test set has no questions to compare."
           />
         )
       ) : !rows.some(hasResolvableOutput) ? (
         <EmptyState
-          title="No agent responses to show"
-          description="Bind or upload answers on the run, then evaluate."
+          title="No answers yet"
+          description="Run your app on the test set for both experiments, then score them."
           action={
             <Link
               href={experimentDetailHref}
               className="text-sm font-medium text-foreground underline-offset-4 hover:underline"
             >
-              Open run to bind answers
+              Open experiment
             </Link>
           }
         />
@@ -335,8 +320,7 @@ export function CompareItemsTable({
         <>
           {rows.every((r) => r.status === "unavailable") ? (
             <p className="text-sm text-muted-foreground">
-              Scores are unavailable for this evaluator — run evaluate on both
-              experiments to compare per-item deltas.{" "}
+              This metric was not scored on both experiments.{" "}
               <Link
                 href={experimentDetailHref}
                 className="font-medium text-foreground underline-offset-4 hover:underline"
@@ -347,9 +331,9 @@ export function CompareItemsTable({
           ) : null}
           {rows.some((r) => r.status === "config_mismatch") ? (
             <p className="text-sm text-status-warn">
-              Candidate and baseline were scored with different configs for this
-              evaluator (e.g. k, max_ms, judge model): per-item deltas are not
-              comparable. Re-run evaluate with the same metrics set on both.
+              The two experiments were scored with different settings for this
+              metric (for example a different judge model), so the scores are not
+              comparable. Re-score both with the same metrics.
             </p>
           ) : null}
           <DataTable
@@ -398,7 +382,7 @@ function CompareItemsError({
     return (
       <ErrorState
         title="Different test sets"
-        message="Runs must share the same dataset (test set version). Pick a baseline experiment that uses the same dataset as the candidate."
+        message="Both experiments must use the same test set version. Pick a baseline that ran on the same test set."
       />
     );
   }
@@ -406,15 +390,15 @@ function CompareItemsError({
   if (isAmbiguousEvaluator) {
     return (
       <ErrorState
-        title="Choose an evaluator"
-        message="Multiple evaluators have runs on these experiments. Select one from the list above."
+        title="Choose a metric"
+        message="Select a metric in the table above to compare answers."
       />
     );
   }
 
   return (
     <ErrorState
-      title="Could not load item responses"
+      title="Could not load answers"
       message={message}
       onRetry={onRetry}
     />

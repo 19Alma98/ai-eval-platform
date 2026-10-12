@@ -38,15 +38,15 @@ export function LiveQualityChart({
     <section
       id="live-quality-chart"
       aria-label="Live quality over time"
-      className="flex flex-col gap-2 rounded-md border border-border bg-surface p-3"
+      className="flex flex-col gap-2 rounded-lg border border-border bg-surface p-4"
     >
-      <h2 className="text-sm font-semibold text-foreground">Live quality</h2>
+      <h2 className="text-sm font-semibold text-foreground">Live quality over time</h2>
       {!showChart ? (
         <div className="flex flex-col items-start gap-2 py-6 text-sm text-muted-foreground">
-          <p>Not enough points in range.</p>
+          <p>Not enough live traffic in this time range to draw a trend.</p>
           {onWidenRange ? (
             <Button type="button" variant="outline" size="sm" onClick={onWidenRange}>
-              Widen range
+              Show a longer range
             </Button>
           ) : null}
         </div>
@@ -68,10 +68,10 @@ export function LiveQualityChart({
               <table className="w-full text-left text-xs">
                 <thead className="sticky top-0 bg-surface-2">
                   <tr>
-                    <th className="px-2 py-1 font-medium">Bucket</th>
-                    <th className="px-2 py-1 font-medium">n</th>
-                    <th className="px-2 py-1 font-medium">Mean score</th>
-                    <th className="px-2 py-1 font-medium">Fail rate</th>
+                    <th className="px-2 py-1 font-medium">Time</th>
+                    <th className="px-2 py-1 font-medium">Answers</th>
+                    <th className="px-2 py-1 font-medium">Avg. quality</th>
+                    <th className="px-2 py-1 font-medium">Failing</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -101,7 +101,7 @@ export function LiveQualityChart({
         href={withProjectQuery("/live-runs", projectId)}
         className={cn("text-xs text-primary hover:underline")}
       >
-        Open live runs
+        Open live traffic
       </Link>
     </section>
   );

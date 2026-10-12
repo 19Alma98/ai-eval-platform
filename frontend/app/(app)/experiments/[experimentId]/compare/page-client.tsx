@@ -1,7 +1,6 @@
 "use client";
 
 import { useParams, usePathname } from "next/navigation";
-import { PageIntro } from "@/components/page-intro";
 import { ExperimentCompareView } from "@/features/experiments/experiment-compare-view";
 import { ProjectRequired } from "@/components/project-required";
 import { useProjectId } from "@/lib/project-store";
@@ -26,15 +25,6 @@ export default function ExperimentComparePage() {
   }
 
   return (
-    <>
-      <PageIntro
-        title="Compare"
-        glossary="Deltas vs a baseline experiment — better/worse on shared metrics."
-      />
-      <ExperimentCompareView
-        projectId={projectId}
-        experimentId={experimentId}
-      />
-    </>
+    <ExperimentCompareView projectId={projectId} experimentId={experimentId} />
   );
 }

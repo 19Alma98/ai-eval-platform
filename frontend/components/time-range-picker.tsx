@@ -23,6 +23,7 @@ export function TimeRangePicker({
 
   return (
     <Select
+      aria-label="Time range"
       value={preset}
       onValueChange={(v) => {
         if (v) setPreset(v);

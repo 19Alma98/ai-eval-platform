@@ -1,7 +1,7 @@
 "use client";
 
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { Upload } from "lucide-react";
+import { Download, Upload } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useState, type SubmitEvent } from "react";
 import { toast } from "sonner";
@@ -21,6 +21,29 @@ import { importDatasetItems } from "@/lib/api/datasets";
 import { withProjectQuery } from "@/lib/project-href";
 import { RAG_QA_TASK } from "./rag-qa";
 import { datasetQueryKey, datasetsQueryKey } from "./use-datasets";
+
+const IMPORT_COLUMNS = [
+  { name: "question", help: "What the user asks (required)" },
+  { name: "expected_answer", help: "The correct answer (required)" },
+  { name: "expected_doc_ids", help: "IDs of the documents that contain the answer" },
+  { name: "must_contain", help: "Phrases the answer must include (optional)" },
+] as const;
+
+const TEMPLATE_CSV = [
+  "question,expected_answer,expected_doc_ids,must_contain",
+  "How many vacation days do I get?,Full-time employees get 20 days per year.,pto,20 days",
+  "Which VPN should I use?,Use the company GlobalProtect VPN.,vpn|it-security,GlobalProtect",
+].join("\n");
+
+function downloadTemplate() {
+  const blob = new Blob([`${TEMPLATE_CSV}\n`], { type: "text/csv" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = "test-set-template.csv";
+  link.click();
+  URL.revokeObjectURL(url);
+}
 
 export function ImportDatasetDialog({
   projectId,
@@ -71,11 +94,11 @@ export function ImportDatasetDialog({
       setImportErrors(result.errors);
       if (forked) {
         toast.success(
-          `Created v${result.version} and imported ${result.created} item${result.created === 1 ? "" : "s"}`,
+          `Imported ${result.created} question${result.created === 1 ? "" : "s"} into new version v${result.version}`,
         );
       } else if (result.created > 0) {
         toast.success(
-          `Imported ${result.created} item${result.created === 1 ? "" : "s"}`,
+          `Imported ${result.created} question${result.created === 1 ? "" : "s"}`,
         );
       }
       if (result.errors.length > 0) {
@@ -122,7 +145,6 @@ export function ImportDatasetDialog({
             <Button
               type="button"
               size="sm"
-              variant="outline"
               disabled={!canImport}
               title={
                 canImport
@@ -131,37 +153,30 @@ export function ImportDatasetDialog({
               }
             >
               <Upload className="size-4" />
-              Import
+              Import questions
             </Button>
           }
         />
       ) : null}
-      <DialogContent className="sm:max-w-md">
+      <DialogContent className="sm:max-w-lg">
         <form onSubmit={handleSubmit}>
           <DialogHeader>
-            <DialogTitle>Import test items</DialogTitle>
+            <DialogTitle>Import questions</DialogTitle>
             <DialogDescription>
+              Upload a CSV or JSON file
               {datasetName ? (
                 <>
-                  Upload CSV or JSON for{" "}
-                  <span className="font-medium text-foreground">
-                    {datasetName}
-                  </span>
-                  . Required: question, expected_answer, expected_doc_ids.
-                  Optional: must_contain.
+                  {" "}into{" "}
+                  <span className="font-medium text-foreground">{datasetName}</span>
                 </>
-              ) : (
-                <>
-                  Upload CSV or JSON with question, expected_answer,
-                  expected_doc_ids, and optional must_contain.
-                </>
-              )}
+              ) : null}
+              . One row per question.
             </DialogDescription>
           </DialogHeader>
           <div className="flex flex-col gap-3 py-4">
             <div className="flex flex-col gap-2">
               <label htmlFor="dataset-import-file" className="text-sm font-medium">
-                File
+                File (.csv or .json)
               </label>
               <Input
                 id="dataset-import-file"
@@ -173,9 +188,29 @@ export function ImportDatasetDialog({
                   setImportErrors([]);
                 }}
               />
-              <p className="text-xs text-muted-foreground">
-                CSV: pipe-separated values in expected_doc_ids and must_contain.
-                JSON: arrays for the same fields.
+            </div>
+            <div className="flex flex-col gap-2 rounded-md border border-border bg-surface-2 p-3 text-xs">
+              <div className="flex items-center justify-between gap-2">
+                <p className="font-medium text-foreground">Expected columns</p>
+                <button
+                  type="button"
+                  onClick={downloadTemplate}
+                  className="inline-flex items-center gap-1 text-primary hover:underline"
+                >
+                  <Download className="size-3" />
+                  Download template
+                </button>
+              </div>
+              <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-muted-foreground">
+                {IMPORT_COLUMNS.map((col) => (
+                  <div key={col.name} className="contents">
+                    <dt className="font-mono text-foreground">{col.name}</dt>
+                    <dd>{col.help}</dd>
+                  </div>
+                ))}
+              </dl>
+              <p className="text-muted-foreground">
+                In CSV, separate multiple values with “|”. In JSON, use arrays.
               </p>
             </div>
             {importErrors.length > 0 ? (

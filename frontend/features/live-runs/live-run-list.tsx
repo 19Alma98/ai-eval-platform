@@ -1,37 +1,67 @@
 "use client";
 
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useMemo, useState } from "react";
 import { DataTable, type DataTableColumn } from "@/components/data-table";
 import { EmptyState } from "@/components/empty-state";
 import { ErrorState } from "@/components/error-state";
 import { LoadingBlock } from "@/components/loading-block";
 import { RelativeTime } from "@/components/relative-time";
-import { StatusBadge } from "@/components/status-badge";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { liveJudgeWarningMessage } from "@/features/judges/judge-metadata";
 import type { JudgeCalibrationBucket, LiveInteraction } from "@/lib/api/types";
+import { formatErrorForUi } from "@/lib/api/client";
+import { cn } from "@/lib/cn";
+import { formatScore } from "@/lib/format";
+import { metricLabel } from "@/lib/metrics-catalog";
 import { withProjectQuery } from "@/lib/project-href";
 import { useProjectId } from "@/lib/project-store";
+import { LIVE_VERDICT_LABELS, liveVerdict, type LiveVerdict } from "./live-verdict";
 import { useLiveJudgeCalibration, useLiveRuns } from "./use-live-runs";
 
-function primaryScore(row: LiveInteraction): string {
-  const grounded = row.scores.find((s) => s.kind === "groundedness");
-  const score = grounded ?? row.scores[0];
-  if (!score || score.score == null) return "—";
-  return score.score.toFixed(2);
+const VERDICT_STYLES: Record<LiveVerdict, string> = {
+  passing: "bg-status-ok-bg text-status-ok",
+  failing: "bg-status-fail-bg text-status-fail",
+  waiting: "bg-status-unset-bg text-status-unset",
+  error: "bg-status-warn-bg text-status-warn",
+  not_scored: "bg-status-unset-bg text-status-unset",
+};
+
+function ScoreChips({ row }: { row: LiveInteraction }) {
+  const scored = row.scores.filter((s) => s.score != null);
+  if (scored.length === 0) return <span className="text-muted-foreground">—</span>;
+  return (
+    <span className="flex flex-wrap gap-1">
+      {scored.map((s) => {
+        const fail = (s.label ?? "").toUpperCase() === "FAIL";
+        return (
+          <span
+            key={s.id}
+            className={cn(
+              "inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-xs",
+              fail ? "bg-status-fail-bg text-status-fail" : "bg-surface-2 text-foreground",
+            )}
+          >
+            {metricLabel(s.kind)}
+            <span className="tabular-nums font-medium">{formatScore(s.score)}</span>
+          </span>
+        );
+      })}
+    </span>
+  );
 }
 
-function reviewSummary(row: LiveInteraction): string {
+function reviewSummary(row: LiveInteraction): string | null {
   const reviewed = row.scores.filter((s) => s.review);
-  if (reviewed.length === 0) {
-    return row.review?.verdict ?? "—";
-  }
+  if (reviewed.length === 0) return row.review ? "Reviewed" : null;
   const agrees = reviewed.filter((s) => s.review?.verdict === "agree").length;
-  return `${agrees}/${reviewed.length} agree`;
+  return agrees === reviewed.length
+    ? "Judge confirmed"
+    : `${reviewed.length - agrees} disagreement${reviewed.length - agrees === 1 ? "" : "s"}`;
 }
+
+type Filter = "all" | "failing" | "waiting";
 
 function pct(rate: number): string {
   return `${Math.round(rate * 100)}%`;
@@ -39,15 +69,17 @@ function pct(rate: number): string {
 
 export function LiveRunList() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { projectId } = useProjectId();
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [calibrationIndex, setCalibrationIndex] = useState(0);
-  const [judgeStatus, setJudgeStatus] = useState<string>("");
-  const [failedOnly, setFailedOnly] = useState(false);
+  const [filter, setFilter] = useState<Filter>(() =>
+    searchParams.get("failed") === "1" ? "failing" : "all",
+  );
   const [search, setSearch] = useState("");
   const query = useLiveRuns(projectId, {
-    judgeStatus: judgeStatus || undefined,
-    failedOnly: failedOnly || undefined,
+    judgeStatus: filter === "waiting" ? "pending" : undefined,
+    failedOnly: filter === "failing" || undefined,
     search: search.trim() || undefined,
   });
   const calibration = useLiveJudgeCalibration(projectId);
@@ -60,33 +92,37 @@ export function LiveRunList() {
     () => [
       {
         id: "kind",
-        header: "Kind",
-        cell: (row) => row.kind,
+        header: "Metric",
+        cell: (row) => metricLabel(row.kind),
       },
       {
         id: "model",
-        header: "Model",
+        header: "Judge model",
         cell: (row) => row.model ?? "—",
       },
       {
         id: "n",
-        header: "n",
-        headerClassName: "w-[64px]",
-        className: "font-mono tabular-nums",
+        header: "Reviews",
+        headerClassName: "w-[90px]",
+        className: "tabular-nums",
         cell: (row) => String(row.n_reviewed),
       },
       {
         id: "agreement",
-        header: "Agreement",
-        headerClassName: "w-[100px]",
-        className: "font-mono tabular-nums",
-        cell: (row) => pct(row.agreement_rate),
+        header: "Humans agree",
+        headerClassName: "w-[120px]",
+        className: "tabular-nums",
+        cell: (row) => (
+          <span className={cn(row.agreement_rate < 0.8 && "font-medium text-status-warn")}>
+            {pct(row.agreement_rate)}
+          </span>
+        ),
       },
       {
         id: "edits",
-        header: "Expl. edits",
-        headerClassName: "w-[100px]",
-        className: "font-mono tabular-nums",
+        header: "Explanations edited",
+        headerClassName: "w-[160px]",
+        className: "tabular-nums",
         cell: (row) => pct(row.explanation_edit_rate),
       },
     ],
@@ -108,38 +144,53 @@ export function LiveRunList() {
       {
         id: "created",
         header: "When",
-        headerClassName: "w-[120px]",
+        headerClassName: "w-[130px]",
+        className: "text-muted-foreground",
         cell: (row) => <RelativeTime date={row.created_at} />,
       },
       {
         id: "question",
-        header: "Question",
+        header: "Question and answer",
+        wrap: true,
         cell: (row) => (
-          <span className="line-clamp-2 text-foreground">{row.question}</span>
+          <span className="flex flex-col">
+            <span className="line-clamp-1 font-medium text-foreground">{row.question}</span>
+            <span className="line-clamp-1 text-xs text-muted-foreground">{row.answer}</span>
+          </span>
         ),
       },
       {
-        id: "status",
-        header: "Judge",
-        headerClassName: "w-[100px]",
-        cell: (row) => <StatusBadge status={row.judge_status} />,
+        id: "verdict",
+        header: "Verdict",
+        headerClassName: "w-[150px]",
+        cell: (row) => {
+          const verdict = liveVerdict(row);
+          return (
+            <span
+              className={cn(
+                "inline-flex items-center rounded px-1.5 py-0.5 text-xs font-medium",
+                VERDICT_STYLES[verdict],
+              )}
+            >
+              {LIVE_VERDICT_LABELS[verdict]}
+            </span>
+          );
+        },
       },
       {
-        id: "score",
-        header: "Score",
-        headerClassName: "w-[80px]",
-        className: "font-mono tabular-nums",
-        cell: (row) => primaryScore(row),
+        id: "scores",
+        header: "Scores",
+        headerClassName: "w-[300px]",
+        wrap: true,
+        cell: (row) => <ScoreChips row={row} />,
       },
       {
         id: "review",
-        header: "Review",
-        headerClassName: "w-[120px]",
+        header: "Human review",
+        headerClassName: "w-[150px]",
         cell: (row) => {
           const summary = reviewSummary(row);
-          if (summary === "—") {
-            return <span className="text-muted-foreground">—</span>;
-          }
+          if (!summary) return <span className="text-muted-foreground">Not reviewed</span>;
           return <Badge variant="outline">{summary}</Badge>;
         },
       },
@@ -149,24 +200,88 @@ export function LiveRunList() {
 
   if (query.isLoading) return <LoadingBlock />;
   if (query.isError) {
-    return <ErrorState message="Could not load live runs." />;
+    return (
+      <ErrorState
+        title="Could not load live traffic"
+        message={formatErrorForUi(query.error)}
+        onRetry={() => void query.refetch()}
+      />
+    );
   }
 
+  const filtersActive = filter !== "all" || search.trim() !== "";
+
   return (
-    <div className="space-y-3">
+    <div className="flex flex-col gap-4">
       {unsuitableMessage ? (
         <div className="rounded-md border border-status-warn bg-status-warn-bg px-3 py-2 text-sm text-status-warn">
-          {unsuitableMessage}
+          <strong>Judge results may be unreliable.</strong> {unsuitableMessage}
         </div>
       ) : null}
+      <div className="flex flex-wrap items-center gap-2">
+        <div role="radiogroup" aria-label="Filter live answers" className="flex rounded-md border border-border bg-surface p-0.5">
+          {(
+            [
+              ["all", "All"],
+              ["failing", "Failing"],
+              ["waiting", "Waiting for judge"],
+            ] as const
+          ).map(([key, label]) => (
+            <button
+              key={key}
+              type="button"
+              role="radio"
+              aria-checked={filter === key}
+              onClick={() => setFilter(key)}
+              className={cn(
+                "rounded px-2.5 py-1 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground",
+                filter === key && "bg-row-selected text-foreground",
+              )}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+        <Input
+          type="search"
+          placeholder="Search questions…"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          className="h-8 max-w-xs"
+          aria-label="Search questions"
+        />
+      </div>
+      {rows.length === 0 ? (
+        filtersActive ? (
+          <EmptyState
+            title="Nothing matches"
+            description="No live answers match these filters."
+          />
+        ) : (
+          <EmptyState
+            title="No live traffic yet"
+            description="Send real questions and answers from your app with client.live_runs.submit(project_id, question=…, answer=…, documents=[…]). Each one is scored automatically."
+          />
+        )
+      ) : (
+        <DataTable
+          rows={rows}
+          columns={columns}
+          getRowKey={(row) => row.id}
+          selectedIndex={selectedIndex}
+          onSelectedIndexChange={setSelectedIndex}
+          onRowActivate={onRowActivate}
+          aria-label="Live answers"
+        />
+      )}
       {calibrationRows.length > 0 ? (
-        <section className="space-y-2">
-          <h2 className="text-sm font-medium text-foreground">
-            Judge calibration
-          </h2>
-          <p className="text-xs text-muted-foreground">
-            Human agree/disagree with judge PASS/FAIL, by kind and model (last
-            90 days).
+        <details className="rounded-lg border border-border bg-surface px-4 py-3">
+          <summary className="cursor-pointer text-sm font-medium text-foreground">
+            How reliable is the judge?
+          </summary>
+          <p className="mt-2 mb-3 text-xs text-muted-foreground">
+            How often reviewers agreed with the judge&apos;s pass/fail verdict in the
+            last 90 days. Below 80% means the judge needs attention.
           </p>
           <DataTable
             rows={calibrationRows}
@@ -177,53 +292,10 @@ export function LiveRunList() {
             selectedIndex={calibrationIndex}
             onSelectedIndexChange={setCalibrationIndex}
             onRowActivate={() => undefined}
-            aria-label="Judge calibration"
+            aria-label="Judge reliability"
           />
-        </section>
+        </details>
       ) : null}
-      <div className="flex flex-wrap items-center gap-2">
-        <Input
-          placeholder="Search question…"
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          className="max-w-xs"
-        />
-        <select
-          className="h-9 rounded-md border border-border bg-background px-2 text-sm"
-          value={judgeStatus}
-          onChange={(e) => setJudgeStatus(e.target.value)}
-        >
-          <option value="">All statuses</option>
-          <option value="pending">pending</option>
-          <option value="running">running</option>
-          <option value="scored">scored</option>
-          <option value="error">error</option>
-        </select>
-        <Button
-          type="button"
-          variant={failedOnly ? "default" : "outline"}
-          size="sm"
-          onClick={() => setFailedOnly((v) => !v)}
-        >
-          Failed only
-        </Button>
-      </div>
-      {rows.length === 0 ? (
-        <EmptyState
-          title="No live runs yet"
-          description="Submit interactions from production via client.live_runs.submit(...)."
-        />
-      ) : (
-        <DataTable
-          rows={rows}
-          columns={columns}
-          getRowKey={(row) => row.id}
-          selectedIndex={selectedIndex}
-          onSelectedIndexChange={setSelectedIndex}
-          onRowActivate={onRowActivate}
-          aria-label="Live runs"
-        />
-      )}
     </div>
   );
 }

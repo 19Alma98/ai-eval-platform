@@ -1,8 +1,8 @@
 "use client";
 
 import type { ReactNode } from "react";
-import { CopyTechnicalId } from "@/components/copy-technical-id";
 import { JudgeClaimsTable } from "@/components/judge-claims-table";
+import { StatusBadge } from "@/components/status-badge";
 import {
   Dialog,
   DialogContent,
@@ -11,13 +11,12 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import type { ItemComparisonRow } from "@/lib/api/types";
+import type { ItemComparisonRow, ItemSide } from "@/lib/api/types";
+import { formatScore } from "@/lib/format";
 import { CompareStatusCell } from "./compare-table";
 
-const TITLE_PREVIEW_MAX = 64;
-
-function formatJson(value: unknown): string {
-  if (value === null || value === undefined) return "—";
+function asText(value: unknown): string {
+  if (value === null || value === undefined) return "";
   if (typeof value === "string") return value;
   try {
     return JSON.stringify(value, null, 2);
@@ -26,48 +25,44 @@ function formatJson(value: unknown): string {
   }
 }
 
-function formatScore(value: number | null): string {
-  if (value === null || value === undefined) return "—";
-  return value.toFixed(4);
-}
-
-function formatDelta(value: number | null): string {
-  if (value === null || value === undefined) return "—";
-  const sign = value > 0 ? "+" : "";
-  return `${sign}${value.toFixed(4)}`;
-}
-
-function inputTitlePreview(value: unknown): string {
-  if (value === null || value === undefined) return "Case";
-  const text =
-    typeof value === "string"
-      ? value
-      : (() => {
-          try {
-            return JSON.stringify(value);
-          } catch {
-            return String(value);
-          }
-        })();
-  const trimmed = text.trim();
-  if (!trimmed) return "Case";
-  if (trimmed.length <= TITLE_PREVIEW_MAX) return trimmed;
-  return `${trimmed.slice(0, TITLE_PREVIEW_MAX)}…`;
-}
-
-function DetailBlock({
-  title,
-  children,
-}: {
-  title: string;
-  children: ReactNode;
-}) {
+function Block({ title, children }: { title: string; children: ReactNode }) {
   return (
     <div className="flex flex-col gap-1.5">
-      <h3 className="text-xs font-medium text-muted-foreground">{title}</h3>
-      <pre className="max-h-[240px] overflow-auto rounded-md border border-border bg-surface p-3 font-mono text-xs whitespace-pre-wrap break-words text-foreground">
+      <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+        {title}
+      </h3>
+      <div className="max-h-[220px] overflow-auto rounded-md border border-border bg-surface px-3 py-2 text-sm whitespace-pre-wrap break-words text-foreground">
         {children}
-      </pre>
+      </div>
+    </div>
+  );
+}
+
+function SideColumn({ title, side }: { title: string; side: ItemSide }) {
+  const invalid = side.metadata?.error_type === "judge_output_invalid";
+  return (
+    <div className="flex min-w-0 flex-col gap-3">
+      <div className="flex items-center justify-between gap-2">
+        <span className="truncate text-sm font-semibold text-foreground">{title}</span>
+        <span className="flex shrink-0 items-center gap-2">
+          <span className="text-sm tabular-nums text-muted-foreground">
+            {formatScore(side.score)}
+          </span>
+          {side.label ? <StatusBadge status={side.label} /> : null}
+        </span>
+      </div>
+      <Block title="Answer">
+        {asText(side.actual_output) || (
+          <span className="text-muted-foreground">No answer</span>
+        )}
+      </Block>
+      {side.explanation?.trim() || invalid ? (
+        <Block title="Why this score">
+          {invalid ? "The judge returned an invalid response. " : ""}
+          {side.explanation?.trim()}
+        </Block>
+      ) : null}
+      <JudgeClaimsTable metadata={side.metadata} title="Claims checked" />
     </div>
   );
 }
@@ -89,93 +84,25 @@ export function CompareItemDetail({
 }: CompareItemDetailProps) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="flex max-h-[min(90vh,720px)] flex-col gap-4 sm:max-w-2xl">
+      <DialogContent className="flex max-h-[min(90vh,800px)] flex-col gap-4 sm:max-w-4xl">
         <DialogHeader>
           <DialogTitle className="flex flex-wrap items-center gap-2">
-            <span className="min-w-0 truncate font-normal">
-              {row ? inputTitlePreview(row.input) : "Case"}
-            </span>
+            Answer comparison
             {row ? <CompareStatusCell status={row.status} /> : null}
-            {row ? (
-              <CopyTechnicalId
-                id={row.dataset_item_id}
-                label="Copy case ID"
-              />
-            ) : null}
           </DialogTitle>
           <DialogDescription>
-            Full inputs, outputs, judge notes, and context for this case.
+            The same question answered by the baseline and the candidate.
           </DialogDescription>
         </DialogHeader>
         {row ? (
-          <ScrollArea className="max-h-[calc(min(90vh,720px)-8rem)] pr-3">
+          <ScrollArea className="max-h-[calc(min(90vh,800px)-8rem)] pr-3">
             <div className="flex flex-col gap-4 pb-2">
-              <DetailBlock title="Input">{formatJson(row.input)}</DetailBlock>
-              <DetailBlock title="Expected output">
-                {formatJson(row.expected_output)}
-              </DetailBlock>
-              <div className="grid gap-4 sm:grid-cols-2">
-                <DetailBlock title={`${baselineLabel} output`}>
-                  {formatJson(row.baseline.actual_output)}
-                </DetailBlock>
-                <DetailBlock title={`${candidateLabel} output`}>
-                  {formatJson(row.candidate.actual_output)}
-                </DetailBlock>
+              <Block title="Question">{asText(row.input) || "—"}</Block>
+              <Block title="Expected answer">{asText(row.expected_output) || "—"}</Block>
+              <div className="grid gap-4 md:grid-cols-2">
+                <SideColumn title={`Baseline · ${baselineLabel}`} side={row.baseline} />
+                <SideColumn title={`Candidate · ${candidateLabel}`} side={row.candidate} />
               </div>
-              <div className="grid gap-4 sm:grid-cols-2">
-                <DetailBlock title={`${baselineLabel} score`}>
-                  {formatScore(row.baseline.score)}
-                  {row.baseline.label ? ` · ${row.baseline.label}` : ""}
-                  {row.baseline.metadata?.error_type === "judge_output_invalid"
-                    ? " · judge output invalid"
-                    : ""}
-                </DetailBlock>
-                <DetailBlock title={`${candidateLabel} score`}>
-                  {formatScore(row.candidate.score)}
-                  {row.candidate.label ? ` · ${row.candidate.label}` : ""}
-                  {row.candidate.metadata?.error_type === "judge_output_invalid"
-                    ? " · judge output invalid"
-                    : ""}
-                </DetailBlock>
-              </div>
-              <p className="text-sm text-muted-foreground">
-                Delta{" "}
-                <span className="font-mono tabular-nums text-foreground">
-                  {formatDelta(row.delta)}
-                </span>
-              </p>
-              {row.baseline.explanation || row.candidate.explanation ? (
-                <div className="grid gap-4 sm:grid-cols-2">
-                  <DetailBlock title={`${baselineLabel} explanation`}>
-                    {row.baseline.explanation?.trim() || "—"}
-                  </DetailBlock>
-                  <DetailBlock title={`${candidateLabel} explanation`}>
-                    {row.candidate.explanation?.trim() || "—"}
-                  </DetailBlock>
-                </div>
-              ) : null}
-              {row.baseline.metadata?.claims || row.candidate.metadata?.claims ? (
-                <div className="grid gap-4 sm:grid-cols-2">
-                  <JudgeClaimsTable
-                    metadata={row.baseline.metadata}
-                    title={`${baselineLabel} claims`}
-                  />
-                  <JudgeClaimsTable
-                    metadata={row.candidate.metadata}
-                    title={`${candidateLabel} claims`}
-                  />
-                </div>
-              ) : null}
-              {row.baseline.context != null || row.candidate.context != null ? (
-                <div className="grid gap-4 sm:grid-cols-2">
-                  <DetailBlock title={`${baselineLabel} context`}>
-                    {formatJson(row.baseline.context)}
-                  </DetailBlock>
-                  <DetailBlock title={`${candidateLabel} context`}>
-                    {formatJson(row.candidate.context)}
-                  </DetailBlock>
-                </div>
-              ) : null}
             </div>
           </ScrollArea>
         ) : null}

@@ -7,6 +7,23 @@ import {
   type VerdictTone,
 } from "@/features/judges/judge-metadata";
 
+const VERDICT_LABELS: Record<string, string> = {
+  supported: "Supported",
+  not_supported: "Not in documents",
+  contradicted: "Contradicted",
+  covered: "Covered",
+  missing: "Missing",
+  relevant: "Relevant",
+  not_relevant: "Not relevant",
+};
+
+function verdictLabel(verdict: string): string {
+  const label = VERDICT_LABELS[verdict];
+  if (label) return label;
+  const spaced = verdict.replaceAll("_", " ");
+  return spaced.charAt(0).toUpperCase() + spaced.slice(1);
+}
+
 const TONE_STYLES: Record<VerdictTone, string> = {
   ok: "bg-status-ok-bg text-status-ok",
   warn: "bg-status-warn-bg text-status-warn",
@@ -33,7 +50,7 @@ export function JudgeClaimsTable({
             <tr>
               <th className="px-2 py-1.5 font-medium">Claim</th>
               <th className="px-2 py-1.5 font-medium">Verdict</th>
-              <th className="px-2 py-1.5 font-medium">Evidence</th>
+              <th className="px-2 py-1.5 font-medium">Source</th>
             </tr>
           </thead>
           <tbody>
@@ -51,16 +68,16 @@ export function JudgeClaimsTable({
                 <td className="px-2 py-1.5">
                   <span
                     className={cn(
-                      "rounded px-1.5 py-0.5 font-mono whitespace-nowrap",
+                      "rounded px-1.5 py-0.5 font-medium whitespace-nowrap",
                       TONE_STYLES[verdictTone(claim.verdict)],
                     )}
                   >
-                    {claim.verdict.replaceAll("_", " ")}
+                    {verdictLabel(claim.verdict)}
                   </span>
                 </td>
                 <td className="px-2 py-1.5 text-muted-foreground">
                   {claim.docIds.length > 0 ? (
-                    <div className="font-mono">{claim.docIds.join(", ")}</div>
+                    <div>{claim.docIds.join(", ")}</div>
                   ) : null}
                   {claim.quote ? <q className="italic">{claim.quote}</q> : null}
                   {claim.docIds.length === 0 && !claim.quote ? "—" : null}

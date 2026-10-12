@@ -112,19 +112,16 @@ export function RefreshControl({
       : "Not loaded yet";
 
   return (
-    <div className={cn("flex items-center gap-2", className)}>
-      <span className="font-mono text-xs tabular-nums text-muted-foreground">
-        {label}
-      </span>
-      <Button
-        variant="outline"
-        size="icon-sm"
-        onClick={handleRefresh}
-        disabled={refreshing}
-        aria-label="Refresh data"
-      >
-        <RefreshCw className={cn("size-3.5", refreshing && "animate-spin")} />
-      </Button>
-    </div>
+    <Button
+      variant="ghost"
+      size="icon-sm"
+      onClick={handleRefresh}
+      disabled={refreshing}
+      aria-label={`Refresh (${label.toLowerCase()})`}
+      title={`${label} · click to refresh`}
+      className={className}
+    >
+      <RefreshCw className={cn("size-3.5", refreshing && "animate-spin")} />
+    </Button>
   );
 }

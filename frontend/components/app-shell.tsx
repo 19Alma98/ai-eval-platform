@@ -6,32 +6,88 @@ import {
   Database,
   FileCode,
   FlaskConical,
+  Gauge,
   LayoutDashboard,
-  LineChart,
   Radio,
   ShieldCheck,
 } from "lucide-react";
 import { ProjectSwitcher } from "@/components/project-switcher";
-import { QualityLoopStrip } from "@/components/quality-loop-strip";
-import { RefreshControl } from "@/components/refresh-control";
 import { ThemeToggle } from "@/components/theme-toggle";
-import { Separator } from "@/components/ui/separator";
 import { cn } from "@/lib/cn";
 import { withProjectQuery } from "@/lib/project-href";
 import { useProjectId } from "@/lib/project-store";
-import { projectsQueryOptions } from "@/lib/queries/projects";
 
-const NAV = [
-  { href: "/overview", label: "Overview", icon: LayoutDashboard },
-  { href: "/datasets", label: "Test set", icon: Database },
-  { href: "/app-configs", label: "App configs", icon: FileCode },
-  { href: "/metrics", label: "Metrics", icon: LineChart },
-  { href: "/experiments", label: "Runs", icon: FlaskConical },
-  { href: "/release", label: "Release", icon: ShieldCheck },
-  { href: "/live-runs", label: "Live runs", icon: Radio },
-] as const;
+type NavItem = {
+  href: string;
+  label: string;
+  icon: typeof Database;
+  hint: string;
+};
 
-const projectsQuery = projectsQueryOptions();
+const NAV: { section: string | null; items: NavItem[] }[] = [
+  {
+    section: null,
+    items: [
+      {
+        href: "/overview",
+        label: "Overview",
+        icon: LayoutDashboard,
+        hint: "Health of your RAG app at a glance",
+      },
+    ],
+  },
+  {
+    section: "Evaluate",
+    items: [
+      {
+        href: "/datasets",
+        label: "Test sets",
+        icon: Database,
+        hint: "Questions with expected answers and documents",
+      },
+      {
+        href: "/experiments",
+        label: "Experiments",
+        icon: FlaskConical,
+        hint: "Run your app on a test set and score it",
+      },
+      {
+        href: "/release",
+        label: "Release gate",
+        icon: ShieldCheck,
+        hint: "Decide if a version is good enough to ship",
+      },
+    ],
+  },
+  {
+    section: "Monitor",
+    items: [
+      {
+        href: "/live-runs",
+        label: "Live traffic",
+        icon: Radio,
+        hint: "Real user questions scored by an LLM judge",
+      },
+    ],
+  },
+  {
+    section: "Configure",
+    items: [
+      {
+        href: "/metrics",
+        label: "Metrics",
+        icon: Gauge,
+        hint: "What you measure and the pass thresholds",
+      },
+      {
+        href: "/app-configs",
+        label: "App configs",
+        icon: FileCode,
+        hint: "Versioned prompts, models and retrieval settings",
+      },
+    ],
+  },
+];
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
@@ -39,47 +95,59 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
   return (
     <div className="flex min-h-screen bg-background">
-      <aside className="flex w-[200px] shrink-0 flex-col border-r border-border bg-surface">
-        <div className="flex h-12 items-center border-b border-border px-4">
+      <aside className="sticky top-0 flex h-screen w-[220px] shrink-0 flex-col border-r border-border bg-surface">
+        <Link
+          href={withProjectQuery("/overview", projectId)}
+          className="flex h-14 items-center gap-2 border-b border-border px-4"
+        >
+          <span
+            aria-hidden
+            className="flex size-7 items-center justify-center rounded-md bg-primary text-xs font-bold text-primary-foreground"
+          >
+            AE
+          </span>
           <span className="text-sm font-semibold tracking-tight text-foreground">
             AI Eval
           </span>
-        </div>
-        <nav className="flex flex-1 flex-col gap-0.5 p-2">
-          {NAV.map(({ href, label, icon: Icon }) => {
-            const active =
-              pathname === href || pathname.startsWith(`${href}/`);
-            return (
-              <Link
-                key={href}
-                href={withProjectQuery(href, projectId)}
-                className={cn(
-                  "flex items-center gap-2 rounded-md px-2 py-1.5 text-sm text-muted-foreground transition-colors hover:bg-row-hover hover:text-foreground",
-                  active && "bg-row-selected font-medium text-foreground",
-                )}
-              >
-                <Icon className="size-4 shrink-0" aria-hidden />
-                {label}
-              </Link>
-            );
-          })}
+        </Link>
+        <nav aria-label="Main" className="flex flex-1 flex-col gap-4 overflow-y-auto p-3">
+          {NAV.map(({ section, items }) => (
+            <div key={section ?? "root"} className="flex flex-col gap-0.5">
+              {section ? (
+                <span className="px-2 pb-1 text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
+                  {section}
+                </span>
+              ) : null}
+              {items.map(({ href, label, icon: Icon, hint }) => {
+                const active =
+                  pathname === href || pathname.startsWith(`${href}/`);
+                return (
+                  <Link
+                    key={href}
+                    href={withProjectQuery(href, projectId)}
+                    title={hint}
+                    aria-current={active ? "page" : undefined}
+                    className={cn(
+                      "flex items-center gap-2.5 rounded-md px-2 py-1.5 text-sm text-muted-foreground transition-colors hover:bg-row-hover hover:text-foreground",
+                      active && "bg-row-selected font-medium text-foreground",
+                    )}
+                  >
+                    <Icon className="size-4 shrink-0" aria-hidden />
+                    {label}
+                  </Link>
+                );
+              })}
+            </div>
+          ))}
         </nav>
       </aside>
       <div className="flex min-w-0 flex-1 flex-col">
-        <header className="flex h-12 shrink-0 items-center gap-3 border-b border-border bg-surface px-4">
+        <header className="sticky top-0 z-20 flex h-14 shrink-0 items-center gap-3 border-b border-border bg-surface/95 px-6 backdrop-blur">
           <ProjectSwitcher />
-          <Separator orientation="vertical" className="h-5" />
           <div className="flex-1" />
-          <RefreshControl
-            queryKey={projectsQuery.queryKey}
-            queryFn={projectsQuery.queryFn}
-          />
           <ThemeToggle />
         </header>
-        <main className="flex-1 overflow-auto p-4">
-          <QualityLoopStrip />
-          {children}
-        </main>
+        <main className="mx-auto w-full max-w-[1400px] flex-1 px-6 py-6">{children}</main>
       </div>
     </div>
   );

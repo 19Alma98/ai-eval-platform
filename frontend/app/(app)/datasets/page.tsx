@@ -1,6 +1,5 @@
 "use client";
 
-import { PageIntro } from "@/components/page-intro";
 import { DatasetList } from "@/features/datasets/dataset-list";
 import { ProjectRequired } from "@/components/project-required";
 import { useProjectId } from "@/lib/project-store";
@@ -12,13 +11,5 @@ export default function DatasetsPage() {
     return <ProjectRequired />;
   }
 
-  return (
-    <>
-      <PageIntro
-        title="Test set"
-        glossary="Reusable test cases (input + expected/actual) — the suite you measure against."
-      />
-      <DatasetList />
-    </>
-  );
+  return <DatasetList />;
 }

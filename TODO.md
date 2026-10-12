@@ -22,8 +22,6 @@ repair (2026-10-12). Thresholds: `examples/hr_it_assistant/judge_sanity_threshol
 
 ## Tooling
 
-- [ ] **No frontend `test` script.** Unit tests use `node:test` and only run with
-  `node --import tsx --test <files>`. Add `"test"` to `frontend/package.json` and run it in CI.
 - [ ] **UI packaging tests fail locally** without a packaged UI
   (`test_sqlite_smoke.py::test_sqlite_ui_index_served`, `test_ui_resolve.py::test_ui_root_detects_packaged_index`).
   Skip them when the UI is not built.

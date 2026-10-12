@@ -7,6 +7,7 @@ import { DataTable, type DataTableColumn } from "@/components/data-table";
 import { EmptyState } from "@/components/empty-state";
 import { ErrorState } from "@/components/error-state";
 import { LoadingBlock } from "@/components/loading-block";
+import { PageIntro } from "@/components/page-intro";
 import { RefreshControl } from "@/components/refresh-control";
 import { RelativeTime } from "@/components/relative-time";
 import { formatErrorForUi } from "@/lib/api/client";
@@ -85,7 +86,7 @@ export function AppConfigList() {
     () => [
       {
         id: "name",
-        header: "Family",
+        header: "Name",
         cell: (row) => (
           <span className="font-medium text-foreground">{row.name}</span>
         ),
@@ -94,17 +95,17 @@ export function AppConfigList() {
         id: "version",
         header: "Latest version",
         headerClassName: "w-[120px]",
-        className: "font-mono tabular-nums text-muted-foreground",
+        className: "tabular-nums text-muted-foreground",
         cell: (row) => `v${row.latest.version}`,
       },
       {
         id: "aliases",
-        header: "Aliases",
+        header: "Aliases (e.g. production)",
         cell: (row) =>
           row.aliasLabels.length > 0 ? (
             <div className="flex flex-wrap gap-1">
               {row.aliasLabels.map((label) => (
-                <Badge key={label} variant="secondary" className="font-mono text-xs">
+                <Badge key={label} variant="secondary">
                   {label}
                 </Badge>
               ))}
@@ -114,19 +115,9 @@ export function AppConfigList() {
           ),
       },
       {
-        id: "hash",
-        header: "Content hash",
-        headerClassName: "w-[120px]",
-        cell: (row) => (
-          <span className="font-mono text-xs text-muted-foreground">
-            {row.latest.content_hash.slice(0, 8)}…
-          </span>
-        ),
-      },
-      {
         id: "created",
-        header: "Latest created",
-        headerClassName: "w-[120px]",
+        header: "Last updated",
+        headerClassName: "w-[140px]",
         cell: (row) => <RelativeTime date={row.latest.created_at} />,
       },
     ],
@@ -157,20 +148,23 @@ export function AppConfigList() {
 
   return (
     <div className="flex flex-col gap-3">
-      <div className="sticky top-0 z-20 -mx-1 flex flex-wrap items-center gap-3 border-b border-border bg-background px-1 pb-3">
-        <div className="flex-1" />
-        {queryOpts ? (
-          <RefreshControl
-            queryKey={queryOpts.queryKey}
-            dataUpdatedAt={configsQuery.dataUpdatedAt}
-          />
-        ) : null}
-      </div>
+      <PageIntro
+        title="App configs"
+        glossary="Versioned prompt, model and retrieval settings of your app. Link one to an experiment to know exactly what produced its results."
+        actions={
+          queryOpts ? (
+            <RefreshControl
+              queryKey={queryOpts.queryKey}
+              dataUpdatedAt={configsQuery.dataUpdatedAt}
+            />
+          ) : null
+        }
+      />
 
       {rows.length === 0 ? (
         <EmptyState
           title="No app configs yet"
-          description="Register versioned prompt, model, and retrieval bundles from your app via the SDK or API. This console is for browsing versions and managing aliases."
+          description="Register your prompt, model and retrieval settings from code with client.app_configs.create_app_config(project_id, name, prompt=…, model=…). Every change creates a new version you can compare."
         />
       ) : (
         <DataTable

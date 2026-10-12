@@ -1,14 +1,14 @@
 "use client";
 
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useMemo, useState } from "react";
-import { ArrowLeft, GitBranchPlus, Trash2 } from "lucide-react";
+import { GitBranchPlus, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { DataTable, type DataTableColumn } from "@/components/data-table";
 import { EmptyState } from "@/components/empty-state";
 import { ErrorState } from "@/components/error-state";
 import { LoadingBlock } from "@/components/loading-block";
+import { MetaItem, PageHeader } from "@/components/page-header";
 import { RefreshControl } from "@/components/refresh-control";
 import { RelativeTime } from "@/components/relative-time";
 import { Badge } from "@/components/ui/badge";
@@ -16,9 +16,14 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ApiError, formatErrorForUi } from "@/lib/api/client";
 import type { MetricsSetEntry, MetricsSetEntryInput } from "@/lib/api/types";
-import { resolveLabel } from "@/lib/format";
+import { cn } from "@/lib/cn";
+import {
+  METRIC_CATEGORY_LABELS,
+  compareMetrics,
+  metricInfo,
+  metricLabel,
+} from "@/lib/metrics-catalog";
 import { withProjectQuery } from "@/lib/project-href";
-import { useEvaluators } from "@/features/experiments/use-experiments";
 import {
   metricsSetQueryOptions,
   useDeleteMetricsSetEntry,
@@ -29,8 +34,16 @@ import {
 
 type EntryRow = MetricsSetEntry;
 
-function kindLabel(kind: string): string {
-  return kind.replace(/_/g, " ");
+/** Plain-language summary of the evaluator settings people actually tune. */
+function settingsSummary(entry: MetricsSetEntry): string | null {
+  const config = entry.config ?? {};
+  const parts: string[] = [];
+  if (typeof config.k === "number") parts.push(`top ${config.k} documents`);
+  if (typeof config.max_ms === "number") {
+    parts.push(`within ${(config.max_ms / 1000).toLocaleString()} s`);
+  }
+  if (typeof config.judge_model === "string") parts.push(`judge ${config.judge_model}`);
+  return parts.length > 0 ? parts.join(" · ") : null;
 }
 
 function entryToInput(entry: MetricsSetEntry): MetricsSetEntryInput {
@@ -55,7 +68,6 @@ export function MetricsSetDetailView({
   const patch = usePatchMetricsSet(metricsSetId, projectId);
   const version = useVersionMetricsSet(metricsSetId, projectId);
   const removeEntry = useDeleteMetricsSetEntry(metricsSetId, projectId);
-  const evaluatorsQuery = useEvaluators(projectId);
   const queryOpts = metricsSetQueryOptions(metricsSetId);
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [thresholdDraft, setThresholdDraft] = useState<Record<string, string>>(
@@ -65,17 +77,9 @@ export function MetricsSetDetailView({
 
   const metricsSet = query.data;
   const rows: EntryRow[] = useMemo(
-    () => metricsSet?.entries ?? [],
+    () => [...(metricsSet?.entries ?? [])].sort((a, b) => compareMetrics(a.kind, b.kind)),
     [metricsSet?.entries],
   );
-
-  const evaluatorNameById = useMemo(() => {
-    const map = new Map<string, string>();
-    for (const ev of evaluatorsQuery.data ?? []) {
-      map.set(ev.id, ev.name);
-    }
-    return map;
-  }, [evaluatorsQuery.data]);
 
   const editsBlocked = versionLocked || patch.isPending;
 
@@ -87,7 +91,7 @@ export function MetricsSetDetailView({
           onError: (err) => {
             if (err instanceof ApiError && err.status === 409) {
               toast.error(
-                "Set in uso: crea una nuova versione per modificare le voci.",
+                "These metrics are already used by experiments. Create a new version to change them.",
               );
               setVersionLocked(true);
               return;
@@ -121,7 +125,7 @@ export function MetricsSetDetailView({
       if (trimmed !== "") {
         const parsed = Number.parseFloat(trimmed);
         if (Number.isNaN(parsed)) {
-          toast.error("La soglia deve essere un numero");
+          toast.error("The threshold must be a number");
           return;
         }
         threshold = parsed;
@@ -145,7 +149,7 @@ export function MetricsSetDetailView({
         onError: (err) => {
           if (err instanceof ApiError && err.status === 409) {
             toast.error(
-              "Set in uso: crea una nuova versione per modificare le voci.",
+              "These metrics are already used by experiments. Create a new version to change them.",
             );
             setVersionLocked(true);
             return;
@@ -159,82 +163,93 @@ export function MetricsSetDetailView({
   );
 
   const nextVersionLabel =
-    metricsSet != null ? `Crea versione ${metricsSet.version + 1}` : "Crea versione";
+    metricsSet != null ? `Create version ${metricsSet.version + 1}` : "Create new version";
 
   const columns: DataTableColumn<EntryRow>[] = useMemo(
     () => [
       {
-        id: "kind",
-        header: "Metrica",
-        headerClassName: "w-[160px]",
-        cell: (row) => (
-          <Badge variant="secondary" className="font-mono text-xs">
-            {kindLabel(row.kind)}
-          </Badge>
-        ),
-      },
-      {
         id: "enabled",
-        header: "Abilitata",
-        headerClassName: "w-[88px]",
+        header: "Active",
+        headerClassName: "w-[72px]",
         cell: (row) => (
           <input
             type="checkbox"
             className="size-4 accent-primary"
             checked={row.enabled}
             disabled={editsBlocked || removeEntry.isPending}
-            aria-label={`Abilita ${row.kind}`}
+            aria-label={`Use ${metricLabel(row.kind)}`}
             onChange={(e) => toggleEnabled(row, e.target.checked)}
             onClick={(e) => e.stopPropagation()}
           />
         ),
       },
       {
-        id: "threshold",
-        header: "Soglia",
-        headerClassName: "w-[140px]",
-        cell: (row) => (
-          <Input
-            type="number"
-            step="any"
-            className="h-8 font-mono text-xs"
-            placeholder="—"
-            value={
-              thresholdDraft[row.id] ??
-              (row.threshold == null ? "" : String(row.threshold))
-            }
-            disabled={editsBlocked || removeEntry.isPending}
-            onChange={(e) => {
-              setThresholdDraft((prev) => ({
-                ...prev,
-                [row.id]: e.target.value,
-              }));
-            }}
-            onBlur={() => commitThreshold(row)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") {
-                e.preventDefault();
-                commitThreshold(row);
-              }
-            }}
-            onClick={(e) => e.stopPropagation()}
-          />
-        ),
+        id: "kind",
+        header: "Metric",
+        wrap: true,
+        cell: (row) => {
+          const info = metricInfo(row.kind);
+          return (
+            <span className={cn("flex flex-col", !row.enabled && "opacity-60")}>
+              <span className="font-medium text-foreground">{info.label}</span>
+              {info.description ? (
+                <span className="text-xs text-muted-foreground">{info.description}</span>
+              ) : null}
+            </span>
+          );
+        },
       },
       {
-        id: "evaluator",
-        header: "Evaluator",
-        cell: (row) => (
-          <span className="text-sm text-foreground">
-            {row.evaluator_id
-              ? resolveLabel(
-                  row.evaluator_id,
-                  evaluatorNameById,
-                  "Unknown evaluator",
-                )
-              : "—"}
-          </span>
-        ),
+        id: "category",
+        header: "Measures",
+        headerClassName: "w-[140px]",
+        className: "text-sm text-muted-foreground",
+        cell: (row) => METRIC_CATEGORY_LABELS[metricInfo(row.kind).category],
+      },
+      {
+        id: "threshold",
+        header: "Pass if score ≥",
+        headerClassName: "w-[140px]",
+        cell: (row) =>
+          row.threshold == null && !(row.id in thresholdDraft) && settingsSummary(row) ? (
+            <span className="text-sm text-muted-foreground">Pass / fail</span>
+          ) : (
+            <Input
+              type="number"
+              step="0.05"
+              min={0}
+              max={1}
+              className="h-8 w-24 tabular-nums"
+              placeholder="—"
+              value={
+                thresholdDraft[row.id] ??
+                (row.threshold == null ? "" : String(row.threshold))
+              }
+              disabled={editsBlocked || removeEntry.isPending}
+              aria-label={`Pass threshold for ${metricLabel(row.kind)}`}
+              onChange={(e) => {
+                setThresholdDraft((prev) => ({
+                  ...prev,
+                  [row.id]: e.target.value,
+                }));
+              }}
+              onBlur={() => commitThreshold(row)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  e.preventDefault();
+                  commitThreshold(row);
+                }
+              }}
+              onClick={(e) => e.stopPropagation()}
+            />
+          ),
+      },
+      {
+        id: "settings",
+        header: "Settings",
+        headerClassName: "w-[180px]",
+        className: "text-sm text-muted-foreground",
+        cell: (row) => settingsSummary(row) ?? "—",
       },
       {
         id: "actions",
@@ -247,7 +262,7 @@ export function MetricsSetDetailView({
               variant="ghost"
               size="icon-sm"
               disabled={editsBlocked || removeEntry.isPending}
-              aria-label={`Rimuovi ${row.kind}`}
+              aria-label={`Remove ${metricLabel(row.kind)}`}
               onClick={(e) => {
                 e.stopPropagation();
                 deleteEntry(row);
@@ -262,7 +277,6 @@ export function MetricsSetDetailView({
       thresholdDraft,
       editsBlocked,
       removeEntry.isPending,
-      evaluatorNameById,
       commitThreshold,
       deleteEntry,
       toggleEnabled,
@@ -278,7 +292,7 @@ export function MetricsSetDetailView({
     const message = formatErrorForUi(err);
     return (
       <ErrorState
-        title="Impossibile caricare il set metriche"
+        title="Could not load metrics"
         message={message}
         onRetry={() => query.refetch()}
       />
@@ -289,89 +303,80 @@ export function MetricsSetDetailView({
     return null;
   }
 
-  const backHref = withProjectQuery("/metrics", projectId);
+  const listHref = withProjectQuery("/metrics", projectId);
 
   return (
-    <div className="flex flex-col gap-3">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div className="flex min-w-0 flex-col gap-1">
-          <div className="flex flex-wrap items-center gap-2">
-            <Button
-              variant="ghost"
-              size="sm"
-              nativeButton={false}
-              render={<Link href={backHref} />}
-            >
-              <ArrowLeft className="size-4" />
-              Indietro
-            </Button>
-            <h1 className="text-lg font-semibold text-foreground">
-              {metricsSet.name}
-            </h1>
-            <span className="rounded-md border border-border bg-surface px-2 py-0.5 font-mono text-xs text-muted-foreground">
-              v{metricsSet.version}
-            </span>
+    <div className="flex flex-col gap-4">
+      <PageHeader
+        breadcrumbs={[{ label: "Metrics", href: listHref }, { label: metricsSet.name }]}
+        title={metricsSet.name}
+        badges={
+          <>
+            <Badge variant="outline">v{metricsSet.version}</Badge>
             {metricsSet.is_project_default ? (
-              <Badge variant="secondary">Default progetto</Badge>
+              <Badge variant="secondary">Project default</Badge>
             ) : null}
-          </div>
-          <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-muted-foreground">
-            {metricsSet.description ? (
-              <span className="max-w-xl">{metricsSet.description}</span>
-            ) : null}
-            <span>
-              Voci{" "}
-              <span className="font-mono tabular-nums text-foreground">
-                {metricsSet.entry_count}
-              </span>
-            </span>
-            <span>
-              Aggiornato <RelativeTime date={metricsSet.updated_at} />
-            </span>
-          </div>
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <Button
-            type="button"
-            size="sm"
-            variant={versionLocked ? "default" : "outline"}
-            disabled={version.isPending}
-            onClick={() => {
-              version.mutate(undefined, {
-                onSuccess: (created) => {
-                  toast.success("Nuova versione creata");
-                  router.push(
-                    `/metrics/${encodeURIComponent(created.id)}?project=${encodeURIComponent(projectId)}`,
-                  );
-                },
-                onError: (err) => {
-                  const message = formatErrorForUi(err);
-                  toast.error(message);
-                },
-              });
-            }}
-          >
-            <GitBranchPlus className="size-4" />
-            {version.isPending ? "Creazione…" : nextVersionLabel}
-          </Button>
-          <RefreshControl
-            queryKey={queryOpts.queryKey}
-            dataUpdatedAt={query.dataUpdatedAt}
-          />
-        </div>
-      </div>
+          </>
+        }
+        description={
+          metricsSet.description ||
+          "Each answer is scored from 0 to 1 on every active metric and passes when it reaches the threshold."
+        }
+        meta={
+          <>
+            <MetaItem label="Active">
+              {metricsSet.enabled_count} of {metricsSet.entry_count} metrics
+            </MetaItem>
+            <MetaItem label="Updated">
+              <RelativeTime date={metricsSet.updated_at} />
+            </MetaItem>
+          </>
+        }
+        actions={
+          <>
+            <RefreshControl
+              queryKey={queryOpts.queryKey}
+              dataUpdatedAt={query.dataUpdatedAt}
+            />
+            <Button
+              type="button"
+              size="sm"
+              variant={versionLocked ? "default" : "outline"}
+              disabled={version.isPending}
+              title="Copy these metrics into a new version you can edit, without changing past experiments"
+              onClick={() => {
+                version.mutate(undefined, {
+                  onSuccess: (created) => {
+                    toast.success("New version created");
+                    router.push(
+                      `/metrics/${encodeURIComponent(created.id)}?project=${encodeURIComponent(projectId)}`,
+                    );
+                  },
+                  onError: (err) => {
+                    toast.error(formatErrorForUi(err));
+                  },
+                });
+              }}
+            >
+              <GitBranchPlus className="size-4" />
+              {version.isPending ? "Creating…" : nextVersionLabel}
+            </Button>
+          </>
+        }
+        className="mb-0"
+      />
 
       {versionLocked ? (
-        <p className="rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-sm text-foreground">
-          Questo set è referenziato da una o più run: usa «{nextVersionLabel}» per
-          modificare le metriche senza alterare le run esistenti.
+        <p className="rounded-md border border-status-warn bg-status-warn-bg px-3 py-2 text-sm text-foreground">
+          Experiments were already scored with these metrics, so they are locked to
+          keep past results comparable. Use “{nextVersionLabel}” to make changes.
         </p>
       ) : null}
 
       {rows.length === 0 ? (
         <EmptyState
-          title="Set vuoto"
-          description="Nessuna voce metrica in questo set."
+          title="No metrics in this set"
+          description="This metrics set does not contain any metric."
         />
       ) : (
         <DataTable
@@ -381,7 +386,7 @@ export function MetricsSetDetailView({
           selectedIndex={selectedIndex}
           onSelectedIndexChange={setSelectedIndex}
           onRowActivate={() => {}}
-          aria-label="Voci set metriche"
+          aria-label="Metrics in this set"
         />
       )}
     </div>

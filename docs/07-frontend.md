@@ -24,74 +24,102 @@ The UI should feel like a developer platform console, not an admin template or m
 
 No login/signup screens are required for v0.1. The UI assumes a trusted local or privately deployed instance.
 
+## UX principles
+
+The console must be understandable by someone who has never read these docs:
+
+- **Plain language, one vocabulary.** UI copy is English only. Domain words are fixed:
+  *Test set* (gold questions), *Experiment* (one app version run on a test set),
+  *Metrics* (what is scored + pass thresholds), *Release gate*, *Live traffic*.
+- **No technical identifiers on screen.** Never render UUIDs, content hashes or raw
+  evaluator kinds. Metric kinds go through `lib/metrics-catalog.ts` (label, one-line
+  description, category); unknown names are humanized. The only place an ID appears is
+  inside a copyable SDK code snippet.
+- **Numbers people can read.** Scores use two decimals (`formatScore`), rates are
+  percentages (`formatPercent`), changes are signed points (`formatDeltaPoints`).
+- **Tables stay lean.** Hide columns that are empty for every row; prefer one
+  summarising cell (e.g. failing metric chips) over many numeric columns.
+- **Every empty state says what to do next**, with the action button or code snippet.
+- **One header per page** (`components/page-header.tsx`): breadcrumbs on detail pages,
+  title, one-sentence description, actions on the right.
+
+## Information architecture
+
+Sidebar groups (`components/app-shell.tsx`):
+
+- **Overview**
+- **Evaluate:** Test sets (`/datasets`) · Experiments (`/experiments`) · Release gate (`/release`)
+- **Monitor:** Live traffic (`/live-runs`)
+- **Configure:** Metrics (`/metrics`) · App configs (`/app-configs`)
+
+Projects are managed from the project switcher (`/projects`).
+
 ## Primary screens (RAG vertical)
 
-Navigation strip for RAG projects:
+### Overview
 
-`Test set → App configs → Metriche → Runs → Confronta → Release` (TestSet pillar) plus **Live runs** (AI Eval Run pillar)
+`/overview?project={id}` — single payload from `GET /projects/{project_id}/overview`
+(`range` preset `15m` | `1h` | `6h` | **24h** | `7d`).
 
-- **Test set** — create/import `rag_qa` items (`question`, expected answer, `expected_doc_ids`); versioned datasets.
-- **Metriche** — versioned metrics sets per project (`/metrics`, `/metrics/[metricsSetId]`): list with “Default progetto” badge, create set seeded from the project default pack, detail editor (enable/threshold/remove custom entries), and “Crea versione N+1” when a set is referenced. Empty projects use `POST …/metrics-pack/ensure` then refetch. Legacy pack API remains for ensure/alias compatibility.
-- **Runs** — experiments pinned to a dataset version; per-item scores and execution detail (retrieve/generate timeline from bound traces).
-- **Confronta** / **Release** — compare runs on the same dataset+version; CI gate uses pack metric names.
+- **Getting started** — four numbered steps (test set → metrics → experiment → release),
+  shown only while one is incomplete.
+- **KPIs** — Live (questions answered, failing answers, average quality, waiting for
+  judge) and Offline (test sets, metrics, latest experiment, release gate).
+- **Needs attention** — failing live answers, regressions, unreliable judges.
+- **Latest experiment vs baseline** — pass rate per metric with the change in points.
+- **Live quality over time** chart.
 
-Traces are ingest/storage plumbing (OTLP) plus read-only detail on **Run** item timelines (waterfall, span attributes). The console does not expose a trace list or catalog route in v0.1.
+### Test sets
 
-### 1. Overview
+List (name, version, description) and detail: questions with expected answer, source
+documents as chips, required phrases; columns with no data are hidden. Import dialog lists
+the expected columns and offers a CSV template. A version that already has scored
+experiments is shown as *Locked* (imports create a new version).
 
-Route: `/overview?project={id}` (default landing). Single aggregated payload from `GET /projects/{project_id}/overview` via `useOverview` (TanStack Query); `since` / `until` derive from the sticky **Time range** control. URL preset `?range=` (`15m` | `1h` | `6h` | **24h** default | `7d`); missing `range` is normalized to `24h` on load.
+### Experiments
 
-Curated layout bands:
+- List: experiment, status, test set, model, baseline (“Compared with”).
+- Detail:
+  - *Connect your app* card with a ready SDK snippet while no answers have arrived.
+  - **Results by metric** grouped into Answer quality / Retrieval / Performance with pass
+    rate bars; clicking a metric filters the answers that failed it.
+  - **Answers**: every question with the metrics it failed; the side panel shows app
+    answer vs expected answer, every metric verdict with the judge explanation and
+    claims, retrieved documents as cards (expected ones marked, missing ones listed),
+    response time / tokens, and optionally the execution trace and raw data.
+  - One primary action: **Score answers** (split button: other metrics set, individual
+    metrics, custom metric).
+- Compare: baseline vs candidate cards, a one-line verdict (“N metrics got worse”), a
+  metric table (baseline %, candidate %, change in points, verdict) and side-by-side
+  answers for the selected metric.
 
-- **A — KPI strip** — dual row: live traffic (interactions, fail rate, in progress, mean score) and offline readiness (test sets, default metrics set, last run, release ready).
-- **B — Charts** — live quality time series (bucketed mean score / fail rate; widen-range when sparse) and compare **pass rate** bars vs baseline when compare data exists.
-- **C — Attention** — merged queue: recent live failures, offline metric regressions, calibration agreement alerts (cap 8).
-- **D — Quality loop** — four cards: Test set → **Metrics** (metrics sets, not legacy pack-only wording) → Runs → Release readiness; first incomplete step shows CTA.
+### Release gate
 
-States: skeleton while loading; full-page error with retry; empty/degraded compare shows inline empty copy and links (API may return `compare: null` with 200).
+Guided form: pick candidate + baseline, then a *quality bar* built from the experiment's
+metrics (defaults from the project metrics thresholds), latency budget and maximum allowed
+drop vs baseline. The same rules can be edited as YAML or copied for CI (`aiobs check`).
+The result reads “Ready to ship” / “Not ready to ship” with each rule, the actual value and
+the target; failed regression rules link to the comparison.
 
-### 2. Test set (datasets)
+### Live traffic
 
-Features:
-- `rag_qa` gold fields and import (CSV/JSON)
-- item list with expected doc ids
+List with an overall verdict per answer, score chips per metric and review state; filters
+All / Failing / Waiting for judge. Detail: answer, retrieved documents, judge verdicts with
+one-click *Correct* / *Wrong* review, *Re-run judge*, *Add to test set*. Judge reliability
+(human agreement) is in a collapsible section.
 
-### 3. Live runs
+### Metrics
 
-- `/live-runs` — list of prod-like interactions (`judge_status`, scores, review badge); filters for status / failed-only
-- `/live-runs/[id]` — Q/A/documents, judge explanations, agree/disagree + note, promote to Test set, rescore
+Metrics sets with active metric count; detail lists each metric with its description,
+category, pass threshold and settings (top-k, latency budget). Sets used by experiments
+are locked and edited through a new version.
 
-### 4. Runs (experiments)
+### App configs
 
-Features:
-- run status and pack scoring (`evaluate-pack`; Next rewrite `proxyTimeout` raised so LLM judges are not cut off at 30s)
-- per-item results with outcome badges (`PASS` / `FAIL` / `SKIPPED` / `ERROR`) and always-visible explanations
-- evaluator summary shows run status and emphasizes error/skipped counts
-- bound trace timeline
-- baseline comparison on the same test set version
-- regression markers
-- create dialog binds **App config** as a peer field to Dataset (alias or family@version); free-form model/version sits under Advanced when no registry config is selected
-- run detail shows a read-only **App config snapshot** (prompt, model, retrieval, content hash) when the experiment was created from a registry config
+Read-only registry browser: versions, prompt / model / retrieval, aliases.
 
-### 5. App configs (`/app-configs`)
-
-Project-scoped registry UI (requires `projectId` query param like other console routes):
-
-- **`/app-configs`** — list config families (latest version per name); no create in the console
-- **`/app-configs/[name]`** — version history for one family, alias pins, read-only prompt/model/retrieval shown as plain text (not JSON editors)
-
-Versions are registered from the evaluated app via SDK/API (or demo scripts). The console is for browsing, alias management, and binding configs when creating experiments.
-
-Experiment create prefers binding `app_config_id` or `app_config_alias` (peer to dataset) over free-form `model_config`.
-
-### 6. Release Check
-
-A GitHub-like result:
-- PASS/FAIL
-- failed checks
-- delta
-- threshold
-- link to affected samples
+Traces are ingest/storage plumbing (OTLP); they are only shown as optional execution
+steps inside an experiment answer.
 
 ## Design system
 

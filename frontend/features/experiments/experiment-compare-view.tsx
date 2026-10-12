@@ -3,8 +3,8 @@
 import type { ReactNode } from "react";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { useMemo } from "react";
-import { ArrowLeft } from "lucide-react";
+import { useMemo, useState } from "react";
+import { ArrowRight } from "lucide-react";
 import { CompareItemsTable } from "@/features/experiments/compare-items-table";
 import { CompareTable } from "@/features/experiments/compare-table";
 import { EmptyState } from "@/components/empty-state";
@@ -12,7 +12,8 @@ import { ErrorState } from "@/components/error-state";
 import { LoadingBlock } from "@/components/loading-block";
 import { RefreshControl } from "@/components/refresh-control";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
+import { PageHeader } from "@/components/page-header";
+import { cn } from "@/lib/cn";
 import {
   Select,
   SelectContent,
@@ -81,6 +82,7 @@ export function ExperimentCompareView({
   }, [baselineCandidates, baselineId, experimentsQuery.data]);
 
   const compareQuery = useExperimentCompare(experimentId, baselineId);
+  const [pickedEvaluatorId, setPickedEvaluatorId] = useState<string | null>(null);
   const compareOpts =
     baselineId != null
       ? experimentCompareQueryOptions(experimentId, baselineId)
@@ -138,7 +140,7 @@ export function ExperimentCompareView({
         />
         <EmptyState
           title="Choose a baseline"
-          description="Pick another experiment on the same test set to compare against. You'll see deltas on metrics both runs share."
+          description="Pick an earlier experiment on the same test set. You'll see which metrics and which answers got better or worse."
         />
       </div>
     );
@@ -168,7 +170,7 @@ export function ExperimentCompareView({
         "Runs must share the same dataset (test set version)",
       );
     const message = isDatasetMismatch
-      ? "Runs must share the same dataset (test set version). Choose a baseline experiment created on the same dataset."
+      ? "Both experiments must use the same test set version. Pick a baseline that ran on the same test set."
       : rawMessage;
     return (
       <div className="flex flex-col gap-3">
@@ -202,8 +204,19 @@ export function ExperimentCompareView({
   const hasJudgeUnsuitable =
     candidateJudgeWarnings.length > 0 || baselineJudgeWarnings.length > 0;
 
+  const firstRegression = comparison?.regressions[0]?.evaluator_id ?? null;
+  const firstMetric = comparison?.metrics[0]?.evaluator_id ?? null;
+  const selectedEvaluatorId =
+    pickedEvaluatorId &&
+    comparison?.metrics.some((m) => m.evaluator_id === pickedEvaluatorId)
+      ? pickedEvaluatorId
+      : (firstRegression ?? firstMetric);
+  const nWorse = new Set(comparison?.regressions.map((m) => m.evaluator_id)).size;
+  const nBetter = new Set(comparison?.improved.map((m) => m.evaluator_id)).size;
+  const notComparable = configMismatchCount + insufficientNCount + unavailableCount;
+
   return (
-    <div className="flex flex-col gap-3">
+    <div className="flex flex-col gap-5">
       <CompareHeader
         experiment={experiment}
         detailHref={detailHref}
@@ -220,45 +233,37 @@ export function ExperimentCompareView({
       />
       {comparison ? (
         <>
-          <div className="flex flex-wrap gap-4 text-sm text-muted-foreground">
-            <span>
-              Regressions{" "}
-              <span className="font-mono tabular-nums text-status-fail">
-                {comparison.regressions.length}
-              </span>
+          <div
+            role="status"
+            className={cn(
+              "flex flex-wrap items-center gap-x-6 gap-y-2 rounded-lg border px-4 py-3",
+              nWorse > 0
+                ? "border-status-fail/40 bg-status-fail-bg"
+                : "border-status-ok/40 bg-status-ok-bg",
+            )}
+          >
+            <span
+              className={cn(
+                "text-sm font-semibold",
+                nWorse > 0 ? "text-status-fail" : "text-status-ok",
+              )}
+            >
+              {nWorse > 0
+                ? `${nWorse} metric${nWorse === 1 ? "" : "s"} got worse`
+                : nBetter > 0
+                  ? "No metric got worse — some improved"
+                  : "No metric got worse"}
             </span>
-            <span>
-              Improved{" "}
-              <span className="font-mono tabular-nums text-status-ok">
-                {comparison.improved.length}
-              </span>
+            <span className="text-sm text-foreground">
+              {nBetter} better · {nWorse} worse ·{" "}
+              {new Set(comparison.unchanged.map((m) => m.evaluator_id)).size} no real change
             </span>
-            <span>
-              Unchanged{" "}
-              <span className="font-mono tabular-nums text-foreground">
-                {comparison.unchanged.length}
-              </span>
-            </span>
-            <span>
-              Unavailable{" "}
-              <span className="font-mono tabular-nums text-status-warn">
-                {unavailableCount}
-              </span>
-            </span>
-            {configMismatchCount > 0 ? (
-              <span title="Candidate and baseline were scored with different evaluator configs (e.g. k, max_ms, judge model) or judge prompt versions: their scores are not comparable.">
-                Config mismatch{" "}
-                <span className="font-mono tabular-nums text-status-warn">
-                  {configMismatchCount}
-                </span>
-              </span>
-            ) : null}
-            {insufficientNCount > 0 ? (
-              <span title="Sample too small (n < 5 applicable items) to call a regression">
-                Insufficient n{" "}
-                <span className="font-mono tabular-nums text-status-warn">
-                  {insufficientNCount}
-                </span>
+            {notComparable > 0 ? (
+              <span
+                className="text-sm text-status-warn"
+                title="Some metrics were not scored on both experiments, were scored with different settings, or have too few answers to compare."
+              >
+                {notComparable} not comparable
               </span>
             ) : null}
             {hasJudgeUnsuitable ? (
@@ -267,11 +272,15 @@ export function ExperimentCompareView({
                 className="border-status-warn text-status-warn"
                 title={judgeWarningTitle || "Judge model unsuitable"}
               >
-                Judge model unsuitable
+                Judge results may be unreliable
               </Badge>
             ) : null}
           </div>
-          <CompareTable projectId={projectId} metrics={comparison.metrics} />
+          <CompareTable
+            metrics={comparison.metrics}
+            selectedEvaluatorId={selectedEvaluatorId}
+            onSelectEvaluator={setPickedEvaluatorId}
+          />
           <CompareItemsTable
             projectId={projectId}
             experimentId={experimentId}
@@ -279,13 +288,13 @@ export function ExperimentCompareView({
             metrics={comparison.metrics}
             candidateName={experiment.name}
             baselineName={baselineExperiment?.name}
+            evaluatorId={selectedEvaluatorId}
           />
         </>
       ) : null}
     </div>
   );
 }
-
 function BaselineSelect({
   candidates,
   value,
@@ -298,9 +307,9 @@ function BaselineSelect({
   loading: boolean;
 }) {
   return (
-    <div className="flex flex-col gap-1 sm:min-w-[220px]">
-      <label htmlFor="compare-baseline" className="text-xs font-medium text-muted-foreground">
-        Baseline
+    <div className="flex flex-col gap-1">
+      <label htmlFor="compare-baseline" className="sr-only">
+        Baseline experiment
       </label>
       <Select
         value={value ?? ""}
@@ -309,14 +318,14 @@ function BaselineSelect({
         }}
         disabled={loading || candidates.length === 0}
       >
-        <SelectTrigger id="compare-baseline" className="w-full sm:w-[260px]">
+        <SelectTrigger id="compare-baseline" className="w-full">
           <SelectValue
             placeholder={
               loading
                 ? "Loading experiments…"
                 : candidates.length === 0
-                  ? "No other experiments"
-                  : "Select baseline"
+                  ? "No other experiments yet"
+                  : "Choose the experiment to compare against"
             }
           />
         </SelectTrigger>
@@ -337,10 +346,10 @@ function ExperimentMetaLine({ experiment }: { experiment: Experiment }) {
   const version = experimentVersion(experiment);
   const parts = [
     model ? `Model ${model}` : null,
-    version ? `Version ${version}` : null,
+    version && version !== experiment.name ? `Version ${version}` : null,
   ].filter(Boolean);
   if (parts.length === 0) return null;
-  return <span className="text-muted-foreground">{parts.join(" · ")}</span>;
+  return <span className="text-xs text-muted-foreground">{parts.join(" · ")}</span>;
 }
 
 function CompareHeader({
@@ -356,49 +365,41 @@ function CompareHeader({
   baselinePicker: ReactNode;
   refresh?: ReactNode;
 }) {
+  const listHref = detailHref.replace(/\/experiments\/[^?]+/, "/experiments");
   return (
-    <div className="flex flex-wrap items-start justify-between gap-3">
-      <div className="flex min-w-0 flex-col gap-2">
-        <div className="flex flex-wrap items-center gap-2">
-          <Button
-            variant="ghost"
-            size="sm"
-            nativeButton={false}
-            render={<Link href={detailHref} />}
-          >
-            <ArrowLeft className="size-4" />
-            Back
-          </Button>
-          <h1 className="text-lg font-semibold text-foreground">
-            Compare · {experiment.name}
-          </h1>
-        </div>
-        <p className="text-sm text-muted-foreground">
-          Candidate{" "}
-          <span className="font-medium text-foreground">{experiment.name}</span>
-          {experimentModel(experiment) || experimentVersion(experiment)
-            ? " · "
-            : null}
-          <ExperimentMetaLine experiment={experiment} />
-        </p>
-        <div className="flex flex-wrap items-end gap-4">
+    <>
+      <PageHeader
+        breadcrumbs={[
+          { label: "Experiments", href: listHref },
+          { label: experiment.name, href: detailHref },
+          { label: "Compare" },
+        ]}
+        title="Compare experiments"
+        description="See what got better or worse between a baseline and a candidate on the same test set."
+        actions={refresh}
+        className="mb-0"
+      />
+      <div className="grid gap-3 md:grid-cols-[1fr_auto_1fr] md:items-stretch">
+        <div className="flex flex-col gap-2 rounded-lg border border-border bg-surface p-4">
+          <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+            Baseline
+          </span>
           {baselinePicker}
-          {baselineExperiment ? (
-            <p className="text-sm text-muted-foreground">
-              Comparing to{" "}
-              <span className="font-medium text-foreground">
-                {baselineExperiment.name}
-              </span>
-              {experimentModel(baselineExperiment) ||
-              experimentVersion(baselineExperiment)
-                ? " · "
-                : null}
-              <ExperimentMetaLine experiment={baselineExperiment} />
-            </p>
-          ) : null}
+          {baselineExperiment ? <ExperimentMetaLine experiment={baselineExperiment} /> : null}
+        </div>
+        <div className="hidden items-center justify-center text-muted-foreground md:flex">
+          <ArrowRight className="size-5" />
+        </div>
+        <div className="flex flex-col gap-2 rounded-lg border border-primary/40 bg-surface p-4">
+          <span className="text-xs font-semibold uppercase tracking-wider text-primary">
+            Candidate
+          </span>
+          <Link href={detailHref} className="text-sm font-medium text-foreground hover:underline">
+            {experiment.name}
+          </Link>
+          <ExperimentMetaLine experiment={experiment} />
         </div>
       </div>
-      {refresh}
-    </div>
+    </>
   );
 }

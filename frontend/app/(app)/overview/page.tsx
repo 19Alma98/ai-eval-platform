@@ -1,24 +1,15 @@
 "use client";
 
 import { OverviewDashboard } from "@/features/overview/overview-dashboard";
-import { ProjectsPanel } from "@/features/projects/projects-panel";
+import { ProjectRequired } from "@/components/project-required";
 import { useProjectId } from "@/lib/project-store";
 
 export default function OverviewPage() {
   const { projectId } = useProjectId();
 
   if (!projectId) {
-    return (
-      <div className="mx-auto max-w-lg">
-        <ProjectsPanel />
-      </div>
-    );
+    return <ProjectRequired />;
   }
 
-  return (
-    <div>
-      <ProjectsPanel compact />
-      <OverviewDashboard />
-    </div>
-  );
+  return <OverviewDashboard />;
 }

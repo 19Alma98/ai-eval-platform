@@ -8,6 +8,7 @@ import { DataTable, type DataTableColumn } from "@/components/data-table";
 import { EmptyState } from "@/components/empty-state";
 import { ErrorState } from "@/components/error-state";
 import { LoadingBlock } from "@/components/loading-block";
+import { PageIntro } from "@/components/page-intro";
 import { RefreshControl } from "@/components/refresh-control";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -70,7 +71,7 @@ export function MetricsSetList({ projectId }: { projectId: string }) {
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [createOpen, setCreateOpen] = useState(false);
 
-  const rows = query.data ?? [];
+  const rows = useMemo(() => query.data ?? [], [query.data]);
 
   const onRowActivate = useCallback(
     (row: MetricsSetSummary) => {
@@ -85,35 +86,40 @@ export function MetricsSetList({ projectId }: { projectId: string }) {
     () => [
       {
         id: "name",
-        header: "Nome",
+        header: "Name",
         cell: (row) => (
-          <span className="font-medium text-foreground">{row.name}</span>
+          <span className="flex min-w-0 flex-col">
+            <span className="truncate font-medium text-foreground">{row.name}</span>
+            {row.description ? (
+              <span className="truncate text-xs text-muted-foreground">{row.description}</span>
+            ) : null}
+          </span>
         ),
       },
       {
         id: "version",
-        header: "Versione",
+        header: "Version",
         headerClassName: "w-[88px]",
-        className: "font-mono tabular-nums text-muted-foreground",
-        cell: (row) => row.version,
+        className: "tabular-nums text-muted-foreground",
+        cell: (row) => `v${row.version}`,
       },
       {
         id: "default",
-        header: "Default",
-        headerClassName: "w-[140px]",
+        header: "Used by default",
+        headerClassName: "w-[160px]",
         cell: (row) =>
           row.is_project_default ? (
-            <Badge variant="secondary">Default progetto</Badge>
+            <Badge variant="secondary">Project default</Badge>
           ) : (
             <span className="text-muted-foreground">—</span>
           ),
       },
       {
         id: "enabled",
-        header: "Abilitate",
-        headerClassName: "w-[100px]",
-        className: "font-mono tabular-nums text-muted-foreground",
-        cell: (row) => row.enabled_count,
+        header: "Active metrics",
+        headerClassName: "w-[140px]",
+        className: "tabular-nums text-muted-foreground",
+        cell: (row) => `${row.enabled_count} of ${row.entry_count}`,
       },
     ],
     [],
@@ -128,7 +134,7 @@ export function MetricsSetList({ projectId }: { projectId: string }) {
     const message = formatErrorForUi(err);
     return (
       <ErrorState
-        title="Impossibile caricare i set metriche"
+        title="Could not load metrics"
         message={message}
         onRetry={() => query.refetch()}
       />
@@ -137,25 +143,30 @@ export function MetricsSetList({ projectId }: { projectId: string }) {
 
   return (
     <div className="flex flex-col gap-3">
-      <div className="sticky top-0 z-20 -mx-1 flex flex-wrap items-center gap-3 border-b border-border bg-background px-1 pb-3">
-        <div className="flex-1" />
-        {rows.length > 0 ? (
-          <CreateMetricsSetDialog
-            projectId={projectId}
-            open={createOpen}
-            onOpenChange={setCreateOpen}
-          />
-        ) : null}
-        <RefreshControl
-          queryKey={queryOpts.queryKey}
-          dataUpdatedAt={query.dataUpdatedAt}
-        />
-      </div>
+      <PageIntro
+        title="Metrics"
+        glossary="What “good” means for your app: the metrics every experiment is scored on and the minimum score each answer needs to pass."
+        actions={
+          <>
+            <RefreshControl
+              queryKey={queryOpts.queryKey}
+              dataUpdatedAt={query.dataUpdatedAt}
+            />
+            {rows.length > 0 ? (
+              <CreateMetricsSetDialog
+                projectId={projectId}
+                open={createOpen}
+                onOpenChange={setCreateOpen}
+              />
+            ) : null}
+          </>
+        }
+      />
 
       {rows.length === 0 ? (
         <EmptyState
-          title="Nessun set metriche"
-          description="Crea il pack RAG predefinito per questo progetto (hit@k, recall@k, MRR, context precision, groundedness, correttezza, latenza)."
+          title="No metrics yet"
+          description="Start with the recommended RAG metrics: correctness, groundedness, answer relevance, retrieval quality and latency. You can change thresholds later."
           action={
             <Button
               type="button"
@@ -163,7 +174,7 @@ export function MetricsSetList({ projectId }: { projectId: string }) {
               disabled={ensure.isPending}
               onClick={() => {
                 ensure.mutate(undefined, {
-                  onSuccess: () => toast.success("Set metriche pronto"),
+                  onSuccess: () => toast.success("Recommended metrics added"),
                   onError: (e) => {
                     const message = formatErrorForUi(e);
                     toast.error(message);
@@ -172,7 +183,7 @@ export function MetricsSetList({ projectId }: { projectId: string }) {
               }}
             >
               <PackagePlus className="size-4" />
-              {ensure.isPending ? "Creazione…" : "Crea pack predefinito"}
+              {ensure.isPending ? "Adding…" : "Add recommended metrics"}
             </Button>
           }
         />
@@ -184,7 +195,7 @@ export function MetricsSetList({ projectId }: { projectId: string }) {
           selectedIndex={selectedIndex}
           onSelectedIndexChange={setSelectedIndex}
           onRowActivate={onRowActivate}
-          aria-label="Set metriche"
+          aria-label="Metrics sets"
         />
       )}
     </div>
@@ -215,7 +226,7 @@ function CreateMetricsSetDialog({
           description: description.trim() || null,
           entries,
         });
-        toast.success("Set metriche creato");
+        toast.success("Metrics set created");
         setName("");
         setDescription("");
         onOpenChange(false);
@@ -234,29 +245,29 @@ function CreateMetricsSetDialog({
         render={
           <Button type="button" size="sm">
             <Plus className="size-4" />
-            Nuovo set
+            New metrics set
           </Button>
         }
       />
       <DialogContent className="sm:max-w-md">
         <form onSubmit={handleSubmit}>
           <DialogHeader>
-            <DialogTitle>Nuovo set metriche</DialogTitle>
+            <DialogTitle>New metrics set</DialogTitle>
             <DialogDescription>
-              Copia le voci dal set predefinito del progetto come base
-              personalizzabile.
+              Starts as a copy of the project default. Use it to try stricter
+              thresholds without changing the default.
             </DialogDescription>
           </DialogHeader>
           <div className="flex flex-col gap-3 py-4">
             <div className="flex flex-col gap-2">
               <label htmlFor="metrics-set-create-name" className="text-sm font-medium">
-                Nome
+                Name
               </label>
               <Input
                 id="metrics-set-create-name"
                 value={name}
                 onChange={(e) => setName(e.target.value)}
-                placeholder="Il mio set"
+                placeholder="e.g. Strict release bar"
                 required
               />
             </div>
@@ -265,13 +276,13 @@ function CreateMetricsSetDialog({
                 htmlFor="metrics-set-create-description"
                 className="text-sm font-medium"
               >
-                Descrizione
+                Description
               </label>
               <Textarea
                 id="metrics-set-create-description"
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
-                placeholder="Note opzionali"
+                placeholder="Optional"
                 rows={3}
               />
             </div>
@@ -282,10 +293,10 @@ function CreateMetricsSetDialog({
               variant="outline"
               onClick={() => onOpenChange(false)}
             >
-              Annulla
+              Cancel
             </Button>
             <Button type="submit" disabled={!name.trim() || pending}>
-              {pending ? "Creazione…" : "Crea"}
+              {pending ? "Creating…" : "Create"}
             </Button>
           </DialogFooter>
         </form>

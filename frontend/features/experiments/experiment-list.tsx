@@ -2,11 +2,12 @@
 
 import Link from "next/link";
 import { useCallback, useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { DataTable, type DataTableColumn } from "@/components/data-table";
 import { EmptyState } from "@/components/empty-state";
 import { ErrorState } from "@/components/error-state";
 import { LoadingBlock } from "@/components/loading-block";
+import { PageIntro } from "@/components/page-intro";
 import { RefreshControl } from "@/components/refresh-control";
 import { RelativeTime } from "@/components/relative-time";
 import { StatusBadge } from "@/components/status-badge";
@@ -30,9 +31,13 @@ export function ExperimentList() {
   const datasetsQuery = useDatasets(projectId);
   const queryOpts = projectId ? experimentsQueryOptions(projectId) : null;
   const [selectedIndex, setSelectedIndex] = useState(0);
-  const [createOpen, setCreateOpen] = useState(false);
+  const searchParams = useSearchParams();
+  const initialDatasetId = searchParams.get("dataset") ?? undefined;
+  const [createOpen, setCreateOpen] = useState(
+    () => searchParams.get("new") === "1",
+  );
 
-  const rows = query.data ?? [];
+  const rows = useMemo(() => query.data ?? [], [query.data]);
 
   const datasetNameById = useMemo(() => {
     const map = new Map<string, string>();
@@ -55,14 +60,28 @@ export function ExperimentList() {
     [projectId, router],
   );
 
+  const experimentNameById = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const e of rows) map.set(e.id, e.name);
+    return map;
+  }, [rows]);
+
   const columns: DataTableColumn<Experiment>[] = useMemo(
     () => [
       {
         id: "name",
-        header: "Name",
-        cell: (row) => (
-          <span className="font-medium text-foreground">{row.name}</span>
-        ),
+        header: "Experiment",
+        cell: (row) => {
+          const version = experimentVersion(row);
+          return (
+            <span className="flex min-w-0 flex-col">
+              <span className="truncate font-medium text-foreground">{row.name}</span>
+              {version && version !== row.name ? (
+                <span className="truncate text-xs text-muted-foreground">{version}</span>
+              ) : null}
+            </span>
+          );
+        },
       },
       {
         id: "status",
@@ -72,13 +91,12 @@ export function ExperimentList() {
       },
       {
         id: "dataset_id",
-        header: "Dataset",
-        headerClassName: "w-[160px]",
+        header: "Test set",
         cell: (row) => {
           const label = resolveLabel(
             row.dataset_id,
             datasetNameById,
-            "Unknown dataset",
+            "Deleted test set",
           );
           if (!projectId) {
             return <span className="text-sm text-muted-foreground">{label}</span>;
@@ -89,7 +107,7 @@ export function ExperimentList() {
                 `/datasets/${encodeURIComponent(row.dataset_id)}`,
                 projectId,
               )}
-              className="text-sm text-primary hover:underline"
+              className="text-sm text-foreground hover:text-primary hover:underline"
               onClick={(e) => e.stopPropagation()}
             >
               {label}
@@ -107,22 +125,25 @@ export function ExperimentList() {
         ),
       },
       {
-        id: "version",
-        header: "Version",
-        cell: (row) => (
-          <span className="text-sm text-muted-foreground">
-            {experimentVersion(row) ?? "—"}
-          </span>
-        ),
+        id: "baseline",
+        header: "Compared with",
+        cell: (row) =>
+          row.baseline_experiment_id ? (
+            <span className="text-sm text-muted-foreground">
+              {resolveLabel(row.baseline_experiment_id, experimentNameById, "Earlier experiment")}
+            </span>
+          ) : (
+            <span className="text-sm text-muted-foreground">—</span>
+          ),
       },
       {
         id: "created_at",
         header: "Created",
-        headerClassName: "w-[120px]",
+        headerClassName: "w-[140px]",
         cell: (row) => <RelativeTime date={row.created_at} />,
       },
     ],
-    [datasetNameById, projectId],
+    [datasetNameById, experimentNameById, projectId],
   );
 
   if (query.isLoading) {
@@ -134,7 +155,7 @@ export function ExperimentList() {
     const message = formatErrorForUi(err);
     return (
       <ErrorState
-        title="Could not load runs"
+        title="Could not load experiments"
         message={message}
         onRetry={() => query.refetch()}
       />
@@ -143,33 +164,40 @@ export function ExperimentList() {
 
   return (
     <div className="flex flex-col gap-3">
-      <div className="sticky top-0 z-20 -mx-1 flex flex-wrap items-center gap-3 border-b border-border bg-background px-1 pb-3">
-        <div className="flex-1" />
-        {projectId && rows.length > 0 ? (
-          <CreateExperimentDialog
-            projectId={projectId}
-            open={createOpen}
-            onOpenChange={setCreateOpen}
-          />
-        ) : null}
-        {queryOpts ? (
-          <RefreshControl
-            queryKey={queryOpts.queryKey}
-            dataUpdatedAt={query.dataUpdatedAt}
-          />
-        ) : null}
-      </div>
+      <PageIntro
+        title="Experiments"
+        glossary="Each experiment runs one version of your app on a test set and scores every answer. Compare two experiments to see what improved."
+        actions={
+          <>
+            {queryOpts ? (
+              <RefreshControl
+                queryKey={queryOpts.queryKey}
+                dataUpdatedAt={query.dataUpdatedAt}
+              />
+            ) : null}
+            {projectId && rows.length > 0 ? (
+              <CreateExperimentDialog
+                projectId={projectId}
+                open={createOpen}
+                onOpenChange={setCreateOpen}
+                initialDatasetId={initialDatasetId}
+              />
+            ) : null}
+          </>
+        }
+      />
 
       {rows.length === 0 ? (
         <EmptyState
-          title="No runs yet"
-          description="Create a run to execute evaluators against a test set."
+          title="No experiments yet"
+          description="Create an experiment, run your app on a test set with the SDK, and every answer gets scored against your metrics."
           action={
             projectId ? (
               <CreateExperimentDialog
                 projectId={projectId}
                 open={createOpen}
                 onOpenChange={setCreateOpen}
+                initialDatasetId={initialDatasetId}
               />
             ) : null
           }
@@ -182,7 +210,7 @@ export function ExperimentList() {
           selectedIndex={selectedIndex}
           onSelectedIndexChange={setSelectedIndex}
           onRowActivate={onRowActivate}
-          aria-label="Runs"
+          aria-label="Experiments"
         />
       )}
     </div>

@@ -60,3 +60,25 @@ export function resolveLabel(
   }
   return fallback;
 }
+
+/** Scores are 0–1; two decimals is enough precision to read at a glance. */
+export function formatScore(value: number | null | undefined): string {
+  if (value === null || value === undefined || Number.isNaN(value)) return "—";
+  return value.toFixed(2);
+}
+
+/** 0.583 → "58%"; keeps one decimal only when it changes the reading. */
+export function formatPercent(value: number | null | undefined): string {
+  if (value === null || value === undefined || Number.isNaN(value)) return "—";
+  const pct = value * 100;
+  const rounded = Math.round(pct);
+  return Math.abs(pct - rounded) < 0.05 ? `${rounded}%` : `${pct.toFixed(1)}%`;
+}
+
+/** Signed delta in percentage points for 0–1 scores: -0.1667 → "−17 pts". */
+export function formatDeltaPoints(value: number | null | undefined): string {
+  if (value === null || value === undefined || Number.isNaN(value)) return "—";
+  const pts = Math.round(value * 100);
+  if (pts === 0) return "±0";
+  return pts > 0 ? `+${pts} pts` : `−${Math.abs(pts)} pts`;
+}

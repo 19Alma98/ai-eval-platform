@@ -14,6 +14,8 @@ export type DataTableColumn<T> = {
   cell: (row: T, index: number) => ReactNode;
   className?: string;
   headerClassName?: string;
+  /** Let long text wrap (use with line-clamp) instead of truncating to one line. */
+  wrap?: boolean;
 };
 
 export function DataTable<T>({
@@ -24,6 +26,7 @@ export function DataTable<T>({
   onSelectedIndexChange,
   onRowActivate,
   className,
+  selectionMode = "focus",
   "aria-label": ariaLabel = "Data table",
 }: {
   rows: T[];
@@ -33,6 +36,11 @@ export function DataTable<T>({
   onSelectedIndexChange: (index: number) => void;
   onRowActivate: (row: T, index: number) => void;
   className?: string;
+  /**
+   * "persistent": the selected row stays highlighted (master–detail views).
+   * "focus": highlight only while the table has keyboard focus (navigation lists).
+   */
+  selectionMode?: "persistent" | "focus";
   "aria-label"?: string;
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -77,7 +85,7 @@ export function DataTable<T>({
       aria-label={ariaLabel}
       onKeyDown={handleKeyDown}
       className={cn(
-        "overflow-auto rounded-md border border-border outline-none focus-visible:ring-2 focus-visible:ring-ring",
+        "group/table overflow-auto rounded-lg border border-border bg-surface outline-none focus-visible:ring-2 focus-visible:ring-ring",
         className,
       )}
     >
@@ -89,7 +97,7 @@ export function DataTable<T>({
                 key={col.id}
                 scope="col"
                 className={cn(
-                  "whitespace-nowrap px-2 py-1.5 text-left text-xs font-medium text-muted-foreground",
+                  "whitespace-nowrap px-3 py-2 text-left text-xs font-medium text-muted-foreground",
                   col.headerClassName,
                 )}
               >
@@ -105,7 +113,10 @@ export function DataTable<T>({
               aria-selected={index === selectedIndex}
               className={cn(
                 "cursor-pointer border-b border-border transition-colors last:border-b-0 hover:bg-row-hover",
-                index === selectedIndex && "bg-row-selected",
+                index === selectedIndex &&
+                  (selectionMode === "persistent"
+                    ? "bg-row-selected"
+                    : "group-focus-visible/table:bg-row-selected"),
               )}
               onClick={() => {
                 onSelectedIndexChange(index);
@@ -116,7 +127,9 @@ export function DataTable<T>({
                 <td
                   key={col.id}
                   className={cn(
-                    "max-w-[240px] truncate px-2 py-1.5 align-middle",
+                    col.wrap
+                      ? "px-3 py-2 align-middle whitespace-normal break-words"
+                      : "max-w-[240px] truncate px-3 py-2 align-middle",
                     col.className,
                   )}
                 >

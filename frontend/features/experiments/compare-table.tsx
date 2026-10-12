@@ -5,8 +5,8 @@ import { DataTable, type DataTableColumn } from "@/components/data-table";
 import { cn } from "@/lib/cn";
 import type { MetricComparison } from "@/lib/api/types";
 import { formatStatusLabel } from "@/components/status-badge";
-import { resolveLabel } from "@/lib/format";
-import { useEvaluators } from "./use-experiments";
+import { formatDeltaPoints, formatPercent, formatScore } from "@/lib/format";
+import { metricInfo } from "@/lib/metrics-catalog";
 import {
   groupMetricsByEvaluator,
   type EvaluatorCompareRow,
@@ -21,31 +21,24 @@ export const METRIC_STATUS_STYLES: Record<string, string> = {
   insufficient_n: "bg-status-warn-bg text-status-warn",
 };
 
-function formatMetricValue(value: number | null): string {
-  if (value === null || value === undefined) return "—";
-  if (Math.abs(value) >= 0 && Math.abs(value) <= 1) {
-    return value.toFixed(4);
-  }
-  return value.toFixed(2);
-}
+const COMPARE_STATUS_LABELS: Record<string, string> = {
+  regression: "Worse",
+  improved: "Better",
+  unchanged: "No real change",
+  unavailable: "Not scored",
+  config_mismatch: "Not comparable",
+  insufficient_n: "Too few answers",
+};
 
-function formatPassRate(value: number | null): string {
-  if (value === null || value === undefined) return "—";
-  return `${(value * 100).toFixed(1)}%`;
-}
-
-function formatMeanWithPassRate(
-  mean: number | null,
-  passRate: number | null,
-): string {
-  return `${formatMetricValue(mean)} (${formatPassRate(passRate)})`;
-}
-
-function formatDelta(value: number | null): string {
-  if (value === null || value === undefined) return "—";
-  const sign = value > 0 ? "+" : "";
-  return `${sign}${value.toFixed(4)}`;
-}
+const COMPARE_STATUS_HINTS: Record<string, string> = {
+  regression: "The candidate scores significantly lower than the baseline.",
+  improved: "The candidate scores significantly higher than the baseline.",
+  unchanged: "The difference is within normal variation.",
+  unavailable: "One of the two experiments was not scored with this metric.",
+  config_mismatch:
+    "The two experiments were scored with different settings for this metric, so scores can't be compared.",
+  insufficient_n: "Too few answers to tell a real change from noise.",
+};
 
 export function CompareStatusCell({ status }: { status: string }) {
   const style =
@@ -53,100 +46,125 @@ export function CompareStatusCell({ status }: { status: string }) {
     "bg-status-unset-bg text-status-unset";
   return (
     <span
+      title={COMPARE_STATUS_HINTS[status.toLowerCase()]}
       className={cn(
         "inline-flex items-center rounded px-1.5 py-0.5 text-xs font-medium",
         style,
       )}
     >
-      {formatStatusLabel(status)}
+      {COMPARE_STATUS_LABELS[status.toLowerCase()] ?? formatStatusLabel(status)}
     </span>
   );
 }
 
 type CompareTableProps = {
-  projectId: string;
   metrics: MetricComparison[];
+  selectedEvaluatorId: string | null;
+  onSelectEvaluator: (evaluatorId: string) => void;
 };
 
-export function CompareTable({ projectId, metrics }: CompareTableProps) {
-  const evaluatorsQuery = useEvaluators(projectId);
+export function CompareTable({
+  metrics,
+  selectedEvaluatorId,
+  onSelectEvaluator,
+}: CompareTableProps) {
   const rows = useMemo(() => groupMetricsByEvaluator(metrics), [metrics]);
-
-  const evaluatorNameById = useMemo(() => {
-    const map = new Map<string, string>();
-    for (const ev of evaluatorsQuery.data ?? []) {
-      map.set(ev.id, ev.name);
-    }
-    return map;
-  }, [evaluatorsQuery.data]);
 
   const columns: DataTableColumn<EvaluatorCompareRow>[] = useMemo(
     () => [
       {
-        id: "evaluator",
-        header: "Evaluator",
-        cell: (row) => (
-          <span className="text-sm text-foreground">
-            {row.evaluator_name?.trim() ||
-              resolveLabel(
-                row.evaluator_id,
-                evaluatorNameById,
-                "Unknown evaluator",
-              )}
-          </span>
-        ),
-      },
-      {
-        id: "candidate",
-        header: "Candidate",
-        headerClassName: "w-[160px] text-right",
-        className: "text-right font-mono tabular-nums text-sm",
-        cell: (row) =>
-          formatMeanWithPassRate(row.candidate_mean, row.candidate_pass_rate),
+        id: "metric",
+        header: "Metric",
+        cell: (row) => {
+          const info = metricInfo(row.evaluator_name);
+          return (
+            <span className="text-sm font-medium text-foreground" title={info.description}>
+              {info.label}
+            </span>
+          );
+        },
       },
       {
         id: "baseline",
-        header: "Baseline",
-        headerClassName: "w-[160px] text-right",
-        className:
-          "text-right font-mono tabular-nums text-sm text-muted-foreground",
-        cell: (row) =>
-          formatMeanWithPassRate(row.baseline_mean, row.baseline_pass_rate),
+        header: "Baseline passed",
+        headerClassName: "w-[140px] text-right",
+        className: "text-right tabular-nums text-sm text-muted-foreground",
+        cell: (row) => formatPercent(row.baseline_pass_rate),
       },
       {
-        id: "delta",
-        header: "Delta",
-        headerClassName: "w-[100px] text-right",
-        className: "text-right font-mono tabular-nums text-sm",
-        cell: (row) => formatDelta(row.delta),
+        id: "candidate",
+        header: "Candidate passed",
+        headerClassName: "w-[140px] text-right",
+        className: "text-right tabular-nums text-sm font-medium",
+        cell: (row) => formatPercent(row.candidate_pass_rate),
+      },
+      {
+        id: "change",
+        header: "Change",
+        headerClassName: "w-[110px] text-right",
+        className: "text-right tabular-nums text-sm",
+        cell: (row) => {
+          const delta =
+            row.candidate_pass_rate != null && row.baseline_pass_rate != null
+              ? row.candidate_pass_rate - row.baseline_pass_rate
+              : null;
+          return (
+            <span
+              className={cn(
+                delta != null && delta < -0.0001 && "text-status-fail",
+                delta != null && delta > 0.0001 && "text-status-ok",
+              )}
+            >
+              {formatDeltaPoints(delta)}
+            </span>
+          );
+        },
+      },
+      {
+        id: "score",
+        header: "Avg. score",
+        headerClassName: "w-[130px] text-right",
+        className: "text-right tabular-nums text-xs text-muted-foreground",
+        cell: (row) =>
+          `${formatScore(row.baseline_mean)} → ${formatScore(row.candidate_mean)}`,
       },
       {
         id: "status",
-        header: "Status",
-        headerClassName: "w-[120px]",
+        header: "Verdict",
+        headerClassName: "w-[140px]",
         cell: (row) => <CompareStatusCell status={row.status} />,
       },
     ],
-    [evaluatorNameById],
+    [],
   );
 
   if (rows.length === 0) {
     return (
       <p className="text-sm text-muted-foreground">
-        No comparable metrics for this pair of experiments.
+        These two experiments have no metrics in common yet. Score both with the
+        same metrics to compare them.
       </p>
     );
   }
+
+  const selectedIndex = Math.max(
+    0,
+    rows.findIndex((r) => r.evaluator_id === selectedEvaluatorId),
+  );
 
   return (
     <DataTable
       rows={rows}
       columns={columns}
       getRowKey={(row) => row.evaluator_id}
-      selectedIndex={0}
-      onSelectedIndexChange={() => {}}
-      onRowActivate={() => {}}
-      aria-label="Experiment comparison metrics"
+      selectedIndex={selectedIndex}
+      onSelectedIndexChange={(i) => {
+        const row = rows[i];
+        if (row) onSelectEvaluator(row.evaluator_id);
+      }}
+      onRowActivate={(row) => onSelectEvaluator(row.evaluator_id)}
+      selectionMode="persistent"
+      aria-label="Metrics compared"
     />
   );
 }

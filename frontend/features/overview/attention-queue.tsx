@@ -9,11 +9,11 @@ import type { AttentionRow } from "./map-overview";
 function kindLabel(kind: AttentionRow["kind"]): string {
   switch (kind) {
     case "live_fail":
-      return "Live fail";
+      return "Failing live answer";
     case "regression":
       return "Regression";
     case "calibration":
-      return "Calibration";
+      return "Judge reliability";
   }
 }
 
@@ -28,7 +28,7 @@ export function AttentionQueue({
     return (
       <section
         aria-label="Attention queue"
-        className="flex flex-col gap-2 rounded-md border border-dashed border-border bg-surface p-3"
+        className="flex flex-col gap-2 rounded-lg border border-dashed border-border bg-surface p-4"
       >
         <h2 className="text-sm font-semibold text-foreground">Needs attention</h2>
         <p className="text-sm text-muted-foreground">No issues in this range.</p>
@@ -37,13 +37,13 @@ export function AttentionQueue({
             href={withProjectQuery("/live-runs", projectId)}
             className="text-primary hover:underline"
           >
-            Open live runs
+            Open live traffic
           </Link>
           <Link
             href={withProjectQuery("/experiments", projectId)}
             className="text-primary hover:underline"
           >
-            Create run
+            New experiment
           </Link>
         </div>
       </section>
@@ -53,7 +53,7 @@ export function AttentionQueue({
   return (
     <section
       aria-label="Attention queue"
-      className="flex flex-col gap-2 rounded-md border border-border bg-surface p-3"
+      className="flex flex-col gap-2 rounded-lg border border-border bg-surface p-4"
     >
       <h2 className="text-sm font-semibold text-foreground">Needs attention</h2>
       <ul className="divide-y divide-border">
@@ -81,7 +81,7 @@ export function AttentionQueue({
                 <Link
                   href={withProjectQuery(row.href, projectId)}
                   className={cn(
-                    "block py-2 transition-colors hover:bg-row-hover",
+                    "-mx-2 block rounded-md px-2 py-2 transition-colors hover:bg-row-hover",
                   )}
                 >
                   {content}
