@@ -1,15 +1,20 @@
 "use client";
 
-import { useParams } from "next/navigation";
+import { useParams, usePathname } from "next/navigation";
 import { PageIntro } from "@/components/page-intro";
 import { LiveRunDetail } from "@/features/live-runs/live-run-detail";
 import { ProjectRequired } from "@/components/project-required";
 import { useProjectId } from "@/lib/project-store";
+import { resolveStaticExportParam } from "@/lib/static-export-params";
 
 export default function LiveRunDetailPage() {
   const params = useParams();
-  const interactionId =
-    typeof params.interactionId === "string" ? params.interactionId : "";
+  const pathname = usePathname();
+  const interactionId = resolveStaticExportParam(
+    params.interactionId,
+    pathname,
+    /^\/live-runs\/([^/]+)/,
+  );
   const { projectId } = useProjectId();
 
   if (!projectId) {

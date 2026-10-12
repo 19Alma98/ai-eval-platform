@@ -13,16 +13,16 @@ from fastapi.staticfiles import StaticFiles
 # Placeholder segment used by frontend generateStaticParams during export.
 _PLACEHOLDER = "_"
 
-_DYNAMIC_RULES: list[tuple[re.Pattern[str], str]] = [
+_DYNAMIC_REWRITES: list[tuple[re.Pattern[str], str]] = [
     (
-        re.compile(r"^experiments/[^/]+/compare/?$"),
-        f"experiments/{_PLACEHOLDER}/compare/index.html",
+        re.compile(r"^experiments/[^/]+/(compare(?:/.*)?)$"),
+        rf"experiments/{_PLACEHOLDER}/\1",
     ),
-    (re.compile(r"^experiments/[^/]+/?$"), f"experiments/{_PLACEHOLDER}/index.html"),
-    (re.compile(r"^datasets/[^/]+/?$"), f"datasets/{_PLACEHOLDER}/index.html"),
-    (re.compile(r"^live-runs/[^/]+/?$"), f"live-runs/{_PLACEHOLDER}/index.html"),
-    (re.compile(r"^metrics/[^/]+/?$"), f"metrics/{_PLACEHOLDER}/index.html"),
-    (re.compile(r"^app-configs/[^/]+/?$"), f"app-configs/{_PLACEHOLDER}/index.html"),
+    (re.compile(r"^experiments/[^/]+(/.*)?$"), rf"experiments/{_PLACEHOLDER}\1"),
+    (re.compile(r"^datasets/[^/]+(/.*)?$"), rf"datasets/{_PLACEHOLDER}\1"),
+    (re.compile(r"^live-runs/[^/]+(/.*)?$"), rf"live-runs/{_PLACEHOLDER}\1"),
+    (re.compile(r"^metrics/[^/]+(/.*)?$"), rf"metrics/{_PLACEHOLDER}\1"),
+    (re.compile(r"^app-configs/[^/]+(/.*)?$"), rf"app-configs/{_PLACEHOLDER}\1"),
 ]
 
 
@@ -34,24 +34,33 @@ def ui_root() -> Path | None:
     return None
 
 
+def _placeholder_path(cleaned: str) -> str | None:
+    for pattern, repl in _DYNAMIC_REWRITES:
+        if pattern.match(cleaned):
+            return pattern.sub(repl, cleaned)
+    return None
+
+
 def resolve_ui_file(root: Path, path: str) -> Path | None:
     """Map a request path to a file under the static export."""
     cleaned = path.strip("/")
     if cleaned.startswith("api/") or cleaned.startswith("v1/") or cleaned == "health":
         return None
 
+    paths: list[str] = [cleaned] if cleaned else [""]
+    rewritten = _placeholder_path(cleaned) if cleaned else None
+    if rewritten and rewritten != cleaned:
+        paths.append(rewritten)
+
     candidates: list[Path] = []
-    if not cleaned:
-        candidates.append(root / "index.html")
-    else:
-        candidates.append(root / cleaned)
-        candidates.append(root / cleaned / "index.html")
-        if not cleaned.endswith(".html"):
-            candidates.append(root / f"{cleaned}.html")
-        for pattern, rel in _DYNAMIC_RULES:
-            if pattern.match(cleaned):
-                candidates.append(root / rel)
-                break
+    for item in paths:
+        if not item:
+            candidates.append(root / "index.html")
+            continue
+        candidates.append(root / item)
+        candidates.append(root / item / "index.html")
+        if not item.endswith(".html"):
+            candidates.append(root / f"{item}.html")
 
     for candidate in candidates:
         try:

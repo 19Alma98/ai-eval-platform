@@ -1,13 +1,19 @@
 "use client";
 
-import { useParams } from "next/navigation";
+import { useParams, usePathname } from "next/navigation";
 import { AppConfigFamilyDetail } from "@/features/app-configs/app-config-family-detail";
 import { ProjectRequired } from "@/components/project-required";
 import { useProjectId } from "@/lib/project-store";
+import { resolveStaticExportParam } from "@/lib/static-export-params";
 
 export default function AppConfigFamilyPage() {
   const params = useParams();
-  const rawName = typeof params.name === "string" ? params.name : "";
+  const pathname = usePathname();
+  const rawName = resolveStaticExportParam(
+    params.name,
+    pathname,
+    /^\/app-configs\/([^/]+)/,
+  );
   const familyName = rawName ? decodeURIComponent(rawName) : "";
   const { projectId } = useProjectId();
 

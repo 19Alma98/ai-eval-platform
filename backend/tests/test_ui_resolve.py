@@ -50,3 +50,29 @@ def test_resolve_compare_path(tmp_path: Path) -> None:
 
     resolved = resolve_ui_file(root, "experiments/abc-123/compare/")
     assert resolved == target.resolve()
+
+
+def test_resolve_dynamic_next_tree_files(tmp_path: Path) -> None:
+    """Soft-nav RSC files exist only under the export placeholder segment."""
+    root = tmp_path / "ui"
+    dataset_tree = root / "datasets" / "_" / "__next._tree.txt"
+    compare_tree = root / "experiments" / "_" / "compare" / "__next._tree.txt"
+    dataset_tree.parent.mkdir(parents=True)
+    compare_tree.parent.mkdir(parents=True)
+    dataset_tree.write_text("dataset-tree", encoding="utf-8")
+    compare_tree.write_text("compare-tree", encoding="utf-8")
+    (root / "index.html").write_text("<html>home</html>", encoding="utf-8")
+
+    assert (
+        resolve_ui_file(
+            root, "datasets/087686a3-93db-49a9-b3ac-248bbe8fb1e3/__next._tree.txt"
+        )
+        == dataset_tree.resolve()
+    )
+    assert (
+        resolve_ui_file(
+            root,
+            "experiments/50af5c63-0741-42cd-9a43-e436efa9391c/compare/__next._tree.txt",
+        )
+        == compare_tree.resolve()
+    )
