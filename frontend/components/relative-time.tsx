@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { formatRelativeTime, formatTs } from "@/lib/format";
+import { formatRelativeTime, formatTs, parseTimestamp } from "@/lib/format";
 import { cn } from "@/lib/cn";
 
 export function RelativeTime({
@@ -11,10 +11,7 @@ export function RelativeTime({
   date: Date | string;
   className?: string;
 }) {
-  const parsed = useMemo(
-    () => (typeof date === "string" ? new Date(date) : date),
-    [date],
-  );
+  const parsed = useMemo(() => parseTimestamp(date), [date]);
   const [label, setLabel] = useState(() =>
     formatRelativeTime(parsed, new Date()),
   );

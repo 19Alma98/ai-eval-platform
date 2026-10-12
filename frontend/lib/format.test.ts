@@ -1,11 +1,36 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { formatDurationMs, resolveLabel } from "./format";
+import {
+  formatDurationMs,
+  formatRelativeTime,
+  parseTimestamp,
+  resolveLabel,
+} from "./format";
 
 describe("formatDurationMs", () => {
   it("formats milliseconds", () => {
     assert.equal(formatDurationMs(1250), "1.25s");
     assert.equal(formatDurationMs(40), "40ms");
+  });
+});
+
+describe("parseTimestamp", () => {
+  it("treats naive ISO as UTC", () => {
+    const d = parseTimestamp("2026-10-12T13:04:04.419268");
+    assert.equal(d.toISOString(), "2026-10-12T13:04:04.419Z");
+  });
+
+  it("keeps explicit offsets", () => {
+    const d = parseTimestamp("2026-10-12T13:04:04.419268Z");
+    assert.equal(d.toISOString(), "2026-10-12T13:04:04.419Z");
+  });
+});
+
+describe("formatRelativeTime", () => {
+  it("uses whole hours without rounding up early", () => {
+    const now = new Date("2026-10-12T16:05:00.000Z");
+    const created = new Date("2026-10-12T14:55:00.000Z"); // 1h10m ago
+    assert.equal(formatRelativeTime(created, now), "1 hour ago");
   });
 });
 

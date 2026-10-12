@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import uuid
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any
 
 from sqlalchemy import (
@@ -21,8 +21,35 @@ from sqlalchemy import (
 )
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
+from sqlalchemy.types import TypeDecorator
 
 PortableJSON = JSON().with_variant(JSONB(), "postgresql")
+
+
+class UtcDateTime(TypeDecorator):
+    """Timezone-aware UTC datetimes.
+
+    SQLite drops tzinfo on ``DateTime(timezone=True)``; without re-attaching UTC
+    on read, JSON serialization omits ``Z`` and browsers parse the value as local
+    time (e.g. +2h skew in CEST).
+    """
+
+    impl = DateTime(timezone=True)
+    cache_ok = True
+
+    def process_bind_param(self, value: datetime | None, dialect: Any) -> datetime | None:
+        if value is None:
+            return None
+        if value.tzinfo is None:
+            return value.replace(tzinfo=UTC)
+        return value.astimezone(UTC)
+
+    def process_result_value(self, value: datetime | None, dialect: Any) -> datetime | None:
+        if value is None:
+            return None
+        if value.tzinfo is None:
+            return value.replace(tzinfo=UTC)
+        return value.astimezone(UTC)
 
 
 class Base(DeclarativeBase):
@@ -36,7 +63,7 @@ class ProjectModel(Base):
     name: Mapped[str] = mapped_column(String(200), nullable=False)
     slug: Mapped[str] = mapped_column(String(200), nullable=False, unique=True)
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True),
+        UtcDateTime(),
         nullable=False,
         server_default=func.now(),
     )
@@ -59,8 +86,8 @@ class TraceModel(Base):
     trace_id: Mapped[str] = mapped_column(String(32), nullable=False)
     name: Mapped[str] = mapped_column(String(512), nullable=False)
     status: Mapped[str] = mapped_column(String(32), nullable=False)
-    start_time: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
-    end_time: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    start_time: Mapped[datetime] = mapped_column(UtcDateTime(), nullable=False)
+    end_time: Mapped[datetime | None] = mapped_column(UtcDateTime(), nullable=True)
     input: Mapped[Any | None] = mapped_column(PortableJSON, nullable=True)
     output: Mapped[Any | None] = mapped_column(PortableJSON, nullable=True)
     metadata_json: Mapped[dict[str, Any]] = mapped_column(
@@ -96,8 +123,8 @@ class SpanModel(Base):
     parent_span_id: Mapped[str | None] = mapped_column(String(16), nullable=True)
     name: Mapped[str] = mapped_column(String(512), nullable=False)
     kind: Mapped[str] = mapped_column(String(64), nullable=False)
-    start_time: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
-    end_time: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    start_time: Mapped[datetime] = mapped_column(UtcDateTime(), nullable=False)
+    end_time: Mapped[datetime | None] = mapped_column(UtcDateTime(), nullable=True)
     status: Mapped[str] = mapped_column(String(32), nullable=False)
     attributes: Mapped[dict[str, Any]] = mapped_column(
         PortableJSON, nullable=False, server_default="{}"
@@ -126,7 +153,7 @@ class DatasetModel(Base):
     description: Mapped[str | None] = mapped_column(String(2000), nullable=True)
     task_type: Mapped[str | None] = mapped_column(String(64), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True),
+        UtcDateTime(),
         nullable=False,
         server_default=func.now(),
     )
@@ -190,7 +217,7 @@ class AppConfigModel(Base):
     )
     content_hash: Mapped[str] = mapped_column(String(64), nullable=False)
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True),
+        UtcDateTime(),
         nullable=False,
         server_default=func.now(),
     )
@@ -211,7 +238,7 @@ class AppConfigAliasModel(Base):
         nullable=False,
     )
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True),
+        UtcDateTime(),
         nullable=False,
         server_default=func.now(),
     )
@@ -277,7 +304,7 @@ class ExperimentModel(Base):
     )
     status: Mapped[str] = mapped_column(String(32), nullable=False, server_default="created")
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True),
+        UtcDateTime(),
         nullable=False,
         server_default=func.now(),
     )
@@ -299,8 +326,8 @@ class EvaluationRunModel(Base):
         nullable=False,
     )
     status: Mapped[str] = mapped_column(String(32), nullable=False)
-    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
-    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    started_at: Mapped[datetime | None] = mapped_column(UtcDateTime(), nullable=True)
+    finished_at: Mapped[datetime | None] = mapped_column(UtcDateTime(), nullable=True)
     metadata_json: Mapped[dict[str, Any]] = mapped_column(
         "metadata", PortableJSON, nullable=False, server_default="{}"
     )
@@ -372,12 +399,12 @@ class MetricsSetModel(Base):
         server_default=text("false"),
     )
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True),
+        UtcDateTime(),
         nullable=False,
         server_default=func.now(),
     )
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True),
+        UtcDateTime(),
         nullable=False,
         server_default=func.now(),
     )
@@ -423,7 +450,7 @@ class MetricsSetEntryModel(Base):
         server_default=text("false"),
     )
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True),
+        UtcDateTime(),
         nullable=False,
         server_default=func.now(),
     )
@@ -462,7 +489,7 @@ class ExperimentItemOutputModel(Base):
         "metadata", PortableJSON, nullable=False, server_default="{}"
     )
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True),
+        UtcDateTime(),
         nullable=False,
         server_default=func.now(),
     )
@@ -502,11 +529,11 @@ class LiveInteractionModel(Base):
     score_warning: Mapped[str | None] = mapped_column(Text, nullable=True)
     error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True),
+        UtcDateTime(),
         nullable=False,
         server_default=func.now(),
     )
-    scored_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    scored_at: Mapped[datetime | None] = mapped_column(UtcDateTime(), nullable=True)
 
     scores: Mapped[list[LiveInteractionScoreModel]] = relationship(
         "LiveInteractionScoreModel",
@@ -547,7 +574,7 @@ class LiveInteractionScoreModel(Base):
         "metadata", PortableJSON, nullable=False, server_default="{}", default=dict
     )
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True),
+        UtcDateTime(),
         nullable=False,
         server_default=func.now(),
     )
@@ -582,7 +609,7 @@ class LiveScoreReviewModel(Base):
     note: Mapped[str | None] = mapped_column(Text, nullable=True)
     reviewer: Mapped[str | None] = mapped_column(String(200), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True),
+        UtcDateTime(),
         nullable=False,
         server_default=func.now(),
     )
@@ -609,7 +636,7 @@ class LiveReviewModel(Base):
     note: Mapped[str | None] = mapped_column(Text, nullable=True)
     reviewer: Mapped[str | None] = mapped_column(String(200), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True),
+        UtcDateTime(),
         nullable=False,
         server_default=func.now(),
     )
@@ -628,7 +655,7 @@ class JudgeClaimCacheModel(Base):
     model: Mapped[str] = mapped_column(String(200), nullable=False)
     claims: Mapped[list[str]] = mapped_column(PortableJSON, nullable=False)
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True),
+        UtcDateTime(),
         nullable=False,
         server_default=func.now(),
     )

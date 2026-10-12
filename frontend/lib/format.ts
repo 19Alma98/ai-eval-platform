@@ -1,18 +1,33 @@
 const rtf = new Intl.RelativeTimeFormat("en", { numeric: "auto" });
 
+/** Parse API timestamps; naive ISO (no offset) is treated as UTC. */
+export function parseTimestamp(value: string | Date): Date {
+  if (value instanceof Date) return value;
+  const trimmed = value.trim();
+  if (
+    /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?$/.test(trimmed)
+  ) {
+    return new Date(`${trimmed}Z`);
+  }
+  return new Date(trimmed);
+}
+
 export function formatRelativeTime(date: Date, now = new Date()): string {
   const diffMs = date.getTime() - now.getTime();
-  const absSec = Math.abs(Math.round(diffMs / 1000));
-  if (absSec < 60) return rtf.format(Math.round(diffMs / 1000), "second");
-  const absMin = Math.abs(Math.round(diffMs / 60_000));
-  if (absMin < 60) return rtf.format(Math.round(diffMs / 60_000), "minute");
-  const absHr = Math.abs(Math.round(diffMs / 3_600_000));
-  if (absHr < 24) return rtf.format(Math.round(diffMs / 3_600_000), "hour");
-  return rtf.format(Math.round(diffMs / 86_400_000), "day");
+  const past = diffMs <= 0;
+  const absMs = Math.abs(diffMs);
+  const absSec = Math.floor(absMs / 1000);
+  if (absSec < 60) return rtf.format(past ? -absSec : absSec, "second");
+  const absMin = Math.floor(absMs / 60_000);
+  if (absMin < 60) return rtf.format(past ? -absMin : absMin, "minute");
+  const absHr = Math.floor(absMs / 3_600_000);
+  if (absHr < 24) return rtf.format(past ? -absHr : absHr, "hour");
+  const absDay = Math.floor(absMs / 86_400_000);
+  return rtf.format(past ? -absDay : absDay, "day");
 }
 
 export function formatTs(iso: string | Date): string {
-  const d = typeof iso === "string" ? new Date(iso) : iso;
+  const d = typeof iso === "string" ? parseTimestamp(iso) : iso;
   return d.toLocaleString(undefined, {
     dateStyle: "medium",
     timeStyle: "medium",

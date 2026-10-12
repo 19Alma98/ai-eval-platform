@@ -48,7 +48,14 @@ async def test_sqlite_health_and_project_create(sqlite_client: AsyncClient) -> N
     )
     assert created.status_code == 201
     body = created.json()
+    assert body["name"] == "SQLite Demo"
     assert body["slug"] == "sqlite-demo"
+    assert body["created_at"].endswith("Z") or "+" in body["created_at"][10:]
+
+    listed_after_reload = await sqlite_client.get(f"/api/v1/projects/{body['id']}")
+    assert listed_after_reload.status_code == 200
+    reloaded = listed_after_reload.json()["created_at"]
+    assert reloaded.endswith("Z") or "+" in reloaded[10:]
 
     listed = await sqlite_client.get("/api/v1/projects")
     assert listed.status_code == 200
