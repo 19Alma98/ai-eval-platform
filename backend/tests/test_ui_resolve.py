@@ -64,9 +64,7 @@ def test_resolve_dynamic_next_tree_files(tmp_path: Path) -> None:
     (root / "index.html").write_text("<html>home</html>", encoding="utf-8")
 
     assert (
-        resolve_ui_file(
-            root, "datasets/087686a3-93db-49a9-b3ac-248bbe8fb1e3/__next._tree.txt"
-        )
+        resolve_ui_file(root, "datasets/087686a3-93db-49a9-b3ac-248bbe8fb1e3/__next._tree.txt")
         == dataset_tree.resolve()
     )
     assert (
