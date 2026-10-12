@@ -6,12 +6,12 @@ Open items from the RAG evaluation reviews (2026-10-08, 2026-10-11). Fixed items
 
 - [ ] **Authentication.** No auth at all today. At minimum an API key for `/api/v1/*` and
   `/v1/traces`; people will expose it once it is on PyPI.
-- [] better prompt versioning
+- [] better prompts
 
 ## Judge validation (meta-eval)
 
-Synthetic runs on the 12-item HR gold set, judge `gemma4:e2b`, prompts v5 + format repair
-(2026-10-12). Thresholds: `examples/hr_it_assistant/judge_sanity_thresholds.yaml`.
+Synthetic runs on the 12-item HR gold set, judge `gemma4:e2b`, content-hashed prompts + format
+repair (2026-10-12). Thresholds: `examples/hr_it_assistant/judge_sanity_thresholds.yaml`.
 
 | variant | correctness | groundedness | answer_relevance | hit@k | context_recall |
 |---|---|---|---|---|---|

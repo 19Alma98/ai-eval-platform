@@ -26,7 +26,7 @@ from sqlalchemy.types import TypeDecorator
 PortableJSON = JSON().with_variant(JSONB(), "postgresql")
 
 
-class UtcDateTime(TypeDecorator):
+class UtcDateTime(TypeDecorator[datetime | None]):
     """Timezone-aware UTC datetimes.
 
     SQLite drops tzinfo on ``DateTime(timezone=True)``; without re-attaching UTC

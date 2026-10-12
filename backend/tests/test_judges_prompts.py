@@ -1,13 +1,43 @@
 from __future__ import annotations
 
+import re
+
 import pytest
 
 from aiobs_server.evaluation.judges import prompts
 from support.fake_llm import claim_count, step_of
 
+_VERSION_RE = re.compile(r"^[a-z_]+\.[a-z]+\.[0-9a-f]{12}$")
+
 
 def test_prompt_version_format() -> None:
-    assert prompts.prompt_version("groundedness", "claims") == "groundedness.claims.v5"
+    version = prompts.prompt_version("groundedness", "claims")
+    assert _VERSION_RE.match(version)
+    assert version.startswith("groundedness.claims.")
+
+
+def test_prompt_version_stable_for_same_templates() -> None:
+    a = prompts.prompt_version("groundedness", "claims")
+    b = prompts.prompt_version("groundedness", "claims")
+    assert a == b
+
+
+def test_prompt_version_changes_when_bundle_changes(monkeypatch: pytest.MonkeyPatch) -> None:
+    original = prompts.prompt_version("groundedness", "claims")
+    real_bundle = prompts.bundle_for("groundedness", "claims")
+    mutated = {
+        k: (v + "\n# mutated" if i == 0 else v) for i, (k, v) in enumerate(real_bundle.items())
+    }
+    monkeypatch.setattr(prompts, "bundle_for", lambda kind, method: mutated)
+    assert prompts.prompt_version("groundedness", "claims") != original
+
+
+def test_bundle_for_claims_and_rubric() -> None:
+    claims = prompts.bundle_for("groundedness", "claims")
+    assert set(claims) == {"extract_answer_claims", "verify_against_documents"}
+    rubric = prompts.bundle_for("answer_relevance", "rubric")
+    assert set(rubric) == {"rubric_answer_relevance"}
+    assert prompts.content_hash(claims) != prompts.content_hash(rubric)
 
 
 @pytest.mark.parametrize(

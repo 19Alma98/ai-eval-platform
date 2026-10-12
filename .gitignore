@@ -38,3 +38,5 @@ backend/src/aiobs_server/_ui/**
 
 aiobs.db
 **/aiobs.db
+
+.aiobs/

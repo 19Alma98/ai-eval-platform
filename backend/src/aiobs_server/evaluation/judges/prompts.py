@@ -1,20 +1,17 @@
 """All LLM judge prompt text.
 
-Changing any template changes judge behaviour: bump PROMPT_REVISION so runs scored
-with different prompts are flagged as not comparable.
+`prompt_version` is a content hash of the system templates used by each
+(kind, method) pair so runs scored with different prompts are not comparable.
 """
 
 from __future__ import annotations
 
+import hashlib
 import json
 from typing import Any
 
-PROMPT_REVISION = "v5"
 STEP_PREFIX = "STEP: "
-
-
-def prompt_version(kind: str, method: str) -> str:
-    return f"{kind}.{method}.{PROMPT_REVISION}"
+_SHORT_HASH_LEN = 12
 
 
 def _system(step: str, body: str) -> str:
@@ -247,6 +244,54 @@ Write your reasoning before choosing the level.
 """,
     ),
 }
+
+# System templates used per (kind, method). Keys are stable snapshot names.
+_CLAIMS_BUNDLES: dict[str, dict[str, str]] = {
+    "groundedness": {
+        "extract_answer_claims": EXTRACT_ANSWER_CLAIMS,
+        "verify_against_documents": VERIFY_AGAINST_DOCUMENTS,
+    },
+    "correctness": {
+        "extract_answer_claims": EXTRACT_ANSWER_CLAIMS,
+        "extract_reference_claims": EXTRACT_REFERENCE_CLAIMS,
+        "verify_against_reference": VERIFY_AGAINST_REFERENCE,
+        "verify_reference_coverage": VERIFY_REFERENCE_COVERAGE,
+    },
+    "context_precision": {
+        "verify_context_relevance": VERIFY_CONTEXT_RELEVANCE,
+    },
+    "context_recall": {
+        "extract_reference_claims": EXTRACT_REFERENCE_CLAIMS,
+        "verify_context_coverage": VERIFY_CONTEXT_COVERAGE,
+    },
+}
+
+
+def bundle_for(kind: str, method: str) -> dict[str, str]:
+    """Return the system prompt texts that (kind, method) uses."""
+    method = method.strip().lower()
+    kind = kind.strip().lower()
+    if method == "rubric":
+        if kind not in RUBRICS:
+            raise ValueError(f"unknown rubric kind: {kind!r}")
+        return {f"rubric_{kind}": RUBRICS[kind]}
+    if method == "claims":
+        bundle = _CLAIMS_BUNDLES.get(kind)
+        if bundle is None:
+            raise ValueError(f"unknown claims kind: {kind!r}")
+        return dict(bundle)
+    raise ValueError(f"unknown judge method: {method!r}")
+
+
+def content_hash(bundle: dict[str, str]) -> str:
+    """Full SHA-256 of a canonical JSON encoding of the prompt bundle."""
+    canonical = json.dumps(bundle, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
+    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
+
+def prompt_version(kind: str, method: str) -> str:
+    digest = content_hash(bundle_for(kind, method))
+    return f"{kind}.{method}.{digest[:_SHORT_HASH_LEN]}"
 
 
 def as_text(value: Any) -> str:

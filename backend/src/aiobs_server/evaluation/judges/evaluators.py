@@ -28,6 +28,7 @@ from aiobs_server.evaluation.judges.errors import (
 )
 from aiobs_server.evaluation.judges.parsing import CallOptions
 from aiobs_server.evaluation.judges.rubric import level_to_score, rubric_judge
+from aiobs_server.evaluation.judges.snapshots import upsert_prompt_snapshot
 from aiobs_server.evaluation.outcomes import error, fail_min, skip
 from aiobs_server.evaluation.protocol import EvaluationResult, EvaluationSample, LlmClient
 
@@ -169,6 +170,7 @@ class _LlmJudge:
         # Resolved model (entry override or server default): scores from different
         # judge models are not comparable.
         self.judge_model = self._config.options.model
+        upsert_prompt_snapshot(self.kind, self._config.method)
 
     async def evaluate(self, sample: EvaluationSample) -> EvaluationResult:
         early = self._precheck(sample)

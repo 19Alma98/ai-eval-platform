@@ -316,10 +316,11 @@ async def test_latest_with_baseline_compare_and_regressions() -> None:
     await runs.add_run(base_run)
     await runs.add_run(cand_run)
     for _ in range(5):
+        item_id = uuid.uuid4()
         await runs.add_result(
             EvaluationResultRecord.create(
                 base_run.id,
-                dataset_item_id=uuid.uuid4(),
+                dataset_item_id=item_id,
                 score=1.0,
                 label="PASS",
             )
@@ -327,7 +328,7 @@ async def test_latest_with_baseline_compare_and_regressions() -> None:
         await runs.add_result(
             EvaluationResultRecord.create(
                 cand_run.id,
-                dataset_item_id=uuid.uuid4(),
+                dataset_item_id=item_id,
                 score=0.0,
                 label="FAIL",
             )

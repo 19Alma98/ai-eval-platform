@@ -56,6 +56,7 @@ def test_skipped_missing_output_and_provider_errors_are_excluded() -> None:
 
 @pytest.mark.asyncio
 async def test_runner_records_prompt_version_and_warning() -> None:
+    from aiobs_server.evaluation.judges import prompts
     from aiobs_server.evaluation.judges.evaluators import JudgeDefaults, create_llm_judge
 
     llm = ScriptedJudgeLlm({"rubric_answer_relevance": ["bad", "bad"]})
@@ -71,7 +72,7 @@ async def test_runner_records_prompt_version_and_warning() -> None:
     run = EvaluationRun.create(uuid.uuid4(), entity.id, status="PENDING")
     run, results = await runner.run_evaluator(run=run, evaluator_entity=entity, items=[item])
 
-    assert run.metadata["prompt_version"] == "answer_relevance.rubric.v5"
+    assert run.metadata["prompt_version"] == prompts.prompt_version("answer_relevance", "rubric")
     assert run.metadata["warnings"] == [JUDGE_MODEL_UNSUITABLE]
     assert run.metadata["warning_detail"]["model"] == "tiny"
     assert results[0].metadata["error_type"] == "judge_output_invalid"
