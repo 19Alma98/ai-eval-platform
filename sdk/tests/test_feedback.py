@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 import threading
+import time
 from collections.abc import Iterator
 from typing import Any
 
@@ -10,7 +11,7 @@ from opentelemetry import trace
 from opentelemetry.sdk.trace import TracerProvider
 
 import aiobs
-from aiobs import _config, _otel, _scores
+from aiobs import _config, _otel, _scores, feedback
 
 TID = "ab" * 16
 
@@ -44,8 +45,10 @@ def sent(monkeypatch: pytest.MonkeyPatch) -> Iterator[Recorder]:
     monkeypatch.setenv("AIOBS_PROJECT_ID", "p1")
     recorder = Recorder()
     _scores._reset_for_tests(recorder, interval=60.0)
+    feedback._reset_for_tests()
     yield recorder
     _scores._reset_for_tests()
+    feedback._reset_for_tests()
 
 
 def test_log_score_explicit_trace(sent: Recorder) -> None:
@@ -205,8 +208,6 @@ def test_feedback_rejects_surrogate_author(sent: Recorder) -> None:
 
 
 def test_queue_metric_score_validates_trace_id(sent: Recorder) -> None:
-    from aiobs import feedback
-
     @aiobs.metric()
     def m(s: aiobs.Sample) -> float:
         return 1.0
@@ -215,3 +216,77 @@ def test_queue_metric_score_validates_trace_id(sent: Recorder) -> None:
     assert feedback.queue_metric_score("p1", TID.upper(), m, aiobs.Score(1.0)) is True
     aiobs.flush()
     assert [s["trace_id"] for s in sent.scores] == [TID]
+
+
+class Hostile:
+    def __str__(self) -> str:
+        raise RuntimeError("boom")
+
+
+def test_hostile_str_in_metadata_never_raises(sent: Recorder) -> None:
+    assert aiobs.log_score("q", 1.0, trace_id=TID, metadata={"k": Hostile()}) is False
+    assert aiobs.log_score("q", 1.0, trace_id=TID, explanation=Hostile()) is False  # type: ignore[arg-type]
+    assert aiobs.log_feedback(True, trace_id=TID, user_id=Hostile()) is False  # type: ignore[arg-type]
+    aiobs.flush()
+    assert sent.scores == []
+
+
+def test_queue_metric_score_never_raises(sent: Recorder) -> None:
+    unnamed = aiobs.LocalMetric(lambda s: 1.0)
+    assert feedback.queue_metric_score("p1", TID, unnamed, aiobs.Score(1.0)) is False
+
+    @aiobs.metric()
+    def m(s: aiobs.Sample) -> float:
+        return 1.0
+
+    assert (
+        feedback.queue_metric_score("p1", TID, m, aiobs.Score(1.0, metadata={"k": Hostile()}))
+        is False
+    )
+
+
+def test_config_warnings_are_rate_limited(
+    sent: Recorder, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    monkeypatch.delenv("AIOBS_PROJECT_ID")
+    with caplog.at_level(logging.DEBUG, logger="aiobs"):
+        for _ in range(3):
+            aiobs.log_score("q", 1.0, trace_id=TID)
+            aiobs.log_score("q", 1.0)
+    warnings = [r for r in caplog.records if r.levelno == logging.WARNING]
+    assert len(warnings) == 2  # one per category
+    assert len([r for r in caplog.records if r.levelno == logging.DEBUG]) >= 4
+
+
+def test_numeric_types_and_feedback_value(sent: Recorder) -> None:
+    from decimal import Decimal
+
+    assert aiobs.log_score("q", Decimal("0.5"), trace_id=TID, threshold=Decimal("0.25"))
+    assert aiobs.log_feedback(1, trace_id=TID, user_id="a")
+    assert aiobs.log_feedback("yes", trace_id=TID, user_id="b") is False  # type: ignore[arg-type]
+    assert aiobs.log_feedback(2, trace_id=TID, user_id="c") is False
+    aiobs.flush()
+    assert [s["value"] for s in sent.scores] == [0.5, 1.0]
+    assert sent.scores[0]["threshold"] == 0.25
+
+
+def test_empty_trace_id_is_invalid_not_current(sent: Recorder) -> None:
+    with trace.get_tracer("t").start_as_current_span("s"):
+        assert aiobs.log_score("q", 1.0, trace_id="") is False
+
+
+def test_flush_shares_one_timeout_budget(monkeypatch: pytest.MonkeyPatch) -> None:
+    seen: list[float] = []
+
+    class SlowProvider:
+        def force_flush(self, timeout_millis: int) -> bool:
+            time.sleep(0.2)
+            return True
+
+    monkeypatch.setattr(_otel, "_PROVIDER", SlowProvider())
+    monkeypatch.setattr(_scores, "flush", lambda timeout=5.0: seen.append(timeout) or True)
+    assert _otel.flush(1000)
+    assert 0 <= seen[0] <= 0.85
+
+    monkeypatch.setattr(_scores, "flush", lambda timeout=5.0: 1 / 0)
+    assert _otel.flush(1000) is False

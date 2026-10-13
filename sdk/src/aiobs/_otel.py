@@ -252,7 +252,8 @@ def init(
 
 
 def flush(timeout_millis: int = 5000) -> bool:
-    """Flush spans, then queued trace scores."""
+    """Flush spans, then queued trace scores; ``timeout_millis`` is the total budget."""
+    deadline = time.monotonic() + timeout_millis / 1000
     ok = True
     if _PROVIDER is not None:
         try:
@@ -262,4 +263,9 @@ def flush(timeout_millis: int = 5000) -> bool:
             ok = False
     from aiobs import _scores  # lazy: avoids an import cycle through aiobs._context
 
-    return _scores.flush(timeout_millis / 1000) and ok
+    try:
+        scores_ok = _scores.flush(max(0.0, deadline - time.monotonic()))
+    except Exception:  # noqa: BLE001
+        logger.debug("aiobs: score flush raised", exc_info=True)
+        scores_ok = False
+    return scores_ok and ok
