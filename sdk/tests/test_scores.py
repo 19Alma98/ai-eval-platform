@@ -183,3 +183,13 @@ def test_send_failure_warnings_are_rate_limited(caplog: pytest.LogCaptureFixture
     assert sum("dropped 1 trace scores" in r.message for r in warnings) == 1
     assert sum("dropped 1 trace scores" in r.message for r in caplog.records) == 3
     assert sender.dropped == 3
+
+
+def test_non_validation_client_error_drops_whole_batch_without_resend() -> None:
+    post = Recorder(fail_times=100, error=AiobsAPIError(404, "unknown project"))
+    sender = ScoreSender(post, batch_size=100, interval=60.0)
+    for i in range(3):
+        sender.enqueue("p1", _score(i))
+    assert sender.flush(5.0)
+    assert len(post.calls) == 1
+    assert sender.dropped == 3

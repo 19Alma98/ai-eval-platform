@@ -2,8 +2,9 @@
 
 Scores go into a bounded in-memory queue drained by one daemon thread, in batches
 every ``interval`` seconds or ``batch_size`` items. A POST that failed on the network
-or with a 5xx is retried once, then dropped with a warning; a 4xx is dropped at once
-(the server rejects the whole batch and retrying cannot help).
+or with a 5xx is retried once, then dropped with a warning. A 400/422 rejects the
+whole batch for one bad item, so its scores are re-sent one by one (once) and only the
+failing ones dropped; any other 4xx (auth, unknown project) drops the batch at once.
 ``flush()`` waits (bounded) until the queue is empty.
 """
 
@@ -146,10 +147,12 @@ class ScoreSender:
                 if isinstance(exc, AiobsAPIError) and 400 <= exc.status < 500:
                     # The server rejects a whole batch for one bad item: retrying cannot
                     # help, so resend each item once to salvage the valid ones.
-                    if len(scores) > 1:
+                    # Only validation errors (400/422) are per-item; 401/403/404 etc.
+                    # would fail every item, so drop the whole batch at once.
+                    if len(scores) > 1 and exc.status in (400, 422):
                         self._resend_individually(project_id, scores, exc)
                     else:
-                        self._drop(project_id, 1, exc)
+                        self._drop(project_id, len(scores), exc)
                     return
                 if attempt == 2:
                     self._drop(project_id, len(scores), exc)
