@@ -287,7 +287,7 @@ def handle(question: str) -> dict:
 aiobs.log_feedback(True, trace_id=trace_id, user_id="user-42", comment="great")
 ```
 
-- `log_score(name, value, *, trace_id=None, label=None, explanation=None, threshold=None, metadata=None)`: without `trace_id` it uses the current trace. PASS/FAIL follows the same rule as experiment metrics (explicit FAIL label wins, value under `threshold` fails, otherwise 0 fails).
+- `log_score(name, value, *, trace_id=None, label=None, explanation=None, threshold=None, metadata=None)`: without `trace_id` it uses the current trace. PASS/FAIL follows the same rule as experiment metrics: a `FAIL` label fails; a value under `threshold` fails; otherwise, with a threshold a value at or above it passes, and without one only a value of 0 fails.
 - `log_feedback(positive, *, trace_id=None, comment=None, user_id=None)`: stored as `user_feedback` (1 or 0); `positive` must be a bool (or 0/1). One value per user per trace: a user changing their mind replaces it. Without `user_id` the feedback is anonymous and all anonymous feedback on a trace shares one row (last write wins). A thumbs-down counts as a failure in the Live "Failing" filter.
 - `aiobs.score(metric, sample, trace_id=...)` runs one metric now, on the calling thread (only the sending is in the background), and stores the result. The trace is `trace_id`, else `sample.trace_id`, else the current trace.
 - `@aiobs.trace(metrics=[...], metrics_sample_rate=1.0)` runs your metrics after the function returns successfully (not when it raises, not inside experiments, which score their own metrics). Needs `aiobs.init()`. Sampling is per trace and independent from the judge's `live_sample_rate`.
@@ -295,8 +295,8 @@ aiobs.log_feedback(True, trace_id=trace_id, user_id="user-42", comment="great")
   - Metrics run on 2 background threads fed by a bounded queue; when it is full the call is not scored and a warning is logged. Async metrics time out after 60 s; a sync metric cannot be interrupted. For LLM judges lower `metrics_sample_rate`.
   - Metrics run with instrumentation suppressed: LLM calls a judge makes and `@aiobs.trace` helpers it calls do not create production traces (spans started manually with an OpenTelemetry tracer still do).
   - `trace(metrics=...)` rejects async and generator functions; use `trace_async` for coroutines.
-- These calls never raise and never block. Invalid input (bad value, label or trace id) logs a warning and returns `False`; setup problems (no project id, no active trace) warn at most once a minute.
-- Scores are sent in the background (batches every 2 s or 100 scores). A batch rejected with 400/422 is resent item by item so only the bad scores are dropped; other errors are retried once, then the batch is dropped with a warning.
+- These calls never raise. `log_score`, `log_feedback` and `trace(metrics=...)` never block the caller; `score()` blocks for as long as the metric takes. Invalid input (bad value, label or trace id) logs a warning and returns `False`; setup problems (no project id, no active trace) warn at most once a minute.
+- Scores are sent in the background (batches every 2 s or 100 scores). A batch rejected with 400/422 is resent item by item so only the bad scores are dropped; 401/403/404 and other 4xx drop the batch at once; only network errors and 5xx are retried once, then dropped with a warning.
 - `aiobs.flush(timeout_millis)` is one total budget: spans, then pending metrics, then scores. At exit, pending metrics and scores are flushed within ~5 s.
 
 ### Live runs → TestSet loop
