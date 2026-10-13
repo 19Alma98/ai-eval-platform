@@ -334,18 +334,18 @@ Item fields:
 | `author` | optional; up to 200 characters; part of the upsert key (missing = empty) |
 | `metadata` | optional object |
 
-The server computes the stored label with the same rule as experiment scores (`item_verdict`): an explicit `FAIL`/`ERROR`/`SKIPPED` wins, a value under `threshold` fails, otherwise a value of 0 fails and anything else passes. A thumbs-down (`value: 0`) is therefore `FAIL`. With neither `label` nor `value`, the stored label is `null`.
+The server computes the stored label with the same rule as experiment scores (`item_verdict`): in order: an explicit `ERROR`/`SKIPPED`/`FAIL` label wins; a value below `threshold` is `FAIL`; an explicit `PASS` is `PASS`; no value gives `null`; with a `threshold` and a value not below it the result is `PASS` (even value 0 with threshold 0); with no `threshold`, value 0 is `FAIL` and anything else `PASS`. A thumbs-down (`value: 0`, no threshold) is therefore `FAIL`.
 
 The batch is all-or-nothing: it is rejected with 422 when any item is invalid (bad trace id, empty name, unknown source or label, non-numeric or non-finite value). Duplicate keys in one batch: the last one wins. Unknown project returns 404.
 
 ### `GET /api/v1/projects/{project_id}/trace-scores/summary?since=&until=`
 
-Default window: the last 24 hours (`until` defaults to now). Naive datetimes are read as UTC. The window filters on the score's `updated_at`. Response: `{ since, until, rows }`, one row per `(name, source)` with `count`, `mean` (mean of `value`; for `user_feedback` this is the share of thumbs-up) and `pass_rate` over PASS/FAIL labels (`null` when none). Unknown project returns 404; `since >= until` returns 400.
+Default window: the last 24 hours (`until` defaults to now). Naive datetimes are read as UTC. The window filters on the score's `updated_at` and is inclusive: `[since, until]`. Response: `{ since, until, rows }`, one row per `(name, source)` with `count`, `mean` (mean of `value`; for `user_feedback` this is the share of thumbs-up) and `pass_rate` over PASS/FAIL labels (`null` when none). Unknown project returns 404; `since >= until` returns 400.
 
 ### Where they show up
 
 - `GET /api/v1/projects/{project_id}/traces/{trace_id}` includes `scores`.
-- `GET /api/v1/projects/{project_id}/live-interactions` and `GET /api/v1/live-interactions/{id}` include `trace_scores`, joined on `metadata.source_trace_id`. `failed_only=true` also keeps interactions with a failing trace score (SDK metric FAIL or thumbs-down). Judge calibration ignores trace scores.
+- `GET /api/v1/projects/{project_id}/live-interactions` and `GET /api/v1/live-interactions/{id}` include `trace_scores`, joined on `metadata.source_trace_id`. `failed_only=true` also keeps interactions with any trace score whose stored label is `FAIL`, whatever its source (e.g. an SDK metric under its threshold, or a thumbs-down); `ERROR` does not count. Judge calibration ignores trace scores.
 
 ## Comparison
 
