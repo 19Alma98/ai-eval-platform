@@ -130,6 +130,7 @@ class EvaluatorSummaryResponse(_ApiModel):
 class ExperimentSummaryResponse(_ApiModel):
     experiment_id: str
     evaluators: list[EvaluatorSummaryResponse] = Field(default_factory=list)
+    experiment_metrics: dict[str, float] = Field(default_factory=dict)
 
 
 class MetricComparisonResponse(_ApiModel):
@@ -142,6 +143,18 @@ class MetricComparisonResponse(_ApiModel):
     status: str | None = None
 
 
+class ExperimentMetricComparisonResponse(_ApiModel):
+    key: str
+    candidate: float | None = None
+    baseline: float | None = None
+    delta: float | None = None
+
+
+class ExperimentMetricsResponse(_ApiModel):
+    experiment_id: str
+    metrics: dict[str, float] = Field(default_factory=dict)
+
+
 class ExperimentCompareResponse(_ApiModel):
     experiment_id: str | None = None
     baseline_experiment_id: str | None = None
@@ -151,6 +164,7 @@ class ExperimentCompareResponse(_ApiModel):
     unchanged: list[MetricComparisonResponse] = Field(default_factory=list)
     config_mismatches: list[MetricComparisonResponse] = Field(default_factory=list)
     insufficient_n: list[MetricComparisonResponse] = Field(default_factory=list)
+    experiment_metrics: list[ExperimentMetricComparisonResponse] = Field(default_factory=list)
 
 
 class MetricsPackEntryResponse(_ApiModel):

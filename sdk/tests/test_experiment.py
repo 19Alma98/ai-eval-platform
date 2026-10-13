@@ -29,6 +29,7 @@ class FakeServer:
         self.client_results: dict[str, list[dict[str, Any]]] = {}
         self.scored_on_server: set[str] = set()
         self.reject_client_results = False
+        self.experiment_metrics: dict[str, dict[str, float]] = {}
         self.calls: list[tuple[str, str, Any]] = []
         self.add_metrics_set(
             "Default",
@@ -132,6 +133,17 @@ class FakeServer:
                 return httpx2.Response(409, json={"detail": "name used by server evaluator"})
             self.client_results.setdefault(m[1], []).extend(body["metrics"])
             return httpx2.Response(201, json=[])
+        if m := re.fullmatch(r"/api/v1/experiments/([^/]+)/metrics", path):
+            store = self.experiment_metrics.setdefault(m[1], {})
+            if method == "PUT":
+                store.update(body["metrics"])
+            return httpx2.Response(200, json={"experiment_id": m[1], "metrics": store})
+        if m := re.fullmatch(r"/api/v1/experiments/([^/]+)/params", path):
+            if m[1] in self.scored_on_server or m[1] in self.client_results:
+                return httpx2.Response(409, json={"detail": "params are locked"})
+            exp = self.experiments[m[1]]
+            exp["model_config"] = {**exp.get("model_config", {}), **body["params"]}
+            return httpx2.Response(200, json=exp)
         if m := re.fullmatch(r"/api/v1/experiments/([^/]+)/runs", path):
             return httpx2.Response(200, json=[])
         if m := re.fullmatch(r"/api/v1/experiments/([^/]+)/summary", path):
@@ -142,14 +154,32 @@ class FakeServer:
                 scores = [r["score"] for r in metric["results"] if r.get("score") is not None]
                 mean = sum(scores) / len(scores) if scores else None
                 rows.append({"evaluator_name": metric["name"], "mean_score": mean})
-            return httpx2.Response(200, json={"experiment_id": m[1], "evaluators": rows})
+            return httpx2.Response(
+                200,
+                json={
+                    "experiment_id": m[1],
+                    "evaluators": rows,
+                    "experiment_metrics": self.experiment_metrics.get(m[1], {}),
+                },
+            )
         if m := re.fullmatch(r"/api/v1/experiments/([^/]+)/compare/([^/]+)", path):
+            cand = self.experiment_metrics.get(m[1], {})
+            base = self.experiment_metrics.get(m[2], {})
             return httpx2.Response(
                 200,
                 json={
                     "metrics": [
                         {"evaluator_name": "hit_at_k", "delta": -0.25, "status": "regressed"},
-                    ]
+                    ],
+                    "experiment_metrics": [
+                        {
+                            "key": k,
+                            "candidate": cand.get(k),
+                            "baseline": base.get(k),
+                            "delta": cand[k] - base[k] if k in cand and k in base else None,
+                        }
+                        for k in sorted(set(cand) | set(base))
+                    ],
                 },
             )
         if m := re.fullmatch(r"/api/v1/experiments/([^/]+)", path):
@@ -527,3 +557,16 @@ def test_non_json_metadata_becomes_item_error(server: FakeServer) -> None:
     (submitted,) = server.client_results[result.id]
     assert {r["label"] for r in submitted["results"]} == {"ERROR"}
     assert all("ValueError" in r["explanation"] for r in submitted["results"])
+
+
+def test_client_experiment_metrics_and_params(server: FakeServer) -> None:
+    client = aiobs.get_client()
+    ds_id = server.add_dataset("gold", [{"input": "q"}])
+    exp = client.experiments.create(
+        PROJECT_ID, name="e", dataset_id=ds_id, model_config={"model": "a"}
+    )
+
+    assert client.experiments.log_metrics(exp.id, {"cost_usd": 1.5}) == {"cost_usd": 1.5}
+    assert client.experiments.get_metrics(exp.id) == {"cost_usd": 1.5}
+    updated = client.experiments.update_params(exp.id, {"temperature": 0.2})
+    assert updated.experiment_model_config == {"model": "a", "temperature": 0.2}

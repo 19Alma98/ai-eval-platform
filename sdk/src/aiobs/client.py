@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import builtins
 import time
+from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlencode
@@ -18,6 +19,7 @@ from aiobs.models import (
     EvaluationRunResponse,
     ExperimentCompareResponse,
     ExperimentItemOutputResponse,
+    ExperimentMetricsResponse,
     ExperimentResponse,
     ExperimentSummaryResponse,
     HealthResponse,
@@ -276,6 +278,37 @@ class _ExperimentsResource:
             f"/api/v1/experiments/{experiment_id}/client-results",
             body={"metrics": metrics},
             response_model=EvaluationRunResponse,
+        )
+
+    def log_metrics(self, experiment_id: str, metrics: Mapping[str, float]) -> dict[str, float]:
+        """Upsert experiment-level scalars (last value per key wins); returns all of them."""
+        response = self._http.request_model(
+            "PUT",
+            f"/api/v1/experiments/{experiment_id}/metrics",
+            body={"metrics": dict(metrics)},
+            response_model=ExperimentMetricsResponse,
+        )
+        return dict(response.metrics)
+
+    def get_metrics(self, experiment_id: str) -> dict[str, float]:
+        response = self._http.request_model(
+            "GET",
+            f"/api/v1/experiments/{experiment_id}/metrics",
+            response_model=ExperimentMetricsResponse,
+        )
+        return dict(response.metrics)
+
+    def update_params(self, experiment_id: str, params: Mapping[str, Any]) -> ExperimentResponse:
+        """Merge ``params`` into ``model_config``.
+
+        The server answers 409 once the experiment has evaluation runs, or when it was
+        created from an app config.
+        """
+        return self._http.request_model(
+            "PATCH",
+            f"/api/v1/experiments/{experiment_id}/params",
+            body={"params": dict(params)},
+            response_model=ExperimentResponse,
         )
 
     def evaluate_pack(
