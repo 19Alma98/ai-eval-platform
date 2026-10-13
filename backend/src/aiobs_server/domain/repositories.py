@@ -20,6 +20,7 @@ from aiobs_server.domain.live_overview import LiveInRangeResult
 from aiobs_server.domain.metrics_set import MetricsSet
 from aiobs_server.domain.project import Project
 from aiobs_server.domain.trace import Trace
+from aiobs_server.domain.trace_score import TraceScore, TraceScoreSummaryRow
 
 
 class ProjectRepository(Protocol):
@@ -125,6 +126,20 @@ class ExperimentMetricRepository(Protocol):
     async def upsert(
         self, experiment_id: uuid.UUID, metrics: dict[str, float]
     ) -> dict[str, float]: ...
+
+
+class TraceScoreRepository(Protocol):
+    """Scores per OTel trace; one row per (project, trace, name, source, author)."""
+
+    async def upsert_many(self, scores: list[TraceScore]) -> int: ...
+
+    async def list_by_trace_ids(
+        self, project_id: uuid.UUID, trace_ids: list[str]
+    ) -> dict[str, list[TraceScore]]: ...
+
+    async def summarize(
+        self, project_id: uuid.UUID, *, since: datetime, until: datetime
+    ) -> list[TraceScoreSummaryRow]: ...
 
 
 class MetricsSetRepository(Protocol):

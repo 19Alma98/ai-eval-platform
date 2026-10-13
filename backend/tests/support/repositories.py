@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import uuid
+from dataclasses import replace
+from datetime import datetime
 
 from aiobs_server.api.deps import (
     get_app_config_repository,
@@ -14,6 +16,11 @@ from aiobs_server.domain.evaluation import EvaluationResultRecord, EvaluationRun
 from aiobs_server.domain.evaluator import Evaluator
 from aiobs_server.domain.experiment import Experiment
 from aiobs_server.domain.metrics_set import MetricsSet
+from aiobs_server.domain.trace_score import (
+    TraceScore,
+    TraceScoreSummaryRow,
+    summarize_trace_scores,
+)
 
 
 class InMemoryAppConfigRepository:
@@ -206,3 +213,40 @@ def wire_metrics_pack_repos(
     app.dependency_overrides[get_app_config_repository] = lambda: app_configs
     app.dependency_overrides[get_evaluation_run_repository] = lambda: evaluation_runs
     return evaluators, metrics_sets, experiments
+
+
+class InMemoryTraceScoreRepository:
+    def __init__(self) -> None:
+        self._rows: dict[tuple[uuid.UUID, str, str, str, str], TraceScore] = {}
+        self.list_calls = 0
+
+    async def upsert_many(self, scores: list[TraceScore]) -> int:
+        latest = {s.key: s for s in scores}
+        for key, score in latest.items():
+            existing = self._rows.get(key)
+            if existing is not None:
+                score = replace(score, id=existing.id, created_at=existing.created_at)
+            self._rows[key] = score
+        return len(latest)
+
+    async def list_by_trace_ids(
+        self, project_id: uuid.UUID, trace_ids: list[str]
+    ) -> dict[str, list[TraceScore]]:
+        self.list_calls += 1
+        wanted = set(trace_ids)
+        out: dict[str, list[TraceScore]] = {}
+        for row in self._rows.values():
+            if row.project_id == project_id and row.trace_id in wanted:
+                out.setdefault(row.trace_id, []).append(row)
+        for rows in out.values():
+            rows.sort(key=lambda r: (r.name, r.source, r.author or ""))
+        return out
+
+    async def summarize(
+        self, project_id: uuid.UUID, *, since: datetime, until: datetime
+    ) -> list[TraceScoreSummaryRow]:
+        return summarize_trace_scores(
+            r
+            for r in self._rows.values()
+            if r.project_id == project_id and since <= r.updated_at <= until
+        )
