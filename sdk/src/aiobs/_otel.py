@@ -252,10 +252,14 @@ def init(
 
 
 def flush(timeout_millis: int = 5000) -> bool:
-    if _PROVIDER is None:
-        return True
-    try:
-        return bool(_PROVIDER.force_flush(timeout_millis))
-    except Exception:  # noqa: BLE001
-        logger.debug("aiobs: flush raised", exc_info=True)
-        return False
+    """Flush spans, then queued trace scores."""
+    ok = True
+    if _PROVIDER is not None:
+        try:
+            ok = bool(_PROVIDER.force_flush(timeout_millis))
+        except Exception:  # noqa: BLE001
+            logger.debug("aiobs: flush raised", exc_info=True)
+            ok = False
+    from aiobs import _scores  # lazy: avoids an import cycle through aiobs._context
+
+    return _scores.flush(timeout_millis / 1000) and ok
