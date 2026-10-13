@@ -2,15 +2,16 @@ from __future__ import annotations
 
 import functools
 import json
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from typing import Any, cast, overload
 
 from opentelemetry import trace as otel_trace
 from opentelemetry.trace import Span, Status, StatusCode
 
-from aiobs import _live
+from aiobs import _live, _production
 from aiobs._config import MAX_CAPTURE_BYTES
-from aiobs._run_context import record_output
+from aiobs._run_context import record_input, record_output
+from aiobs.metrics import LocalMetric
 
 _TRACER_NAME = "aiobs"
 _TRUNCATE_MARKER = "…[truncated]"
@@ -79,7 +80,8 @@ def set_attributes(attrs: dict[str, object] | None = None, **kwargs: object) -> 
 
 
 def set_input(value: object) -> None:
-    """Set OpenInference ``input.value`` on the current span."""
+    """Set OpenInference ``input.value`` on the current span (and production metrics' input)."""
+    record_input(value)
     set_attribute("input.value", value)
 
 
@@ -120,6 +122,8 @@ def trace[**P, R](
     capture_input: bool = True,
     capture_output: bool = True,
     live: bool | None = None,
+    metrics: Sequence[LocalMetric | Callable[..., Any]] | None = None,
+    metrics_sample_rate: float = 1.0,
 ) -> Callable[[Callable[P, R]], Callable[P, R]]: ...
 
 
@@ -130,7 +134,18 @@ def trace[**P, R](
     capture_input: bool = True,
     capture_output: bool = True,
     live: bool | None = None,
+    metrics: Sequence[LocalMetric | Callable[..., Any]] | None = None,
+    metrics_sample_rate: float = 1.0,
 ) -> Any:
+    """Trace a function as an OpenInference span.
+
+    ``metrics=[...]`` scores each sampled production call after it returns (off the
+    request path) and stores the results as trace scores; ``metrics_sample_rate`` is
+    the fraction of traces scored, deterministic per trace. Skipped inside experiments.
+    """
+    production = _production.normalize_metrics(metrics)
+    rate = _production.parse_sample_rate(metrics_sample_rate)
+
     def decorator(fn: Callable[P, R]) -> Callable[P, R]:
         span_name = name if isinstance(name, str) and name else _default_name(fn)
 
@@ -142,6 +157,7 @@ def trace[**P, R](
                 if capture_input:
                     span.set_attribute("input.value", _serialize_args(args, kwargs))
                 live_token = _live.mark_if_live(span, live)
+                capture_token = _production.start(production)
                 try:
                     result = fn(*args, **kwargs)
                 except Exception as exc:
@@ -150,8 +166,11 @@ def trace[**P, R](
                     raise
                 finally:
                     _live.unmark(live_token)
+                    capture = _production.stop(capture_token)
                 if capture_output:
                     span.set_attribute("output.value", truncate_value(result))
+                if capture is not None:
+                    _production.after_call(production, rate, span, capture, args, kwargs, result)
                 return result
 
         return wrapper
@@ -175,6 +194,8 @@ def trace_async[**P, R](
     capture_input: bool = True,
     capture_output: bool = True,
     live: bool | None = None,
+    metrics: Sequence[LocalMetric | Callable[..., Any]] | None = None,
+    metrics_sample_rate: float = 1.0,
 ) -> Callable[[Callable[P, R]], Callable[P, R]]: ...
 
 
@@ -185,7 +206,13 @@ def trace_async[**P, R](
     capture_input: bool = True,
     capture_output: bool = True,
     live: bool | None = None,
+    metrics: Sequence[LocalMetric | Callable[..., Any]] | None = None,
+    metrics_sample_rate: float = 1.0,
 ) -> Any:
+    """Async ``trace``: same ``metrics=`` / ``metrics_sample_rate=`` behaviour."""
+    production = _production.normalize_metrics(metrics)
+    rate = _production.parse_sample_rate(metrics_sample_rate)
+
     def decorator(fn: Callable[P, R]) -> Callable[P, R]:
         span_name = name if isinstance(name, str) and name else _default_name(fn)
 
@@ -197,6 +224,7 @@ def trace_async[**P, R](
                 if capture_input:
                     span.set_attribute("input.value", _serialize_args(args, kwargs))
                 live_token = _live.mark_if_live(span, live)
+                capture_token = _production.start(production)
                 try:
                     result = cast(R, await fn(*args, **kwargs))  # type: ignore[misc]
                 except Exception as exc:
@@ -205,8 +233,11 @@ def trace_async[**P, R](
                     raise
                 finally:
                     _live.unmark(live_token)
+                    capture = _production.stop(capture_token)
                 if capture_output:
                     span.set_attribute("output.value", truncate_value(result))
+                if capture is not None:
+                    _production.after_call(production, rate, span, capture, args, kwargs, result)
                 return result
 
         return cast(Callable[P, R], wrapper)
