@@ -1244,6 +1244,7 @@ class SqlAlchemyTraceScoreRepository:
                 TraceScoreModel.source,
                 TraceScoreModel.author,
             )
+            .execution_options(populate_existing=True)
         )
         out: dict[str, list[TraceScore]] = {}
         for row in result.scalars().all():

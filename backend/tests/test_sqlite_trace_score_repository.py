@@ -46,6 +46,21 @@ async def test_upsert_last_write_wins_per_key(session: AsyncSession) -> None:
         ("user_feedback", "u1", 1.0, None),
     ]
     assert rows[0].id == first.id  # upsert keeps the original row
+    assert rows[0].created_at == first.created_at
+    assert rows[0].updated_at >= first.updated_at
+
+
+async def test_reupsert_updates_metadata_and_keeps_created_at(session: AsyncSession) -> None:
+    repo = SqlAlchemyTraceScoreRepository(session)
+    project = uuid.uuid4()
+    first = TraceScore.create(project, A, "q", value=0.1, metadata={"v": 1})
+    await repo.upsert_many([first])
+    before = (await repo.list_by_trace_ids(project, [A]))[A][0]
+    await repo.upsert_many([TraceScore.create(project, A, "q", value=0.2, metadata={"v": 2})])
+    after = (await repo.list_by_trace_ids(project, [A]))[A][0]
+    assert after.metadata == {"v": 2}
+    assert after.created_at == before.created_at
+    assert after.updated_at >= before.updated_at
 
 
 async def test_duplicate_keys_in_one_batch_keep_the_last(session: AsyncSession) -> None:
@@ -83,6 +98,9 @@ async def test_summarize_window_and_pass_rate(session: AsyncSession) -> None:
             TraceScore.create(project, A, "quality", value=1.0, label="PASS"),
             TraceScore.create(project, B, "quality", value=0.0, label="FAIL"),
             TraceScore.create(project, A, "user_feedback", value=1.0, source="human"),
+            TraceScore.create(
+                project, "cc" * 16, "quality", label="PASS"
+            ),  # no value: not in the mean
         ]
     )
     now = datetime.now(UTC)
@@ -90,7 +108,7 @@ async def test_summarize_window_and_pass_rate(session: AsyncSession) -> None:
         project, since=now - timedelta(hours=1), until=now + timedelta(minutes=1)
     )
     assert [(r.name, r.source, r.count, r.mean, r.pass_rate) for r in rows] == [
-        ("quality", "sdk", 2, 0.5, 0.5),
+        ("quality", "sdk", 3, 0.5, 2 / 3),
         ("user_feedback", "human", 1, 1.0, None),
     ]
     assert (
