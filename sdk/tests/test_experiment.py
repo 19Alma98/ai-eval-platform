@@ -134,11 +134,15 @@ class FakeServer:
             self.client_results.setdefault(m[1], []).extend(body["metrics"])
             return httpx2.Response(201, json=[])
         if m := re.fullmatch(r"/api/v1/experiments/([^/]+)/metrics", path):
+            if m[1] not in self.experiments:
+                return httpx2.Response(404, json={"detail": "experiment not found"})
             store = self.experiment_metrics.setdefault(m[1], {})
             if method == "PUT":
                 store.update(body["metrics"])
             return httpx2.Response(200, json={"experiment_id": m[1], "metrics": store})
         if m := re.fullmatch(r"/api/v1/experiments/([^/]+)/params", path):
+            if m[1] not in self.experiments:
+                return httpx2.Response(404, json={"detail": "experiment not found"})
             if m[1] in self.scored_on_server or m[1] in self.client_results:
                 return httpx2.Response(409, json={"detail": "params are locked"})
             exp = self.experiments[m[1]]

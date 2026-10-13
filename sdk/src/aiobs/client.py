@@ -301,8 +301,8 @@ class _ExperimentsResource:
     def update_params(self, experiment_id: str, params: Mapping[str, Any]) -> ExperimentResponse:
         """Merge ``params`` into ``model_config``.
 
-        The server answers 409 once the experiment has evaluation runs, or when it was
-        created from an app config.
+        The server answers 409 once an evaluation has started or the experiment has
+        evaluation runs, or when it was created from an app config.
         """
         return self._http.request_model(
             "PATCH",
