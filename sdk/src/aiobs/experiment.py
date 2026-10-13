@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
+import math
 import numbers
 import os
 import re
@@ -194,6 +195,29 @@ class ExperimentResult:
             means.setdefault(name, mean)
         return means
 
+    @property
+    def experiment_metrics(self) -> dict[str, float]:
+        """Experiment-level scalars: ``log_metrics`` values plus the SDK's ``aiobs.*`` ones."""
+        if self.server_summary is None:
+            return {}
+        return dict(self.server_summary.experiment_metrics)
+
+    def _experiment_metric_lines(self) -> list[str]:
+        values = self.experiment_metrics
+        if not values:
+            return []
+        deltas = {
+            row.key: row.delta
+            for row in (self.comparison.experiment_metrics if self.comparison else [])
+        }
+        width = max(len(key) for key in values)
+        lines = ["  experiment metrics:"]
+        for key, value in sorted(values.items()):
+            delta = deltas.get(key)
+            suffix = f"  {delta:+.3f} vs baseline" if delta is not None else ""
+            lines.append(f"    {key.ljust(width)}  {_fmt(value)}{suffix}")
+        return lines
+
     def _comparison_by_name(self) -> dict[str, MetricComparisonResponse]:
         if self.comparison is None:
             return {}
@@ -204,7 +228,7 @@ class ExperimentResult:
         return rows
 
     def summary(self) -> str:
-        """Plain-text table: one row per metric, with the baseline delta if any."""
+        """Plain-text table: one row per metric with the baseline delta, then experiment metrics."""
         n = len(self.items)
         head = (
             f"Experiment {self.experiment.name} ({self.id}): "
@@ -229,13 +253,15 @@ class ExperimentResult:
         for name, mean in self.local_metrics.items():
             if name not in seen:  # submission failed: show the in-process mean
                 rows.append((f"{name} (local only)", _fmt(mean), "-", ""))
-        if not rows:
-            return head + "\n  (no metrics scored)"
-        header = ("metric", "mean", "pass_rate", "vs baseline" if compared else "")
-        widths = [max(len(r[i]) for r in [header, *rows]) for i in range(4)]
         lines = [head]
-        for row in [header, *rows]:
-            lines.append("  " + "  ".join(c.ljust(w) for c, w in zip(row, widths, strict=True)))
+        if rows:
+            header = ("metric", "mean", "pass_rate", "vs baseline" if compared else "")
+            widths = [max(len(r[i]) for r in [header, *rows]) for i in range(4)]
+            for row in [header, *rows]:
+                lines.append("  " + "  ".join(c.ljust(w) for c, w in zip(row, widths, strict=True)))
+        else:
+            lines.append("  (no metrics scored)")
+        lines.extend(self._experiment_metric_lines())
         return "\n".join(line.rstrip() for line in lines)
 
     def __str__(self) -> str:
@@ -500,6 +526,12 @@ class Experiment:
             return False
         return True
 
+    def _log_auto_metrics(self, records: list[ItemRun]) -> None:
+        try:
+            self.log_metrics(_auto_metrics(records))
+        except AiobsAPIError as exc:
+            logger.warning("aiobs: could not log run metrics for experiment %s: %s", self.id, exc)
+
     def runs(self) -> list[ItemRun]:
         with self._lock:
             return list(self._records.values())
@@ -525,6 +557,7 @@ class Experiment:
 
         # After the outputs: client runs record the inputs fingerprint they scored.
         submitted = self._submit_local_scores(records)
+        self._log_auto_metrics(records)
 
         evaluation: EvaluateResponse | None = None
         server_summary: ExperimentSummaryResponse | None = None
@@ -536,15 +569,15 @@ class Experiment:
                 poll_interval=poll_interval,
                 timeout=timeout,
             )
-        if evaluation is not None or submitted:
+        scored = evaluation is not None or submitted
+        if scored or self._metrics_logged:
             server_summary = self._client.experiments.summary(self.id)
-            if self.baseline_id is not None:
-                try:
-                    comparison = self._client.experiments.compare(self.id, self.baseline_id)
-                except AiobsAPIError as exc:
-                    logger.warning(
-                        "aiobs: compare with baseline %s failed: %s", self.baseline_id, exc
-                    )
+        # Compare needs evaluator runs on both sides; experiment metrics ride along.
+        if scored and self.baseline_id is not None:
+            try:
+                comparison = self._client.experiments.compare(self.id, self.baseline_id)
+            except AiobsAPIError as exc:
+                logger.warning("aiobs: compare with baseline %s failed: %s", self.baseline_id, exc)
 
         self.result = ExperimentResult(
             experiment=evaluation.experiment if evaluation else self.experiment,
@@ -604,6 +637,23 @@ def _sample_from(record: ItemRun) -> Sample:
         trace_id=record.trace_id,
         item_id=item.id,
     )
+
+
+def _nearest_rank(values: list[float], percentile: float) -> float:
+    ordered = sorted(values)
+    return ordered[max(1, math.ceil(percentile / 100.0 * len(ordered))) - 1]
+
+
+def _auto_metrics(records: list[ItemRun]) -> dict[str, float]:
+    """Run-level numbers logged on every finish (nearest-rank percentiles, like the server)."""
+    metrics: dict[str, float] = {
+        "aiobs.error_rate": sum(r.error is not None for r in records) / len(records)
+    }
+    latencies = [r.latency_ms for r in records if r.error is None and r.latency_ms is not None]
+    if latencies:
+        metrics["aiobs.latency_p50_ms"] = _nearest_rank(latencies, 50.0)
+        metrics["aiobs.latency_p95_ms"] = _nearest_rank(latencies, 95.0)
+    return metrics
 
 
 def _output_entry(record: ItemRun, stored: ExperimentItemOutputResponse | None) -> dict[str, Any]:

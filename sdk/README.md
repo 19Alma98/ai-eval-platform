@@ -175,6 +175,21 @@ The adapters map `Sample` to `SingleTurnSample` / `LLMTestCase` (documents → r
 - Only single-turn Ragas metrics are supported. DeepEval's lower-is-better metrics (`BiasMetric`, `ToxicityMetric`, `HallucinationMetric`, `PIILeakageMetric`) are rejected, because aiobs thresholds pass at or above the threshold: wrap them in your own `@aiobs.metric` instead.
 - For `GEval`, pass explicit `evaluation_steps`: otherwise DeepEval generates new steps for every item, and scores are not comparable across items or runs.
 
+### Params and run metrics
+
+```python
+with aiobs.start_experiment("v2", dataset="gold-v1", params={"model": "gemma4"}) as exp:
+    exp.log_params(temperature=0.2)              # merged into the experiment's model_config
+    exp.run_task(answer_question)
+    aiobs.log_metrics({"cost_usd": total_cost})  # experiment-level scalar, last value wins
+print(exp.result.experiment_metrics)
+```
+
+- `log_params` merges into `model_config` until an evaluation starts. After that, or when the experiment was created from an app config, the server answers 409: start a new experiment instead.
+- `log_metrics` stores one final number per key (no steps). Keys use letters, digits and `_ . - /`. They appear in `result.summary()` with the delta against the baseline, and can gate a release: `{"experiment_metrics": {"cost_usd": {"max": 2.0}}}`.
+- `aiobs.log_params` / `aiobs.log_metrics` act on the active experiment: inside `with start_experiment(...)` or inside an `evaluate()` task. Elsewhere they raise `RuntimeError`.
+- Every `finish()` logs `aiobs.error_rate`, `aiobs.latency_p50_ms` and `aiobs.latency_p95_ms` (latency of the items that did not fail, nearest-rank percentiles).
+
 ## Control plane (`Client`)
 
 HTTP client for the platform JSON API (uses `httpx2`, a core SDK dependency). Without `base_url` it uses the tracking URI. In app code prefer the shared instance, `aiobs.get_client()`, over building a `Client()` per function:

@@ -12,7 +12,8 @@ import pytest
 
 import aiobs
 from aiobs import Client, _context
-from aiobs.experiment import _output_entry
+from aiobs.experiment import _auto_metrics, _output_entry
+from aiobs.models import DatasetItemResponse
 
 PROJECT_ID = str(uuid.uuid4())
 
@@ -644,3 +645,48 @@ def test_experiment_reentry_is_rejected(server: FakeServer) -> None:
             exp.__enter__()
         exp.run_task(_task)
     assert aiobs.experiment.ACTIVE_EXPERIMENT.get() is None
+
+
+def test_auto_metrics_percentiles_and_error_rate() -> None:
+    from aiobs.experiment import ItemRun
+
+    item = DatasetItemResponse(id="i")
+    records = [ItemRun(item=item, latency_ms=v) for v in (10.0, 20.0, 30.0, 40.0)]
+    records.append(ItemRun(item=item, latency_ms=5.0, error="RuntimeError: boom"))
+    assert _auto_metrics(records) == {
+        "aiobs.error_rate": 0.2,
+        "aiobs.latency_p50_ms": 20.0,
+        "aiobs.latency_p95_ms": 40.0,
+    }
+    failed = [ItemRun(item=item, latency_ms=1.0, error="x")]
+    assert _auto_metrics(failed) == {"aiobs.error_rate": 1.0}
+
+
+def test_finish_logs_run_metrics_and_exposes_them(server: FakeServer) -> None:
+    def flaky(item: Any) -> str:
+        if item.input == "q2":
+            raise RuntimeError("boom")
+        return "ok"
+
+    result = aiobs.evaluate(dataset=ROWS, task=flaky, metrics=[lambda item, out: 1.0])
+
+    stored = server.experiment_metrics[result.id]
+    assert stored["aiobs.error_rate"] == 0.5
+    assert stored["aiobs.latency_p50_ms"] == stored["aiobs.latency_p95_ms"]
+    assert result.experiment_metrics == stored
+    assert "aiobs.error_rate" in result.summary()
+
+
+def test_summary_shows_experiment_metric_delta_vs_baseline(server: FakeServer) -> None:
+    base = aiobs.evaluate(dataset=ROWS, task=_task, metrics=["hit_at_k"], name="base")
+    server.experiment_metrics[base.id]["cost_usd"] = 1.5
+
+    with aiobs.start_experiment("cand", dataset=ROWS, metrics=["hit_at_k"], baseline=base) as exp:
+        exp.run_task(_task)
+        exp.log_metrics({"cost_usd": 2.0})
+
+    assert exp.result is not None
+    text = exp.result.summary()
+    assert "experiment metrics:" in text
+    cost_line = next(line for line in text.splitlines() if "cost_usd" in line)
+    assert "2.000" in cost_line and "+0.500 vs baseline" in cost_line
