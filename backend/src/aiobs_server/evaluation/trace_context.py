@@ -4,7 +4,7 @@ import json
 from datetime import UTC, datetime
 from typing import Any
 
-from aiobs_server.domain.retrieval import normalize_documents
+from aiobs_server.domain.retrieval import flattened_documents, normalize_documents
 from aiobs_server.domain.trace import Span, Trace
 
 
@@ -123,6 +123,10 @@ def _span_documents(span: Span) -> list[dict[str, Any]] | None:
     for key in _DOCUMENT_KEYS[span.kind.upper()]:
         raw = attrs.get(key)
         if raw is None:
+            # OpenInference auto-instrumentation; the aggregated SDK key wins when both exist.
+            flat = flattened_documents(attrs, key)
+            if flat is not None:
+                return flat
             continue
         if isinstance(raw, str):
             try:

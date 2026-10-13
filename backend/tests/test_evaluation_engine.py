@@ -611,3 +611,87 @@ def test_build_eval_context_skips_stage_without_recorded_documents() -> None:
         spans=(retrieve, uninstrumented_rerank),
     )
     assert build_eval_context_from_trace(trace)["documents"] == [{"id": "doc-1"}]
+
+
+def _single_span_trace(kind: str, attributes: dict[str, object]) -> Trace:
+    start = datetime(2024, 1, 1, tzinfo=UTC)
+    end = datetime(2024, 1, 1, 0, 0, 1, tzinfo=UTC)
+    span = Span(
+        id=uuid.uuid4(),
+        span_id="c" * 16,
+        parent_span_id=None,
+        name=kind.lower(),
+        kind=kind,
+        start_time=start,
+        end_time=end,
+        status="ok",
+        attributes=attributes,
+    )
+    return Trace(
+        id=uuid.uuid4(),
+        project_id=uuid.uuid4(),
+        trace_id="e" * 32,
+        name="rag",
+        status="ok",
+        start_time=start,
+        end_time=end,
+        spans=(span,),
+    )
+
+
+def test_build_eval_context_reads_openinference_flattened_documents() -> None:
+    # OpenInference instrumentors (LangChain, LlamaIndex, ...) flatten each document.
+    attributes: dict[str, object] = {"retrieval.document_count": 12}
+    for i in reversed(range(12)):
+        attributes[f"retrieval.documents.{i}.document.id"] = f"doc-{i}"
+        attributes[f"retrieval.documents.{i}.document.content"] = f"chunk {i}"
+        attributes[f"retrieval.documents.{i}.document.score"] = 1.0 - i / 100
+    attributes["retrieval.documents.0.document.metadata"] = json.dumps({"title": "PTO"})
+    docs = build_eval_context_from_trace(_single_span_trace("RETRIEVER", attributes))["documents"]
+    # Numeric order (10 after 9), content -> text, title from metadata.
+    assert [d["id"] for d in docs] == [f"doc-{i}" for i in range(12)]
+    assert docs[0] == {"id": "doc-0", "title": "PTO", "text": "chunk 0"}
+    assert docs[11] == {"id": "doc-11", "text": "chunk 11"}
+
+
+def test_build_eval_context_reads_flattened_reranker_output_documents() -> None:
+    trace = _single_span_trace(
+        "RERANKER",
+        {
+            "reranker.input_documents.0.document.id": "doc-1",
+            "reranker.input_documents.1.document.id": "doc-2",
+            "reranker.output_documents.0.document.id": "doc-2",
+            "reranker.output_documents.0.document.content": "Holidays",
+        },
+    )
+    assert build_eval_context_from_trace(trace)["documents"] == [
+        {"id": "doc-2", "text": "Holidays"}
+    ]
+
+
+def test_build_eval_context_prefers_aggregated_documents_over_flattened() -> None:
+    trace = _single_span_trace(
+        "RETRIEVER",
+        {
+            "retrieval.documents": [{"id": "sdk-doc"}],
+            "retrieval.documents.0.document.id": "auto-doc",
+        },
+    )
+    assert build_eval_context_from_trace(trace)["documents"] == [{"id": "sdk-doc"}]
+
+
+def test_build_eval_context_flattened_document_id_falls_back_to_metadata() -> None:
+    trace = _single_span_trace(
+        "RETRIEVER",
+        {
+            "retrieval.documents.0.document.content": "from json metadata",
+            "retrieval.documents.0.document.metadata": json.dumps({"doc_id": "pto"}),
+            "retrieval.documents.1.document.content": "from dict metadata",
+            "retrieval.documents.1.document.metadata": {"node_id": "node-7"},
+            "retrieval.documents.2.document.content": "no id anywhere",
+        },
+    )
+    assert build_eval_context_from_trace(trace)["documents"] == [
+        {"id": "pto", "text": "from json metadata"},
+        {"id": "node-7", "text": "from dict metadata"},
+    ]
