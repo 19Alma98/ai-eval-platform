@@ -128,11 +128,50 @@ print(exp.result.summary())
 
 How it behaves:
 
-- **Metrics**: a string is a server metric kind (`hit_at_k`, `recall_at_k`, `mrr`, `must_contain`, `groundedness`, `correctness`, `answer_relevance`, `context_precision`, `context_recall`, `latency`). A dict sets threshold/config, for example `{"kind": "hit_at_k", "config": {"k": 3}}`. The SDK finds or creates a metrics set that holds exactly those kinds, using the project's defaults for anything you leave out. `metrics=None` uses the project default set. A callable `fn(item, output)` runs locally, and its scores are submitted to the platform (`POST /experiments/{id}/client-results`). From there they are aggregated, shown in the UI and compared with the baseline like server metrics. To set a PASS threshold, or to mark a code change so compare reports a config mismatch instead of a delta, use `aiobs.LocalMetric(fn, name="quality", threshold=0.5, config={"version": 2})`. When the task fails on an item, that item counts as FAIL (score 0). When the metric itself raises, the item is recorded as ERROR. A local metric name must not match a server evaluator name (409). If the submission fails, `result.metrics` falls back to the in-process mean.
+- **Metrics**: a string is a server metric kind (`hit_at_k`, `recall_at_k`, `mrr`, `must_contain`, `groundedness`, `correctness`, `answer_relevance`, `context_precision`, `context_recall`, `latency`). A dict sets threshold/config, for example `{"kind": "hit_at_k", "config": {"k": 3}}`. The SDK finds or creates a metrics set that holds exactly those kinds, using the project's defaults for anything you leave out. `metrics=None` uses the project default set. A Python metric runs locally (see *Custom metrics* below), and its scores are submitted to the platform (`POST /experiments/{id}/client-results`). From there they are aggregated, shown in the UI and compared with the baseline like server metrics. When the task fails on an item, that item counts as FAIL (score 0). When the metric itself raises, the item is recorded as ERROR. A local metric name must not match a server evaluator name (409). If the submission fails, `result.metrics` falls back to the in-process mean.
 - **Datasets**: a list of dicts or a DataFrame needs an `input` column. `expected_output`, `context` and `metadata` map to item fields, and any other column goes into `metadata` (so `expected_doc_ids` and `must_contain` work). The dataset name is a hash of the rows, so re-running on the same rows reuses the same dataset.
 - **Outputs** are uploaded with `PUT /experiments/{id}/outputs`, so this works without `aiobs.init()`. With tracing on, `finish()` waits for the OTLP traces to be bound (up to 30s) and merges their context in. Your explicit output always wins.
 - **Errors**: when a task raises, `evaluate` records it on the item (`result.errors`, `metadata.error`) and moves on. Pass `raise_on_error=True` to stop instead. When the `with` block raises, nothing is scored.
 - **Link**: `result.url` points to the experiment page on the tracking URI. Set `AIOBS_UI_URL` when the UI is served elsewhere (for example `http://localhost:3000` in the docker dev setup).
+
+### Custom metrics
+
+```python
+@aiobs.metric(threshold=0.5, version=2, requires=("documents",))
+def cites_source(s: aiobs.Sample) -> aiobs.Score:
+    hit = any(d["id"] in s.output for d in s.documents)
+    return aiobs.Score(1.0 if hit else 0.0, explanation="cited" if hit else "no citation")
+
+
+aiobs.evaluate(dataset="gold-v1", task=answer_question, metrics=["hit_at_k", cites_source])
+```
+
+- `Sample` fields: `input`, `output`, `expected` (dataset `expected_output`), `documents` (from `set_retrieval_documents`), `context`, `metadata`, `trace_id`, `item_id`.
+- Return `aiobs.Score(value, label=, explanation=, metadata=)`, a float, a bool, `None` or `{"score": ...}`. Explanation and metadata show up per item in the UI. A non-finite score is an ERROR.
+- `fn(item, output)` (two parameters) still works and receives the dataset item. `async def` metrics work too.
+- `requires`: `Sample` fields that must be non-empty (`output`, `expected`, `documents`, `context`). When one is missing the item is SKIPPED, not failed.
+- `version` is stored in the metric config: bump it when the code changes, so compare reports a config mismatch instead of a misleading delta.
+- When the task fails on an item, that item counts as FAIL (score 0). When the metric raises, the item is ERROR. A local metric name must not match a server evaluator name (409). If the submission fails, `result.metrics` falls back to the in-process mean.
+
+### Ragas and DeepEval
+
+```bash
+pip install "aiobs-eval[ragas]"     # or "aiobs-eval[deepeval]"
+```
+
+```python
+from aiobs.integrations.ragas import from_ragas
+from aiobs.integrations.deepeval import from_deepeval
+from ragas.metrics import Faithfulness
+from deepeval.metrics import AnswerRelevancyMetric
+
+metrics = [from_ragas(Faithfulness(llm=judge)), from_deepeval(AnswerRelevancyMetric())]
+```
+
+The adapters map `Sample` to `SingleTurnSample` / `LLMTestCase` (documents → retrieved/retrieval context), run the library's async scorer, and keep DeepEval's `reason` as the explanation. `requires` comes from the metric's required fields, so a metric that needs a reference is SKIPPED where there is none. Library version, metric class and judge model are stored in the config: upgrading Ragas or swapping the judge is reported as a config mismatch in compare.
+
+- Only single-turn Ragas metrics are supported. DeepEval's lower-is-better metrics (`BiasMetric`, `ToxicityMetric`, `HallucinationMetric`, `PIILeakageMetric`) are rejected, because aiobs thresholds pass at or above the threshold: wrap them in your own `@aiobs.metric` instead.
+- For `GEval`, pass explicit `evaluation_steps`: otherwise DeepEval generates new steps for every item, and scores are not comparable across items or runs.
 
 ## Control plane (`Client`)
 
