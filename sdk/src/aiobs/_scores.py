@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import atexit
 import logging
+import os
 import threading
 import time
 from collections import deque
@@ -55,6 +56,7 @@ class ScoreSender:
         self._flush_requested = False
         self._thread: threading.Thread | None = None
         self._last_drop_warning: float | None = None
+        self._last_send_warning: float | None = None
         self.dropped = 0
 
     def enqueue(self, project_id: str, score: dict[str, Any]) -> bool:
@@ -72,7 +74,7 @@ class ScoreSender:
                     )
                 return False
             self._queue.append((project_id, score))
-            self._ensure_thread()
+            self._ensure_thread()  # on failure the item stays queued
             if len(self._queue) >= self._batch_size:
                 self._cond.notify_all()
             return True
@@ -83,7 +85,8 @@ class ScoreSender:
         with self._cond:
             if not self._queue and self._in_flight == 0:
                 return True
-            self._ensure_thread()
+            if not self._ensure_thread():
+                return False
             self._flush_requested = True
             self._cond.notify_all()
             while self._queue or self._in_flight:
@@ -93,10 +96,18 @@ class ScoreSender:
                 self._cond.wait(remaining)
             return True
 
-    def _ensure_thread(self) -> None:  # caller holds the lock
-        if self._thread is None or not self._thread.is_alive():
-            self._thread = threading.Thread(target=self._run, name="aiobs-scores", daemon=True)
-            self._thread.start()
+    def _ensure_thread(self) -> bool:  # caller holds the lock
+        if self._thread is not None and self._thread.is_alive():
+            return True
+        try:
+            thread = threading.Thread(target=self._run, name="aiobs-scores", daemon=True)
+            thread.start()
+        except RuntimeError as exc:  # out of threads / interpreter shutting down
+            logger.debug("aiobs: could not start score sender thread: %s", exc)
+            self._thread = None
+            return False
+        self._thread = thread
+        return True
 
     def _run(self) -> None:
         while True:
@@ -124,20 +135,52 @@ class ScoreSender:
         for project_id, score in batch:
             by_project.setdefault(project_id, []).append(score)
         for project_id, scores in by_project.items():
-            for attempt in (1, 2):
-                try:
-                    self._post(project_id, scores)
-                    break
-                except Exception as exc:  # noqa: BLE001 — sending must never crash the thread
-                    client_error = isinstance(exc, AiobsAPIError) and 400 <= exc.status < 500
-                    if attempt == 2 or client_error:
-                        logger.warning(
-                            "aiobs: dropped %d trace scores for project %s: %s",
-                            len(scores),
-                            project_id,
-                            exc,
-                        )
-                        break
+            self._send_project(project_id, scores)
+
+    def _send_project(self, project_id: str, scores: list[dict[str, Any]]) -> None:
+        for attempt in (1, 2):
+            try:
+                self._post(project_id, scores)
+                return
+            except Exception as exc:  # noqa: BLE001 — sending must never crash the thread
+                if isinstance(exc, AiobsAPIError) and 400 <= exc.status < 500:
+                    # The server rejects a whole batch for one bad item: retrying cannot
+                    # help, so resend each item once to salvage the valid ones.
+                    if len(scores) > 1:
+                        self._resend_individually(project_id, scores, exc)
+                    else:
+                        self._drop(project_id, 1, exc)
+                    return
+                if attempt == 2:
+                    self._drop(project_id, len(scores), exc)
+
+    def _resend_individually(
+        self, project_id: str, scores: list[dict[str, Any]], batch_error: Exception
+    ) -> None:
+        failed = 0
+        last_error = batch_error
+        for score in scores:
+            try:
+                self._post(project_id, [score])
+            except Exception as exc:  # noqa: BLE001
+                failed += 1
+                last_error = exc
+        if failed:
+            self._drop(project_id, failed, last_error)
+
+    def _drop(self, project_id: str, count: int, exc: Exception) -> None:
+        detail = exc.detail if isinstance(exc, AiobsAPIError) and exc.detail else exc
+        message = "aiobs: dropped %d trace scores for project %s: %s"
+        with self._cond:
+            self.dropped += count
+            now = time.monotonic()
+            loud = (
+                self._last_send_warning is None
+                or now - self._last_send_warning >= _DROP_WARNING_EVERY_S
+            )
+            if loud:
+                self._last_send_warning = now
+        logger.log(logging.WARNING if loud else logging.DEBUG, message, count, project_id, detail)
 
 
 _SENDER: ScoreSender | None = None
@@ -146,7 +189,10 @@ _ATEXIT_REGISTERED = False
 
 
 def _at_exit() -> None:
-    flush(EXIT_FLUSH_TIMEOUT_S)
+    try:
+        flush(EXIT_FLUSH_TIMEOUT_S)
+    except Exception:  # noqa: BLE001 — never raise during interpreter shutdown
+        logger.debug("aiobs: score flush at exit failed", exc_info=True)
 
 
 def sender() -> ScoreSender:
@@ -175,3 +221,15 @@ def _reset_for_tests(post: Post | None = None, **kwargs: Any) -> ScoreSender | N
     with _LOCK:
         _SENDER = ScoreSender(post, **kwargs) if post is not None else None
         return _SENDER
+
+
+def _after_fork_in_child() -> None:
+    """The child inherits the parent's lock/condition (possibly held) and no thread:
+    drop the singleton so the child lazily builds a fresh sender."""
+    global _SENDER, _LOCK
+    _SENDER = None
+    _LOCK = threading.Lock()
+
+
+if hasattr(os, "register_at_fork"):  # not on Windows
+    os.register_at_fork(after_in_child=_after_fork_in_child)

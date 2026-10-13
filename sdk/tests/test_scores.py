@@ -9,6 +9,7 @@ import httpx2
 import pytest
 
 from aiobs import Client
+from aiobs import _scores as scores_module
 from aiobs._http import AiobsAPIError
 from aiobs._scores import ScoreSender
 
@@ -114,3 +115,71 @@ def test_server_error_is_retried() -> None:
     sender.enqueue("p1", _score(0))
     assert sender.flush(5.0)
     assert len(post.calls) == 2
+
+
+def test_enqueue_and_flush_survive_thread_start_failure(monkeypatch: pytest.MonkeyPatch) -> None:
+    def boom(self: threading.Thread) -> None:
+        raise RuntimeError("can't create new thread at interpreter shutdown")
+
+    monkeypatch.setattr(threading.Thread, "start", boom)
+    sender = ScoreSender(Recorder(), interval=60.0)
+    assert sender.enqueue("p1", _score(0))
+    assert sender.flush(0.1) is False
+
+
+def test_at_exit_never_raises(monkeypatch: pytest.MonkeyPatch) -> None:
+    def boom(timeout: float = 5.0) -> bool:
+        raise RuntimeError("boom")
+
+    monkeypatch.setattr(scores_module, "flush", boom)
+    scores_module._at_exit()
+
+
+def test_after_fork_hook_resets_shared_sender() -> None:
+    post = Recorder()
+    parent = scores_module._reset_for_tests(post, interval=60.0)
+    assert parent is not None
+    parent.enqueue("p1", _score(0))
+    scores_module._after_fork_in_child()
+    assert scores_module._SENDER is None
+    child = scores_module.sender()
+    assert child is not parent
+    assert child._thread is None
+    assert not child._queue
+    assert child._in_flight == 0
+    scores_module._reset_for_tests()
+
+
+def test_client_error_in_batch_resends_items_individually(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    delivered: list[str] = []
+
+    def post(project_id: str, scores: list[dict[str, Any]]) -> None:
+        if any(s["name"] == "bad" for s in scores):
+            raise AiobsAPIError(422, "bad score", detail="name invalid")
+        delivered.extend(s["name"] for s in scores)
+
+    sender = ScoreSender(post, batch_size=100, interval=60.0)
+    for name in ("a", "bad", "b"):
+        sender.enqueue("p1", {"trace_id": TID, "name": name, "value": 1.0})
+    with caplog.at_level(logging.WARNING, logger="aiobs"):
+        assert sender.flush(5.0)
+    assert delivered == ["a", "b"]
+    assert sender.dropped == 1
+    drops = [r for r in caplog.records if "dropped 1 trace scores" in r.message]
+    assert len(drops) == 1
+    assert "name invalid" in drops[0].message
+
+
+def test_send_failure_warnings_are_rate_limited(caplog: pytest.LogCaptureFixture) -> None:
+    post = Recorder(fail_times=100)
+    sender = ScoreSender(post, interval=60.0)
+    with caplog.at_level(logging.DEBUG, logger="aiobs"):
+        for i in range(3):
+            sender.enqueue("p1", _score(i))
+            assert sender.flush(5.0)
+    warnings = [r for r in caplog.records if r.levelno == logging.WARNING]
+    assert sum("dropped 1 trace scores" in r.message for r in warnings) == 1
+    assert sum("dropped 1 trace scores" in r.message for r in caplog.records) == 3
+    assert sender.dropped == 3
