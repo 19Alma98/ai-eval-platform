@@ -40,6 +40,9 @@ ui = [
     "aiobs-eval-server==0.1.0",
 ]
 
+[project.scripts]
+aiobs = "aiobs.cli:main"
+
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"

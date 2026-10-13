@@ -103,15 +103,28 @@ jobs:
               print("expected one wheel each for server and sdk:", server_wheels, sdk_wheels, file=sys.stderr)
               sys.exit(1)
 
+          def dist_info(zf, suffix):
+              return zf.read(next(n for n in zf.namelist() if n.endswith(f".dist-info/{suffix}"))).decode()
+
           with zipfile.ZipFile(server_wheels[0]) as zf:
               if "aiobs_server/_ui/index.html" not in zf.namelist():
                   print("server wheel missing aiobs_server/_ui/index.html", file=sys.stderr)
                   sys.exit(1)
+              server_eps = dist_info(zf, "entry_points.txt")
 
           with zipfile.ZipFile(sdk_wheels[0]) as zf:
-              meta = zf.read(next(n for n in zf.namelist() if n.endswith(".dist-info/METADATA"))).decode()
+              meta = dist_info(zf, "METADATA")
+              sdk_eps = dist_info(zf, "entry_points.txt")
           if "aiobs-eval-server" not in meta:
               print("sdk wheel METADATA missing aiobs-eval-server dependency", file=sys.stderr)
+              sys.exit(1)
+
+          # Exactly one dist may own the `aiobs` console script (the SDK).
+          if "aiobs = aiobs.cli:main" not in sdk_eps:
+              print("sdk wheel missing `aiobs` console script", file=sys.stderr)
+              sys.exit(1)
+          if any(line.split("=")[0].strip() == "aiobs" for line in server_eps.splitlines()):
+              print("server wheel must not ship the `aiobs` console script", file=sys.stderr)
               sys.exit(1)
           print("dist OK:", server_wheels[0].name, sdk_wheels[0].name)
           PY

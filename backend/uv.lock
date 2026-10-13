@@ -1,5 +1,5 @@
 version = 1
-revision = 3
+revision = 2
 requires-python = ">=3.12"
 resolution-markers = [
     "python_full_version >= '3.15'",
@@ -8,10 +8,43 @@ resolution-markers = [
 ]
 
 [[package]]
+name = "aiobs-eval"
+version = "0.1.0"
+source = { editable = "../sdk" }
+dependencies = [
+    { name = "httpx2" },
+    { name = "opentelemetry-api" },
+    { name = "opentelemetry-exporter-otlp-proto-http" },
+    { name = "opentelemetry-sdk" },
+    { name = "pydantic" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "aiobs-eval", extras = ["openai", "anthropic", "langchain", "llama-index", "bedrock"], marker = "extra == 'ai'" },
+    { name = "aiobs-eval-server", marker = "extra == 'ui'", editable = "." },
+    { name = "httpx2", specifier = ">=2.13.0" },
+    { name = "mypy", marker = "extra == 'dev'", specifier = ">=1.13.0" },
+    { name = "openinference-instrumentation-anthropic", marker = "extra == 'anthropic'", specifier = ">=0.1.0" },
+    { name = "openinference-instrumentation-bedrock", marker = "extra == 'bedrock'", specifier = ">=0.1.0" },
+    { name = "openinference-instrumentation-langchain", marker = "extra == 'langchain'", specifier = ">=0.1.0" },
+    { name = "openinference-instrumentation-llama-index", marker = "extra == 'llama-index'", specifier = ">=0.1.0" },
+    { name = "openinference-instrumentation-openai", marker = "extra == 'openai'", specifier = ">=0.1.0" },
+    { name = "opentelemetry-api", specifier = ">=1.28.0" },
+    { name = "opentelemetry-exporter-otlp-proto-http", specifier = ">=1.28.0" },
+    { name = "opentelemetry-sdk", specifier = ">=1.28.0" },
+    { name = "pydantic", specifier = ">=2.10.0" },
+    { name = "pytest", marker = "extra == 'dev'", specifier = ">=8.3.0" },
+    { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.8.0" },
+]
+provides-extras = ["dev", "openai", "anthropic", "langchain", "llama-index", "bedrock", "ai", "ui"]
+
+[[package]]
 name = "aiobs-eval-server"
 version = "0.1.0"
 source = { editable = "." }
 dependencies = [
+    { name = "aiobs-eval" },
     { name = "aiosqlite" },
     { name = "alembic" },
     { name = "asyncpg" },
@@ -46,6 +79,7 @@ examples = [
 
 [package.metadata]
 requires-dist = [
+    { name = "aiobs-eval", editable = "../sdk" },
     { name = "aiosqlite", specifier = ">=0.20.0" },
     { name = "alembic", specifier = ">=1.14.0" },
     { name = "asyncpg", specifier = ">=0.30.0" },

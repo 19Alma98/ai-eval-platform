@@ -2,7 +2,7 @@
 
 ## CLI
 
-Package: **`aiobs-eval-server`** (repo `backend/`), console script `aiobs`.
+The `aiobs` console script ships with the SDK (**`aiobs-eval`**, `aiobs.cli:main`) and delegates to the server CLI (`aiobs_server.cli`, repo `backend/`). Without the server installed, `aiobs` exits 1 and prints `pip install "aiobs-eval[ui]"`. The server also exposes the same commands as `aiobs-server`, and depends on `aiobs-eval`, so `pip install aiobs-eval-server` provides `aiobs` too.
 
 Implementation:
 - Typer
@@ -46,8 +46,8 @@ Distributions:
 
 | PyPI name | Import / CLI |
 |-----------|--------------|
-| `aiobs-eval` | `import aiobs` |
-| `aiobs-eval-server` | `aiobs_server` / console script `aiobs` |
+| `aiobs-eval` | `import aiobs` / console script `aiobs` |
+| `aiobs-eval-server` | `aiobs_server` / console script `aiobs-server` |
 
 ### One-time setup (Trusted Publishing)
 
@@ -61,7 +61,7 @@ Distributions:
 
 ### Release steps
 
-1. Bump `version` in **both** `sdk/pyproject.toml` and `backend/pyproject.toml` (keep them identical). Keep `aiobs-eval[ui]` pinned to the same server version.
+1. Bump `version` in **both** `sdk/pyproject.toml` and `backend/pyproject.toml` (keep them identical). Keep `aiobs-eval[ui]` pinned to the same server version, and the server's `aiobs-eval` dependency pinned to the same SDK version.
 2. Commit, then tag and push: `git tag v0.1.0 && git push origin v0.1.0`
 3. The workflow builds the UI (`package-ui.sh`), builds both wheels, checks `_ui/index.html` is inside the server wheel, then uploads via OIDC.
 

@@ -20,6 +20,8 @@ pip install 'aiobs-eval[ui]'
 aiobs ui   # http://127.0.0.1:8000 — creates ./aiobs.db
 ```
 
+The `aiobs` command ships with the SDK. Without the `[ui]` extra it exits with a hint to install it.
+
 Develop from this monorepo:
 
 ```bash
@@ -196,8 +198,8 @@ The SDK may set OpenInference `input` / `output` attributes on decorated spans (
 
 ## Monorepo note
 
-- SDK PyPI / import: `aiobs-eval` / `aiobs`
-- Server PyPI / import: `aiobs-eval-server` / `aiobs_server` (share one venv via `aiobs-eval[ui]`)
+- SDK PyPI / import / CLI: `aiobs-eval` / `aiobs` / `aiobs`
+- Server PyPI / import / CLI: `aiobs-eval-server` / `aiobs_server` / `aiobs-server` (share one venv via `aiobs-eval[ui]`)
 
 ## Manual smoke (not CI-required)
 

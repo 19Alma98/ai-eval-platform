@@ -4,7 +4,7 @@ Server package for the AI Evaluation & Observability Platform.
 
 - Distribution: `aiobs-eval-server` (PyPI)
 - Import path: `aiobs_server` (e.g. `uvicorn aiobs_server.main:app`)
-- Console script: `aiobs` (`ui`, `check`)
+- Console scripts: `aiobs` (`ui`, `check`; provided by the `aiobs-eval` dependency) and `aiobs-server` (same commands)
 
 ## Local UI
 
