@@ -399,6 +399,13 @@ class Experiment:
             name = _local_name(metric)
             try:
                 result = evaluate_metric(metric, sample, item=record.item)
+                if result.metadata:
+                    result = replace(
+                        result,
+                        metadata=json.loads(
+                            json.dumps(result.metadata, default=str, allow_nan=False)
+                        ),
+                    )
             except Exception as exc:  # a broken metric must not sink the run
                 logger.warning(
                     "aiobs local metric %s failed on item %s: %s", name, record.item.id, exc
@@ -436,7 +443,7 @@ class Experiment:
                     if score.explanation is not None:
                         result["explanation"] = score.explanation[:4000]
                     if score.metadata:
-                        result["metadata"] = _jsonable(score.metadata)
+                        result["metadata"] = score.metadata
                 results.append(result)
             entry: dict[str, Any] = {"name": name, "results": results}
             if metric.threshold is not None:

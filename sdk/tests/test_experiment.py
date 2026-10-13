@@ -516,3 +516,14 @@ def test_async_metric_and_non_finite_score(server: FakeServer) -> None:
     assert [r["score"] for r in slow_sub["results"]] == [0.25, 0.25]
     assert {r["label"] for r in nan_sub["results"]} == {"ERROR"}
     assert all("finite" in r["explanation"] for r in nan_sub["results"])
+
+
+def test_non_json_metadata_becomes_item_error(server: FakeServer) -> None:
+    def bad_meta(item: Any, output: Any) -> aiobs.Score:
+        return aiobs.Score(1.0, metadata={"x": float("nan")})
+
+    result = aiobs.evaluate(dataset=ROWS, task=_task, metrics=[bad_meta])
+
+    (submitted,) = server.client_results[result.id]
+    assert {r["label"] for r in submitted["results"]} == {"ERROR"}
+    assert all("ValueError" in r["explanation"] for r in submitted["results"])
