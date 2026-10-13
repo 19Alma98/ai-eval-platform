@@ -301,6 +301,52 @@ List query: `judge_status`, `search`, `failed_only`, `limit`. Response shape: `{
 
 `POST .../promote` body: `dataset_id`, required `expected_output` (reviewer-written gold; the production answer is never used as default), optional `expected_doc_ids` (required for `rag_qa` datasets) → creates a dataset item. Retrieved doc ids are stored as `metadata.retrieved_doc_ids_at_promotion` for reference only; they are never copied into `expected_doc_ids`.
 
+## Trace scores (production scores and feedback)
+
+Scores attached to an OTel trace: SDK metrics (`source="sdk"`), end-user feedback (`source="human"`), external judges (`source="judge"`). Stored per `(project, trace_id, name, source, author)`; writing the same key again replaces the value. There is no foreign key to `traces`: a score may arrive before its trace.
+
+```http
+POST /projects/{project_id}/trace-scores
+GET /projects/{project_id}/trace-scores/summary
+```
+
+### `POST /api/v1/projects/{project_id}/trace-scores` → 202
+
+```json
+{"scores": [
+  {"trace_id": "4bf92f3577b34da6a3ce929d0e0e4736", "name": "cites_source", "value": 0.0, "threshold": 0.5},
+  {"trace_id": "4bf92f3577b34da6a3ce929d0e0e4736", "name": "user_feedback", "value": 1, "source": "human", "author": "user-42", "explanation": "great answer"}
+]}
+```
+
+Response: `{"accepted": 2}` (the number of distinct keys stored). 1-500 items.
+
+Item fields:
+
+| Field | Notes |
+|---|---|
+| `trace_id` | required; 32 hex characters, case-insensitive (stored lower-case) |
+| `name` | required; 1-200 characters, not blank |
+| `value`, `threshold` | optional JSON numbers; strict (strings and booleans are rejected), finite |
+| `label` | optional `PASS`, `FAIL`, `ERROR` or `SKIPPED` (case-insensitive) |
+| `explanation` | optional; up to 4000 characters |
+| `source` | `sdk` (default), `human` or `judge` |
+| `author` | optional; up to 200 characters; part of the upsert key (missing = empty) |
+| `metadata` | optional object |
+
+The server computes the stored label with the same rule as experiment scores (`item_verdict`): an explicit `FAIL`/`ERROR`/`SKIPPED` wins, a value under `threshold` fails, otherwise a value of 0 fails and anything else passes. A thumbs-down (`value: 0`) is therefore `FAIL`. With neither `label` nor `value`, the stored label is `null`.
+
+The batch is all-or-nothing: it is rejected with 422 when any item is invalid (bad trace id, empty name, unknown source or label, non-numeric or non-finite value). Duplicate keys in one batch: the last one wins. Unknown project returns 404.
+
+### `GET /api/v1/projects/{project_id}/trace-scores/summary?since=&until=`
+
+Default window: the last 24 hours (`until` defaults to now). Naive datetimes are read as UTC. The window filters on the score's `updated_at`. Response: `{ since, until, rows }`, one row per `(name, source)` with `count`, `mean` (mean of `value`; for `user_feedback` this is the share of thumbs-up) and `pass_rate` over PASS/FAIL labels (`null` when none). Unknown project returns 404; `since >= until` returns 400.
+
+### Where they show up
+
+- `GET /api/v1/projects/{project_id}/traces/{trace_id}` includes `scores`.
+- `GET /api/v1/projects/{project_id}/live-interactions` and `GET /api/v1/live-interactions/{id}` include `trace_scores`, joined on `metadata.source_trace_id`. `failed_only=true` also keeps interactions with a failing trace score (SDK metric FAIL or thumbs-down). Judge calibration ignores trace scores.
+
 ## Comparison
 
 ```http
