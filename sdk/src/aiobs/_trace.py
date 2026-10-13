@@ -21,8 +21,11 @@ def truncate_value(value: object, *, limit: int = MAX_CAPTURE_BYTES) -> str:
     else:
         try:
             text = json.dumps(value, default=str)
-        except TypeError:
-            text = str(value)
+        except Exception:  # noqa: BLE001 — capture must never break the traced call
+            try:
+                text = str(value)
+            except Exception:  # noqa: BLE001
+                text = f"<unserializable {type(value).__name__}>"
     raw = text.encode("utf-8")
     if len(raw) <= limit:
         return text

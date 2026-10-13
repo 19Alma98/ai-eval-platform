@@ -75,9 +75,13 @@ def activate_instrumentors(
         if not _module_available(spec.instrumentor_module):
             logger.debug("aiobs: skip %s (OpenInference instrumentor not installed)", key)
             continue
-        module = importlib.import_module(spec.instrumentor_module)
-        cls = getattr(module, spec.instrumentor_class)
-        cls().instrument(tracer_provider=tracer_provider)
+        try:
+            module = importlib.import_module(spec.instrumentor_module)
+            cls = getattr(module, spec.instrumentor_class)
+            cls().instrument(tracer_provider=tracer_provider)
+        except Exception as exc:  # noqa: BLE001 — a broken instrumentor must not break the app
+            logger.warning("aiobs: could not activate instrumentor %s: %s", key, exc)
+            continue
         activated.append(key)
         logger.info("aiobs: activated OpenInference instrumentor %s", key)
 

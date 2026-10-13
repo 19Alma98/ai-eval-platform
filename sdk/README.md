@@ -262,8 +262,17 @@ Install the extra for the providers you use, then `init(instrument="auto")` acti
 | `AIOBS_SERVICE_NAME` | OpenTelemetry `service.name` (default `aiobs-app`) |
 | `AIOBS_OTLP_ENDPOINT` | Optional override of the derived OTLP URL (e.g. a separate collector) |
 | `AIOBS_API_BASE_URL` / `AIOBS_BASE_URL` | Legacy aliases of `AIOBS_TRACKING_URI` (lower priority) |
+| `AIOBS_DISABLED` | `1` / `true` / `yes` / `on` turns `init()` into a no-op (decorators keep working, nothing is exported) |
 
 Project precedence for `init()`: arguments > `set_project()` > env.
+
+## Failure behavior
+
+Tracing never breaks the host app:
+
+- `init()` never raises. Without a project it logs a warning on the `aiobs` logger and stays a no-op; a broken instrumentor is skipped with a warning.
+- Pending spans are flushed at interpreter exit (`atexit`, max ~2s), so short scripts don't need `aiobs.flush()`.
+- If the platform is unreachable, spans are dropped: one warning when export starts failing, one info when it recovers. After a failure, export pauses for 30s, so a platform that is down adds no network calls and doesn't slow down exit.
 
 ## Content capture
 

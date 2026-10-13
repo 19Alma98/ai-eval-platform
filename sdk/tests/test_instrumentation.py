@@ -60,6 +60,18 @@ def test_activates_when_both_present(monkeypatch: pytest.MonkeyPatch) -> None:
             sys.modules.pop(key, None)
 
 
+def test_failing_instrumentor_is_skipped(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setitem(sys.modules, "openai", types.ModuleType("openai"))
+    fake_mod = types.ModuleType("openinference.instrumentation.openai")
+    fake_mod.OpenAIInstrumentor = MagicMock(side_effect=RuntimeError("broken"))
+    monkeypatch.setitem(sys.modules, "openinference", types.ModuleType("openinference"))
+    oi_inst = types.ModuleType("openinference.instrumentation")
+    monkeypatch.setitem(sys.modules, "openinference.instrumentation", oi_inst)
+    monkeypatch.setitem(sys.modules, "openinference.instrumentation.openai", fake_mod)
+
+    assert activate_instrumentors(["openai"], TracerProvider()) == []
+
+
 def test_unknown_key_raises() -> None:
     with pytest.raises(ValueError, match="unknown"):
         activate_instrumentors(["not-a-real-key"], TracerProvider())
