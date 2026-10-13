@@ -187,7 +187,7 @@ print(exp.result.experiment_metrics)
 
 - `log_params` merges into `model_config` until an evaluation starts. After that, or when the experiment was created from an app config, the server answers 409: start a new experiment instead.
 - `log_metrics` stores one final number per key (no steps). Keys use letters, digits and `_ . - /`. They appear in `result.summary()` with the delta against the baseline, and can gate a release via the release-check policy: `{"experiment_metrics": {"cost_usd": {"max": 2.0}}}`.
-- `aiobs.log_params` / `aiobs.log_metrics` act on the active experiment: inside `with start_experiment(...)` or inside an `evaluate()` task. Elsewhere they raise `RuntimeError`.
+- `aiobs.log_params` / `aiobs.log_metrics` act on the active experiment: inside `with start_experiment(...)` and inside any item run (`exp.run(...)`, `run_task`, `evaluate()` tasks). Elsewhere they raise `RuntimeError`. With concurrency > 1, call `log_metrics`/`log_params` once outside per-item code: per-item calls overwrite each other (last write wins).
 - Every `finish()` logs `aiobs.error_rate`, `aiobs.latency_p50_ms` and `aiobs.latency_p95_ms` (the task's wall-clock latency as measured by the SDK, over the items that did not fail, nearest-rank percentiles).
 
 ## Control plane (`Client`)

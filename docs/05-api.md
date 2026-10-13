@@ -213,10 +213,10 @@ PUT /experiments/{experiment_id}/metrics
 ```
 
 ```json
-{"metrics": {"cost_usd": 1.42, "aiobs.latency_p95_ms": 840}}
+{"metrics": {"cost_usd": 1.42, "accuracy": 0.91}}
 ```
 
-Stores one final value per key (no steps); the last write wins. Keys use 1-200 letters, digits or `_ . - /`, and a request carries at most 1000 metrics. Keys starting with `aiobs.` are written by the SDK (`aiobs.error_rate`, `aiobs.latency_p50_ms`, `aiobs.latency_p95_ms`). Response `200`: `{"experiment_id", "metrics": {...}}` with **all** the experiment's metrics. `GET` returns the same shape.
+Stores one final value per key (no steps); the last write wins. Keys use 1-200 letters, digits or `_ . - /`, and a request carries at most 1000 metrics. Keys starting with `aiobs.` are reserved by convention for the SDK (`aiobs.error_rate`, `aiobs.latency_p50_ms`, `aiobs.latency_p95_ms`), which overwrites them on every `finish()`, so do not write them yourself. Response `200`: `{"experiment_id", "metrics": {...}}` with **all** the experiment's metrics. `GET` returns the same shape.
 
 ```http
 PATCH /experiments/{experiment_id}/params
@@ -228,7 +228,7 @@ PATCH /experiments/{experiment_id}/params
 
 Shallow-merges into `model_config` and returns the experiment. Returns 409 once an evaluation has started (the experiment has left the `created` status or has any evaluation run; scored results must keep describing their config) and for experiments created from an app config (their params are the snapshot).
 
-Errors: 404 experiment not found; 400 empty map, bad key, more than 1000 metrics, or a value that is not a number (booleans included); 422 non-finite number; 409 params locked.
+Errors: 404 experiment not found; 400 empty map, bad key, more than 1000 metrics, a value that is not a number (booleans included), or a number that overflows to infinity (e.g. `1e400`); 422 literal `NaN`/`Infinity` in the JSON; 409 params locked.
 
 ### Summary
 

@@ -878,7 +878,7 @@ def _active_experiment() -> Experiment:
     if exp is None:
         raise RuntimeError(
             "no active experiment: call inside `with aiobs.start_experiment(...)` "
-            "or inside an evaluate() task"
+            "or inside an item run (exp.run, run_task or an evaluate() task)"
         )
     return exp
 

@@ -214,13 +214,14 @@ On create, supply at most one of `app_config_id` or `app_config_alias`. When eit
 
 ## ReleasePolicy
 
-Machine-readable quality gate. Phase 4 evaluates it statelessly (YAML/file or inline API body); keys other than `regression` bind to evaluator entity names.
+Machine-readable quality gate. Phase 4 evaluates it statelessly (YAML/file or inline API body); the reserved keys are `regression`, `latency`, `cost` and `experiment_metrics`; every other key binds to an evaluator entity name.
 
 Semantics:
 - `{name}.min` — pass if latest-run `mean_score >= min`
 - `latency.p95_max_ms` — pass if p95 of result `metadata.latency_ms` (nearest-rank) `<=` threshold. Rows without `latency_ms` (e.g. SKIPPED) are excluded from the sample. Any result with `metadata.missing_output: true` and no usable `latency_ms` fails the check (do not green-light incomplete runs on a latency subset).
 - `cost.max_per_request_usd` — pass if mean of result `metadata.cost_usd` `<=` threshold
 - `regression.max_delta` — for each shared evaluator, pass if `mean_score` delta (candidate − baseline) `>= max_delta`. Compare status `insufficient_n` (n < 5) yields check `unavailable` → overall failed. Opt-in `regression.allow_insufficient_n: true` restores soft-pass (skip those evaluators) for small demo sets.
+- `experiment_metrics` — `{key: {min?, max?}}` gates experiment-level scalars logged via `PUT /experiments/{id}/metrics`; each bound becomes a check `experiment_metrics.<key>.min|max`. A key that was never logged is `unavailable` and fails the gate.
 - Missing run/metadata/score → check `unavailable` → overall failed
 
 Example (RAG portfolio uses pack metric names):
