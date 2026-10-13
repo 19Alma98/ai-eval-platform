@@ -23,6 +23,11 @@ _PARAM_REQUIRES = {
     "retrieval_context": "documents",
 }
 
+# These succeed when score <= threshold; aiobs thresholds pass at or above.
+_LOWER_IS_BETTER = frozenset(
+    {"BiasMetric", "ToxicityMetric", "HallucinationMetric", "PIILeakageMetric"}
+)
+
 
 def _required_params(metric: Any) -> set[str]:
     params = (
@@ -45,16 +50,23 @@ def from_deepeval(
     case_cls = import_or_explain("deepeval.test_case", "deepeval").LLMTestCase
     if not callable(getattr(metric, "a_measure", None)):
         raise TypeError(f"{type(metric).__name__} is not a DeepEval metric (no a_measure)")
+    if type(metric).__name__ in _LOWER_IS_BETTER:
+        raise ValueError(
+            f"{type(metric).__name__} is lower-is-better; aiobs thresholds pass at or above "
+            "the threshold, so wrap it in a custom @aiobs.metric instead"
+        )
     requires = tuple(
         sorted({_PARAM_REQUIRES[p] for p in _required_params(metric) if p in _PARAM_REQUIRES})
     )
-    measure_kwargs: dict[str, Any] = {}
-    if "_show_indicator" in inspect.signature(metric.a_measure).parameters:
-        measure_kwargs["_show_indicator"] = False
+    # Keep the spinner off and never post results to Confident AI.
+    measure_params = inspect.signature(metric.a_measure).parameters
+    measure_kwargs: dict[str, Any] = {
+        p: False for p in ("_show_indicator", "_log_metric_to_confident") if p in measure_params
+    }
 
     async def score(sample: Sample) -> Score:
         case = case_cls(
-            input=as_text(sample.input),
+            input="" if sample.input is None else as_text(sample.input),
             actual_output=None if sample.output is None else as_text(sample.output),
             expected_output=None if sample.expected is None else as_text(sample.expected),
             retrieval_context=document_texts(sample.documents) or None,

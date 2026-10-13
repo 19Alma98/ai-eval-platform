@@ -161,3 +161,41 @@ def test_real_deepeval_case_accepts_our_fields() -> None:
     test_case.LLMTestCase(
         input="q", actual_output="a", expected_output=None, retrieval_context=["d"]
     )
+
+
+class FakeLogging:
+    def __init__(self) -> None:
+        self.score: float | None = None
+        self.reason: str | None = None
+
+    async def a_measure(
+        self,
+        test_case: FakeTestCase,
+        _show_indicator: bool = True,
+        _log_metric_to_confident: bool = True,
+    ) -> float:
+        assert _show_indicator is False
+        assert _log_metric_to_confident is False
+        self.score = 1.0
+        self.reason = f"input={test_case.input!r}"
+        return 1.0
+
+
+def test_disables_indicator_and_confident_logging(fake_deepeval: None) -> None:
+    from aiobs.integrations.deepeval import from_deepeval
+
+    m = from_deepeval(FakeLogging())
+    assert evaluate_metric(m, Sample(input="q", output="a")) == Score(1.0, explanation="input='q'")
+    # missing input is sent as "" (LLMTestCase.input is a required str)
+    assert evaluate_metric(m, Sample(output="a")) == Score(1.0, explanation="input=''")
+
+
+def test_lower_is_better_metrics_rejected(fake_deepeval: None) -> None:
+    from aiobs.integrations.deepeval import from_deepeval
+
+    class ToxicityMetric:
+        async def a_measure(self, test_case: FakeTestCase) -> float:
+            return 0.0
+
+    with pytest.raises(ValueError, match="lower-is-better"):
+        from_deepeval(ToxicityMetric())
