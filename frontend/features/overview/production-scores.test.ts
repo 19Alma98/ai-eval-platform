@@ -17,3 +17,12 @@ test("productionScoreRows puts feedback first and formats rates", () => {
   ]);
   assert.deepEqual(productionScoreRows(undefined), []);
 });
+
+test("productionScoreRows labels non-human feedback with its source", () => {
+  const rows = productionScoreRows({
+    since: "2026-10-13T00:00:00Z",
+    until: "2026-10-14T00:00:00Z",
+    rows: [{ name: "user_feedback", source: "sdk", count: 2, mean: 0.5, pass_rate: null }],
+  });
+  assert.equal(rows[0].label, "User feedback (sdk)");
+});

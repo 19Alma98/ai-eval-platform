@@ -1,5 +1,7 @@
 "use client";
 
+import { Button } from "@/components/ui/button";
+import { formatErrorForUi } from "@/lib/api/client";
 import { productionScoreRows } from "./production-scores";
 import { useTraceScoreSummary } from "./use-trace-score-summary";
 
@@ -15,10 +17,25 @@ export function ProductionScoresCard({
   const query = useTraceScoreSummary(projectId, since, until);
   const rows = productionScoreRows(query.data);
   return (
-    <section className="flex flex-col gap-2 rounded-lg border border-border bg-surface p-4">
+    <section
+      aria-label="Production scores"
+      className="flex flex-col gap-2 rounded-lg border border-border bg-surface p-4">
       <h2 className="text-sm font-semibold text-foreground">Production scores</h2>
-      {query.isError ? (
-        <p className="text-sm text-muted-foreground">Could not load production scores.</p>
+      {query.isPending ? (
+        <div
+          className="h-16 animate-pulse rounded-md border border-border bg-surface-2"
+          role="status"
+          aria-label="Loading production scores"
+        />
+      ) : query.isError ? (
+        <div className="flex flex-col items-start gap-2">
+          <p className="text-sm text-muted-foreground">
+            Could not load production scores: {formatErrorForUi(query.error)}
+          </p>
+          <Button variant="outline" size="sm" onClick={() => void query.refetch()}>
+            Try again
+          </Button>
+        </div>
       ) : rows.length === 0 ? (
         <p className="text-sm text-muted-foreground">
           No scores in this range. Send them with <code>aiobs.log_score</code>,{" "}

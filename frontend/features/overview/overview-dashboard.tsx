@@ -74,12 +74,10 @@ export function OverviewDashboard() {
 
   const onRefresh = useCallback(async () => {
     if (!projectId) return;
-    await queryClient.refetchQueries({
-      queryKey: overviewQueryKey(projectId, since, until),
-    });
-    await queryClient.refetchQueries({
-      queryKey: traceScoreSummaryQueryKey(projectId, since, until),
-    });
+    await Promise.all([
+      queryClient.refetchQueries({ queryKey: overviewQueryKey(projectId, since, until) }),
+      queryClient.refetchQueries({ queryKey: traceScoreSummaryQueryKey(projectId, since, until) }),
+    ]);
   }, [projectId, queryClient, since, until]);
 
   const overview = overviewQuery.data;

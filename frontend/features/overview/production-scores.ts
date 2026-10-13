@@ -1,5 +1,5 @@
 import type { TraceScoreSummary } from "@/lib/api/types";
-import { formatScore } from "@/lib/format";
+import { formatPercent, formatScore } from "@/lib/format";
 
 export type ProductionScoreRow = {
   key: string;
@@ -9,8 +9,6 @@ export type ProductionScoreRow = {
   secondary: string | null;
 };
 
-const pct = (rate: number) => `${Math.round(rate * 100)}%`;
-
 /** Overview rows: user feedback first (as % positive), then metrics by name. */
 export function productionScoreRows(summary: TraceScoreSummary | undefined): ProductionScoreRow[] {
   const rows = summary?.rows ?? [];
@@ -19,9 +17,9 @@ export function productionScoreRows(summary: TraceScoreSummary | undefined): Pro
   return [
     ...feedback.map((r) => ({
       key: `${r.name}:${r.source}`,
-      label: "User feedback",
+      label: r.source === "human" ? "User feedback" : `User feedback (${r.source})`,
       count: r.count,
-      primary: r.mean == null ? "—" : `${pct(r.mean)} positive`,
+      primary: r.mean == null ? "—" : `${formatPercent(r.mean)} positive`,
       secondary: null,
     })),
     ...metrics.map((r) => ({
@@ -29,7 +27,7 @@ export function productionScoreRows(summary: TraceScoreSummary | undefined): Pro
       label: r.source === "sdk" ? r.name : `${r.name} (${r.source})`,
       count: r.count,
       primary: `${formatScore(r.mean)} mean`,
-      secondary: r.pass_rate == null ? null : `${pct(r.pass_rate)} pass`,
+      secondary: r.pass_rate == null ? null : `${formatPercent(r.pass_rate)} pass`,
     })),
   ];
 }
