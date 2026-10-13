@@ -101,6 +101,9 @@ GET /evaluation-runs/{run_id}
 PUT /experiments/{experiment_id}/outputs
 GET /experiments/{experiment_id}/outputs
 POST /experiments/{experiment_id}/client-results
+PUT /experiments/{experiment_id}/metrics
+GET /experiments/{experiment_id}/metrics
+PATCH /experiments/{experiment_id}/params
 ```
 
 `POST .../evaluate-pack` scores using a resolved **metrics set** (see below). Optional JSON body:
@@ -201,6 +204,32 @@ Errors:
 
 Client evaluators cannot be run by the server. Passing one to `POST .../evaluate` returns 400, and using its id in a metrics set entry is rejected.
 
+### Experiment params and metrics
+
+MLflow-style logging on an experiment.
+
+```http
+PUT /experiments/{experiment_id}/metrics
+```
+
+```json
+{"metrics": {"cost_usd": 1.42, "aiobs.latency_p95_ms": 840}}
+```
+
+Stores one final value per key (no steps); the last write wins. Keys use 1-200 letters, digits or `_ . - /`, and a request carries at most 1000 metrics. Keys starting with `aiobs.` are written by the SDK (`aiobs.error_rate`, `aiobs.latency_p50_ms`, `aiobs.latency_p95_ms`). Response `200`: `{"experiment_id", "metrics": {...}}` with **all** the experiment's metrics. `GET` returns the same shape.
+
+```http
+PATCH /experiments/{experiment_id}/params
+```
+
+```json
+{"params": {"temperature": 0.2}}
+```
+
+Shallow-merges into `model_config` and returns the experiment. Returns 409 once an evaluation has started (the experiment has left the `created` status or has any evaluation run; scored results must keep describing their config) and for experiments created from an app config (their params are the snapshot).
+
+Errors: 404 experiment not found; 400 empty map, bad key, more than 1000 metrics, or a value that is not a number (booleans included); 422 non-finite number; 409 params locked.
+
 ### Summary
 
 ```http
@@ -212,7 +241,7 @@ Optional query params:
 - `run_ids` — explicit runs (must belong to the experiment); default = latest run per evaluator
 - `evaluator_ids` — filter after run selection
 
-Response includes per-evaluator aggregates: run `status`, `mean_score`, `pass_rate`, item counts (`n_scored`, `n_error`, `n_skipped`).
+Response includes per-evaluator aggregates: run `status`, `mean_score`, `pass_rate`, item counts (`n_scored`, `n_error`, `n_skipped`), and `experiment_metrics` (`{key: value}`).
 
 ## Evaluators
 
@@ -292,6 +321,7 @@ Response includes:
 - status per metric: `regression` | `improved` | `unchanged` | `unavailable` | `config_mismatch` | `insufficient_n`
 - `regressions`, `improved`, `unchanged`, `config_mismatches`, `insufficient_n` subsets
 - `candidate_runs` / `baseline_runs`: per shared evaluator `{ evaluator_id, run_id, metadata }` (includes run-level `warnings` / `warning_detail` when the judge model was unsuitable)
+- `experiment_metrics`: one row per key on either side `{ key, candidate, baseline, delta }` — `delta = candidate − baseline` when both exist; no status, since the better direction is unknown
 
 Classification is higher-is-better. Aggregate `delta = candidate − baseline` is always populated when both means exist. Status uses a paired bootstrap 95% CI on per-item differences (same `dataset_item_id`, both sides applicable / non-`SKIPPED`):
 
@@ -322,7 +352,7 @@ Each item row includes `input`, `expected_output`, `baseline` / `candidate` side
 POST /projects/{project_id}/release-check
 ```
 
-Policy keys (except `regression`) are evaluator names. See `docs/02-domain-model.md` for rule semantics.
+Policy keys (except `regression`, `latency`, `cost`, `experiment_metrics`) are evaluator names. See `docs/02-domain-model.md` for rule semantics.
 
 Input:
 ```json
@@ -338,6 +368,8 @@ Input:
   }
 }
 ```
+
+`experiment_metrics` gates experiment-level scalars: `{"experiment_metrics": {"cost_usd": {"max": 2.0}, "accuracy": {"min": 0.8}}}`. Each bound becomes a check named `experiment_metrics.<key>.min|max`; a key the experiment never logged is `unavailable` and fails the gate. A rule needs `min` or `max` (422 otherwise); `min` must be <= `max` and keys follow the metric key rules (400 otherwise).
 
 `baseline_experiment_id` is required when `policy.regression` is set unless the experiment already has `baseline_experiment_id`.
 
