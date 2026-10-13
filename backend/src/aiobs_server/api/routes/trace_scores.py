@@ -53,10 +53,10 @@ async def log_trace_scores(
         TraceScoreInput(
             trace_id=s.trace_id,
             name=s.name,
-            value=None if s.value is None else float(s.value),
+            value=s.value,
             label=s.label,
             explanation=s.explanation,
-            threshold=None if s.threshold is None else float(s.threshold),
+            threshold=s.threshold,
             source=s.source,
             author=s.author,
             metadata=s.metadata,

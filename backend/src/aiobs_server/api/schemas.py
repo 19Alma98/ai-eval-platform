@@ -14,6 +14,7 @@ from pydantic import (
     model_validator,
 )
 
+from aiobs_server.domain.trace_score import MAX_TRACE_SCORE_BATCH
 from aiobs_server.regression.policy import META_KEYS
 
 _LLM_JUDGE_KINDS = frozenset(
@@ -87,7 +88,7 @@ class TraceScoreItemRequest(BaseModel):
 
 
 class LogTraceScoresRequest(BaseModel):
-    scores: list[TraceScoreItemRequest] = Field(min_length=1, max_length=500)
+    scores: list[TraceScoreItemRequest] = Field(min_length=1, max_length=MAX_TRACE_SCORE_BATCH)
 
 
 class LogTraceScoresResponse(BaseModel):

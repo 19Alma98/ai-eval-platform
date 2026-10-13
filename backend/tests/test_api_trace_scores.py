@@ -3,6 +3,7 @@ from __future__ import annotations
 import uuid
 from collections.abc import AsyncIterator
 from dataclasses import dataclass
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import pytest
@@ -14,6 +15,7 @@ from aiobs_server.api.deps import (
     get_trace_repository,
     get_trace_score_repository,
 )
+from aiobs_server.domain.trace_score import MAX_TRACE_SCORE_BATCH
 from aiobs_server.main import create_app
 from support.repositories import InMemoryTraceScoreRepository
 from test_api_evaluation import InMemoryTraceRepository
@@ -101,6 +103,8 @@ async def test_log_scores_computes_labels_and_upserts(ctx: Ctx) -> None:
         {"trace_id": TID, "name": "q", "source": "bot"},
         {"trace_id": TID, "name": "q", "label": "MAYBE"},
         {"trace_id": TID, "name": "q", "value": "1"},
+        {"trace_id": TID, "name": "q", "value": 10**400},
+        {"trace_id": TID, "name": "q", "value": 1.0, "threshold": 10**400},
     ],
 )
 async def test_invalid_item_rejects_whole_batch(ctx: Ctx, item: dict[str, Any]) -> None:
@@ -114,7 +118,9 @@ async def test_invalid_item_rejects_whole_batch(ctx: Ctx, item: dict[str, Any]) 
 async def test_batch_limits_nan_and_unknown_project(ctx: Ctx) -> None:
     project_id = await _project(ctx.client)
     assert (await _log(ctx.client, project_id, [])).status_code == 422
-    too_many = [{"trace_id": TID, "name": f"m{i}", "value": 1.0} for i in range(501)]
+    too_many = [
+        {"trace_id": TID, "name": f"m{i}", "value": 1.0} for i in range(MAX_TRACE_SCORE_BATCH + 1)
+    ]
     assert (await _log(ctx.client, project_id, too_many)).status_code == 422
     nan = await ctx.client.post(
         f"/api/v1/projects/{project_id}/trace-scores",
@@ -154,11 +160,44 @@ async def test_summary(ctx: Ctx) -> None:
     assert reversed_window.status_code == 400
 
 
+async def test_error_label_is_kept(ctx: Ctx) -> None:
+    project_id = await _project(ctx.client)
+    resp = await _log(
+        ctx.client,
+        project_id,
+        [{"trace_id": TID, "name": "q", "value": 0.1, "threshold": 0.5, "label": "error"}],
+    )
+    assert resp.status_code == 202, resp.text
+    rows = (await ctx.scores.list_by_trace_ids(uuid.UUID(project_id), [TID]))[TID]
+    assert [(r.name, r.label) for r in rows] == [("q", "ERROR")]
+
+
+async def test_duplicate_keys_in_batch_last_wins(ctx: Ctx) -> None:
+    project_id = await _project(ctx.client)
+    resp = await _log(
+        ctx.client,
+        project_id,
+        [
+            {"trace_id": TID, "name": "q", "value": 0.1},
+            {"trace_id": TID.upper(), "name": "q", "value": 0.9},
+            {"trace_id": TID, "name": "other", "value": 1.0},
+        ],
+    )
+    assert resp.json() == {"accepted": 2}
+    rows = (await ctx.scores.list_by_trace_ids(uuid.UUID(project_id), [TID]))[TID]
+    assert [(r.name, r.value) for r in rows] == [("other", 1.0), ("q", 0.9)]
+
+
 async def test_summary_accepts_naive_datetimes_as_utc(ctx: Ctx) -> None:
     project_id = await _project(ctx.client)
+    await _log(ctx.client, project_id, [{"trace_id": TID, "name": "q", "value": 1.0}])
+    now = datetime.now(UTC).replace(tzinfo=None)
     resp = await ctx.client.get(
         f"/api/v1/projects/{project_id}/trace-scores/summary",
-        params={"since": "2026-10-14T09:00:00", "until": "2026-10-14T10:00:00"},
+        params={
+            "since": (now - timedelta(hours=1)).isoformat(),
+            "until": (now + timedelta(hours=1)).isoformat(),
+        },
     )
     assert resp.status_code == 200, resp.text
-    assert resp.json()["rows"] == []
+    assert [(r["name"], r["count"]) for r in resp.json()["rows"]] == [("q", 1)]

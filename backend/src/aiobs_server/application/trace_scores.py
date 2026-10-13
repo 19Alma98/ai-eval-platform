@@ -23,10 +23,10 @@ from aiobs_server.evaluation.outcomes import item_verdict
 class TraceScoreInput:
     trace_id: str
     name: str
-    value: float | None = None
+    value: float | int | None = None
     label: str | None = None
     explanation: str | None = None
-    threshold: float | None = None
+    threshold: float | int | None = None
     source: str = "sdk"
     author: str | None = None
     metadata: dict[str, Any] = field(default_factory=dict)
