@@ -29,6 +29,7 @@ from aiobs.models import (
     MetricsPackResponse,
     MetricsSetResponse,
     ProjectResponse,
+    TraceScoresAccepted,
     UpsertExperimentOutputsResponse,
 )
 from aiobs.registry import AppConfigClient
@@ -561,6 +562,24 @@ class _LiveRunsResource:
         )
 
 
+class _TraceScoresResource:
+    def __init__(self, http: _HttpTransport) -> None:
+        self._http = http
+
+    def log(
+        self, project_id: str | None, scores: builtins.list[dict[str, Any]]
+    ) -> TraceScoresAccepted:
+        """Upsert scores on traces: ``{"trace_id", "name", "value"?, "label"?,
+        "explanation"?, "threshold"?, "source"?, "author"?, "metadata"?}`` (max 500)."""
+        project_id = resolve_project_id(project_id)
+        return self._http.request_model(
+            "POST",
+            f"/api/v1/projects/{project_id}/trace-scores",
+            body={"scores": scores},
+            response_model=TraceScoresAccepted,
+        )
+
+
 class Client:
     """Platform control-plane client (projects, datasets, experiments, …)."""
 
@@ -580,6 +599,7 @@ class Client:
         self.metrics_packs = _MetricsPacksResource(self._http)
         self.metrics_sets = _MetricsSetsResource(self._http)
         self.live_runs = _LiveRunsResource(self._http)
+        self.trace_scores = _TraceScoresResource(self._http)
         self.app_configs = AppConfigClient.from_transport(self._http)
 
     def health(self) -> HealthResponse:
