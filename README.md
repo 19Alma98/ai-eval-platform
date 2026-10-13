@@ -39,9 +39,9 @@ curl http://localhost:8000/health
 
 ### Portfolio demo (People Ops assistant + Ollama)
 
-Dataset-first RAG loop: gold test set → metrics pack → SDK-bound runs (`bind_evaluation`, `set_retrieval_documents`) → `evaluate-pack` → compare → release gate. Compares two local models (`OLLAMA_MODEL1` vs `OLLAMA_MODEL2`) on the same test set and pipeline.
+Dataset-first RAG loop: gold test set → metrics pack → `aiobs.evaluate` experiment per model (traces bound per item, outputs uploaded, pack scored) → compare → release gate. Compares two local models (`OLLAMA_MODEL1` vs `OLLAMA_MODEL2`) on the same test set and pipeline.
 
-1. `docker compose up --build` (API needs `CONTENT_CAPTURE_ENABLED=true`; Compose sets this)
+1. `docker compose up --build`
 2. Pull two chat models, e.g. `ollama pull gemma4:e2b` and `ollama pull tinyllama`
 3. Sync SDK: `cd sdk && uv sync --extra openai --extra dev && cd ..`
 4. Sync server/CLI: `cd backend && uv sync && cd ..`

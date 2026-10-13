@@ -77,9 +77,62 @@ Runnable example: [`examples/sdk_hello/`](../examples/sdk_hello/README.md) (Olla
 | `aiobs.bind_evaluation(...)` | Bind current span to `experiment_id` + `dataset_item_id` |
 | `aiobs.set_retrieval_documents([...])` | Attach retrieval docs for RAG eval context |
 | `aiobs.flush()` | Drain the batch span processor before exit |
+| `aiobs.evaluate(...)` | Run a task over a dataset, score, compare with a baseline → `ExperimentResult` |
+| `aiobs.start_experiment(...)` | Context manager for a manual item loop (`exp.items()`, `exp.run(item)`) |
 | `aiobs.Client(...)` | Control-plane REST client (projects, datasets, experiments, …) |
 
 App code should use these helpers instead of importing OpenTelemetry directly.
+
+## Experiments (`evaluate` / `start_experiment`)
+
+One call runs a task over a dataset, writes the outputs, scores them and compares against a baseline:
+
+```python
+import aiobs
+
+aiobs.set_project("demo")
+aiobs.init()  # optional: adds trace context (tokens, cost, tool calls) to each item
+
+
+def answer_question(item):            # item.input, item.expected_output, item.metadata
+    docs = retrieve(item.input)
+    aiobs.set_retrieval_documents(docs)  # feeds hit_at_k / recall_at_k / groundedness
+    return generate(item.input, docs)
+
+
+def short(item, output) -> bool:       # local metric: float | bool | None
+    return len(output) < 400
+
+
+result = aiobs.evaluate(
+    dataset="gold-v1",                 # name (latest version), id, list of dicts, DataFrame
+    task=answer_question,
+    metrics=["groundedness", "hit_at_k", short],
+    name="gemma-prompt-v2",
+    params={"model": "gemma4"},        # stored as the experiment's model_config
+    baseline="prod",                   # experiment name (latest) or id
+    max_concurrency=8,
+)
+print(result.summary(), result.url)
+```
+
+Manual loop, same plumbing (binding, flush, output upload, scoring on exit):
+
+```python
+with aiobs.start_experiment("v2", dataset="gold-v1", metrics=["hit_at_k"]) as exp:
+    for item in exp.items():
+        with exp.run(item) as run:   # root span bound to (experiment, item)
+            run.log(my_app(item.input))  # or aiobs.set_output(...) anywhere inside
+print(exp.result.summary())
+```
+
+How it behaves:
+
+- **Metrics**: a string is a server metric kind (`hit_at_k`, `recall_at_k`, `mrr`, `must_contain`, `groundedness`, `correctness`, `answer_relevance`, `context_precision`, `context_recall`, `latency`). A dict sets threshold/config, for example `{"kind": "hit_at_k", "config": {"k": 3}}`. The SDK finds or creates a metrics set that holds exactly those kinds, using the project's defaults for anything you leave out. `metrics=None` uses the project default set. A callable `fn(item, output)` runs locally. Its scores show up in `result.metrics` and in each output's `metadata.client_metrics`, but the server does not aggregate them or compare them with a baseline.
+- **Datasets**: a list of dicts or a DataFrame needs an `input` column. `expected_output`, `context` and `metadata` map to item fields, and any other column goes into `metadata` (so `expected_doc_ids` and `must_contain` work). The dataset name is a hash of the rows, so re-running on the same rows reuses the same dataset.
+- **Outputs** are uploaded with `PUT /experiments/{id}/outputs`, so this works without `aiobs.init()`. With tracing on, `finish()` waits for the OTLP traces to be bound (up to 30s) and merges their context in. Your explicit output always wins.
+- **Errors**: when a task raises, `evaluate` records it on the item (`result.errors`, `metadata.error`) and moves on. Pass `raise_on_error=True` to stop instead. When the `with` block raises, nothing is scored.
+- **Link**: `result.url` points to the experiment page on the tracking URI. Set `AIOBS_UI_URL` when the UI is served elsewhere (for example `http://localhost:3000` in the docker dev setup).
 
 ## Control plane (`Client`)
 
@@ -126,7 +179,7 @@ with Client("http://localhost:8000") as client:
 
 Control-plane methods return **Pydantic** models (see `aiobs.models`); use attributes or `.model_dump()` for a dict. Prefer `with Client(...)` / `client.close()` so the shared `httpx2` connection pool is released.
 
-Namespaces: `projects`, `datasets` (`create`, `create_with_items`, `add_item`, `get`, `list`, `import_items`), `experiments` (`create`, `get`, `list_outputs`, `evaluate_pack`, `summary`, `compare`), `metrics_packs` (`ensure`, `get`), `live_runs` (`submit`, `list`, `get`, `promote`, `rescore`), `app_configs` (same methods as `AppConfigClient`). Non-2xx responses raise `AiobsAPIError` (with parsed FastAPI `detail` when present).
+Namespaces: `projects`, `datasets` (`create`, `create_with_items`, `add_item`, `get`, `list`, `import_items`), `experiments` (`create`, `get`, `list_outputs`, `upsert_outputs`, `evaluate_pack`, `summary`, `compare`), `metrics_packs` (`ensure`, `get`), `metrics_sets` (`list`, `get`, `create`), `live_runs` (`submit`, `list`, `get`, `promote`, `rescore`), `app_configs` (same methods as `AppConfigClient`). Non-2xx responses raise `AiobsAPIError` (with parsed FastAPI `detail` when present).
 
 ### Live runs → TestSet loop
 

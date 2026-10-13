@@ -25,7 +25,9 @@ from aiobs.models import (
     ListLiveInteractionsResponse,
     LiveInteractionResponse,
     MetricsPackResponse,
+    MetricsSetResponse,
     ProjectResponse,
+    UpsertExperimentOutputsResponse,
 )
 from aiobs.registry import AppConfigClient
 
@@ -249,6 +251,17 @@ class _ExperimentsResource:
             response_model=ExperimentItemOutputResponse,
         )
 
+    def upsert_outputs(
+        self, experiment_id: str, items: builtins.list[dict[str, Any]]
+    ) -> UpsertExperimentOutputsResponse:
+        """Write per-item outputs; keys left out of an item keep their stored value."""
+        return self._http.request_model(
+            "PUT",
+            f"/api/v1/experiments/{experiment_id}/outputs",
+            body={"items": items},
+            response_model=UpsertExperimentOutputsResponse,
+        )
+
     def evaluate_pack(
         self,
         experiment_id: str,
@@ -370,6 +383,45 @@ class _MetricsPacksResource:
         )
 
 
+class _MetricsSetsResource:
+    def __init__(self, http: _HttpTransport) -> None:
+        self._http = http
+
+    def list(self, project_id: str | None = None) -> builtins.list[MetricsSetResponse]:
+        project_id = resolve_project_id(project_id)
+        return self._http.request_model_list(
+            "GET",
+            f"/api/v1/projects/{project_id}/metrics-sets",
+            response_model=MetricsSetResponse,
+        )
+
+    def get(self, metrics_set_id: str) -> MetricsSetResponse:
+        return self._http.request_model(
+            "GET",
+            f"/api/v1/metrics-sets/{metrics_set_id}",
+            response_model=MetricsSetResponse,
+        )
+
+    def create(
+        self,
+        project_id: str | None = None,
+        *,
+        name: str,
+        entries: builtins.list[dict[str, Any]],
+        description: str | None = None,
+    ) -> MetricsSetResponse:
+        project_id = resolve_project_id(project_id)
+        body: dict[str, Any] = {"name": name, "entries": entries}
+        if description is not None:
+            body["description"] = description
+        return self._http.request_model(
+            "POST",
+            f"/api/v1/projects/{project_id}/metrics-sets",
+            body=body,
+            response_model=MetricsSetResponse,
+        )
+
+
 class _LiveRunsResource:
     def __init__(self, http: _HttpTransport) -> None:
         self._http = http
@@ -477,6 +529,7 @@ class Client:
         self.datasets = _DatasetsResource(self._http)
         self.experiments = _ExperimentsResource(self._http)
         self.metrics_packs = _MetricsPacksResource(self._http)
+        self.metrics_sets = _MetricsSetsResource(self._http)
         self.live_runs = _LiveRunsResource(self._http)
         self.app_configs = AppConfigClient.from_transport(self._http)
 

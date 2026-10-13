@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from aiobs._run_context import record_documents
 from aiobs._trace import set_attributes
 
 
@@ -25,6 +26,7 @@ def set_retrieval_documents(documents: list[dict[str, object]]) -> None:
     for index, doc in enumerate(documents):
         if not _document_has_id(doc):
             raise ValueError(f"retrieval document at index {index} must include a non-empty id")
+    record_documents([dict(doc) for doc in documents])
     set_attributes(
         {
             "retrieval.document_count": len(documents),

@@ -9,6 +9,7 @@ from opentelemetry import trace as otel_trace
 from opentelemetry.trace import Span, Status, StatusCode
 
 from aiobs._config import MAX_CAPTURE_BYTES
+from aiobs._run_context import record_output
 
 _TRACER_NAME = "aiobs"
 _TRUNCATE_MARKER = "…[truncated]"
@@ -80,6 +81,7 @@ def set_input(value: object) -> None:
 
 def set_output(value: object) -> None:
     """Set OpenInference ``output.value`` on the current span."""
+    record_output(value)
     set_attribute("output.value", value)
 
 

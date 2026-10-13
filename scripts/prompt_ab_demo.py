@@ -8,7 +8,6 @@ import json
 import os
 import subprocess
 import sys
-import tempfile
 import time
 from pathlib import Path
 from typing import Any
@@ -20,10 +19,8 @@ POLICY_PATH = APP_DIR / "aiobs.prompt-ab.yaml"
 BACKEND_DIR = ROOT / "backend"
 
 sys.path.insert(0, str(SDK_DIR / "src"))
-sys.path.insert(0, str(APP_DIR))
 
 from aiobs import Client  # noqa: E402
-from kb import gold_rows_for_api  # noqa: E402
 
 CONFIG_FAMILY = "people-ops-rag"
 
@@ -48,30 +45,6 @@ def ensure_project(client: Client, slug: str, name: str) -> dict[str, Any]:
     project = client.projects.create(name=name, slug=slug)
     print(f"created project {slug} ({project['id']})")
     return project
-
-
-def create_rag_dataset(client: Client, project_id: str, *, name: str) -> tuple[str, dict[str, str]]:
-    dataset = client.datasets.create(
-        project_id,
-        name=name,
-        description="People Ops RAG gold (prompt A/B demo)",
-        task_type="rag_qa",
-    )
-    dataset_id = dataset["id"]
-    item_map: dict[str, str] = {}
-    for row in gold_rows_for_api():
-        item = client.datasets.add_item(
-            dataset_id,
-            input=row["question"],
-            expected_output=row["expected_output"],
-            metadata={
-                "expected_doc_ids": row["expected_doc_ids"],
-                "must_contain": row["must_contain"],
-            },
-        )
-        item_map[row["question"]] = item["id"]
-        print(f"  item {item['id'][:8]}… {row['question'][:48]}…")
-    return dataset_id, item_map
 
 
 def ensure_metrics_pack(client: Client, project_id: str) -> None:
@@ -103,118 +76,65 @@ def create_app_config(
     return created
 
 
-def create_experiment(
-    client: Client,
-    project_id: str,
-    *,
-    name: str,
-    dataset_id: str,
-    app_config_id: str,
-    baseline_experiment_id: str | None = None,
-) -> str:
-    experiment = client.experiments.create(
-        project_id,
-        name=name,
-        dataset_id=dataset_id,
-        app_config_id=app_config_id,
-        version=name,
-        baseline_experiment_id=baseline_experiment_id,
-    )
-    return experiment["id"]
-
-
-def run_assistant(
+def run_experiment(
     model: str,
     *,
+    name: str,
+    app_config_id: str,
+    base: str,
     project_slug: str,
-    experiment_id: str,
-    system_prompt: str,
-    item_map: dict[str, str],
-    env_extra: dict[str, str],
-) -> None:
-    with tempfile.NamedTemporaryFile(
-        mode="w", suffix=".json", delete=False, encoding="utf-8"
-    ) as handle:
-        json.dump(item_map, handle, ensure_ascii=True)
-        map_path = handle.name
-    try:
-        cmd = [
-            "uv",
-            "run",
-            "--extra",
-            "openai",
-            "--with",
-            "openai",
-            "python",
-            str(APP_DIR / "main.py"),
-            "--model",
-            model,
-            "--all",
-            "--json",
-            "--experiment-id",
-            experiment_id,
-            "--item-map",
-            map_path,
-        ]
-        env = os.environ.copy()
-        env.update(env_extra)
-        env["AIOBS_PROJECT_SLUG"] = project_slug
-        env["AIOBS_EXPERIMENT_ID"] = experiment_id
-        env["AIOBS_SYSTEM_PROMPT"] = system_prompt
-        env["OLLAMA_MODEL"] = model
-        print(
-            f"running hr_it_assistant model={model} experiment={experiment_id[:8]}… "
-            f"(system_prompt={len(system_prompt)} chars)"
-        )
-        proc = subprocess.run(
-            cmd,
-            cwd=str(SDK_DIR),
-            env=env,
-            check=True,
-            capture_output=True,
-            text=True,
-        )
-        if proc.stderr.strip():
-            print(proc.stderr.strip(), file=sys.stderr)
-        lines = [ln for ln in proc.stdout.splitlines() if ln.strip()]
-        if len(lines) < len(item_map):
-            raise RuntimeError(
-                f"expected {len(item_map)} results, got {len(lines)} (model={model})"
-            )
-    finally:
-        Path(map_path).unlink(missing_ok=True)
-    time.sleep(1.0)
+    baseline: str | None = None,
+) -> dict[str, Any]:
+    """Run hr_it_assistant ``--eval`` bound to an App Config.
 
-
-def wait_for_outputs(
-    client: Client, experiment_id: str, expected: int, *, attempts: int = 30
-) -> list[dict[str, Any]]:
-    last: list[dict[str, Any]] = []
-    for _ in range(attempts):
-        last = client.experiments.list_outputs(experiment_id)
-        if len(last) >= expected:
-            return last
-        time.sleep(0.5)
-    raise RuntimeError(
-        f"experiment {experiment_id} has {len(last)}/{expected} bound outputs after ingest"
+    The experiment snapshots the App Config; the assistant reads ``prompt.system``
+    from that snapshot, so the prompt under test is the versioned one.
+    """
+    cmd = [
+        "uv",
+        "run",
+        "--extra",
+        "openai",
+        "--with",
+        "openai",
+        "python",
+        str(APP_DIR / "main.py"),
+        "--eval",
+        "--json",
+        "--model",
+        model,
+        "--name",
+        name,
+        "--app-config-id",
+        app_config_id,
+    ]
+    if baseline:
+        cmd += ["--baseline", baseline]
+    env = os.environ.copy()
+    env.pop("AIOBS_SYSTEM_PROMPT", None)  # would override the App Config prompt
+    env["AIOBS_TRACKING_URI"] = base
+    env["AIOBS_PROJECT_SLUG"] = project_slug
+    env["OLLAMA_HOST"] = os.getenv("OLLAMA_HOST", "http://localhost:11434")
+    print(f"running hr_it_assistant --eval model={model} name={name}")
+    proc = subprocess.run(
+        cmd,
+        cwd=str(SDK_DIR),
+        env=env,
+        check=True,
+        capture_output=True,
+        text=True,
     )
-
-
-def evaluate_pack(client: Client, experiment_id: str) -> None:
-    evaluated = client.experiments.evaluate_pack(experiment_id)
-    run = evaluated["runs"][0] if evaluated.get("runs") else None
-    print(
-        f"evaluate-pack: status={evaluated['experiment']['status']} "
-        f"runs={len(evaluated.get('runs') or [])}"
-    )
-    if run:
-        print(f"  first run status={run.get('status')} results={len(run.get('results') or [])}")
-    summary = client.experiments.summary(experiment_id)
-    for row in summary.get("evaluators") or []:
-        print(
-            f"  {row.get('evaluator_name')}: mean={row.get('mean_score')} "
-            f"pass_rate={row.get('pass_rate')}"
-        )
+    if proc.stderr.strip():
+        print(proc.stderr.strip(), file=sys.stderr)
+    lines = [ln for ln in proc.stdout.splitlines() if ln.strip()]
+    if not lines:
+        raise RuntimeError(f"hr_it_assistant --eval printed no result ({name})")
+    result: dict[str, Any] = json.loads(lines[-1])
+    print(f"  {name}: status={result['status']} errors={result['errors']}")
+    for metric, mean in (result.get("metrics") or {}).items():
+        print(f"    {metric}: mean={mean}")
+    print(f"  {result['url']}")
+    return result
 
 
 def write_policy(
@@ -284,17 +204,6 @@ def main(argv: list[str] | None = None) -> int:
     print(f"MODEL (fixed)={model}")
     print("varying: system prompt via App Config (baseline vs candidate)")
 
-    env_extra = {
-        "AIOBS_OTLP_ENDPOINT": f"{base}/v1/traces",
-        "OLLAMA_HOST": os.getenv("OLLAMA_HOST", "http://localhost:11434"),
-    }
-
-    print(f"creating rag_qa test set people-ops-prompt-ab-{stamp} …")
-    dataset_id, item_map = create_rag_dataset(
-        client, project_id, name=f"people-ops-prompt-ab-{stamp}"
-    )
-    expected_items = len(item_map)
-
     baseline_cfg = create_app_config(
         client,
         project_id,
@@ -310,42 +219,23 @@ def main(argv: list[str] | None = None) -> int:
         description=f"candidate prompt {stamp}",
     )
 
-    baseline_id = create_experiment(
-        client,
-        project_id,
+    baseline = run_experiment(
+        model,
         name=f"prompt-baseline-{stamp}",
-        dataset_id=dataset_id,
         app_config_id=baseline_cfg["id"],
-    )
-    run_assistant(
-        model,
+        base=base,
         project_slug=args.project_slug,
-        experiment_id=baseline_id,
-        system_prompt=BASELINE_SYSTEM_PROMPT,
-        item_map=item_map,
-        env_extra=env_extra,
     )
-    wait_for_outputs(client, baseline_id, expected_items)
-    evaluate_pack(client, baseline_id)
-
-    candidate_id = create_experiment(
-        client,
-        project_id,
+    candidate = run_experiment(
+        model,
         name=f"prompt-candidate-{stamp}",
-        dataset_id=dataset_id,
         app_config_id=candidate_cfg["id"],
-        baseline_experiment_id=baseline_id,
-    )
-    run_assistant(
-        model,
+        base=base,
         project_slug=args.project_slug,
-        experiment_id=candidate_id,
-        system_prompt=CANDIDATE_SYSTEM_PROMPT,
-        item_map=item_map,
-        env_extra=env_extra,
+        baseline=baseline["experiment_id"],
     )
-    wait_for_outputs(client, candidate_id, expected_items)
-    evaluate_pack(client, candidate_id)
+    baseline_id = baseline["experiment_id"]
+    candidate_id = candidate["experiment_id"]
 
     compare = client.experiments.compare(candidate_id, baseline_id)
     print("compare:")

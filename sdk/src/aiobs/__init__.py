@@ -21,6 +21,13 @@ from aiobs._trace import (
     trace_async,
 )
 from aiobs.client import Client
+from aiobs.experiment import (
+    Experiment,
+    ExperimentResult,
+    ItemRun,
+    evaluate,
+    start_experiment,
+)
 from aiobs.registry import AppConfigClient
 
 __all__ = [
@@ -28,8 +35,12 @@ __all__ = [
     "AiobsAPIError",
     "AppConfigClient",
     "Client",
+    "Experiment",
+    "ExperimentResult",
+    "ItemRun",
     "bind_evaluation",
     "current_trace_id",
+    "evaluate",
     "flush",
     "get_client",
     "get_project",
@@ -43,6 +54,7 @@ __all__ = [
     "set_project",
     "set_retrieval_documents",
     "set_tracking_uri",
+    "start_experiment",
     "trace",
     "trace_async",
 ]

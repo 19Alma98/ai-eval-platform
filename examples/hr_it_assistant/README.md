@@ -1,15 +1,14 @@
 # Acme People Ops Assistant (portfolio example)
 
-Keyword-retrieval RAG over a fictional HR/IT policy knowledge base. Calls local **Ollama** via the OpenAI-compatible API, exports OpenInference spans through the **aiobs SDK** (`bind_evaluation`, `set_retrieval_documents`), and pairs with `scripts/portfolio_demo.py` to build a `rag_qa` test set, score with the project metrics pack, and compare two models on the same exam.
+Keyword-retrieval RAG over a fictional HR/IT policy knowledge base. Calls local **Ollama** via the OpenAI-compatible API, exports OpenInference spans through the **aiobs SDK** (`set_retrieval_documents`), and runs experiments with `aiobs.start_experiment` (`--eval`). `scripts/portfolio_demo.py` builds on it to score two models with the project metrics pack and compare them on the same exam.
 
 Canonical gold lives in `knowledge.json` (full `expected_answer` + `must_contain` per question). `eval_import.csv` is a derived CSV of the same rows for API/UI import.
 
 ## Prerequisites
 
-1. Platform running from the repo root: `docker compose up --build`.
-2. **`CONTENT_CAPTURE_ENABLED=true`** on the API (the Compose `api` service sets this). Required so bound OTLP traces populate run item outputs for scoring.
-3. [Ollama](https://ollama.com/) running locally.
-4. Pull **two** chat models (baseline vs candidate for the portfolio script), for example:
+1. Platform running from the repo root: `docker compose up --build` (or `aiobs ui`).
+2. [Ollama](https://ollama.com/) running locally.
+3. Pull **two** chat models (baseline vs candidate for the portfolio script), for example:
 
 ```bash
 ollama pull gemma4:e2b
@@ -44,6 +43,18 @@ uv run --extra openai --with openai python ../examples/hr_it_assistant/main.py \
   --model gemma4:e2b "How many PTO days do full-time employees get per year?"
 ```
 
+## Experiment (`--eval`)
+
+Runs every gold question from `knowledge.json` (or `--dataset <name|id>`) as one experiment. The SDK creates or reuses the dataset, binds each trace to its item, uploads the answers with their retrieved documents, and scores them with the project metrics pack:
+
+```bash
+cd sdk
+uv run --extra openai --with openai python ../examples/hr_it_assistant/main.py \
+  --eval --model gemma4:e2b --name gemma-v2 --baseline prod --concurrency 4
+```
+
+It prints the metric table and the link to the run in the UI. Use `--json` to get one result line instead. With `--app-config-id`, the system prompt comes from that App Config's snapshot.
+
 ## Full portfolio loop (model A/B)
 
 From the repo root (after Compose + Ollama + both models):
@@ -53,7 +64,7 @@ cd backend && uv sync && cd ..
 python scripts/portfolio_demo.py
 ```
 
-This creates a gold `rag_qa` test set (`expected_doc_ids` from `knowledge.json`), ensures the RAG metrics pack, runs all gold questions twice with SDK run binding (`OLLAMA_MODEL1` baseline run, then `OLLAMA_MODEL2` candidate), calls `evaluate-pack` on each run, writes `examples/hr_it_assistant/aiobs.yaml` (pack metric names), and runs `aiobs check`.
+This ensures the RAG metrics pack and runs `main.py --eval` twice on the same gold `rag_qa` test set (`expected_doc_ids` from `knowledge.json`): first `OLLAMA_MODEL1` as the baseline, then `OLLAMA_MODEL2` as the candidate with `--baseline`. It then prints the comparison, writes `examples/hr_it_assistant/aiobs.yaml` (pack metric names), and runs `aiobs check`.
 
 ## Prompt A/B loop (same model, different system prompt)
 
@@ -68,10 +79,9 @@ python scripts/prompt_ab_demo.py
 What it does:
 
 1. Creates two App Config versions of `people-ops-rag` (identical `model` / `retrieval`, different `prompt.system`).
-2. Creates two experiments on the same gold dataset, each with `app_config_id`.
-3. Runs `hr_it_assistant` twice (prompt from `AIOBS_SYSTEM_PROMPT` / experiment snapshot).
-4. `evaluate-pack` on both, then `experiments.compare`.
-5. Writes `examples/hr_it_assistant/aiobs.prompt-ab.yaml` and runs `aiobs check` (unless `--skip-check`).
+2. Runs `main.py --eval --app-config-id …` once per version on the same gold dataset. The system prompt comes from the experiment's App Config snapshot, and the candidate is compared against the baseline.
+3. Prints `experiments.compare`.
+4. Writes `examples/hr_it_assistant/aiobs.prompt-ab.yaml` and runs `aiobs check` (unless `--skip-check`).
 
 In the UI, open each run’s **App config snapshot** to see the frozen prompts. Design: [`docs/superpowers/specs/2026-10-07-prompt-ab-demo-design.md`](../../docs/superpowers/specs/2026-10-07-prompt-ab-demo-design.md).
 

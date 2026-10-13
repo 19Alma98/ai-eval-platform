@@ -6,11 +6,11 @@ import argparse
 import json
 import logging
 import os
+import sys
 import time
-from pathlib import Path
 from typing import Any
 
-from kb import expected_for_question, iter_gold, load_knowledge, retrieve
+from kb import expected_for_question, gold_rows_for_api, iter_gold, load_knowledge, retrieve
 from openai import OpenAI
 
 import aiobs
@@ -29,33 +29,21 @@ def question_from_item_input(raw: Any) -> str:
     raise SystemExit(f"cannot extract question from dataset item input: {raw!r}")
 
 
-def load_dataset_jobs(dataset_id: str) -> tuple[str, list[tuple[str, str, Any]]]:
-    detail = aiobs.get_client().datasets.get(dataset_id)
-    items = detail.get("items") or []
-    if not items:
-        raise SystemExit(f"dataset {dataset_id} has no items")
-    jobs: list[tuple[str, str, Any]] = []
-    for item in items:
-        jobs.append(
-            (
-                question_from_item_input(item.get("input")),
-                str(item["id"]),
-                item.get("expected_output"),
-            )
-        )
-    return str(detail["project_id"]), jobs
+def gold_dataset_rows() -> list[dict[str, Any]]:
+    """Gold rows from knowledge.json, shaped for ``aiobs.evaluate(dataset=...)``.
 
-
-def create_experiment(project_id: str, dataset_id: str, *, model: str) -> str:
-    stamp = time.strftime("%Y%m%d-%H%M%S")
-    experiment = aiobs.get_client().experiments.create(
-        project_id,
-        name=f"hr-it-assistant-{stamp}",
-        dataset_id=dataset_id,
-        model_config={"model": model},
-        version=stamp,
-    )
-    return str(experiment["id"])
+    Extra keys land in item metadata (``expected_doc_ids`` for retrieval metrics,
+    ``must_contain`` for the phrase check). Same rows → same dataset on every run.
+    """
+    return [
+        {
+            "input": row["question"],
+            "expected_output": row["expected_output"],
+            "expected_doc_ids": row["expected_doc_ids"],
+            "must_contain": row["must_contain"],
+        }
+        for row in gold_rows_for_api()
+    ]
 
 
 DEFAULT_SYSTEM_PROMPT = (
@@ -68,10 +56,9 @@ DEFAULT_SYSTEM_PROMPT = (
 SYSTEM_PROMPT = DEFAULT_SYSTEM_PROMPT
 
 
-def system_prompt_from_experiment(experiment_id: str) -> str | None:
-    detail = aiobs.get_client().experiments.get(experiment_id)
-    mc = detail.get("model_config") or {}
-    prompt = mc.get("prompt") if isinstance(mc, dict) else None
+def system_prompt_from_params(params: dict[str, Any]) -> str | None:
+    """``prompt.system`` from experiment params (an App Config snapshot has one)."""
+    prompt = params.get("prompt")
     if not isinstance(prompt, dict):
         return None
     system = prompt.get("system")
@@ -80,14 +67,13 @@ def system_prompt_from_experiment(experiment_id: str) -> str | None:
     return None
 
 
-def resolve_system_prompt(*, experiment_id: str | None) -> str:
+def resolve_system_prompt(params: dict[str, Any] | None = None) -> str:
     env_prompt = os.getenv("AIOBS_SYSTEM_PROMPT")
     if isinstance(env_prompt, str) and env_prompt.strip():
         return env_prompt.strip()
-    if experiment_id:
-        from_exp = system_prompt_from_experiment(experiment_id)
-        if from_exp:
-            return from_exp
+    from_params = system_prompt_from_params(params or {})
+    if from_params:
+        return from_params
     return DEFAULT_SYSTEM_PROMPT
 
 
@@ -140,19 +126,7 @@ def answer_question(
     client: OpenAI,
     model: str,
     system_prompt: str,
-    experiment_id: str | None = None,
-    dataset_item_id: str | None = None,
 ) -> dict[str, Any]:
-    if experiment_id and dataset_item_id:
-        aiobs.bind_evaluation(
-            experiment_id=experiment_id, dataset_item_id=dataset_item_id
-        )
-    elif experiment_id:
-        logger.warning(
-            "experiment_id=%s set but dataset_item_id missing; "
-            "trace will not be bound to an evaluation item",
-            experiment_id,
-        )
     aiobs.set_input(question)
     aiobs.set_attribute("llm.model", model)
     aiobs.set_attribute("llm.system_prompt_chars", len(system_prompt))
@@ -192,43 +166,35 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--all",
         action="store_true",
-        help="Ask every gold question (used by portfolio_demo)",
+        help="Ask every gold question (traces only, no experiment)",
     )
     parser.add_argument("--json", action="store_true", help="Print JSON result lines")
     parser.add_argument(
-        "--experiment-id",
-        default=os.getenv("AIOBS_EXPERIMENT_ID"),
-        help="Experiment id to bind traces to (SDK bind_evaluation)",
+        "--eval",
+        action="store_true",
+        help="Run an experiment over --dataset (default: gold rows) and score it",
     )
     parser.add_argument(
-        "--item-map",
-        type=Path,
-        default=None,
-        help="JSON map question text -> dataset_item_id for --all runs",
+        "--dataset",
+        default=os.getenv("AIOBS_DATASET"),
+        help="Dataset name or id for --eval (default: gold rows from knowledge.json)",
+    )
+    parser.add_argument("--name", help="Experiment name for --eval")
+    parser.add_argument("--baseline", help="Baseline experiment name or id for --eval")
+    parser.add_argument(
+        "--app-config-id",
+        help="App Config bound to the --eval experiment (its prompt.system is used)",
     )
     parser.add_argument(
-        "--dataset-id",
-        default=os.getenv("AIOBS_DATASET_ID"),
-        help="Load questions from this dataset and bind each trace to its item",
+        "--concurrency", type=int, default=1, help="Parallel questions for --eval"
     )
     args = parser.parse_args(argv)
+    if not (args.eval or args.all or args.question):
+        parser.error("provide a question, --all, or --eval")
 
-    item_map: dict[str, str] = {}
-    if args.item_map is not None:
-        item_map = json.loads(args.item_map.read_text(encoding="utf-8"))
-        if not isinstance(item_map, dict):
-            raise SystemExit("--item-map must be a JSON object")
-
-    dataset_jobs: list[tuple[str, str, Any]] | None = None
-    dataset_project_id: str | None = None
-    if args.dataset_id:
-        dataset_project_id, dataset_jobs = load_dataset_jobs(args.dataset_id)
-
-    project_id = os.getenv("AIOBS_PROJECT_ID") or dataset_project_id
-    if not project_id:
-        project_id = aiobs.set_project(
-            os.getenv("AIOBS_PROJECT_SLUG", "hr-it-assistant")
-        ).id
+    project_id = os.getenv("AIOBS_PROJECT_ID") or aiobs.set_project(
+        os.getenv("AIOBS_PROJECT_SLUG", "hr-it-assistant")
+    ).id
     aiobs.init(
         project_id=project_id,
         service_name=os.getenv("AIOBS_SERVICE_NAME", "hr-it-assistant"),
@@ -243,42 +209,20 @@ def main(argv: list[str] | None = None) -> int:
         timeout=float(os.getenv("OLLAMA_TIMEOUT_SECONDS", "300")),
     )
 
-    experiment_id = args.experiment_id
-    jobs: list[tuple[str, str | None, Any]]
-    if dataset_jobs is not None:
-        if not experiment_id:
-            experiment_id = create_experiment(
-                project_id, args.dataset_id, model=args.model
-            )
-            print(f"created experiment {experiment_id} for dataset {args.dataset_id}")
-        jobs = [(q, item_id, expected) for q, item_id, expected in dataset_jobs]
-    elif args.all:
-        jobs = [(q, item_map.get(q), None) for q, _, _ in iter_gold(docs)]
-    elif args.question:
-        jobs = [(args.question, item_map.get(args.question) if item_map else None, None)]
-    else:
-        parser.error("provide a question, --all, or --dataset-id")
-
-    system_prompt = resolve_system_prompt(experiment_id=experiment_id)
-    logger.info("using system prompt (%d chars)", len(system_prompt))
-
     try:
-        for question, item_id, expected_output in jobs:
+        if args.eval:
+            return run_eval(args, docs=docs, client=client)
+        questions = [q for q, _, _ in iter_gold(docs)] if args.all else [args.question]
+        system_prompt = resolve_system_prompt()
+        for question in questions:
             result = answer_question(
                 question,
                 docs=docs,
                 client=client,
                 model=args.model,
                 system_prompt=system_prompt,
-                experiment_id=experiment_id,
-                dataset_item_id=item_id,
             )
-            aiobs.flush()
-            result["expected_output"] = (
-                expected_output
-                if expected_output is not None
-                else expected_for_question(docs, question)
-            )
+            result["expected_output"] = expected_for_question(docs, question)
             if args.json:
                 print(json.dumps(result, ensure_ascii=True))
             else:
@@ -288,6 +232,56 @@ def main(argv: list[str] | None = None) -> int:
                 print()
     finally:
         aiobs.flush()
+    return 0
+
+
+def run_eval(
+    args: argparse.Namespace, *, docs: list[dict[str, Any]], client: OpenAI
+) -> int:
+    with aiobs.start_experiment(
+        args.name or f"hr-it-assistant-{time.strftime('%Y%m%d-%H%M%S')}",
+        dataset=args.dataset or gold_dataset_rows(),
+        params={"model": args.model},
+        baseline=args.baseline,
+        app_config_id=args.app_config_id,
+    ) as exp:
+        # With an App Config, params are its snapshot: the prompt under test.
+        system_prompt = resolve_system_prompt(exp.params)
+        logger.info("using system prompt (%d chars)", len(system_prompt))
+        print(f"experiment {exp.name}: {exp.url}", file=sys.stderr)
+
+        def task(item: Any) -> str:
+            result = answer_question(
+                question_from_item_input(item.input),
+                docs=docs,
+                client=client,
+                model=args.model,
+                system_prompt=system_prompt,
+            )
+            return str(result["answer"])
+
+        exp.run_task(task, max_concurrency=args.concurrency)
+
+    result = exp.result
+    assert result is not None
+    if args.json:
+        print(
+            json.dumps(
+                {
+                    "experiment_id": result.id,
+                    "status": result.status,
+                    "url": result.url,
+                    "metrics": result.metrics,
+                    "errors": len(result.errors),
+                },
+                ensure_ascii=True,
+            )
+        )
+    else:
+        print(result.summary())
+        print(result.url)
+    for run in result.errors:
+        print(f"item {run.item.id} failed: {run.error}", file=sys.stderr)
     return 0
 
 

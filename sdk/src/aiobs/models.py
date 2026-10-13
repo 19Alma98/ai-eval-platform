@@ -196,6 +196,31 @@ class MetricsPackResponse(_ApiModel):
     updated_at: datetime | str | None = None
 
 
+class MetricsSetEntryResponse(_ApiModel):
+    id: str | None = None
+    kind: str
+    enabled: bool | None = None
+    threshold: float | None = None
+    config: dict[str, Any] = Field(default_factory=dict)
+    evaluator_id: str | None = None
+    is_default: bool | None = None
+
+
+class MetricsSetResponse(_ApiModel):
+    id: str
+    project_id: str | None = None
+    name: str
+    version: int = 1
+    description: str | None = None
+    is_project_default: bool = False
+    entries: list[MetricsSetEntryResponse] = Field(default_factory=list)
+
+
+class UpsertExperimentOutputsResponse(_ApiModel):
+    upserted: int
+    items: list[ExperimentItemOutputResponse] = Field(default_factory=list)
+
+
 class AppConfigPromptBody(_ApiModel):
     system: str | None = None
     user: str | None = None
