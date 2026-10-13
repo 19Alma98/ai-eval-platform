@@ -7,21 +7,28 @@ request path) and their results are queued as trace scores.
 Nothing here raises into, or blocks, the traced call: when the bounded job queue is
 full the call is not scored (rate-limited warning), and a failing metric or worker
 error is logged (rate-limited) instead of being lost.
+
+Metrics run isolated from tracing: OTel instrumentation is suppressed and
+``@aiobs.trace`` functions they call run untraced, so a metric (e.g. an LLM judge
+built on traced helpers) never creates spans, live interactions or more metrics.
 """
 
 from __future__ import annotations
 
 import atexit
 import functools
+import inspect
 import logging
+import numbers
 import os
 import queue
 import threading
 import time
 from collections.abc import Callable, Sequence
-from contextvars import Token
+from contextvars import ContextVar, Token
 from typing import Any
 
+from opentelemetry import context as otel_context
 from opentelemetry.trace import Span
 
 from aiobs import _config, _live, _scores, feedback
@@ -32,8 +39,23 @@ logger = logging.getLogger("aiobs")
 
 MAX_WORKERS = 2
 MAX_QUEUE = 1000
-EXIT_DRAIN_TIMEOUT_S = 5.0
+METRIC_TIMEOUT_S = 60.0  # per async metric call; a sync metric cannot be interrupted
 _WARN_EVERY_S = 60.0
+
+# The key OTel instrumentors check (opentelemetry.instrumentation.utils); the plain
+# string is the legacy key some still read.
+_SUPPRESS_KEY: str = getattr(
+    otel_context, "_SUPPRESS_INSTRUMENTATION_KEY", "suppress_instrumentation"
+)
+_SUPPRESS_KEY_PLAIN = "suppress_instrumentation"
+
+# True while a production metric runs: ``@aiobs.trace`` then just calls the function.
+_IN_METRIC: ContextVar[bool] = ContextVar("aiobs_in_metric", default=False)
+
+
+def in_metric() -> bool:
+    return _IN_METRIC.get()
+
 
 _Job = Callable[[], None]
 
@@ -160,18 +182,40 @@ def normalize_metrics(
     return tuple(out)
 
 
-def parse_sample_rate(value: float) -> float:
-    try:
-        return _live._parse_rate(value)
-    except (TypeError, ValueError) as exc:
-        raise ValueError(f"metrics_sample_rate must be within [0, 1]: {exc}") from None
+def parse_sample_rate(value: object) -> float:
+    message = f"metrics_sample_rate must be a number within [0, 1], got {value!r}"
+    if isinstance(value, bool) or not isinstance(value, numbers.Real):
+        raise ValueError(message)
+    rate = float(value)
+    if not 0.0 <= rate <= 1.0:  # also rejects NaN
+        raise ValueError(message)
+    return rate
 
 
-def start(metrics: tuple[LocalMetric, ...]) -> Token[ProductionCapture | None] | None:
+def check_function(fn: Callable[..., Any], *, is_async: bool) -> None:
+    """With metrics, the decorator must see the call's real result: reject the wrong kind."""
+    if is_async:
+        if not inspect.iscoroutinefunction(fn):
+            raise TypeError(
+                "@aiobs.trace_async(metrics=...) needs a coroutine function (async def); "
+                f"got {fn!r}: use @aiobs.trace for regular functions"
+            )
+    elif (
+        inspect.iscoroutinefunction(fn)
+        or inspect.isgeneratorfunction(fn)
+        or inspect.isasyncgenfunction(fn)
+    ):
+        raise TypeError(
+            "@aiobs.trace(metrics=...) needs a regular function returning its result; "
+            f"got {fn!r}: use @aiobs.trace_async for coroutine functions"
+        )
+
+
+def start(metrics: tuple[LocalMetric, ...], span: Span) -> Token[ProductionCapture | None] | None:
     """Open a capture for this call; None when there is nothing to score here."""
-    if not metrics or ACTIVE_RUN.get() is not None:
-        return None  # experiments score their own metrics
-    return PRODUCTION_CAPTURE.set(ProductionCapture())
+    if not metrics or ACTIVE_RUN.get() is not None or _IN_METRIC.get():
+        return None  # experiments score their own metrics; metrics are never scored
+    return PRODUCTION_CAPTURE.set(ProductionCapture(span=span))
 
 
 def stop(token: Token[ProductionCapture | None] | None) -> ProductionCapture | None:
@@ -239,6 +283,19 @@ def _submit(metrics: tuple[LocalMetric, ...], sample: Sample, project_id: str) -
 
 
 def _run(metrics: tuple[LocalMetric, ...], sample: Sample, project_id: str) -> None:
+    """Run a job isolated from tracing (see the module docstring)."""
+    ctx = otel_context.set_value(_SUPPRESS_KEY, True)
+    ctx = otel_context.set_value(_SUPPRESS_KEY_PLAIN, True, ctx)
+    otel_token = otel_context.attach(ctx)
+    metric_token = _IN_METRIC.set(True)
+    try:
+        _run_metrics(metrics, sample, project_id)
+    finally:
+        _IN_METRIC.reset(metric_token)
+        otel_context.detach(otel_token)
+
+
+def _run_metrics(metrics: tuple[LocalMetric, ...], sample: Sample, project_id: str) -> None:
     trace_id = sample.trace_id or ""
     for spec in metrics:
         missing = missing_requirement(sample, spec.requires)
@@ -246,7 +303,17 @@ def _run(metrics: tuple[LocalMetric, ...], sample: Sample, project_id: str) -> N
             logger.debug("aiobs: metric %s skipped in production: missing %s", spec.name, missing)
             continue
         try:
-            result = evaluate_metric(spec, sample)
+            result = evaluate_metric(spec, sample, timeout=METRIC_TIMEOUT_S)
+        except TimeoutError as exc:
+            _warn(
+                f"metric:{spec.name}",
+                "aiobs: production metric %r timed out on trace %s (async limit %ss): %s",
+                spec.name,
+                trace_id,
+                METRIC_TIMEOUT_S,
+                feedback._describe(exc),
+            )
+            continue
         except Exception as exc:  # noqa: BLE001 — one broken metric must not stop the others
             _warn(
                 f"metric:{spec.name}",
@@ -272,11 +339,10 @@ def dropped() -> int:
 
 
 def _at_exit() -> None:
-    """Finish pending metrics, then send their scores, within one bounded budget."""
+    """Finish pending metrics, then send their scores, within the shared exit budget."""
     try:
-        deadline = time.monotonic() + EXIT_DRAIN_TIMEOUT_S
-        drain(EXIT_DRAIN_TIMEOUT_S)
-        _scores.flush(max(0.0, deadline - time.monotonic()))
+        drain(_scores.exit_remaining())
+        _scores.flush(_scores.exit_remaining())
     except Exception:  # noqa: BLE001 — never raise during interpreter shutdown
         logger.debug("aiobs: production metrics drain at exit failed", exc_info=True)
 

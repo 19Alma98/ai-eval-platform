@@ -81,7 +81,7 @@ def set_attributes(attrs: dict[str, object] | None = None, **kwargs: object) -> 
 
 def set_input(value: object) -> None:
     """Set OpenInference ``input.value`` on the current span (and production metrics' input)."""
-    record_input(value)
+    record_input(value, _current_span())
     set_attribute("input.value", value)
 
 
@@ -142,22 +142,32 @@ def trace[**P, R](
     ``metrics=[...]`` scores each sampled production call after it returns (off the
     request path) and stores the results as trace scores; ``metrics_sample_rate`` is
     the fraction of traces scored, deterministic per trace. Skipped inside experiments.
+
+    Metrics run on a pool of ``_production.MAX_WORKERS`` (2) threads, which caps
+    throughput: for slow metrics such as LLM judges, lower ``metrics_sample_rate``.
+    An async metric is cancelled after ``_production.METRIC_TIMEOUT_S`` (60 s) and
+    counted as failed; a sync metric cannot be interrupted. Calls that a metric makes
+    to ``@aiobs.trace`` functions are not traced (and not scored).
     """
     production = _production.normalize_metrics(metrics)
     rate = _production.parse_sample_rate(metrics_sample_rate)
 
     def decorator(fn: Callable[P, R]) -> Callable[P, R]:
+        if production:
+            _production.check_function(fn, is_async=False)
         span_name = name if isinstance(name, str) and name else _default_name(fn)
 
         @functools.wraps(fn)
         def wrapper(*args: P.args, **kwargs: P.kwargs) -> R:
+            if _production.in_metric():  # metrics never create traces
+                return fn(*args, **kwargs)
             tracer = otel_trace.get_tracer(_TRACER_NAME)
             with tracer.start_as_current_span(span_name) as span:
                 span.set_attribute("openinference.span.kind", kind)
                 if capture_input:
                     span.set_attribute("input.value", _serialize_args(args, kwargs))
                 live_token = _live.mark_if_live(span, live)
-                capture_token = _production.start(production)
+                capture_token = _production.start(production, span)
                 try:
                     result = fn(*args, **kwargs)
                 except Exception as exc:
@@ -214,17 +224,21 @@ def trace_async[**P, R](
     rate = _production.parse_sample_rate(metrics_sample_rate)
 
     def decorator(fn: Callable[P, R]) -> Callable[P, R]:
+        if production:
+            _production.check_function(fn, is_async=True)
         span_name = name if isinstance(name, str) and name else _default_name(fn)
 
         @functools.wraps(fn)
         async def wrapper(*args: P.args, **kwargs: P.kwargs) -> R:
+            if _production.in_metric():  # metrics never create traces
+                return cast(R, await fn(*args, **kwargs))  # type: ignore[misc]
             tracer = otel_trace.get_tracer(_TRACER_NAME)
             with tracer.start_as_current_span(span_name) as span:
                 span.set_attribute("openinference.span.kind", kind)
                 if capture_input:
                     span.set_attribute("input.value", _serialize_args(args, kwargs))
                 live_token = _live.mark_if_live(span, live)
-                capture_token = _production.start(production)
+                capture_token = _production.start(production, span)
                 try:
                     result = cast(R, await fn(*args, **kwargs))  # type: ignore[misc]
                 except Exception as exc:

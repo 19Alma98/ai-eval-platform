@@ -229,6 +229,227 @@ def test_invalid_metric_configuration_fails_at_decoration() -> None:
         )
 
 
+@pytest.mark.parametrize("bad", [True, False, "0.5", None])
+def test_sample_rate_must_be_a_real_number(bad: Any) -> None:
+    with pytest.raises(ValueError, match=r"metrics_sample_rate must be a number within \[0, 1\]"):
+        aiobs.trace(metrics=[aiobs.metric(lambda s: 1.0, name="m")], metrics_sample_rate=bad)
+
+
+def test_sync_trace_with_metrics_rejects_coroutine_and_generator_functions() -> None:
+    decorate = aiobs.trace(metrics=[aiobs.metric(lambda s: 1.0, name="m")])
+
+    async def coro() -> str:
+        return "x"
+
+    def gen() -> Iterator[str]:
+        yield "x"
+
+    async def agen() -> Any:
+        yield "x"
+
+    for fn in (coro, gen, agen):
+        with pytest.raises(TypeError, match="trace_async|regular function"):
+            decorate(fn)  # type: ignore[arg-type]
+
+
+def test_trace_async_with_metrics_rejects_non_coroutine_functions() -> None:
+    decorate = aiobs.trace_async(metrics=[aiobs.metric(lambda s: 1.0, name="m")])
+
+    def plain() -> str:
+        return "x"
+
+    async def agen() -> Any:
+        yield "x"
+
+    for fn in (plain, agen):
+        with pytest.raises(TypeError, match="coroutine function"):
+            decorate(fn)
+
+
+def test_without_metrics_decorators_accept_any_callable() -> None:
+    def gen() -> Iterator[str]:
+        yield "x"
+
+    aiobs.trace(name="g")(gen)  # unchanged behaviour when metrics are not used
+
+
+# --- isolation from traced code -----------------------------------------------------
+
+
+def test_metric_calling_traced_code_creates_no_spans_or_scores(sent: Recorder) -> None:
+    from opentelemetry import context as otel_context
+
+    inner_calls: list[str] = []
+    suppressed: list[Any] = []
+
+    @aiobs.metric
+    def inner_metric(s: aiobs.Sample) -> float:
+        inner_calls.append("inner")
+        return 1.0
+
+    @aiobs.trace(name="judge_helper", metrics=[inner_metric], live=True)
+    def judge_helper(text: str) -> str:
+        return text.upper()
+
+    @aiobs.trace_async(name="async_judge_helper", metrics=[inner_metric], live=True)
+    async def async_judge_helper(text: str) -> str:
+        return text.lower()
+
+    @aiobs.metric
+    def judge(s: aiobs.Sample) -> float:
+        suppressed.append(otel_context.get_value(_production._SUPPRESS_KEY))
+        assert judge_helper(str(s.output)) == "OK"
+        return 1.0
+
+    @aiobs.metric
+    async def async_judge(s: aiobs.Sample) -> float:
+        suppressed.append(otel_context.get_value(_production._SUPPRESS_KEY))
+        assert await async_judge_helper(str(s.output)) == "ok"
+        return 0.5
+
+    @aiobs.trace(name="outer", metrics=[judge, async_judge])
+    def outer(q: str) -> str:
+        return "ok"
+
+    outer("q")
+    assert aiobs.flush()
+    assert [s.name for s in _exporter.get_finished_spans()] == ["outer"]
+    assert sorted(s["name"] for s in sent.scores) == ["async_judge", "judge"]
+    assert inner_calls == []
+    assert suppressed == [True, True]
+
+
+def test_nested_set_input_does_not_overwrite_outer_input(sent: Recorder) -> None:
+    seen: list[aiobs.Sample] = []
+
+    @aiobs.metric
+    def record(s: aiobs.Sample) -> float:
+        seen.append(s)
+        return 1.0
+
+    @aiobs.trace(name="rewrite")
+    def rewrite(q: str) -> str:
+        aiobs.set_input("rewritten")
+        aiobs.set_retrieval_documents([{"id": "d1"}])
+        return q
+
+    @aiobs.trace(name="outer_input", metrics=[record])
+    def outer_input(q: str) -> str:
+        return rewrite(q)
+
+    outer_input("original")
+    assert aiobs.flush()
+    (sample,) = seen
+    assert sample.input == "original"
+    assert sample.documents == [{"id": "d1"}]  # documents still bubble up
+
+
+def test_async_metric_runs_on_worker(sent: Recorder) -> None:
+    threads: list[str] = []
+
+    @aiobs.metric
+    async def async_len(s: aiobs.Sample) -> float:
+        await asyncio.sleep(0)
+        threads.append(threading.current_thread().name)
+        return float(len(s.output))
+
+    @aiobs.trace(name="with_async_metric", metrics=[async_len])
+    def with_async_metric(q: str) -> str:
+        return "abc"
+
+    with_async_metric("q")
+    assert aiobs.flush()
+    assert [s["value"] for s in sent.scores] == [3.0]
+    assert threads and threads[0] != threading.current_thread().name
+
+
+def test_hung_async_metric_times_out_as_failure(
+    sent: Recorder, caplog: pytest.LogCaptureFixture, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(_production, "METRIC_TIMEOUT_S", 0.05)
+    never = threading.Event()
+
+    @aiobs.metric
+    async def hung(s: aiobs.Sample) -> float:
+        await asyncio.get_running_loop().run_in_executor(None, never.wait, 5)
+        return 1.0
+
+    @aiobs.metric
+    def after(s: aiobs.Sample) -> float:
+        return 1.0
+
+    @aiobs.trace(name="hangs", metrics=[hung, after])
+    def hangs(q: str) -> str:
+        return q
+
+    caplog.set_level(logging.DEBUG, logger="aiobs")
+    hangs("a")
+    hangs("b")
+    assert aiobs.flush()
+    never.set()
+    assert len(_warnings(caplog, "production metric 'hung' timed out")) == 1
+    assert [s["name"] for s in sent.scores] == ["after", "after"]
+
+
+def test_fractional_sample_rate_is_deterministic_per_trace(
+    sent: Recorder, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from opentelemetry.sdk.trace.id_generator import IdGenerator
+
+    half = 1 << 63  # rate 0.5 samples low-64-bit trace ids below 2**63
+    ids = iter([(1 << 64) | 1, (1 << 64) | half, (2 << 64) | 2, (2 << 64) | (half + 5)])
+
+    class Ids(IdGenerator):
+        def generate_span_id(self) -> int:
+            return 1
+
+        def generate_trace_id(self) -> int:
+            return next(ids)
+
+    tracer = trace.get_tracer("aiobs")  # the provider caches it: the one @aiobs.trace uses
+    monkeypatch.setattr(tracer, "id_generator", Ids())
+
+    @aiobs.trace(
+        name="sampled", metrics=[aiobs.metric(lambda s: 1.0, name="m")], metrics_sample_rate=0.5
+    )
+    def sampled(q: str) -> str:
+        return q
+
+    for i in range(4):
+        sampled(str(i))
+    assert aiobs.flush()
+    assert sorted(s["trace_id"] for s in sent.scores) == [
+        format((1 << 64) | 1, "032x"),
+        format((2 << 64) | 2, "032x"),
+    ]
+
+
+def test_exit_handlers_share_one_deadline(monkeypatch: pytest.MonkeyPatch) -> None:
+    clock = _Clock()
+    calls: list[tuple[str, float]] = []
+
+    def drain(timeout: float) -> bool:
+        calls.append(("metrics", timeout))
+        clock.now += 2.0
+        return True
+
+    def scores_flush(timeout: float) -> bool:
+        calls.append(("scores", timeout))
+        clock.now += 1.0
+        return True
+
+    monkeypatch.setattr(_scores, "time", clock)
+    monkeypatch.setattr(_production, "time", clock)
+    monkeypatch.setattr(_scores, "_EXIT_DEADLINE", None)
+    monkeypatch.setattr(_production, "drain", drain)
+    monkeypatch.setattr(_scores, "flush", scores_flush)
+
+    _production._at_exit()
+    _scores._at_exit()
+    total = _scores.EXIT_FLUSH_TIMEOUT_S
+    assert calls == [("metrics", total), ("scores", total - 2.0), ("scores", total - 3.0)]
+
+
 # --- never raise / never block the caller -------------------------------------------
 
 

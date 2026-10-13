@@ -210,12 +210,16 @@ def _takes_item_and_output(fn: Callable[..., Any]) -> bool:
     return len(positional) >= 2
 
 
-def evaluate_metric(metric: LocalMetric, sample: Sample, *, item: Any = None) -> Score:
+def evaluate_metric(
+    metric: LocalMetric, sample: Sample, *, item: Any = None, timeout: float | None = None
+) -> Score:
     """Run one metric on one sample.
 
     SKIPPED when a required field is missing. The metric's own exceptions (and an
     unusable return value) propagate: callers record them as ERROR. ``item`` is what
     an ``fn(item, output)`` metric receives; without one it gets the ``Sample``.
+    ``timeout`` bounds an async metric (cancelled, ``TimeoutError``); a sync metric
+    cannot be interrupted.
     """
     missing = missing_requirement(sample, metric.requires)
     if missing is not None:
@@ -225,5 +229,5 @@ def evaluate_metric(metric: LocalMetric, sample: Sample, *, item: Any = None) ->
     else:
         raw = metric.fn(sample)
     if inspect.isawaitable(raw):
-        raw = run_sync(raw)
+        raw = run_sync(raw, timeout)
     return coerce_score(raw)

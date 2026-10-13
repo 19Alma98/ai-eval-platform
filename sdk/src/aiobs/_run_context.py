@@ -18,8 +18,14 @@ ACTIVE_RUN: ContextVar[_Recorder | None] = ContextVar("aiobs_active_run", defaul
 
 @dataclass
 class ProductionCapture:
-    """What a ``@aiobs.trace(metrics=...)`` call recorded, for its production metrics."""
+    """What a ``@aiobs.trace(metrics=...)`` call recorded, for its production metrics.
 
+    ``span`` is the call's own span: only ``set_input`` on that span sets ``input``
+    (a nested call rewriting its own input must not change it); documents from nested
+    retrieval stages do bubble up.
+    """
+
+    span: object = None
     input: object = None
     has_input: bool = False
     documents: list[dict[str, Any]] | None = None
@@ -45,8 +51,9 @@ def record_documents(documents: list[dict[str, Any]]) -> None:
         capture.documents = documents  # last retrieval stage wins, as in experiments
 
 
-def record_input(value: object) -> None:
+def record_input(value: object, span: object) -> None:
+    """Record ``value`` as the production input when ``span`` owns the open capture."""
     capture = PRODUCTION_CAPTURE.get()
-    if capture is not None:
+    if capture is not None and capture.span is span:
         capture.input = value
         capture.has_input = True

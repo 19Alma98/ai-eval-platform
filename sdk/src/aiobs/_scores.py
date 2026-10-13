@@ -189,11 +189,21 @@ class ScoreSender:
 _SENDER: ScoreSender | None = None
 _LOCK = threading.Lock()
 _ATEXIT_REGISTERED = False
+_EXIT_DEADLINE: float | None = None
+
+
+def exit_remaining() -> float:
+    """Seconds left of the one ``EXIT_FLUSH_TIMEOUT_S`` budget all exit handlers share."""
+    global _EXIT_DEADLINE
+    now = time.monotonic()
+    if _EXIT_DEADLINE is None:
+        _EXIT_DEADLINE = now + EXIT_FLUSH_TIMEOUT_S
+    return max(0.0, _EXIT_DEADLINE - now)
 
 
 def _at_exit() -> None:
     try:
-        flush(EXIT_FLUSH_TIMEOUT_S)
+        flush(exit_remaining())
     except Exception:  # noqa: BLE001 — never raise during interpreter shutdown
         logger.debug("aiobs: score flush at exit failed", exc_info=True)
 
@@ -229,9 +239,10 @@ def _reset_for_tests(post: Post | None = None, **kwargs: Any) -> ScoreSender | N
 def _after_fork_in_child() -> None:
     """The child inherits the parent's lock/condition (possibly held) and no thread:
     drop the singleton so the child lazily builds a fresh sender."""
-    global _SENDER, _LOCK
+    global _SENDER, _LOCK, _EXIT_DEADLINE
     _SENDER = None
     _LOCK = threading.Lock()
+    _EXIT_DEADLINE = None
 
 
 if hasattr(os, "register_at_fork"):  # not on Windows
