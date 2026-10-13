@@ -88,6 +88,10 @@ async def _require_evaluator_in_project(
         raise MetricsSetValidationError(f"Unknown evaluator_id: {evaluator_id}")
     if evaluator.project_id != project_id:
         raise MetricsSetValidationError(f"evaluator_id does not belong to project: {evaluator_id}")
+    if evaluator.is_client:
+        raise MetricsSetValidationError(
+            f"evaluator_id holds client-submitted scores and cannot be scored: {evaluator_id}"
+        )
 
 
 async def _evaluators_for_kind(

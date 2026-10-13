@@ -334,6 +334,25 @@ class EvaluatePackRequest(BaseModel):
     save_as_default: bool = False
 
 
+class ClientResultItemRequest(BaseModel):
+    dataset_item_id: uuid.UUID
+    score: float | None = None
+    label: str | None = Field(default=None, max_length=32)
+    explanation: str | None = Field(default=None, max_length=4000)
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+
+class ClientMetricRequest(BaseModel):
+    name: str = Field(min_length=1, max_length=200)
+    threshold: float | None = None
+    config: dict[str, Any] = Field(default_factory=dict)
+    results: list[ClientResultItemRequest] = Field(min_length=1)
+
+
+class SubmitClientResultsRequest(BaseModel):
+    metrics: list[ClientMetricRequest] = Field(min_length=1)
+
+
 class EvaluationResultResponse(BaseModel):
     id: uuid.UUID
     run_id: uuid.UUID

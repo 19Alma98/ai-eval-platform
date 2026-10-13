@@ -56,6 +56,18 @@ def effective_entity(
 MISSING_OUTPUT_EXPLANATION = "no output recorded for this item in experiment"
 
 
+def run_status_from_results(results: list[EvaluationResultRecord]) -> str:
+    """Run status from item labels: any ERROR > all SKIPPED > any FAIL > PASSED."""
+    labels = {(r.label or "").strip().upper() for r in results}
+    if "ERROR" in labels:
+        return "ERROR"
+    if results and labels <= {"SKIPPED"}:
+        return "SKIPPED"
+    if "FAIL" in labels:
+        return "FAILED"
+    return "PASSED"
+
+
 def _apply_verdict(
     record: EvaluationResultRecord, pass_threshold: float | None
 ) -> EvaluationResultRecord:
@@ -122,15 +134,7 @@ class EvaluationRunner:
             for r in await asyncio.gather(*[_one(item) for item in items])
         ]
         finished = datetime.now(UTC)
-        labels = {(r.label or "").strip().upper() for r in results}
-        if "ERROR" in labels:
-            status = "ERROR"
-        elif results and labels <= {"SKIPPED"}:
-            status = "SKIPPED"
-        elif "FAIL" in labels:
-            status = "FAILED"
-        else:
-            status = "PASSED"
+        status = run_status_from_results(results)
 
         meta = {
             **run.metadata,

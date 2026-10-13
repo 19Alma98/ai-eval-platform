@@ -33,6 +33,15 @@ class EmptyEvaluatorListError(Exception):
         super().__init__("evaluator_ids must not be empty")
 
 
+class ClientEvaluatorNotRunnableError(Exception):
+    def __init__(self, evaluator_id: uuid.UUID) -> None:
+        self.evaluator_id = evaluator_id
+        super().__init__(
+            f"Evaluator {evaluator_id} holds client-submitted scores and cannot be run "
+            "by the server; submit them via /client-results"
+        )
+
+
 class ExperimentAlreadyRunningError(Exception):
     def __init__(self, experiment_id: uuid.UUID) -> None:
         self.experiment_id = experiment_id
@@ -282,6 +291,8 @@ class StartEvaluateExperiment:
         for entity in evaluator_entities:
             if entity.project_id != experiment.project_id:
                 raise EvaluatorNotFoundError(entity.id)
+            if entity.is_client:
+                raise ClientEvaluatorNotRunnableError(entity.id)
 
         experiment = await self._experiments.update(experiment.with_status("running"))
         return StartEvaluateResult(

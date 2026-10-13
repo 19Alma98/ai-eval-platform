@@ -12,6 +12,7 @@ from aiobs_server.application.app_configs import (
     ListAppConfigVersions,
     SetAppConfigAlias,
 )
+from aiobs_server.application.client_results import SubmitClientResults
 from aiobs_server.application.compare import CompareExperiments, SummarizeExperiment
 from aiobs_server.application.compare_items import CompareExperimentItems
 from aiobs_server.application.datasets import (
@@ -537,6 +538,18 @@ def get_compare_experiment_items(
     fingerprints: CurrentScoringFingerprint = Depends(get_current_scoring_fingerprint),
 ) -> CompareExperimentItems:
     return CompareExperimentItems(experiments, datasets, runs, outputs, fingerprints)
+
+
+def get_submit_client_results(
+    experiments: SqlAlchemyExperimentRepository = Depends(get_experiment_repository),
+    datasets: SqlAlchemyDatasetRepository = Depends(get_dataset_repository),
+    outputs: SqlAlchemyExperimentItemOutputRepository = Depends(
+        get_experiment_item_output_repository
+    ),
+    evaluators: SqlAlchemyEvaluatorRepository = Depends(get_evaluator_repository),
+    runs: SqlAlchemyEvaluationRunRepository = Depends(get_evaluation_run_repository),
+) -> SubmitClientResults:
+    return SubmitClientResults(experiments, datasets, outputs, evaluators, runs)
 
 
 def get_upsert_experiment_outputs(

@@ -100,6 +100,7 @@ GET /experiments/{experiment_id}/summary
 GET /evaluation-runs/{run_id}
 PUT /experiments/{experiment_id}/outputs
 GET /experiments/{experiment_id}/outputs
+POST /experiments/{experiment_id}/client-results
 ```
 
 `POST .../evaluate-pack` scores using a resolved **metrics set** (see below). Optional JSON body:
@@ -161,6 +162,43 @@ GET /experiments/{experiment_id}/outputs
 ```
 
 Returns all stored output rows for the experiment. Errors: 404 experiment not found; 400 dataset item not in experiment dataset (PUT).
+
+### Client-submitted scores
+
+Stores scores that the client computed itself, for example an SDK-side Python metric:
+
+```http
+POST /experiments/{experiment_id}/client-results
+```
+
+```json
+{
+  "metrics": [
+    {
+      "name": "my_metric",
+      "threshold": 0.5,
+      "config": {"version": 2},
+      "results": [
+        {"dataset_item_id": "uuid", "score": 0.8, "label": null, "explanation": null, "metadata": {}}
+      ]
+    }
+  ]
+}
+```
+
+Each metric becomes a regular evaluation run on a project evaluator of type `custom` and kind `client`, named after the metric. The evaluator is created on first use and reused after that, so summary, compare, compare items, release check and the UI treat client metrics like server metrics. Response `201`: the created runs, with their results (`EvaluationRun[]`).
+
+- **Labels**: the same PASS/FAIL rule as server scoring (`item_verdict`). A label (`PASS`/`FAIL`/`ERROR`/`SKIPPED`) and a score below `threshold` both count. With no threshold, a score of 0 fails and any other score passes. A result with neither a score nor a label is `SKIPPED`. The run status is derived from the labels the same way the server runner derives it.
+- **Freshness**: the run stores the experiment's current inputs fingerprint. Submit after `PUT .../outputs`: when outputs or the test set change later, the run goes stale like a server run. Each submission adds a new run, and the latest fresh run per metric wins.
+- **Comparability**: the run's `config_hash` is computed from `config`. Change `config` (e.g. a `version`) when the metric code changes, and compare will report `config_mismatch` instead of a delta.
+- Items left out of `results` are simply not scored.
+
+Errors:
+- 404: experiment not found.
+- 400: the request is rejected as a whole, so nothing is written. Causes: an empty or duplicate metric name, a duplicate `dataset_item_id` within a metric, an item outside the experiment's dataset, an unknown label, or a non-finite score or threshold.
+- 409: the name is already used by a server evaluator in the project.
+
+Client evaluators cannot be run by the server. Passing one to `POST .../evaluate` returns 400, and using its id in a metrics set entry is rejected.
 
 ### Summary
 

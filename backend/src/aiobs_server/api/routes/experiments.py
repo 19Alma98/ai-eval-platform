@@ -17,6 +17,7 @@ from aiobs_server.api.deps import (
     get_list_experiments,
     get_score_experiment_from_pack,
     get_start_evaluate_experiment,
+    get_submit_client_results,
     get_summarize_experiment,
     get_upsert_experiment_outputs,
 )
@@ -39,11 +40,20 @@ from aiobs_server.api.schemas import (
     ItemComparisonRowResponse,
     ItemSideResponse,
     MetricComparisonResponse,
+    SubmitClientResultsRequest,
     UpsertExperimentOutputItemRequest,
     UpsertExperimentOutputsRequest,
     UpsertExperimentOutputsResponse,
 )
 from aiobs_server.application.app_configs import AppConfigNotFoundError
+from aiobs_server.application.client_results import (
+    ClientMetric,
+    ClientMetricNameConflictError,
+    ClientResultItem,
+    ClientResultsValidationError,
+    SubmitClientResults,
+    SubmitClientResultsCommand,
+)
 from aiobs_server.application.compare import (
     CompareExperiments,
     CompareRunRef,
@@ -62,6 +72,7 @@ from aiobs_server.application.compare_items import (
 )
 from aiobs_server.application.datasets import DatasetNotFoundError
 from aiobs_server.application.evaluate import (
+    ClientEvaluatorNotRunnableError,
     EmptyEvaluatorListError,
     EvaluateExperimentCommand,
     EvaluationRunNotFoundError,
@@ -382,7 +393,7 @@ async def evaluate_experiment(
         EvaluatorNotFoundError,
     ) as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
-    except EmptyEvaluatorListError as exc:
+    except (EmptyEvaluatorListError, ClientEvaluatorNotRunnableError) as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
     except ExperimentAlreadyRunningError as exc:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
@@ -426,6 +437,49 @@ async def evaluate_experiment_from_pack(
     background_tasks.add_task(run_background, started.command)
     content = _experiment_response(started.experiment).model_dump(mode="json")
     return JSONResponse(status_code=status.HTTP_202_ACCEPTED, content=content)
+
+
+@router.post(
+    "/api/v1/experiments/{experiment_id}/client-results",
+    status_code=status.HTTP_201_CREATED,
+    response_model=list[EvaluationRunResponse],
+)
+async def submit_client_results(
+    experiment_id: uuid.UUID,
+    body: SubmitClientResultsRequest,
+    use_case: SubmitClientResults = Depends(get_submit_client_results),
+) -> list[EvaluationRunResponse]:
+    """Store scores computed by the client: one evaluation run per metric."""
+    command = SubmitClientResultsCommand(
+        experiment_id=experiment_id,
+        metrics=[
+            ClientMetric(
+                name=metric.name,
+                threshold=metric.threshold,
+                config=dict(metric.config),
+                results=[
+                    ClientResultItem(
+                        dataset_item_id=r.dataset_item_id,
+                        score=r.score,
+                        label=r.label,
+                        explanation=r.explanation,
+                        metadata=dict(r.metadata),
+                    )
+                    for r in metric.results
+                ],
+            )
+            for metric in body.metrics
+        ],
+    )
+    try:
+        submitted = await use_case.execute(command)
+    except ExperimentNotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    except ClientResultsValidationError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+    except ClientMetricNameConflictError as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+    return [_run_response(s.run, s.results) for s in submitted]
 
 
 @router.get(

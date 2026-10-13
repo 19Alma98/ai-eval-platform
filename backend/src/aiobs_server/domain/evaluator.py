@@ -6,6 +6,10 @@ from typing import Any
 
 EVALUATOR_TYPES = frozenset({"deterministic", "llm_judge", "custom"})
 
+# Holds scores submitted by clients (POST /experiments/{id}/client-results);
+# there is no server implementation to run.
+CLIENT_EVALUATOR_KIND = "client"
+
 
 @dataclass(frozen=True, slots=True)
 class Evaluator:
@@ -43,3 +47,7 @@ class Evaluator:
             config=dict(config),
             version=version,
         )
+
+    @property
+    def is_client(self) -> bool:
+        return str(self.config.get("kind", "")).strip() == CLIENT_EVALUATOR_KIND

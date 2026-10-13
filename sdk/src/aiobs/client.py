@@ -262,6 +262,22 @@ class _ExperimentsResource:
             response_model=UpsertExperimentOutputsResponse,
         )
 
+    def submit_client_results(
+        self, experiment_id: str, metrics: builtins.list[dict[str, Any]]
+    ) -> builtins.list[EvaluationRunResponse]:
+        """Store scores computed client-side: one evaluation run per metric.
+
+        Each metric is ``{"name", "results": [{"dataset_item_id", "score", "label",
+        "explanation", "metadata"}], "threshold"?, "config"?}``. Bump ``config`` when
+        the metric code changes so compare flags it instead of reporting a delta.
+        """
+        return self._http.request_model_list(
+            "POST",
+            f"/api/v1/experiments/{experiment_id}/client-results",
+            body={"metrics": metrics},
+            response_model=EvaluationRunResponse,
+        )
+
     def evaluate_pack(
         self,
         experiment_id: str,

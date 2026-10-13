@@ -25,6 +25,9 @@ class FakeServer:
         self.experiments: dict[str, dict[str, Any]] = {}
         self.outputs: dict[str, dict[str, dict[str, Any]]] = {}
         self.metrics_sets: dict[str, dict[str, Any]] = {}
+        self.client_results: dict[str, list[dict[str, Any]]] = {}
+        self.scored_on_server: set[str] = set()
+        self.reject_client_results = False
         self.calls: list[tuple[str, str, Any]] = []
         self.add_metrics_set(
             "Default",
@@ -121,19 +124,24 @@ class FakeServer:
             return httpx2.Response(200, json=list(store.values()))
         if m := re.fullmatch(r"/api/v1/experiments/([^/]+)/evaluate-pack", path):
             self.experiments[m[1]]["status"] = "completed"
+            self.scored_on_server.add(m[1])
             return httpx2.Response(202, json=self.experiments[m[1]])
+        if m := re.fullmatch(r"/api/v1/experiments/([^/]+)/client-results", path):
+            if self.reject_client_results:
+                return httpx2.Response(409, json={"detail": "name used by server evaluator"})
+            self.client_results.setdefault(m[1], []).extend(body["metrics"])
+            return httpx2.Response(201, json=[])
         if m := re.fullmatch(r"/api/v1/experiments/([^/]+)/runs", path):
             return httpx2.Response(200, json=[])
         if m := re.fullmatch(r"/api/v1/experiments/([^/]+)/summary", path):
-            return httpx2.Response(
-                200,
-                json={
-                    "experiment_id": m[1],
-                    "evaluators": [
-                        {"evaluator_name": "hit_at_k", "mean_score": 0.5, "pass_rate": 0.5},
-                    ],
-                },
-            )
+            rows = []
+            if m[1] in self.scored_on_server:
+                rows.append({"evaluator_name": "hit_at_k", "mean_score": 0.5, "pass_rate": 0.5})
+            for metric in self.client_results.get(m[1], []):
+                scores = [r["score"] for r in metric["results"] if r.get("score") is not None]
+                mean = sum(scores) / len(scores) if scores else None
+                rows.append({"evaluator_name": metric["name"], "mean_score": mean})
+            return httpx2.Response(200, json={"experiment_id": m[1], "evaluators": rows})
         if m := re.fullmatch(r"/api/v1/experiments/([^/]+)/compare/([^/]+)", path):
             return httpx2.Response(
                 200,
@@ -201,12 +209,17 @@ def test_evaluate_inline_rows_writes_outputs_and_scores(server: FakeServer) -> N
     assert first["actual_output"] == "answer to q1"
     assert first["context"]["documents"] == [{"id": "d1", "text": "doc"}]
     assert "latency_ms" in first["context"]
-    assert first["metadata"]["client_metrics"] == {"exact": 1.0}
+    assert "client_metrics" not in first["metadata"]
+
+    (submitted,) = server.client_results[result.id]
+    assert submitted["name"] == "exact"
+    assert "threshold" not in submitted
+    assert sorted(r["score"] for r in submitted["results"]) == [1.0, 1.0]
 
     assert result.metrics == {"hit_at_k": 0.5, "exact": 1.0}
     assert result.url == f"http://test/experiments/{result.id}?project={PROJECT_ID}"
     text = result.summary()
-    assert "hit_at_k" in text and "exact (local)" in text
+    assert "hit_at_k" in text and "exact" in text and "local only" not in text
 
 
 def test_evaluate_reuses_inline_dataset_and_metrics_set(server: FakeServer) -> None:
@@ -242,6 +255,51 @@ def test_local_only_metrics_skip_server_scoring(server: FakeServer) -> None:
     result = aiobs.evaluate(dataset=ROWS, task=_task, metrics=[lambda item, out: 0.5])
     assert not [c for c in server.calls if c[1].endswith("/evaluate-pack")]
     assert result.metrics == {"metric_0": 0.5}
+
+
+def test_local_metric_options_and_failures_are_submitted(server: FakeServer) -> None:
+    def flaky_task(item: Any) -> str:
+        if item.input == "q2":
+            raise RuntimeError("boom")
+        return "ok"
+
+    def broken(item: Any, output: Any) -> float:
+        raise ValueError("bad metric")
+
+    aiobs.evaluate(
+        dataset=ROWS + [{"input": "q3"}],
+        task=lambda item: flaky_task(item),
+        metrics=[
+            aiobs.LocalMetric(
+                lambda item, out: 0.7, name="quality", threshold=0.5, config={"version": 2}
+            ),
+            broken,
+        ],
+    )
+    (exp_id,) = server.client_results
+    quality, broken_metric = server.client_results[exp_id]
+    assert quality["name"] == "quality"
+    assert quality["threshold"] == 0.5
+    assert quality["config"] == {"version": 2}
+    by_label = sorted((str(r.get("label")), r.get("score")) for r in quality["results"])
+    assert by_label == [("FAIL", 0.0), ("None", 0.7), ("None", 0.7)]
+    labels = sorted(str(r.get("label")) for r in broken_metric["results"])
+    assert labels == ["ERROR", "ERROR", "FAIL"]
+
+
+def test_rejected_client_results_fall_back_to_local_means(server: FakeServer) -> None:
+    server.reject_client_results = True
+    result = aiobs.evaluate(dataset=ROWS, task=_task, metrics=[lambda item, out: 0.5])
+    assert result.metrics == {"metric_0": 0.5}
+    assert "metric_0 (local only)" in result.summary()
+
+
+def test_duplicate_local_metric_names_rejected(server: FakeServer) -> None:
+    def m(item: Any, out: Any) -> float:
+        return 1.0
+
+    with pytest.raises(ValueError, match="duplicate local metric"):
+        aiobs.evaluate(dataset=ROWS, task=_task, metrics=[m, aiobs.LocalMetric(m)])
 
 
 def test_task_errors_are_recorded_not_raised(server: FakeServer) -> None:

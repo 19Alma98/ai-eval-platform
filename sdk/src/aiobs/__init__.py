@@ -25,6 +25,7 @@ from aiobs.experiment import (
     Experiment,
     ExperimentResult,
     ItemRun,
+    LocalMetric,
     evaluate,
     start_experiment,
 )
@@ -38,6 +39,7 @@ __all__ = [
     "Experiment",
     "ExperimentResult",
     "ItemRun",
+    "LocalMetric",
     "bind_evaluation",
     "current_trace_id",
     "evaluate",

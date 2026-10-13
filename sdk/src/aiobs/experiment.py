@@ -36,10 +36,30 @@ from aiobs.models import (
 
 logger = logging.getLogger("aiobs")
 
-Metric = str | Mapping[str, Any] | Callable[..., Any]
+
+@dataclass(frozen=True)
+class LocalMetric:
+    """A Python metric ``fn(item, output) -> float | bool | None`` scored in-process.
+
+    Scores are submitted to the platform (``/client-results``), so they show up in
+    the summary, the UI and baseline compares like server metrics. ``threshold``
+    sets PASS/FAIL (default: 0 fails, anything else passes). Bump ``config`` (e.g.
+    ``{"version": 2}``) when the code changes: compare then reports a config
+    mismatch instead of a misleading delta.
+    """
+
+    fn: Callable[..., Any]
+    name: str | None = None
+    threshold: float | None = None
+    config: Mapping[str, Any] = field(default_factory=dict)
+
+
+Metric = str | Mapping[str, Any] | LocalMetric | Callable[..., Any]
 """A server metric kind (``"groundedness"``), an entry dict
-(``{"kind": "hit_at_k", "threshold": 0.9, "config": {"k": 3}}``) or a Python
-callable ``fn(item, output) -> float | bool | None`` scored locally."""
+(``{"kind": "hit_at_k", "threshold": 0.9, "config": {"k": 3}}``), a ``LocalMetric``
+or a bare callable ``fn(item, output) -> float | bool | None`` scored locally."""
+
+TASK_FAILED_EXPLANATION = "task raised before producing an output"
 
 _UUID_RE = re.compile(r"^[0-9a-fA-F]{8}-?([0-9a-fA-F]{4}-?){3}[0-9a-fA-F]{12}$")
 _ITEM_KEYS = frozenset({"input", "expected_output", "context", "metadata"})
@@ -87,6 +107,7 @@ class ItemRun:
     trace_id: str | None = None
     latency_ms: float | None = None
     scores: dict[str, float | None] = field(default_factory=dict)
+    metric_errors: dict[str, str] = field(default_factory=dict)
     documents: list[dict[str, Any]] | None = None
     context: dict[str, Any] = field(default_factory=dict)
     _explicit_output: bool = field(default=False, repr=False)
@@ -167,12 +188,17 @@ class ExperimentResult:
 
     @property
     def metrics(self) -> dict[str, float | None]:
-        """Mean score per metric: server evaluators first, then local callables."""
+        """Mean score per metric as aggregated by the platform.
+
+        Local metrics are submitted too, so they appear here under their name; the
+        in-process mean is only a fallback when the submission failed.
+        """
         means: dict[str, float | None] = {}
         if self.server_summary is not None:
             for row in self.server_summary.evaluators:
                 means[row.evaluator_name or row.evaluator_id or "?"] = row.mean_score
-        means.update(self.local_metrics)
+        for name, mean in self.local_metrics.items():
+            means.setdefault(name, mean)
         return means
 
     def _comparison_by_name(self) -> dict[str, MetricComparisonResponse]:
@@ -194,9 +220,11 @@ class ExperimentResult:
         )
         compared = self._comparison_by_name()
         rows: list[tuple[str, str, str, str]] = []
+        seen: set[str] = set()
         if self.server_summary is not None:
             for ev in self.server_summary.evaluators:
                 name = ev.evaluator_name or ev.evaluator_id or "?"
+                seen.add(name)
                 rows.append(
                     (
                         name,
@@ -206,7 +234,8 @@ class ExperimentResult:
                     )
                 )
         for name, mean in self.local_metrics.items():
-            rows.append((f"{name} (local)", _fmt(mean), "-", ""))
+            if name not in seen:  # submission failed: show the in-process mean
+                rows.append((f"{name} (local only)", _fmt(mean), "-", ""))
         if not rows:
             return head + "\n  (no metrics scored)"
         header = ("metric", "mean", "pass_rate", "vs baseline" if compared else "")
@@ -250,7 +279,7 @@ class Experiment:
         items: list[DatasetItemResponse],
         metrics_set_id: str | None,
         score_on_server: bool,
-        local_metrics: list[tuple[str, Callable[..., Any]]],
+        local_metrics: list[LocalMetric],
         baseline_id: str | None,
     ) -> None:
         self._client = client
@@ -379,14 +408,53 @@ class Experiment:
         return found
 
     def _score_locally(self, record: ItemRun) -> None:
-        for name, fn in self._local_metrics:
+        for metric in self._local_metrics:
+            name = _local_name(metric)
             try:
-                record.scores[name] = _coerce_score(fn(record.item, record.output))
+                record.scores[name] = _coerce_score(metric.fn(record.item, record.output))
             except Exception as exc:  # a broken metric must not sink the run
                 logger.warning(
                     "aiobs local metric %s failed on item %s: %s", name, record.item.id, exc
                 )
                 record.scores[name] = None
+                record.metric_errors[name] = f"{type(exc).__name__}: {exc}"
+
+    def _submit_local_scores(self, records: list[ItemRun]) -> bool:
+        """Send local metric scores to the platform; False (with a warning) on failure."""
+        if not self._local_metrics:
+            return False
+        payload = []
+        for metric in self._local_metrics:
+            name = _local_name(metric)
+            results = []
+            for record in records:
+                result: dict[str, Any] = {"dataset_item_id": record.item.id}
+                if record.error is not None:
+                    # Same rule as server metrics for a missing output: a failure, not N/A.
+                    result.update(
+                        score=0.0,
+                        label="FAIL",
+                        explanation=f"{TASK_FAILED_EXPLANATION}: {record.error}"[:4000],
+                    )
+                elif name in record.metric_errors:
+                    result.update(label="ERROR", explanation=record.metric_errors[name][:4000])
+                else:
+                    result["score"] = record.scores.get(name)
+                results.append(result)
+            entry: dict[str, Any] = {"name": name, "results": results}
+            if metric.threshold is not None:
+                entry["threshold"] = metric.threshold
+            if metric.config:
+                entry["config"] = _jsonable(dict(metric.config))
+            payload.append(entry)
+        try:
+            self._client.experiments.submit_client_results(self.id, payload)
+        except AiobsAPIError as exc:
+            logger.warning(
+                "aiobs: could not submit local metrics for experiment %s: %s", self.id, exc
+            )
+            return False
+        return True
 
     def runs(self) -> list[ItemRun]:
         with self._lock:
@@ -411,6 +479,9 @@ class Experiment:
         for start in range(0, len(payload), _UPSERT_CHUNK):
             self._client.experiments.upsert_outputs(self.id, payload[start : start + _UPSERT_CHUNK])
 
+        # After the outputs: client runs record the inputs fingerprint they scored.
+        submitted = self._submit_local_scores(records)
+
         evaluation: EvaluateResponse | None = None
         server_summary: ExperimentSummaryResponse | None = None
         comparison: ExperimentCompareResponse | None = None
@@ -421,6 +492,7 @@ class Experiment:
                 poll_interval=poll_interval,
                 timeout=timeout,
             )
+        if evaluation is not None or submitted:
             server_summary = self._client.experiments.summary(self.id)
             if self.baseline_id is not None:
                 try:
@@ -511,8 +583,6 @@ def _output_entry(record: ItemRun, stored: ExperimentItemOutputResponse | None) 
         metadata.setdefault("source_trace_id", record.trace_id)
     if record.error is not None:
         metadata["error"] = record.error
-    if record.scores:
-        metadata["client_metrics"] = dict(record.scores)
     entry["metadata"] = metadata
     return entry
 
@@ -593,11 +663,16 @@ def _resolve_dataset(
     return created.id
 
 
+def _local_name(metric: LocalMetric) -> str:
+    assert metric.name is not None  # filled by _split_metrics
+    return metric.name
+
+
 def _split_metrics(
     metrics: Sequence[Metric],
-) -> tuple[list[dict[str, Any]], list[tuple[str, Callable[..., Any]]]]:
+) -> tuple[list[dict[str, Any]], list[LocalMetric]]:
     server: list[dict[str, Any]] = []
-    local: list[tuple[str, Callable[..., Any]]] = []
+    local: list[LocalMetric] = []
     for index, metric in enumerate(metrics):
         if isinstance(metric, str):
             server.append({"kind": metric.strip()})
@@ -605,16 +680,20 @@ def _split_metrics(
             if not metric.get("kind"):
                 raise ValueError(f"metric dict needs a 'kind': {metric!r}")
             server.append(dict(metric))
-        elif callable(metric):
-            name = getattr(metric, "__name__", "") or ""
+        elif isinstance(metric, LocalMetric) or callable(metric):
+            spec = metric if isinstance(metric, LocalMetric) else LocalMetric(fn=metric)
+            name = spec.name or getattr(spec.fn, "__name__", "") or ""
             if not name or name == "<lambda>":
                 name = f"metric_{index}"
-            local.append((name, metric))
+            local.append(LocalMetric(spec.fn, name, spec.threshold, dict(spec.config)))
         else:
             raise TypeError(f"unsupported metric {metric!r}")
     kinds = [entry["kind"] for entry in server]
     if len(set(kinds)) != len(kinds):
         raise ValueError(f"duplicate metric kinds: {kinds}")
+    names = [_local_name(m) for m in local]
+    if len(set(names)) != len(names):
+        raise ValueError(f"duplicate local metric names: {names}")
     return server, local
 
 
@@ -723,7 +802,7 @@ def start_experiment(
     dataset_id = _resolve_dataset(client, project_id, dataset, task_type=task_type)
 
     server_metrics: list[dict[str, Any]] = []
-    local_metrics: list[tuple[str, Callable[..., Any]]] = []
+    local_metrics: list[LocalMetric] = []
     if metrics is not None:
         server_metrics, local_metrics = _split_metrics(metrics)
     score_on_server = metrics is None or bool(server_metrics)
@@ -809,6 +888,7 @@ __all__ = [
     "Experiment",
     "ExperimentResult",
     "ItemRun",
+    "LocalMetric",
     "Metric",
     "evaluate",
     "start_experiment",
