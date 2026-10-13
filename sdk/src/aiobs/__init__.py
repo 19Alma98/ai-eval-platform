@@ -27,6 +27,8 @@ from aiobs.experiment import (
     ItemRun,
     LocalMetric,
     evaluate,
+    log_metrics,
+    log_params,
     start_experiment,
 )
 from aiobs.metrics import Sample, Score, metric
@@ -51,6 +53,8 @@ __all__ = [
     "get_project",
     "get_tracking_uri",
     "init",
+    "log_metrics",
+    "log_params",
     "metric",
     "set_attribute",
     "set_attributes",

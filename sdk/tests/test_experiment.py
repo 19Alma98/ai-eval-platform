@@ -574,3 +574,44 @@ def test_client_experiment_metrics_and_params(server: FakeServer) -> None:
     assert client.experiments.get_metrics(exp.id) == {"cost_usd": 1.5}
     updated = client.experiments.update_params(exp.id, {"temperature": 0.2})
     assert updated.experiment_model_config == {"model": "a", "temperature": 0.2}
+
+
+def test_log_params_and_metrics_on_active_experiment(server: FakeServer) -> None:
+    with aiobs.start_experiment(
+        "v1", dataset=ROWS, metrics=[lambda item, out: 1.0], params={"model": "a"}
+    ) as exp:
+        assert exp.log_params(temperature=0.2) == {"model": "a", "temperature": 0.2}
+        for item in exp.items():
+            with exp.run(item) as run:
+                run.log("x")
+                aiobs.log_metrics({"tokens": 10})  # inside an item run
+        aiobs.log_metrics({"cost_usd": 1.5})  # inside the with block
+
+    stored = server.experiment_metrics[exp.id]
+    assert stored["cost_usd"] == 1.5
+    assert stored["tokens"] == 10
+    assert server.experiments[exp.id]["model_config"] == {"model": "a", "temperature": 0.2}
+
+
+def test_log_params_after_scoring_is_rejected(server: FakeServer) -> None:
+    exp = aiobs.start_experiment("v1", dataset=ROWS, metrics=[lambda item, out: 1.0])
+    exp.run_task(_task)
+    exp.finish()
+    with pytest.raises(aiobs.AiobsAPIError) as err:
+        exp.log_params(model="b")
+    assert err.value.status == 409
+
+
+def test_module_level_logging_needs_an_active_experiment() -> None:
+    with pytest.raises(RuntimeError, match="no active experiment"):
+        aiobs.log_metrics({"x": 1.0})
+    with pytest.raises(RuntimeError, match="no active experiment"):
+        aiobs.log_params(model="a")
+
+
+def test_log_methods_reject_empty_input(server: FakeServer) -> None:
+    exp = aiobs.start_experiment("v1", dataset=ROWS, metrics=[lambda item, out: 1.0])
+    with pytest.raises(ValueError, match="at least one"):
+        exp.log_metrics({})
+    with pytest.raises(ValueError, match="at least one"):
+        exp.log_params()

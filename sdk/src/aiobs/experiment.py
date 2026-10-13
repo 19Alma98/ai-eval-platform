@@ -10,6 +10,7 @@ import time
 from collections.abc import Callable, Iterator, Mapping, Sequence
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import contextmanager
+from contextvars import ContextVar, Token
 from dataclasses import dataclass, field, replace
 from typing import Any
 
@@ -36,6 +37,11 @@ from aiobs.models import (
 )
 
 logger = logging.getLogger("aiobs")
+
+# The experiment whose ``with`` block or item run is active, for aiobs.log_params/log_metrics.
+ACTIVE_EXPERIMENT: ContextVar[Experiment | None] = ContextVar(
+    "aiobs_active_experiment", default=None
+)
 
 
 Metric = str | Mapping[str, Any] | LocalMetric | Callable[..., Any]
@@ -279,6 +285,8 @@ class Experiment:
         self._records: dict[str, ItemRun] = {}
         self._lock = threading.Lock()
         self.result: ExperimentResult | None = None
+        self._metrics_logged = False
+        self._context_token: Token[Experiment | None] | None = None
 
     @property
     def id(self) -> str:
@@ -303,6 +311,31 @@ class Experiment:
     def params(self) -> dict[str, Any]:
         """Stored model config: ``params``, or the app config snapshot when one was bound."""
         return dict(self.experiment.experiment_model_config)
+
+    def log_params(self, **params: Any) -> dict[str, Any]:
+        """Merge ``params`` into the stored model config and return the merged config.
+
+        Allowed until the experiment is scored, and not for experiments created from an
+        app config: the server answers 409 (``AiobsAPIError``) in both cases.
+        """
+        if not params:
+            raise ValueError("log_params needs at least one param")
+        self.experiment = self._client.experiments.update_params(self.id, _jsonable(params))
+        return self.params
+
+    def log_metrics(self, metrics: Mapping[str, float]) -> dict[str, float]:
+        """Upsert experiment-level scalars (MLflow-style: one final value per key).
+
+        They show up in the summary, are compared with the baseline and can gate a
+        release (``experiment_metrics: {cost_usd: {max: 2}}``). Returns all of them.
+        """
+        if not metrics:
+            raise ValueError("log_metrics needs at least one metric")
+        stored = self._client.experiments.log_metrics(
+            self.id, {key: float(value) for key, value in metrics.items()}
+        )
+        self._metrics_logged = True
+        return stored
 
     def items(self) -> list[DatasetItemResponse]:
         return list(self._items)
@@ -338,9 +371,13 @@ class Experiment:
                 future.result()
 
     def __enter__(self) -> Experiment:
+        self._context_token = ACTIVE_EXPERIMENT.set(self)
         return self
 
     def __exit__(self, exc_type: type[BaseException] | None, *_exc: object) -> None:
+        if self._context_token is not None:
+            ACTIVE_EXPERIMENT.reset(self._context_token)
+            self._context_token = None
         if exc_type is not None:
             _otel.flush()
             logger.warning("aiobs experiment %s aborted; skipping scoring", self.id)
@@ -359,6 +396,7 @@ class Experiment:
         record = ItemRun(item=resolved)
         tracer = otel_trace.get_tracer("aiobs")
         token = ACTIVE_RUN.set(record)
+        experiment_token = ACTIVE_EXPERIMENT.set(self)
         started = time.perf_counter()
         try:
             with tracer.start_as_current_span(
@@ -381,6 +419,7 @@ class Experiment:
         finally:
             record.latency_ms = (time.perf_counter() - started) * 1000.0
             ACTIVE_RUN.reset(token)
+            ACTIVE_EXPERIMENT.reset(experiment_token)
             if record.error is None:
                 self._score_locally(record)
             with self._lock:
@@ -769,6 +808,26 @@ def _default_name(task: Callable[..., Any] | None) -> str:
     return f"{stem}-{time.strftime('%Y%m%d-%H%M%S')}"
 
 
+def _active_experiment() -> Experiment:
+    exp = ACTIVE_EXPERIMENT.get()
+    if exp is None:
+        raise RuntimeError(
+            "no active experiment: call inside `with aiobs.start_experiment(...)` "
+            "or inside an evaluate() task"
+        )
+    return exp
+
+
+def log_params(**params: Any) -> dict[str, Any]:
+    """``Experiment.log_params`` on the active experiment."""
+    return _active_experiment().log_params(**params)
+
+
+def log_metrics(metrics: Mapping[str, float]) -> dict[str, float]:
+    """``Experiment.log_metrics`` on the active experiment."""
+    return _active_experiment().log_metrics(metrics)
+
+
 # ---------------------------------------------------------------------------
 # Public entry points
 # ---------------------------------------------------------------------------
@@ -890,5 +949,7 @@ __all__ = [
     "LocalMetric",
     "Metric",
     "evaluate",
+    "log_metrics",
+    "log_params",
     "start_experiment",
 ]
