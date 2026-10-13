@@ -478,14 +478,32 @@ class RegressionRuleBody(BaseModel):
     max_delta: float
 
 
+class ExperimentMetricRuleBody(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    min: float | None = None
+    max: float | None = None
+
+    @model_validator(mode="after")
+    def _needs_bound(self) -> Self:
+        if self.min is None and self.max is None:
+            raise ValueError("experiment metric rule requires min or max")
+        return self
+
+
 class ReleasePolicyBody(BaseModel):
-    """Release gate policy. Named evaluator keys map to ``{min: ...}`` via extras."""
+    """Release gate policy.
+
+    Named evaluator keys map to ``{min: ...}`` via extras; ``experiment_metrics``
+    gates experiment-level scalars.
+    """
 
     model_config = ConfigDict(extra="allow")
 
     latency: LatencyRuleBody | None = None
     cost: CostRuleBody | None = None
     regression: RegressionRuleBody | None = None
+    experiment_metrics: dict[str, ExperimentMetricRuleBody] | None = None
     # Optional meta keys (stripped before evaluation); accepted so they are not
     # treated as absolute-min evaluator rules.
     api_base_url: str | None = None
@@ -506,6 +524,7 @@ class ReleasePolicyBody(BaseModel):
             or self.latency is not None
             or self.cost is not None
             or self.regression is not None
+            or bool(self.experiment_metrics)
         )
         if not has_rules:
             raise ValueError("policy must define at least one rule")

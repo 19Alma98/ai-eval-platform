@@ -613,8 +613,9 @@ def get_release_check(
     runs: SqlAlchemyEvaluationRunRepository = Depends(get_evaluation_run_repository),
     compare: CompareExperiments = Depends(get_compare_experiments),
     fingerprints: CurrentScoringFingerprint = Depends(get_current_scoring_fingerprint),
+    metrics: SqlAlchemyExperimentMetricRepository = Depends(get_experiment_metric_repository),
 ) -> ReleaseCheck:
-    return ReleaseCheck(projects, experiments, runs, compare, fingerprints)
+    return ReleaseCheck(projects, experiments, runs, compare, fingerprints, metrics)
 
 
 def get_live_interaction_repository(

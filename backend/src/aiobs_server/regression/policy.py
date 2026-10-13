@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import math
 import uuid
+from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any, Literal
 
@@ -24,6 +25,8 @@ _LATENCY_KEYS = frozenset({"p95_max_ms"})
 _COST_KEYS = frozenset({"max_per_request_usd"})
 _MIN_KEYS = frozenset({"min"})
 _REGRESSION_KEYS = frozenset({"max_delta", "allow_insufficient_n"})
+_EXPERIMENT_METRIC_KEYS = frozenset({"min", "max"})
+EXPERIMENT_METRICS_KEY = "experiment_metrics"
 
 
 class InvalidPolicyError(ValueError):
@@ -55,11 +58,19 @@ class RegressionRule:
 
 
 @dataclass(frozen=True, slots=True)
+class ExperimentMetricRule:
+    key: str
+    min_value: float | None = None
+    max_value: float | None = None
+
+
+@dataclass(frozen=True, slots=True)
 class ReleasePolicy:
     absolute_mins: tuple[AbsoluteMinRule, ...]
     latency: LatencyP95Rule | None
     cost: CostMeanRule | None
     regression: RegressionRule | None
+    experiment_metrics: tuple[ExperimentMetricRule, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -103,6 +114,7 @@ def parse_release_policy(raw: dict[str, Any]) -> ReleasePolicy:
     latency: LatencyP95Rule | None = None
     cost: CostMeanRule | None = None
     regression: RegressionRule | None = None
+    experiment_metrics: tuple[ExperimentMetricRule, ...] = ()
 
     for key, value in raw.items():
         if key in META_KEYS:
@@ -112,6 +124,9 @@ def parse_release_policy(raw: dict[str, Any]) -> ReleasePolicy:
         if key == "regression":
             regression = _parse_regression(value)
             continue
+        if key == EXPERIMENT_METRICS_KEY:
+            experiment_metrics = _parse_experiment_metrics(value)
+            continue
         if key == "latency":
             latency = _parse_latency(value)
             continue
@@ -120,7 +135,13 @@ def parse_release_policy(raw: dict[str, Any]) -> ReleasePolicy:
             continue
         absolute_mins.append(_parse_absolute_min(key, value))
 
-    if not absolute_mins and latency is None and cost is None and regression is None:
+    if (
+        not absolute_mins
+        and latency is None
+        and cost is None
+        and regression is None
+        and not experiment_metrics
+    ):
         raise InvalidPolicyError("policy must define at least one rule")
 
     return ReleasePolicy(
@@ -128,6 +149,7 @@ def parse_release_policy(raw: dict[str, Any]) -> ReleasePolicy:
         latency=latency,
         cost=cost,
         regression=regression,
+        experiment_metrics=experiment_metrics,
     )
 
 
@@ -187,6 +209,29 @@ def _parse_regression(value: dict[str, Any]) -> RegressionRule:
     )
 
 
+def _parse_experiment_metrics(value: dict[str, Any]) -> tuple[ExperimentMetricRule, ...]:
+    rules: list[ExperimentMetricRule] = []
+    for key, rule in value.items():
+        block = f"{EXPERIMENT_METRICS_KEY}.{key}"
+        if not isinstance(rule, dict):
+            raise InvalidPolicyError(f"policy.{block} must be an object")
+        unknown = set(rule) - _EXPERIMENT_METRIC_KEYS
+        if unknown:
+            raise InvalidPolicyError(f"policy.{block} has unsupported keys: {sorted(unknown)}")
+        if not rule:
+            raise InvalidPolicyError(f"policy.{block} requires min or max")
+        rules.append(
+            ExperimentMetricRule(
+                key=key,
+                min_value=_require_float(block, "min", rule["min"]) if "min" in rule else None,
+                max_value=_require_float(block, "max", rule["max"]) if "max" in rule else None,
+            )
+        )
+    if not rules:
+        raise InvalidPolicyError(f"policy.{EXPERIMENT_METRICS_KEY} must define at least one metric")
+    return tuple(rules)
+
+
 def percentile_nearest_rank(values: list[float], percentile: float) -> float:
     if not values:
         raise ValueError("values must be non-empty")
@@ -223,6 +268,7 @@ def evaluate_policy(
     *,
     candidate: list[EvaluatorMetricInput] | tuple[EvaluatorMetricInput, ...],
     regression_deltas: list[RegressionDeltaInput] | tuple[RegressionDeltaInput, ...] = (),
+    experiment_metrics: Mapping[str, float] | None = None,
 ) -> PolicyEvaluation:
     checks: list[PolicyCheck] = []
     by_name = _by_name(candidate)
@@ -254,6 +300,11 @@ def evaluate_policy(
 
     if policy.cost is not None:
         checks.append(_eval_cost(policy.cost, by_name.get(policy.cost.evaluator_name)))
+
+    for metric_rule in policy.experiment_metrics:
+        checks.extend(
+            _eval_experiment_metric(metric_rule, (experiment_metrics or {}).get(metric_rule.key))
+        )
 
     if policy.regression is not None:
         if not regression_deltas:
@@ -358,6 +409,29 @@ def _eval_cost(
         threshold=rule.max_per_request_usd,
         status="passed" if actual <= rule.max_per_request_usd else "failed",
     )
+
+
+def _eval_experiment_metric(rule: ExperimentMetricRule, actual: float | None) -> list[PolicyCheck]:
+    checks: list[PolicyCheck] = []
+    for bound, threshold in (("min", rule.min_value), ("max", rule.max_value)):
+        if threshold is None:
+            continue
+        status: CheckStatus
+        if actual is None:
+            status = "unavailable"
+        elif bound == "min":
+            status = "passed" if actual >= threshold else "failed"
+        else:
+            status = "passed" if actual <= threshold else "failed"
+        checks.append(
+            PolicyCheck(
+                metric=f"{EXPERIMENT_METRICS_KEY}.{rule.key}.{bound}",
+                actual=actual,
+                threshold=threshold,
+                status=status,
+            )
+        )
+    return checks
 
 
 def _eval_regression(rule: RegressionRule, delta: RegressionDeltaInput) -> PolicyCheck:

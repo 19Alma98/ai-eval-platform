@@ -17,6 +17,7 @@ from aiobs_server.application.scoring_inputs import (
 from aiobs_server.domain.evaluation import EvaluationRun
 from aiobs_server.domain.repositories import (
     EvaluationRunRepository,
+    ExperimentMetricRepository,
     ExperimentRepository,
     ProjectRepository,
 )
@@ -67,7 +68,9 @@ class ReleaseCheck:
         runs: EvaluationRunRepository,
         compare: CompareExperiments,
         fingerprints: CurrentScoringFingerprint | None = None,
+        metrics: ExperimentMetricRepository | None = None,
     ) -> None:
+        self._metrics = metrics
         self._projects = projects
         self._experiments = experiments
         self._runs = runs
@@ -162,10 +165,14 @@ class ReleaseCheck:
         ):
             policy_for_eval = replace(policy, regression=None)
 
+        experiment_metrics = (
+            await self._metrics.get(command.experiment_id) if self._metrics is not None else {}
+        )
         evaluation = evaluate_policy(
             policy_for_eval,
             candidate=candidate,
             regression_deltas=regression_deltas,
+            experiment_metrics=experiment_metrics,
         )
         if (
             policy.regression is not None

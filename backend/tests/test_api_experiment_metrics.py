@@ -171,3 +171,44 @@ async def test_compare_reports_experiment_metric_deltas(client: AsyncClient) -> 
         {"key": "only_base", "candidate": None, "baseline": 3.0, "delta": None},
         {"key": "only_cand", "candidate": 1.0, "baseline": None, "delta": None},
     ]
+
+
+async def test_release_check_experiment_metric_rules(client: AsyncClient) -> None:
+    ctx = await _setup(client)
+    exp_id = await _experiment(client, ctx, "cand")
+    await _put_metrics(client, exp_id, {"cost_usd": 1.5, "accuracy": 0.7})
+
+    resp = await client.post(
+        f"/api/v1/projects/{ctx['project_id']}/release-check",
+        json={
+            "experiment_id": exp_id,
+            "policy": {
+                "experiment_metrics": {
+                    "cost_usd": {"max": 2.0},
+                    "accuracy": {"min": 0.8},
+                    "missing": {"min": 0},
+                }
+            },
+        },
+    )
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["status"] == "failed"
+    assert [(c["metric"], c["actual"], c["threshold"], c["status"]) for c in body["checks"]] == [
+        ("experiment_metrics.cost_usd.max", 1.5, 2.0, "passed"),
+        ("experiment_metrics.accuracy.min", 0.7, 0.8, "failed"),
+        ("experiment_metrics.missing.min", None, 0.0, "unavailable"),
+    ]
+
+
+@pytest.mark.parametrize("rule", [{}, {"avg": 1.0}])
+async def test_release_check_rejects_bad_experiment_metric_rule(
+    client: AsyncClient, rule: dict[str, Any]
+) -> None:
+    ctx = await _setup(client)
+    exp_id = await _experiment(client, ctx, "cand")
+    resp = await client.post(
+        f"/api/v1/projects/{ctx['project_id']}/release-check",
+        json={"experiment_id": exp_id, "policy": {"experiment_metrics": {"cost_usd": rule}}},
+    )
+    assert resp.status_code == 422, resp.text
