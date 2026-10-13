@@ -587,6 +587,7 @@ def test_log_params_and_metrics_on_active_experiment(server: FakeServer) -> None
                 aiobs.log_metrics({"tokens": 10})  # inside an item run
         aiobs.log_metrics({"cost_usd": 1.5})  # inside the with block
 
+    assert aiobs.experiment.ACTIVE_EXPERIMENT.get() is None
     stored = server.experiment_metrics[exp.id]
     assert stored["cost_usd"] == 1.5
     assert stored["tokens"] == 10
@@ -615,3 +616,31 @@ def test_log_methods_reject_empty_input(server: FakeServer) -> None:
         exp.log_metrics({})
     with pytest.raises(ValueError, match="at least one"):
         exp.log_params()
+
+
+def test_log_metrics_from_concurrent_workers(server: FakeServer) -> None:
+    exp = aiobs.start_experiment("v1", dataset=ROWS, metrics=[lambda item, out: 1.0])
+
+    def task(item: Any) -> str:
+        aiobs.log_metrics({f"m_{item.input}": 1.0})
+        return "x"
+
+    exp.run_task(task, max_concurrency=4, raise_on_error=True)
+    assert {"m_q1", "m_q2"} <= set(server.experiment_metrics[exp.id])
+
+
+def test_log_metrics_rejects_non_numbers(server: FakeServer) -> None:
+    exp = aiobs.start_experiment("v1", dataset=ROWS, metrics=[lambda item, out: 1.0])
+    with pytest.raises(ValueError, match="must be a number"):
+        exp.log_metrics({"x": True})
+    with pytest.raises(ValueError, match="must be a number"):
+        exp.log_metrics({"x": "0.9"})  # type: ignore[dict-item]
+
+
+def test_experiment_reentry_is_rejected(server: FakeServer) -> None:
+    exp = aiobs.start_experiment("v1", dataset=ROWS, metrics=[lambda item, out: 1.0])
+    with exp:
+        with pytest.raises(RuntimeError, match="already active"):
+            exp.__enter__()
+        exp.run_task(_task)
+    assert aiobs.experiment.ACTIVE_EXPERIMENT.get() is None

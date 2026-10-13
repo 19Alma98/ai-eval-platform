@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
+import numbers
 import os
 import re
 import threading
@@ -320,8 +321,10 @@ class Experiment:
         """
         if not params:
             raise ValueError("log_params needs at least one param")
-        self.experiment = self._client.experiments.update_params(self.id, _jsonable(params))
-        return self.params
+        updated = self._client.experiments.update_params(self.id, _jsonable(params))
+        with self._lock:
+            self.experiment = updated
+            return dict(updated.experiment_model_config)
 
     def log_metrics(self, metrics: Mapping[str, float]) -> dict[str, float]:
         """Upsert experiment-level scalars (MLflow-style: one final value per key).
@@ -331,6 +334,9 @@ class Experiment:
         """
         if not metrics:
             raise ValueError("log_metrics needs at least one metric")
+        for key, value in metrics.items():
+            if isinstance(value, bool) or not isinstance(value, numbers.Real):
+                raise ValueError(f"metric {key!r} must be a number, got {value!r}")
         stored = self._client.experiments.log_metrics(
             self.id, {key: float(value) for key, value in metrics.items()}
         )
@@ -371,6 +377,8 @@ class Experiment:
                 future.result()
 
     def __enter__(self) -> Experiment:
+        if self._context_token is not None:
+            raise RuntimeError("experiment is already active in a with block")
         self._context_token = ACTIVE_EXPERIMENT.set(self)
         return self
 
