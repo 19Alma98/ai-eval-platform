@@ -133,3 +133,35 @@ async def test_patch_params_merges_until_scored(client: AsyncClient) -> None:
         f"/api/v1/experiments/{uuid.uuid4()}/params", json={"params": {"a": 1}}
     )
     assert unknown.status_code == 404
+
+
+async def test_summary_includes_experiment_metrics(client: AsyncClient) -> None:
+    ctx = await _setup(client)
+    exp_id = await _experiment(client, ctx, "cand")
+
+    empty = await client.get(f"/api/v1/experiments/{exp_id}/summary")
+    assert empty.status_code == 200, empty.text
+    assert empty.json()["evaluators"] == []
+    assert empty.json()["experiment_metrics"] == {}
+
+    await _put_metrics(client, exp_id, {"cost_usd": 1.5})
+    summary = await client.get(f"/api/v1/experiments/{exp_id}/summary")
+    assert summary.json()["experiment_metrics"] == {"cost_usd": 1.5}
+
+
+async def test_compare_reports_experiment_metric_deltas(client: AsyncClient) -> None:
+    ctx = await _setup(client)
+    base = await _experiment(client, ctx, "base")
+    cand = await _experiment(client, ctx, "cand")
+    for exp_id in (base, cand):
+        await _score(client, ctx, exp_id, 1.0)
+    await _put_metrics(client, base, {"cost_usd": 1.0, "only_base": 3.0})
+    await _put_metrics(client, cand, {"cost_usd": 1.5, "only_cand": 1.0})
+
+    resp = await client.get(f"/api/v1/experiments/{cand}/compare/{base}")
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["experiment_metrics"] == [
+        {"key": "cost_usd", "candidate": 1.5, "baseline": 1.0, "delta": 0.5},
+        {"key": "only_base", "candidate": None, "baseline": 3.0, "delta": None},
+        {"key": "only_cand", "candidate": 1.0, "baseline": None, "delta": None},
+    ]

@@ -38,6 +38,7 @@ from aiobs_server.api.schemas import (
     ExperimentCompareResponse,
     ExperimentItemCompareResponse,
     ExperimentItemOutputResponse,
+    ExperimentMetricComparisonResponse,
     ExperimentMetricsRequest,
     ExperimentMetricsResponse,
     ExperimentResponse,
@@ -183,6 +184,7 @@ def _summary_response(summary: ExperimentSummary) -> ExperimentSummaryResponse:
             )
             for item in summary.evaluators
         ],
+        experiment_metrics=dict(summary.experiment_metrics),
     )
 
 
@@ -243,6 +245,12 @@ def _compare_response(comparison: ExperimentComparison) -> ExperimentCompareResp
         insufficient_n=[_metric_response(m) for m in comparison.insufficient_n],
         candidate_runs=[_compare_run_ref_response(r) for r in comparison.candidate_runs],
         baseline_runs=[_compare_run_ref_response(r) for r in comparison.baseline_runs],
+        experiment_metrics=[
+            ExperimentMetricComparisonResponse(
+                key=m.key, candidate=m.candidate, baseline=m.baseline, delta=m.delta
+            )
+            for m in comparison.experiment_metrics
+        ],
     )
 
 

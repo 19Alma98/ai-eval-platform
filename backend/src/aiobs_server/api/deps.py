@@ -528,8 +528,9 @@ def get_summarize_experiment(
     runs: SqlAlchemyEvaluationRunRepository = Depends(get_evaluation_run_repository),
     evaluators: SqlAlchemyEvaluatorRepository = Depends(get_evaluator_repository),
     fingerprints: CurrentScoringFingerprint = Depends(get_current_scoring_fingerprint),
+    metrics: SqlAlchemyExperimentMetricRepository = Depends(get_experiment_metric_repository),
 ) -> SummarizeExperiment:
-    return SummarizeExperiment(experiments, runs, evaluators, fingerprints)
+    return SummarizeExperiment(experiments, runs, evaluators, fingerprints, metrics)
 
 
 def get_compare_experiments(
@@ -537,8 +538,9 @@ def get_compare_experiments(
     runs: SqlAlchemyEvaluationRunRepository = Depends(get_evaluation_run_repository),
     evaluators: SqlAlchemyEvaluatorRepository = Depends(get_evaluator_repository),
     fingerprints: CurrentScoringFingerprint = Depends(get_current_scoring_fingerprint),
+    metrics: SqlAlchemyExperimentMetricRepository = Depends(get_experiment_metric_repository),
 ) -> CompareExperiments:
-    return CompareExperiments(experiments, runs, evaluators, fingerprints)
+    return CompareExperiments(experiments, runs, evaluators, fingerprints, metrics)
 
 
 def get_compare_experiment_items(

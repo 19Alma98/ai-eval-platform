@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import uuid
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -13,6 +14,7 @@ from aiobs_server.domain.evaluation import EvaluationRun
 from aiobs_server.domain.repositories import (
     EvaluationRunRepository,
     EvaluatorRepository,
+    ExperimentMetricRepository,
     ExperimentRepository,
 )
 from aiobs_server.regression.aggregate import (
@@ -42,6 +44,7 @@ class EvaluatorSummary:
 class ExperimentSummary:
     experiment_id: uuid.UUID
     evaluators: list[EvaluatorSummary]
+    experiment_metrics: dict[str, float] = field(default_factory=dict)
 
 
 @dataclass(frozen=True, slots=True)
@@ -49,6 +52,27 @@ class CompareRunRef:
     evaluator_id: uuid.UUID
     run_id: uuid.UUID
     metadata: dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass(frozen=True, slots=True)
+class ExperimentMetricComparison:
+    key: str
+    candidate: float | None
+    baseline: float | None
+    delta: float | None
+
+
+def compare_experiment_metrics(
+    candidate: Mapping[str, float], baseline: Mapping[str, float]
+) -> list[ExperimentMetricComparison]:
+    """One row per key on either side; no status — whether higher is better is unknown."""
+    rows: list[ExperimentMetricComparison] = []
+    for key in sorted(set(candidate) | set(baseline)):
+        cand = candidate.get(key)
+        base = baseline.get(key)
+        delta = cand - base if cand is not None and base is not None else None
+        rows.append(ExperimentMetricComparison(key, cand, base, delta))
+    return rows
 
 
 @dataclass(frozen=True, slots=True)
@@ -63,6 +87,7 @@ class ExperimentComparison:
     insufficient_n: list[MetricComparison]
     candidate_runs: list[CompareRunRef] = field(default_factory=list)
     baseline_runs: list[CompareRunRef] = field(default_factory=list)
+    experiment_metrics: list[ExperimentMetricComparison] = field(default_factory=list)
 
 
 def _metadata_evaluator_name(run: EvaluationRun) -> str | None:
@@ -93,11 +118,13 @@ class SummarizeExperiment:
         runs: EvaluationRunRepository,
         evaluators: EvaluatorRepository,
         fingerprints: CurrentScoringFingerprint | None = None,
+        metrics: ExperimentMetricRepository | None = None,
     ) -> None:
         self._experiments = experiments
         self._runs = runs
         self._evaluators = evaluators
         self._fingerprints = fingerprints
+        self._metrics = metrics
 
     async def execute(
         self,
@@ -109,6 +136,9 @@ class SummarizeExperiment:
         experiment = await self._experiments.get_by_id(experiment_id)
         if experiment is None:
             raise ExperimentNotFoundError(experiment_id)
+        experiment_metrics = (
+            await self._metrics.get(experiment_id) if self._metrics is not None else {}
+        )
 
         all_runs = await self._runs.list_runs_by_experiment(experiment_id)
         try:
@@ -122,7 +152,11 @@ class SummarizeExperiment:
             raise InvalidCompareSelectionError(str(exc)) from exc
 
         if not selected:
-            return ExperimentSummary(experiment_id=experiment_id, evaluators=[])
+            return ExperimentSummary(
+                experiment_id=experiment_id,
+                evaluators=[],
+                experiment_metrics=experiment_metrics,
+            )
 
         names = await _resolve_evaluator_names(self._evaluators, selected)
         summaries: list[EvaluatorSummary] = []
@@ -137,7 +171,11 @@ class SummarizeExperiment:
                     aggregates=aggregate_results(results),
                 )
             )
-        return ExperimentSummary(experiment_id=experiment_id, evaluators=summaries)
+        return ExperimentSummary(
+            experiment_id=experiment_id,
+            evaluators=summaries,
+            experiment_metrics=experiment_metrics,
+        )
 
 
 class CompareExperiments:
@@ -147,11 +185,13 @@ class CompareExperiments:
         runs: EvaluationRunRepository,
         evaluators: EvaluatorRepository,
         fingerprints: CurrentScoringFingerprint | None = None,
+        metrics: ExperimentMetricRepository | None = None,
     ) -> None:
         self._experiments = experiments
         self._runs = runs
         self._evaluators = evaluators
         self._fingerprints = fingerprints
+        self._metrics = metrics
 
     async def execute(
         self,
@@ -263,6 +303,12 @@ class CompareExperiments:
         unchanged = [m for m in metrics if m.status == "unchanged"]
         config_mismatches = [m for m in metrics if m.status == "config_mismatch"]
         insufficient_n = [m for m in metrics if m.status == "insufficient_n"]
+        experiment_metrics: list[ExperimentMetricComparison] = []
+        if self._metrics is not None:
+            experiment_metrics = compare_experiment_metrics(
+                await self._metrics.get(experiment_id),
+                await self._metrics.get(baseline_id),
+            )
         return ExperimentComparison(
             experiment_id=experiment_id,
             baseline_experiment_id=baseline_id,
@@ -274,4 +320,5 @@ class CompareExperiments:
             insufficient_n=insufficient_n,
             candidate_runs=candidate_run_refs,
             baseline_runs=baseline_run_refs,
+            experiment_metrics=experiment_metrics,
         )

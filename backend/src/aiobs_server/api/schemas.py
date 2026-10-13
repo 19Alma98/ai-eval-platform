@@ -410,6 +410,7 @@ class EvaluatorSummaryResponse(BaseModel):
 class ExperimentSummaryResponse(BaseModel):
     experiment_id: uuid.UUID
     evaluators: list[EvaluatorSummaryResponse]
+    experiment_metrics: dict[str, float] = Field(default_factory=dict)
 
 
 class MetricComparisonResponse(BaseModel):
@@ -431,6 +432,13 @@ class CompareRunRefResponse(BaseModel):
     metadata: dict[str, Any] = Field(default_factory=dict)
 
 
+class ExperimentMetricComparisonResponse(BaseModel):
+    key: str
+    candidate: float | None
+    baseline: float | None
+    delta: float | None
+
+
 class ExperimentCompareResponse(BaseModel):
     experiment_id: uuid.UUID
     baseline_experiment_id: uuid.UUID
@@ -443,6 +451,7 @@ class ExperimentCompareResponse(BaseModel):
     insufficient_n: list[MetricComparisonResponse] = []
     candidate_runs: list[CompareRunRefResponse] = []
     baseline_runs: list[CompareRunRefResponse] = []
+    experiment_metrics: list[ExperimentMetricComparisonResponse] = []
 
 
 class AbsoluteMinRuleBody(BaseModel):
