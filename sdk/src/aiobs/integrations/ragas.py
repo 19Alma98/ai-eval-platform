@@ -44,13 +44,17 @@ def from_ragas(
     """
     ragas = import_or_explain("ragas", "ragas")
     sample_cls = import_or_explain("ragas.dataset_schema", "ragas").SingleTurnSample
+    if not callable(getattr(metric, "single_turn_ascore", None)):
+        raise TypeError(
+            f"{type(metric).__name__} is not a Ragas single-turn metric (no single_turn_ascore)"
+        )
     columns = _single_turn_columns(metric)
     requires = tuple(sorted({_COLUMN_REQUIRES[c] for c in columns if c in _COLUMN_REQUIRES}))
 
     async def score(sample: Sample) -> float:
         ragas_sample = sample_cls(
-            user_input=as_text(sample.input),
-            response=as_text(sample.output),
+            user_input=None if sample.input is None else as_text(sample.input),
+            response=None if sample.output is None else as_text(sample.output),
             retrieved_contexts=document_texts(sample.documents) or None,
             reference=None if sample.expected is None else as_text(sample.expected),
         )

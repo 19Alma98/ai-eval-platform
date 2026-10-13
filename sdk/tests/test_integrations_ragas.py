@@ -109,3 +109,32 @@ def test_missing_library_explains_install(monkeypatch: pytest.MonkeyPatch) -> No
 def test_real_ragas_sample_accepts_our_fields() -> None:
     schema = pytest.importorskip("ragas.dataset_schema")
     schema.SingleTurnSample(user_input="q", response="a", retrieved_contexts=["d"], reference=None)
+
+
+def test_rejects_metric_without_single_turn_scoring(fake_ragas: None) -> None:
+    from aiobs.integrations.ragas import from_ragas
+
+    with pytest.raises(TypeError, match="single-turn"):
+        from_ragas(object())
+
+
+def test_none_input_and_output_stay_none(fake_ragas: None) -> None:
+    from aiobs.integrations.ragas import from_ragas
+
+    class InputOnly:
+        name = "input only"
+        required_columns = {"SINGLE_TURN": {"user_input"}}
+
+        def __init__(self) -> None:
+            self.seen: list[FakeSingleTurnSample] = []
+
+        async def single_turn_ascore(self, sample: FakeSingleTurnSample) -> float:
+            self.seen.append(sample)
+            return 1.0
+
+    metric = InputOnly()
+    m = from_ragas(metric)
+    assert evaluate_metric(m, Sample(input="q")) == Score(1.0)
+    (seen,) = metric.seen
+    assert seen.user_input == "q"
+    assert seen.response is None
