@@ -26,7 +26,10 @@ def validate_experiment_metrics(metrics: Mapping[str, Any]) -> dict[str, float]:
             )
         if isinstance(value, bool) or not isinstance(value, int | float):
             raise ValueError(f"metric {key!r} must be a number, got {value!r}")
-        number = float(value)
+        try:
+            number = float(value)
+        except OverflowError:
+            raise ValueError(f"metric {key!r} must be finite") from None
         if not math.isfinite(number):
             raise ValueError(f"metric {key!r} must be finite")
         cleaned[key] = number

@@ -16,6 +16,10 @@ def test_validate_accepts_numbers_and_key_charset() -> None:
     }
 
 
+def test_validate_accepts_max_length_key() -> None:
+    assert validate_experiment_metrics({"x" * 200: 1.0}) == {"x" * 200: 1.0}
+
+
 @pytest.mark.parametrize(
     ("metrics", "match"),
     [
@@ -28,6 +32,8 @@ def test_validate_accepts_numbers_and_key_charset() -> None:
         ({"ok": None}, "must be a number"),
         ({"ok": float("nan")}, "finite"),
         ({"ok": float("inf")}, "finite"),
+        ({"ok": 10**400}, "finite"),
+        ({"a\n": 1.0}, "invalid metric key"),
     ],
 )
 def test_validate_rejects(metrics: dict[str, Any], match: str) -> None:
