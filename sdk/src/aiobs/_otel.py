@@ -15,6 +15,7 @@ from opentelemetry.sdk.trace import ReadableSpan, TracerProvider
 from opentelemetry.sdk.trace.export import BatchSpanProcessor, SpanExporter, SpanExportResult
 from opentelemetry.util._once import Once
 
+from aiobs import _live
 from aiobs._config import project_headers, resolve_config
 from aiobs.instrumentation import activate_instrumentors
 
@@ -149,6 +150,7 @@ def _shutdown_and_reset_global_tracer_provider() -> None:
 def _reset_for_tests() -> None:
     global _INITIALIZED
     _shutdown_and_reset_global_tracer_provider()
+    _live._reset_for_tests()
     _INITIALIZED = False
 
 
@@ -177,8 +179,15 @@ def init(
     service_name: str | None = None,
     instrument: Literal["auto", False] | Sequence[str] = "auto",
     force: bool = False,
+    live: bool | None = None,
+    live_sample_rate: float | None = None,
 ) -> None:
-    """Configure OTLP export. Never raises: on bad config it warns and stays a no-op."""
+    """Configure OTLP export. Never raises: on bad config it warns and stays a no-op.
+
+    ``live=True`` (or ``AIOBS_LIVE=1``) turns each outermost ``@aiobs.trace`` call
+    outside an experiment into a platform live interaction; ``live_sample_rate``
+    (or ``AIOBS_LIVE_SAMPLE_RATE``, default 1.0) is the fraction sent to the judge.
+    """
     global _PROVIDER, _EXPORTER, _INITIALIZED, _ATEXIT_REGISTERED
 
     if is_disabled():
@@ -192,6 +201,12 @@ def init(
     if force:
         _shutdown_and_reset_global_tracer_provider()
         _INITIALIZED = False
+
+    try:
+        _live.configure(enabled=live, sample_rate=live_sample_rate)
+    except (TypeError, ValueError) as exc:
+        logger.warning("aiobs: live capture disabled: %s", exc)
+        _live.configure(enabled=False)
 
     try:
         config = resolve_config(

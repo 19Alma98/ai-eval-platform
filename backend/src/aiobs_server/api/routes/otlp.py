@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import logging
 
-from fastapi import APIRouter, Depends, Header, Request, Response, status
+from fastapi import APIRouter, BackgroundTasks, Depends, Header, Request, Response, status
 from fastapi.responses import JSONResponse
 from opentelemetry.proto.collector.trace.v1.trace_service_pb2 import (
     ExportTraceServiceResponse,
@@ -11,9 +11,11 @@ from opentelemetry.proto.collector.trace.v1.trace_service_pb2 import (
 from aiobs_server.api.deps import (
     get_app_settings,
     get_bind_otlp_traces,
+    get_create_live_from_traces,
     get_ingest_traces,
     get_resolve_project,
 )
+from aiobs_server.application.live_interactions import schedule_live_score
 from aiobs_server.application.traces import (
     IngestNormalizedTraces,
     ProjectMissingError,
@@ -21,6 +23,10 @@ from aiobs_server.application.traces import (
 )
 from aiobs_server.config import Settings
 from aiobs_server.tracing.ingestion import ingest_otlp_payload
+from aiobs_server.tracing.live_binding import (
+    CreateLiveInteractionsFromTraces,
+    traces_for_live_binding,
+)
 from aiobs_server.tracing.otel import OtlpDecodeError
 from aiobs_server.tracing.run_binding import (
     BindOtlpTracesToExperimentOutputs,
@@ -35,9 +41,11 @@ router = APIRouter(tags=["otlp"])
 @router.post("/v1/traces")
 async def export_traces(
     request: Request,
+    background_tasks: BackgroundTasks,
     resolve: ResolveProject = Depends(get_resolve_project),
     ingest: IngestNormalizedTraces = Depends(get_ingest_traces),
     bind_outputs: BindOtlpTracesToExperimentOutputs = Depends(get_bind_otlp_traces),
+    create_live: CreateLiveInteractionsFromTraces = Depends(get_create_live_from_traces),
     settings: Settings = Depends(get_app_settings),
     x_project_id: str | None = Header(default=None, alias="X-Project-Id"),
     x_project_slug: str | None = Header(default=None, alias="X-Project-Slug"),
@@ -83,6 +91,13 @@ async def export_traces(
         await bind_outputs.execute(traces_for_output_binding(traces, saved))
     except Exception:
         logger.warning("OTLP experiment output binding failed", exc_info=True)
+    try:
+        to_score = await create_live.execute(traces_for_live_binding(traces, saved))
+    except Exception:
+        logger.warning("OTLP live interaction binding failed", exc_info=True)
+        to_score = []
+    for interaction_id in to_score:
+        background_tasks.add_task(schedule_live_score, interaction_id)
 
     # OTLP success: empty ExportTraceServiceResponse (protobuf bytes)
     response = ExportTraceServiceResponse()

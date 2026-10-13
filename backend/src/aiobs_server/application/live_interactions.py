@@ -89,6 +89,8 @@ class SubmitLiveInteractionCommand:
     metadata: dict[str, Any] | None = None
     external_id: str | None = None
     metrics_set_id: uuid.UUID | None = None
+    # False stores the interaction as "unsampled" and never schedules the judge.
+    judge: bool = True
 
 
 @dataclass(frozen=True, slots=True)
@@ -219,6 +221,7 @@ class SubmitLiveInteraction:
             metadata=command.metadata,
             external_id=command.external_id,
             metrics_set_id=command.metrics_set_id,
+            judge=command.judge,
         )
         try:
             saved = await self._live.add(interaction)

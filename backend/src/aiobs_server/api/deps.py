@@ -91,6 +91,7 @@ from aiobs_server.infrastructure.repositories import (
     SqlAlchemyProjectRepository,
     SqlAlchemyTraceRepository,
 )
+from aiobs_server.tracing.live_binding import CreateLiveInteractionsFromTraces
 from aiobs_server.tracing.run_binding import BindOtlpTracesToExperimentOutputs
 
 
@@ -593,6 +594,12 @@ def get_submit_live_interaction(
     metrics_sets: SqlAlchemyMetricsSetRepository = Depends(get_metrics_set_repository),
 ) -> SubmitLiveInteraction:
     return SubmitLiveInteraction(projects, live, metrics_sets)
+
+
+def get_create_live_from_traces(
+    submit: SubmitLiveInteraction = Depends(get_submit_live_interaction),
+) -> CreateLiveInteractionsFromTraces:
+    return CreateLiveInteractionsFromTraces(submit)
 
 
 def get_score_live_interaction(

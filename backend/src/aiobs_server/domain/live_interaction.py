@@ -5,7 +5,8 @@ from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime
 from typing import Any
 
-JUDGE_STATUSES = frozenset({"pending", "running", "scored", "error"})
+# "unsampled": recorded from production traffic but left out of judge sampling.
+JUDGE_STATUSES = frozenset({"pending", "running", "scored", "error", "unsampled"})
 REVIEW_VERDICTS = frozenset({"agree", "disagree"})
 
 # Metrics kinds safe to run without expected_output / gold labels.
@@ -47,6 +48,7 @@ class LiveInteraction:
         metadata: dict[str, Any] | None = None,
         external_id: str | None = None,
         metrics_set_id: uuid.UUID | None = None,
+        judge: bool = True,
     ) -> LiveInteraction:
         q = question.strip()
         a = answer.strip()
@@ -57,9 +59,7 @@ class LiveInteraction:
         ext = external_id.strip() if external_id else None
         if external_id is not None and not ext:
             raise ValueError("external_id must not be empty when provided")
-        status = "pending"
-        if status not in JUDGE_STATUSES:
-            raise ValueError(f"invalid judge_status: {status}")
+        status = "pending" if judge else "unsampled"
         return cls(
             id=uuid.uuid4(),
             project_id=project_id,

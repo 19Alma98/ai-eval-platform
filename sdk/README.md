@@ -181,6 +181,25 @@ Control-plane methods return **Pydantic** models (see `aiobs.models`); use attri
 
 Namespaces: `projects`, `datasets` (`create`, `create_with_items`, `add_item`, `get`, `list`, `import_items`), `experiments` (`create`, `get`, `list_outputs`, `upsert_outputs`, `evaluate_pack`, `summary`, `compare`), `metrics_packs` (`ensure`, `get`), `metrics_sets` (`list`, `get`, `create`), `live_runs` (`submit`, `list`, `get`, `promote`, `rescore`), `app_configs` (same methods as `AppConfigClient`). Non-2xx responses raise `AiobsAPIError` (with parsed FastAPI `detail` when present).
 
+### Live runs from tracing (production)
+
+With `live=True`, the outermost `@aiobs.trace` call outside an experiment becomes a live interaction at OTLP ingestion; no separate `live_runs.submit` call is needed.
+
+```python
+aiobs.init(project_slug="acme", live=True, live_sample_rate=0.1)  # or AIOBS_LIVE=1, AIOBS_LIVE_SAMPLE_RATE=0.1
+
+@aiobs.trace
+def answer(question: str) -> str:
+    docs = retrieve(question)            # documents from RETRIEVER spans or set_retrieval_documents()
+    return llm(question, docs)
+```
+
+- Every call is recorded; only `live_sample_rate` of them (default `1.0`) are sent to the judge. The rest show `judge_status="unsampled"` and can still be judged with `live_runs.rescore`. Sampling is deterministic on the trace id.
+- Question = the only string argument (or a `question`/`query`/`input`/`prompt` kwarg); answer = the return value. Override with `aiobs.set_input(...)` / `aiobs.set_output(...)`.
+- `@aiobs.trace(live=False)` excludes a function; `live=True` opts one in when `init(live=...)` is off.
+- The server must run with `CONTENT_CAPTURE_ENABLED=true`, otherwise input/output are redacted and no live interaction is created.
+- Idempotent per trace (`external_id="trace:<trace_id>"`).
+
 ### Live runs → TestSet loop
 
 ```python

@@ -8,6 +8,7 @@ from typing import Any, cast, overload
 from opentelemetry import trace as otel_trace
 from opentelemetry.trace import Span, Status, StatusCode
 
+from aiobs import _live
 from aiobs._config import MAX_CAPTURE_BYTES
 from aiobs._run_context import record_output
 
@@ -118,6 +119,7 @@ def trace[**P, R](
     kind: str = "CHAIN",
     capture_input: bool = True,
     capture_output: bool = True,
+    live: bool | None = None,
 ) -> Callable[[Callable[P, R]], Callable[P, R]]: ...
 
 
@@ -127,6 +129,7 @@ def trace[**P, R](
     kind: str = "CHAIN",
     capture_input: bool = True,
     capture_output: bool = True,
+    live: bool | None = None,
 ) -> Any:
     def decorator(fn: Callable[P, R]) -> Callable[P, R]:
         span_name = name if isinstance(name, str) and name else _default_name(fn)
@@ -138,12 +141,15 @@ def trace[**P, R](
                 span.set_attribute("openinference.span.kind", kind)
                 if capture_input:
                     span.set_attribute("input.value", _serialize_args(args, kwargs))
+                live_token = _live.mark_if_live(span, live)
                 try:
                     result = fn(*args, **kwargs)
                 except Exception as exc:
                     span.record_exception(exc)
                     span.set_status(Status(StatusCode.ERROR, str(exc)))
                     raise
+                finally:
+                    _live.unmark(live_token)
                 if capture_output:
                     span.set_attribute("output.value", truncate_value(result))
                 return result
@@ -168,6 +174,7 @@ def trace_async[**P, R](
     kind: str = "CHAIN",
     capture_input: bool = True,
     capture_output: bool = True,
+    live: bool | None = None,
 ) -> Callable[[Callable[P, R]], Callable[P, R]]: ...
 
 
@@ -177,6 +184,7 @@ def trace_async[**P, R](
     kind: str = "CHAIN",
     capture_input: bool = True,
     capture_output: bool = True,
+    live: bool | None = None,
 ) -> Any:
     def decorator(fn: Callable[P, R]) -> Callable[P, R]:
         span_name = name if isinstance(name, str) and name else _default_name(fn)
@@ -188,12 +196,15 @@ def trace_async[**P, R](
                 span.set_attribute("openinference.span.kind", kind)
                 if capture_input:
                     span.set_attribute("input.value", _serialize_args(args, kwargs))
+                live_token = _live.mark_if_live(span, live)
                 try:
                     result = cast(R, await fn(*args, **kwargs))  # type: ignore[misc]
                 except Exception as exc:
                     span.record_exception(exc)
                     span.set_status(Status(StatusCode.ERROR, str(exc)))
                     raise
+                finally:
+                    _live.unmark(live_token)
                 if capture_output:
                     span.set_attribute("output.value", truncate_value(result))
                 return result
