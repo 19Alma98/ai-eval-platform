@@ -171,14 +171,18 @@ function TraceScoreCard({ score }: { score: TraceScore }) {
       <div className="flex items-center justify-between gap-2">
         <span className="flex items-center gap-2 font-medium text-foreground">
           {thumb === "up" ? (
-            <ThumbsUp className="size-4" aria-hidden />
+            <ThumbsUp className="size-4" role="img" aria-label="Thumbs-up feedback" />
           ) : thumb === "down" ? (
-            <ThumbsDown className="size-4" aria-hidden />
+            <ThumbsDown className="size-4" role="img" aria-label="Thumbs-down feedback" />
           ) : null}
-          {isFeedback ? "User feedback" : score.name}
-          <Badge variant="outline" className="font-normal">
-            {SOURCE_LABELS[score.source] ?? score.source}
-          </Badge>
+          <span className="min-w-0 break-words">
+            {isFeedback ? "User feedback" : score.name}
+          </span>
+          {isFeedback ? null : (
+            <Badge variant="outline" className="font-normal">
+              {SOURCE_LABELS[score.source] ?? score.source}
+            </Badge>
+          )}
         </span>
         <span className="flex items-center gap-2">
           {isFeedback ? null : (
@@ -193,7 +197,11 @@ function TraceScoreCard({ score }: { score: TraceScore }) {
       {score.author ? (
         <p className="mt-0.5 text-xs text-muted-foreground">by {score.author}</p>
       ) : null}
-      {score.explanation ? <p className="mt-2 text-foreground">{score.explanation}</p> : null}
+      {score.explanation ? (
+        <p className="mt-2 whitespace-pre-wrap break-words text-foreground">
+          {score.explanation}
+        </p>
+      ) : null}
     </div>
   );
 }
