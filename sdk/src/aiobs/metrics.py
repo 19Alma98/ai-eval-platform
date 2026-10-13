@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import math
+import numbers
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 from typing import Any
@@ -73,15 +74,15 @@ def coerce_score(value: Any) -> Score:
         return Score()
     if isinstance(value, bool):
         return Score(1.0 if value else 0.0)
-    if isinstance(value, int | float):
+    if isinstance(value, numbers.Real):
         return Score(_finite(value))
     if isinstance(value, Mapping) and "score" in value:
         inner = coerce_score(value["score"])
         return Score(
             inner.value,
-            _label(value.get("label")),
-            _explanation(value.get("explanation")),
-            dict(value.get("metadata") or {}),
+            _label(value.get("label", inner.label)),
+            _explanation(value.get("explanation", inner.explanation)),
+            dict(value.get("metadata") or inner.metadata),
         )
     raise TypeError(
         f"metric must return Score, float, bool, None or {{'score': ...}}, got {value!r}"

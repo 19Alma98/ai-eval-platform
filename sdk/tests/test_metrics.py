@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import math
+from fractions import Fraction
 
 import pytest
 
@@ -28,6 +29,11 @@ def test_sample_defaults_are_empty() -> None:
             Score(1.0, label="PASS", explanation="ok", metadata={"k": 1}),
         ),
         (Score(0.3, label="fail"), Score(0.3, label="FAIL")),
+        (
+            {"score": Score(0.3, label="FAIL", explanation="x", metadata={"k": 1})},
+            Score(0.3, label="FAIL", explanation="x", metadata={"k": 1}),
+        ),
+        (Fraction(1, 4), Score(0.25)),
     ],
 )
 def test_coerce_score_accepts_supported_returns(raw: object, expected: Score) -> None:
