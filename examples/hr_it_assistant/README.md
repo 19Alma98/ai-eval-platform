@@ -24,8 +24,8 @@ ollama pull tinyllama
 | `OLLAMA_MODEL2` | Candidate model for `portfolio_demo.py` (default: `tinyllama`) |
 | `OLLAMA_HOST` | Ollama base URL (default: `http://localhost:11434`) |
 | `OLLAMA_MODEL` | Default for single-question runs when `--model` is omitted |
-| `AIOBS_PROJECT_SLUG` | Project slug for traces (default: `hr-it-assistant`) |
-| `AIOBS_OTLP_ENDPOINT` | OTLP ingest URL (default: `http://localhost:8000/v1/traces`) |
+| `AIOBS_PROJECT_SLUG` | Project for traces, created if missing (default: `hr-it-assistant`) |
+| `AIOBS_TRACKING_URI` | Platform URL for API + OTLP (default: `http://localhost:8000`) |
 
 Sync the SDK env once:
 

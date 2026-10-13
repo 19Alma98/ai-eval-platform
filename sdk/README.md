@@ -32,13 +32,15 @@ uv sync --extra openai   # add OpenAI instrumentor
 
 ## Quickstart
 
-One `init`, a `@trace` wrapper for your app logic, and provider calls become child spans when the matching instrumentor is installed:
+One tracking URI, one active project, one `init`. A `@trace` wrapper for your app logic, and provider calls become child spans when the matching instrumentor is installed:
 
 ```python
 import aiobs
 from openai import OpenAI
 
-aiobs.init(project_slug="demo", instrument="auto")
+aiobs.set_tracking_uri("http://localhost:8000")  # or AIOBS_TRACKING_URI
+aiobs.set_project("demo")                        # created if it does not exist
+aiobs.init(instrument="auto")                    # OTLP → <tracking_uri>/v1/traces
 
 client = OpenAI(base_url="http://localhost:11434/v1", api_key="ollama")
 
@@ -62,6 +64,10 @@ Runnable example: [`examples/sdk_hello/`](../examples/sdk_hello/README.md) (Olla
 
 | Function | Purpose |
 |---|---|
+| `aiobs.set_tracking_uri(uri)` | Platform URL for both `Client` and OTLP (`<uri>/v1/traces`) |
+| `aiobs.set_project(name)` | Get-or-create project by slug/name; becomes the default for `init()` |
+| `aiobs.get_client()` | Shared `Client` bound to the tracking URI (no per-call `Client()`) |
+| `aiobs.get_project()` | Project set via `set_project`, or `None` |
 | `aiobs.init(...)` | OTLP exporter, project headers, optional `instrument="auto"` \| list \| `False` |
 | `@aiobs.trace` / `@aiobs.trace_async` | Parent CHAIN span; optional input/output capture (32 KiB cap) |
 | `aiobs.set_input` / `set_output` | Override OpenInference I/O on the current span (no OTEL import) |
@@ -77,7 +83,20 @@ App code should use these helpers instead of importing OpenTelemetry directly.
 
 ## Control plane (`Client`)
 
-HTTP client for the platform JSON API (uses `httpx2`, a core SDK dependency). Point `base_url` at the FastAPI host (default `http://localhost:8000`, or `AIOBS_API_BASE_URL` / `AIOBS_BASE_URL`):
+HTTP client for the platform JSON API (uses `httpx2`, a core SDK dependency). Without `base_url` it uses the tracking URI. In app code prefer the shared instance, `aiobs.get_client()`, over building a `Client()` per function:
+
+```python
+import aiobs
+
+aiobs.set_project("demo")
+client = aiobs.get_client()
+datasets = client.datasets.list()  # project_id defaults to the active project
+exp = client.experiments.create(name="baseline", dataset_id=datasets[0].id)
+```
+
+Project-scoped methods (`datasets.create/list/create_with_items`, `experiments.create/list`, `metrics_packs.ensure/get`, `live_runs.submit/list`, `projects.get`) take `project_id` as an optional first argument: explicit value > `set_project()` > `AIOBS_PROJECT_ID`, else `ValueError`.
+
+Explicit, self-managed client:
 
 ```python
 from aiobs import Client
@@ -184,13 +203,14 @@ Install the extra for the providers you use, then `init(instrument="auto")` acti
 
 | Variable | Purpose |
 |---|---|
-| `AIOBS_PROJECT_ID` | Project UUID header (`X-Project-Id`); exactly one of id/slug required |
-| `AIOBS_PROJECT_SLUG` | Project slug header (`X-Project-Slug`) |
-| `AIOBS_OTLP_ENDPOINT` | OTLP/HTTP traces URL (default `http://localhost:8000/v1/traces`) |
+| `AIOBS_TRACKING_URI` | Platform URL for `Client()` and OTLP (default `http://localhost:8000`); `set_tracking_uri()` wins |
+| `AIOBS_PROJECT_ID` | Project UUID header (`X-Project-Id`); used when no `set_project()` / `init()` argument |
+| `AIOBS_PROJECT_SLUG` | Project slug header (`X-Project-Slug`); the project must already exist |
 | `AIOBS_SERVICE_NAME` | OpenTelemetry `service.name` (default `aiobs-app`) |
-| `AIOBS_API_BASE_URL` | Default host for `Client()` (fallback: `AIOBS_BASE_URL`, then `http://localhost:8000`) |
+| `AIOBS_OTLP_ENDPOINT` | Optional override of the derived OTLP URL (e.g. a separate collector) |
+| `AIOBS_API_BASE_URL` / `AIOBS_BASE_URL` | Legacy aliases of `AIOBS_TRACKING_URI` (lower priority) |
 
-Arguments to `init()` override these when set.
+Project precedence for `init()`: arguments > `set_project()` > env.
 
 ## Content capture
 

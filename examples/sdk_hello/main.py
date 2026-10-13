@@ -7,12 +7,9 @@ import os
 import aiobs
 from openai import OpenAI
 
-aiobs.init(
-    project_slug=os.getenv("AIOBS_PROJECT_SLUG", "demo"),
-    endpoint=os.getenv("AIOBS_OTLP_ENDPOINT", "http://localhost:8000/v1/traces"),
-    service_name="sdk-hello",
-    instrument="auto",
-)
+aiobs.set_tracking_uri(os.getenv("AIOBS_TRACKING_URI", "http://localhost:8000"))
+aiobs.set_project(os.getenv("AIOBS_PROJECT_SLUG", "demo"))
+aiobs.init(service_name="sdk-hello", instrument="auto")
 
 client = OpenAI(
     base_url=os.getenv("OLLAMA_HOST", "http://localhost:11434") + "/v1",

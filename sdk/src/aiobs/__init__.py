@@ -5,6 +5,8 @@ from __future__ import annotations
 from importlib.metadata import PackageNotFoundError
 from importlib.metadata import version as _version
 
+from aiobs._config import get_tracking_uri, set_tracking_uri
+from aiobs._context import get_client, get_project, set_project
 from aiobs._eval_run import bind_evaluation, set_retrieval_documents
 from aiobs._http import AiobsAPIError
 from aiobs._otel import flush, init
@@ -29,13 +31,18 @@ __all__ = [
     "bind_evaluation",
     "current_trace_id",
     "flush",
+    "get_client",
+    "get_project",
+    "get_tracking_uri",
     "init",
     "set_attribute",
     "set_attributes",
     "set_error",
     "set_input",
     "set_output",
+    "set_project",
     "set_retrieval_documents",
+    "set_tracking_uri",
     "trace",
     "trace_async",
 ]

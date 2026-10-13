@@ -2,12 +2,13 @@ from __future__ import annotations
 
 import json
 import mimetypes
-import os
 from pathlib import Path
 from typing import Any, TypeVar
 
 import httpx2
 from pydantic import BaseModel
+
+from aiobs._config import get_tracking_uri
 
 T = TypeVar("T", bound=BaseModel)
 
@@ -155,13 +156,10 @@ class _HttpTransport:
 
 
 def resolve_api_base_url(base_url: str | None = None) -> str:
-    """Resolve API host from arg or ``AIOBS_API_BASE_URL`` (default localhost:8000)."""
+    """Resolve API host from arg, else the tracking URI (see ``aiobs.get_tracking_uri``)."""
     if base_url is not None and base_url.strip():
         return base_url.rstrip("/")
-    env = os.getenv("AIOBS_API_BASE_URL") or os.getenv("AIOBS_BASE_URL")
-    if env and env.strip():
-        return env.rstrip("/")
-    return "http://localhost:8000"
+    return get_tracking_uri()
 
 
 def read_upload(

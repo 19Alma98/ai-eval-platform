@@ -14,16 +14,8 @@ from kb import expected_for_question, iter_gold, load_knowledge, retrieve
 from openai import OpenAI
 
 import aiobs
-from aiobs import Client
 
 logger = logging.getLogger(__name__)
-
-
-def api_client() -> Client:
-    return Client(
-        os.getenv("AIOBS_API_BASE_URL") or os.getenv("AIOBS_BASE_URL"),
-        timeout=60.0,
-    )
 
 
 def question_from_item_input(raw: Any) -> str:
@@ -38,7 +30,7 @@ def question_from_item_input(raw: Any) -> str:
 
 
 def load_dataset_jobs(dataset_id: str) -> tuple[str, list[tuple[str, str, Any]]]:
-    detail = api_client().datasets.get(dataset_id)
+    detail = aiobs.get_client().datasets.get(dataset_id)
     items = detail.get("items") or []
     if not items:
         raise SystemExit(f"dataset {dataset_id} has no items")
@@ -56,7 +48,7 @@ def load_dataset_jobs(dataset_id: str) -> tuple[str, list[tuple[str, str, Any]]]
 
 def create_experiment(project_id: str, dataset_id: str, *, model: str) -> str:
     stamp = time.strftime("%Y%m%d-%H%M%S")
-    experiment = api_client().experiments.create(
+    experiment = aiobs.get_client().experiments.create(
         project_id,
         name=f"hr-it-assistant-{stamp}",
         dataset_id=dataset_id,
@@ -77,7 +69,7 @@ SYSTEM_PROMPT = DEFAULT_SYSTEM_PROMPT
 
 
 def system_prompt_from_experiment(experiment_id: str) -> str | None:
-    detail = api_client().experiments.get(experiment_id)
+    detail = aiobs.get_client().experiments.get(experiment_id)
     mc = detail.get("model_config") or {}
     prompt = mc.get("prompt") if isinstance(mc, dict) else None
     if not isinstance(prompt, dict):
@@ -233,17 +225,15 @@ def main(argv: list[str] | None = None) -> int:
         dataset_project_id, dataset_jobs = load_dataset_jobs(args.dataset_id)
 
     project_id = os.getenv("AIOBS_PROJECT_ID") or dataset_project_id
-    project_slug = os.getenv("AIOBS_PROJECT_SLUG", "hr-it-assistant")
-    init_kwargs: dict[str, Any] = {
-        "endpoint": os.getenv("AIOBS_OTLP_ENDPOINT", "http://localhost:8000/v1/traces"),
-        "service_name": os.getenv("AIOBS_SERVICE_NAME", "hr-it-assistant"),
-        "instrument": ["openai"],
-    }
-    if project_id:
-        init_kwargs["project_id"] = project_id
-    else:
-        init_kwargs["project_slug"] = project_slug
-    aiobs.init(**init_kwargs)
+    if not project_id:
+        project_id = aiobs.set_project(
+            os.getenv("AIOBS_PROJECT_SLUG", "hr-it-assistant")
+        ).id
+    aiobs.init(
+        project_id=project_id,
+        service_name=os.getenv("AIOBS_SERVICE_NAME", "hr-it-assistant"),
+        instrument=["openai"],
+    )
 
     docs = load_knowledge()
     host = os.getenv("OLLAMA_HOST", "http://localhost:11434").rstrip("/")
@@ -257,10 +247,6 @@ def main(argv: list[str] | None = None) -> int:
     jobs: list[tuple[str, str | None, Any]]
     if dataset_jobs is not None:
         if not experiment_id:
-            if not project_id:
-                raise SystemExit(
-                    "dataset run needs project_id from the dataset or AIOBS_PROJECT_ID"
-                )
             experiment_id = create_experiment(
                 project_id, args.dataset_id, model=args.model
             )

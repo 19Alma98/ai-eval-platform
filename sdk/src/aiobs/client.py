@@ -8,6 +8,7 @@ from urllib.parse import urlencode
 
 import httpx2
 
+from aiobs._config import resolve_project_id
 from aiobs._http import _HttpTransport, read_upload, resolve_api_base_url
 from aiobs.models import (
     DatasetDetailResponse,
@@ -48,7 +49,8 @@ class _ProjectsResource:
             "GET", "/api/v1/projects", response_model=ProjectResponse
         )
 
-    def get(self, project_id: str) -> ProjectResponse:
+    def get(self, project_id: str | None = None) -> ProjectResponse:
+        project_id = resolve_project_id(project_id)
         return self._http.request_model(
             "GET",
             f"/api/v1/projects/{project_id}",
@@ -62,13 +64,14 @@ class _DatasetsResource:
 
     def create(
         self,
-        project_id: str,
+        project_id: str | None = None,
         *,
         name: str,
         version: int = 1,
         description: str | None = None,
         task_type: str = "rag_qa",
     ) -> DatasetResponse:
+        project_id = resolve_project_id(project_id)
         body: dict[str, Any] = {
             "name": name,
             "version": version,
@@ -84,8 +87,9 @@ class _DatasetsResource:
         )
 
     def list(
-        self, project_id: str, *, task_type: str | None = None
+        self, project_id: str | None = None, *, task_type: str | None = None
     ) -> builtins.list[DatasetResponse]:
+        project_id = resolve_project_id(project_id)
         query: dict[str, str] | None = None
         if task_type is not None:
             query = {"task_type": task_type}
@@ -137,7 +141,7 @@ class _DatasetsResource:
 
     def create_with_items(
         self,
-        project_id: str,
+        project_id: str | None = None,
         *,
         name: str,
         items: builtins.list[dict[str, Any]],
@@ -145,6 +149,7 @@ class _DatasetsResource:
         description: str | None = None,
         task_type: str = "rag_qa",
     ) -> DatasetResponse:
+        project_id = resolve_project_id(project_id)
         dataset = self.create(
             project_id,
             name=name,
@@ -188,7 +193,7 @@ class _ExperimentsResource:
 
     def create(
         self,
-        project_id: str,
+        project_id: str | None = None,
         *,
         name: str,
         dataset_id: str,
@@ -199,6 +204,7 @@ class _ExperimentsResource:
         app_config_alias: str | None = None,
         metrics_set_id: str | None = None,
     ) -> ExperimentResponse:
+        project_id = resolve_project_id(project_id)
         body: dict[str, Any] = {
             "name": name,
             "dataset_id": dataset_id,
@@ -221,7 +227,8 @@ class _ExperimentsResource:
             response_model=ExperimentResponse,
         )
 
-    def list(self, project_id: str) -> builtins.list[ExperimentResponse]:
+    def list(self, project_id: str | None = None) -> builtins.list[ExperimentResponse]:
+        project_id = resolve_project_id(project_id)
         return self._http.request_model_list(
             "GET",
             f"/api/v1/projects/{project_id}/experiments",
@@ -345,7 +352,8 @@ class _MetricsPacksResource:
     def __init__(self, http: _HttpTransport) -> None:
         self._http = http
 
-    def ensure(self, project_id: str) -> MetricsPackResponse:
+    def ensure(self, project_id: str | None = None) -> MetricsPackResponse:
+        project_id = resolve_project_id(project_id)
         return self._http.request_model(
             "POST",
             f"/api/v1/projects/{project_id}/metrics-pack/ensure",
@@ -353,7 +361,8 @@ class _MetricsPacksResource:
             response_model=MetricsPackResponse,
         )
 
-    def get(self, project_id: str) -> MetricsPackResponse:
+    def get(self, project_id: str | None = None) -> MetricsPackResponse:
+        project_id = resolve_project_id(project_id)
         return self._http.request_model(
             "GET",
             f"/api/v1/projects/{project_id}/metrics-pack",
@@ -367,7 +376,7 @@ class _LiveRunsResource:
 
     def submit(
         self,
-        project_id: str,
+        project_id: str | None = None,
         *,
         question: str,
         answer: str,
@@ -376,6 +385,7 @@ class _LiveRunsResource:
         external_id: str | None = None,
         metrics_set_id: str | None = None,
     ) -> LiveInteractionResponse:
+        project_id = resolve_project_id(project_id)
         body: dict[str, Any] = {
             "question": question,
             "answer": answer,
@@ -395,13 +405,14 @@ class _LiveRunsResource:
 
     def list(
         self,
-        project_id: str,
+        project_id: str | None = None,
         *,
         judge_status: str | None = None,
         search: str | None = None,
         failed_only: bool = False,
         limit: int = 50,
     ) -> ListLiveInteractionsResponse:
+        project_id = resolve_project_id(project_id)
         params: dict[str, str] = {"limit": str(limit)}
         if judge_status is not None:
             params["judge_status"] = judge_status
