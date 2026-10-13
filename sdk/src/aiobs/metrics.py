@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import inspect
+import json
 import math
 import numbers
 from collections.abc import Callable, Iterable, Mapping
@@ -65,6 +66,14 @@ def _explanation(value: Any) -> str | None:
     return None if value is None else str(value)
 
 
+def _metadata(value: Mapping[str, Any]) -> dict[str, Any]:
+    """Strict-JSON copy (what the platform accepts); NaN/inf or cycles raise ValueError."""
+    if not value:
+        return {}
+    result: dict[str, Any] = json.loads(json.dumps(dict(value), default=str, allow_nan=False))
+    return result
+
+
 def coerce_score(value: Any) -> Score:
     """Normalize what a metric returned into a ``Score``; raises on anything unusable."""
     if isinstance(value, Score):
@@ -72,7 +81,7 @@ def coerce_score(value: Any) -> Score:
             _finite(value.value),
             _label(value.label),
             _explanation(value.explanation),
-            dict(value.metadata),
+            _metadata(value.metadata),
         )
     if value is None:
         return Score()
@@ -86,7 +95,7 @@ def coerce_score(value: Any) -> Score:
             inner.value,
             _label(value.get("label", inner.label)),
             _explanation(value.get("explanation", inner.explanation)),
-            dict(value.get("metadata") or inner.metadata),
+            _metadata(value.get("metadata") or inner.metadata),
         )
     raise TypeError(
         f"metric must return Score, float, bool, None or {{'score': ...}}, got {value!r}"
@@ -112,7 +121,18 @@ class LocalMetric:
     requires: tuple[str, ...] = ()
 
     def __post_init__(self) -> None:
-        object.__setattr__(self, "requires", tuple(self.requires))
+        requires = tuple(self.requires)
+        inner = self.fn
+        if isinstance(inner, LocalMetric):
+            # Re-wrapping (e.g. to change the threshold): keep the inner function so
+            # signature detection still sees it, and its requirements. Outer values win.
+            object.__setattr__(self, "fn", inner.fn)
+            object.__setattr__(self, "name", self.name or inner.name)
+            if self.threshold is None:
+                object.__setattr__(self, "threshold", inner.threshold)
+            object.__setattr__(self, "config", {**inner.config, **self.config})
+            requires = tuple(dict.fromkeys(inner.requires + requires))
+        object.__setattr__(self, "requires", requires)
         unknown = sorted(set(self.requires) - REQUIREMENTS)
         if unknown:
             raise ValueError(f"unknown requires {unknown}; allowed: {sorted(REQUIREMENTS)}")

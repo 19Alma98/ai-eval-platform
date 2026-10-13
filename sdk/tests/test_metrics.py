@@ -145,3 +145,45 @@ def test_metric_exceptions_propagate() -> None:
 
     with pytest.raises(RuntimeError, match="boom"):
         evaluate_metric(LocalMetric(broken), Sample())
+
+
+def test_coerce_score_normalizes_metadata_to_json() -> None:
+    class Opaque:
+        def __str__(self) -> str:
+            return "opaque"
+
+    score = coerce_score(Score(1.0, metadata={"pair": (1, 2), "obj": Opaque()}))
+    assert score.metadata == {"pair": [1, 2], "obj": "opaque"}
+
+
+@pytest.mark.parametrize("metadata", [{"x": math.nan}, {"x": math.inf}])
+def test_coerce_score_rejects_non_json_metadata(metadata: dict[str, Any]) -> None:
+    with pytest.raises(ValueError):
+        coerce_score({"score": 1.0, "metadata": metadata})
+
+
+def test_rewrapping_a_metric_keeps_its_signature_and_requirements() -> None:
+    @metric(name="legacy", version=1, requires=("output",))
+    def legacy(item: Any, output: Any) -> float:
+        return 1.0 if item == "the-item" else 0.0
+
+    wrapped = LocalMetric(legacy, threshold=0.5, config={"k": 3})
+
+    assert wrapped.fn is legacy.fn
+    assert wrapped.name == "legacy"
+    assert wrapped.threshold == 0.5
+    assert dict(wrapped.config) == {"version": 1, "k": 3}
+    assert wrapped.requires == ("output",)
+    assert evaluate_metric(wrapped, Sample(output="a"), item="the-item") == Score(1.0)
+    assert evaluate_metric(wrapped, Sample(output="")) == Score(
+        label="SKIPPED", explanation="missing output"
+    )
+
+
+def test_rewrapping_merges_requirements_and_outer_values_win() -> None:
+    inner = LocalMetric(lambda s: 1.0, name="inner", threshold=0.2, requires=("documents",))
+    outer = metric(name="outer", threshold=0.9, requires=("expected", "documents"))(inner)
+
+    assert outer.name == "outer"
+    assert outer.threshold == 0.9
+    assert outer.requires == ("documents", "expected")
