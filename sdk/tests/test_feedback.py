@@ -290,3 +290,47 @@ def test_flush_shares_one_timeout_budget(monkeypatch: pytest.MonkeyPatch) -> Non
 
     monkeypatch.setattr(_scores, "flush", lambda timeout=5.0: 1 / 0)
     assert _otel.flush(1000) is False
+
+
+def test_score_misuse_never_raises(sent: Recorder, caplog: pytest.LogCaptureFixture) -> None:
+    def plain(s: aiobs.Sample) -> float:
+        return 1.0
+
+    with caplog.at_level(logging.WARNING, logger="aiobs"):
+        assert aiobs.score(plain, aiobs.Sample(), trace_id=TID) is False  # type: ignore[arg-type]
+        assert aiobs.score(None, aiobs.Sample(), trace_id=TID) is False  # type: ignore[arg-type]
+
+        @aiobs.metric()
+        def ok(s: aiobs.Sample) -> float:
+            return 1.0
+
+        assert aiobs.score(ok, "not a sample", trace_id=TID) is False  # type: ignore[arg-type]
+    assert len(caplog.records) == 3
+    assert aiobs.flush()
+    assert sent.scores == []
+
+
+def test_score_with_raising_metric_returns_false(sent: Recorder) -> None:
+    @aiobs.metric()
+    def broken(s: aiobs.Sample) -> float:
+        raise RuntimeError("boom")
+
+    assert aiobs.score(broken, aiobs.Sample(output="x"), trace_id=TID) is False
+    assert aiobs.flush()
+    assert sent.scores == []
+
+
+def test_score_trace_from_sample(sent: Recorder) -> None:
+    @aiobs.metric()
+    def ok(s: aiobs.Sample) -> float:
+        return 1.0
+
+    assert aiobs.score(ok, aiobs.Sample(output="x", trace_id=TID.upper()))
+    aiobs.flush()
+    assert sent.scores[0]["trace_id"] == TID
+
+
+def test_feedback_without_user_id_has_no_author(sent: Recorder) -> None:
+    assert aiobs.log_feedback(True, trace_id=TID)
+    aiobs.flush()
+    assert "author" not in sent.scores[0]

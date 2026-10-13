@@ -276,20 +276,25 @@ def score(metric: LocalMetric, sample: Sample, *, trace_id: str | None = None) -
     whose ``requires`` are not met is skipped (False). A raising metric logs a
     warning and returns False.
     """
-    if not metric.name:
-        logger.warning("aiobs: score() ignored: the metric needs a name (use @aiobs.metric)")
-        return False
-    missing = missing_requirement(sample, metric.requires)
-    if missing is not None:
-        logger.debug("aiobs: metric %s skipped: missing %s", metric.name, missing)
-        return False
-    try:
-        result = evaluate_metric(metric, sample)
-    except Exception as exc:  # noqa: BLE001 — a broken metric must not break the caller
-        logger.warning("aiobs: metric %s failed: %s", metric.name, exc)
-        return False
-    return _queue(
-        f"score({_name_for_log(metric.name)})",
-        trace_id if trace_id is not None else sample.trace_id,
-        lambda: _metric_payload(metric, result),
-    )
+
+    def action() -> bool:
+        if not isinstance(metric, LocalMetric) or not metric.name:
+            raise ValueError("the metric needs a name (use @aiobs.metric)")
+        if not isinstance(sample, Sample):
+            raise ValueError(f"sample must be an aiobs.Sample, got {type(sample).__name__}")
+        missing = missing_requirement(sample, metric.requires)
+        if missing is not None:
+            logger.debug("aiobs: metric %s skipped: missing %s", metric.name, missing)
+            return False
+        try:
+            result = evaluate_metric(metric, sample)
+        except Exception as exc:  # noqa: BLE001 — a broken metric must not break the caller
+            logger.warning("aiobs: metric %s failed: %s", metric.name, _describe(exc))
+            return False
+        return _queue(
+            f"score({_name_for_log(metric.name)})",
+            trace_id if trace_id is not None else sample.trace_id,
+            lambda: _metric_payload(metric, result),
+        )
+
+    return _guarded("score()", action)
