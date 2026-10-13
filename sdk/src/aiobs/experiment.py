@@ -10,7 +10,7 @@ import time
 from collections.abc import Callable, Iterator, Mapping, Sequence
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import contextmanager
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import Any
 
 from opentelemetry import trace as otel_trace
@@ -23,6 +23,7 @@ from aiobs._http import AiobsAPIError
 from aiobs._run_context import ACTIVE_RUN
 from aiobs._trace import current_trace_id, truncate_value
 from aiobs.client import Client
+from aiobs.metrics import LocalMetric, Sample, Score, evaluate_metric
 from aiobs.models import (
     DatasetItemResponse,
     DatasetResponse,
@@ -37,27 +38,11 @@ from aiobs.models import (
 logger = logging.getLogger("aiobs")
 
 
-@dataclass(frozen=True)
-class LocalMetric:
-    """A Python metric ``fn(item, output) -> float | bool | None`` scored in-process.
-
-    Scores are submitted to the platform (``/client-results``), so they show up in
-    the summary, the UI and baseline compares like server metrics. ``threshold``
-    sets PASS/FAIL (default: 0 fails, anything else passes). Bump ``config`` (e.g.
-    ``{"version": 2}``) when the code changes: compare then reports a config
-    mismatch instead of a misleading delta.
-    """
-
-    fn: Callable[..., Any]
-    name: str | None = None
-    threshold: float | None = None
-    config: Mapping[str, Any] = field(default_factory=dict)
-
-
 Metric = str | Mapping[str, Any] | LocalMetric | Callable[..., Any]
 """A server metric kind (``"groundedness"``), an entry dict
 (``{"kind": "hit_at_k", "threshold": 0.9, "config": {"k": 3}}``), a ``LocalMetric``
-or a bare callable ``fn(item, output) -> float | bool | None`` scored locally."""
+(``@aiobs.metric``) or a bare callable ``fn(sample)`` / ``fn(item, output)`` scored
+locally."""
 
 TASK_FAILED_EXPLANATION = "task raised before producing an output"
 
@@ -108,6 +93,7 @@ class ItemRun:
     latency_ms: float | None = None
     scores: dict[str, float | None] = field(default_factory=dict)
     metric_errors: dict[str, str] = field(default_factory=dict)
+    results: dict[str, Score] = field(default_factory=dict)
     documents: list[dict[str, Any]] | None = None
     context: dict[str, Any] = field(default_factory=dict)
     _explicit_output: bool = field(default=False, repr=False)
@@ -408,16 +394,20 @@ class Experiment:
         return found
 
     def _score_locally(self, record: ItemRun) -> None:
+        sample = _sample_from(record)
         for metric in self._local_metrics:
             name = _local_name(metric)
             try:
-                record.scores[name] = _coerce_score(metric.fn(record.item, record.output))
+                result = evaluate_metric(metric, sample, item=record.item)
             except Exception as exc:  # a broken metric must not sink the run
                 logger.warning(
                     "aiobs local metric %s failed on item %s: %s", name, record.item.id, exc
                 )
                 record.scores[name] = None
                 record.metric_errors[name] = f"{type(exc).__name__}: {exc}"
+                continue
+            record.results[name] = result
+            record.scores[name] = result.value
 
     def _submit_local_scores(self, records: list[ItemRun]) -> bool:
         """Send local metric scores to the platform; False (with a warning) on failure."""
@@ -439,7 +429,14 @@ class Experiment:
                 elif name in record.metric_errors:
                     result.update(label="ERROR", explanation=record.metric_errors[name][:4000])
                 else:
-                    result["score"] = record.scores.get(name)
+                    score = record.results.get(name, Score())
+                    result["score"] = score.value
+                    if score.label is not None:
+                        result["label"] = score.label
+                    if score.explanation is not None:
+                        result["explanation"] = score.explanation[:4000]
+                    if score.metadata:
+                        result["metadata"] = _jsonable(score.metadata)
                 results.append(result)
             entry: dict[str, Any] = {"name": name, "results": results}
             if metric.threshold is not None:
@@ -548,16 +545,18 @@ class Experiment:
             time.sleep(poll_interval)
 
 
-def _coerce_score(value: Any) -> float | None:
-    if value is None:
-        return None
-    if isinstance(value, bool):
-        return 1.0 if value else 0.0
-    if isinstance(value, int | float):
-        return float(value)
-    if isinstance(value, Mapping) and "score" in value:
-        return _coerce_score(value["score"])
-    raise TypeError(f"metric must return float, bool, None or {{'score': ...}}, got {value!r}")
+def _sample_from(record: ItemRun) -> Sample:
+    item = record.item
+    return Sample(
+        input=item.input,
+        output=record.output,
+        expected=item.expected_output,
+        documents=[dict(doc) for doc in record.documents or []],
+        context=dict(record.context),
+        metadata=dict(item.metadata),
+        trace_id=record.trace_id,
+        item_id=item.id,
+    )
 
 
 def _output_entry(record: ItemRun, stored: ExperimentItemOutputResponse | None) -> dict[str, Any]:
@@ -685,7 +684,7 @@ def _split_metrics(
             name = spec.name or getattr(spec.fn, "__name__", "") or ""
             if not name or name == "<lambda>":
                 name = f"metric_{index}"
-            local.append(LocalMetric(spec.fn, name, spec.threshold, dict(spec.config)))
+            local.append(replace(spec, name=name, config=dict(spec.config)))
         else:
             raise TypeError(f"unsupported metric {metric!r}")
     kinds = [entry["kind"] for entry in server]

@@ -29,6 +29,7 @@ from aiobs.experiment import (
     evaluate,
     start_experiment,
 )
+from aiobs.metrics import Sample, Score, metric
 from aiobs.registry import AppConfigClient
 
 __all__ = [
@@ -40,6 +41,8 @@ __all__ = [
     "ExperimentResult",
     "ItemRun",
     "LocalMetric",
+    "Sample",
+    "Score",
     "bind_evaluation",
     "current_trace_id",
     "evaluate",
@@ -48,6 +51,7 @@ __all__ = [
     "get_project",
     "get_tracking_uri",
     "init",
+    "metric",
     "set_attribute",
     "set_attributes",
     "set_error",

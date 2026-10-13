@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import json
 import re
 import uuid
@@ -460,3 +461,58 @@ def test_output_entry_keeps_trace_context_and_metadata() -> None:
         "extra": 1,
     }
     assert entry["metadata"] == {"source_trace_id": "t1"}
+
+
+def test_sample_metric_gets_documents_and_reports_explanation(server: FakeServer) -> None:
+    @aiobs.metric(threshold=0.5, version=3, requires=("documents",))
+    def cites(sample: aiobs.Sample) -> aiobs.Score:
+        hit = any(d["id"] == "d1" for d in sample.documents)
+        return aiobs.Score(
+            1.0 if hit else 0.0,
+            explanation=f"expected={sample.expected}",
+            metadata={"n_docs": len(sample.documents)},
+        )
+
+    result = aiobs.evaluate(dataset=ROWS, task=_task, metrics=[cites])
+
+    (submitted,) = server.client_results[result.id]
+    assert submitted["name"] == "cites"
+    assert submitted["threshold"] == 0.5
+    assert submitted["config"] == {"version": 3}
+    assert sorted(r["explanation"] for r in submitted["results"]) == [
+        "expected=a1",
+        "expected=a2",
+    ]
+    assert all(r["score"] == 1.0 for r in submitted["results"])
+    assert all(r["metadata"] == {"n_docs": 1} for r in submitted["results"])
+
+
+def test_missing_required_field_is_submitted_as_skipped(server: FakeServer) -> None:
+    @aiobs.metric(requires=("documents",))
+    def needs_docs(sample: aiobs.Sample) -> float:
+        return 1.0
+
+    result = aiobs.evaluate(dataset=ROWS, task=lambda item: "no retrieval", metrics=[needs_docs])
+
+    (submitted,) = server.client_results[result.id]
+    assert [(r["score"], r["label"], r["explanation"]) for r in submitted["results"]] == [
+        (None, "SKIPPED", "missing documents"),
+        (None, "SKIPPED", "missing documents"),
+    ]
+
+
+def test_async_metric_and_non_finite_score(server: FakeServer) -> None:
+    @aiobs.metric
+    async def slow(sample: aiobs.Sample) -> float:
+        await asyncio.sleep(0)
+        return 0.25
+
+    def nan(item: Any, output: Any) -> float:
+        return float("nan")
+
+    result = aiobs.evaluate(dataset=ROWS, task=_task, metrics=[slow, nan], max_concurrency=2)
+
+    slow_sub, nan_sub = server.client_results[result.id]
+    assert [r["score"] for r in slow_sub["results"]] == [0.25, 0.25]
+    assert {r["label"] for r in nan_sub["results"]} == {"ERROR"}
+    assert all("finite" in r["explanation"] for r in nan_sub["results"])
