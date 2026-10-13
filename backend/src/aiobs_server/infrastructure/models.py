@@ -495,6 +495,23 @@ class ExperimentItemOutputModel(Base):
     )
 
 
+class ExperimentMetricModel(Base):
+    __tablename__ = "experiment_metrics"
+
+    experiment_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey("experiments.id", ondelete="CASCADE"),
+        primary_key=True,
+    )
+    key: Mapped[str] = mapped_column(String(200), primary_key=True)
+    value: Mapped[float] = mapped_column(Float, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(
+        UtcDateTime(),
+        nullable=False,
+        server_default=func.now(),
+    )
+
+
 class LiveInteractionModel(Base):
     __tablename__ = "live_interactions"
     __table_args__ = (

@@ -38,6 +38,7 @@ from aiobs_server.infrastructure.models import (
     EvaluationRunModel,
     EvaluatorModel,
     ExperimentItemOutputModel,
+    ExperimentMetricModel,
     ExperimentModel,
     JudgeClaimCacheModel,
     LiveInteractionModel,
@@ -1127,6 +1128,38 @@ def _live_score_review_to_domain(row: LiveScoreReviewModel) -> LiveScoreReview:
 
 
 _EXTERNAL_ID_CONSTRAINT = "uq_live_interactions_project_external_id"
+
+
+class SqlAlchemyExperimentMetricRepository:
+    def __init__(self, session: AsyncSession) -> None:
+        self._session = session
+
+    async def get(self, experiment_id: uuid.UUID) -> dict[str, float]:
+        result = await self._session.execute(
+            select(ExperimentMetricModel)
+            .where(ExperimentMetricModel.experiment_id == experiment_id)
+            .order_by(ExperimentMetricModel.key)
+        )
+        return {row.key: row.value for row in result.scalars().all()}
+
+    async def upsert(self, experiment_id: uuid.UUID, metrics: dict[str, float]) -> dict[str, float]:
+        bind = self._session.get_bind()
+        insert_fn = pg_insert if bind.dialect.name == "postgresql" else sqlite_insert
+        now = datetime.now(UTC)
+        stmt = insert_fn(ExperimentMetricModel).values(
+            [
+                {"experiment_id": experiment_id, "key": key, "value": value, "updated_at": now}
+                for key, value in metrics.items()
+            ]
+        )
+        # Single statement: concurrent writers of the same key cannot hit a PK violation.
+        stmt = stmt.on_conflict_do_update(
+            index_elements=["experiment_id", "key"],
+            set_={"value": stmt.excluded.value, "updated_at": stmt.excluded.updated_at},
+        )
+        await self._session.execute(stmt)
+        await self._session.commit()
+        return await self.get(experiment_id)
 
 
 class SqlAlchemyLiveInteractionRepository:
