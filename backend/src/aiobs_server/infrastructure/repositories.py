@@ -1136,13 +1136,15 @@ class SqlAlchemyExperimentMetricRepository:
 
     async def get(self, experiment_id: uuid.UUID) -> dict[str, float]:
         result = await self._session.execute(
-            select(ExperimentMetricModel)
+            select(ExperimentMetricModel.key, ExperimentMetricModel.value)
             .where(ExperimentMetricModel.experiment_id == experiment_id)
             .order_by(ExperimentMetricModel.key)
         )
-        return {row.key: row.value for row in result.scalars().all()}
+        return {row.key: row.value for row in result.all()}
 
     async def upsert(self, experiment_id: uuid.UUID, metrics: dict[str, float]) -> dict[str, float]:
+        if not metrics:
+            return await self.get(experiment_id)
         bind = self._session.get_bind()
         insert_fn = pg_insert if bind.dialect.name == "postgresql" else sqlite_insert
         now = datetime.now(UTC)

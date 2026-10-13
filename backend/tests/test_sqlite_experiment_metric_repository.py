@@ -32,3 +32,4 @@ async def test_upsert_merges_last_value_wins_and_isolates_experiments(
     assert await repo.upsert(a, {"cost_usd": 2.0}) == {"acc": 0.5, "cost_usd": 2.0}
     assert await repo.upsert(b, {"cost_usd": 9.0}) == {"cost_usd": 9.0}
     assert await repo.get(a) == {"acc": 0.5, "cost_usd": 2.0}
+    assert await repo.upsert(a, {}) == {"acc": 0.5, "cost_usd": 2.0}

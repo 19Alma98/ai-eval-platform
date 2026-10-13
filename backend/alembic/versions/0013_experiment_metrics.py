@@ -19,21 +19,25 @@ depends_on: str | Sequence[str] | None = None
 
 
 def upgrade() -> None:
-    op.create_table(
-        "experiment_metrics",
-        sa.Column("experiment_id", sa.Uuid(), nullable=False),
-        sa.Column("key", sa.String(length=200), nullable=False),
-        sa.Column("value", sa.Float(), nullable=False),
-        sa.Column(
-            "updated_at",
-            sa.DateTime(timezone=True),
-            server_default=sa.text("now()"),
-            nullable=False,
-        ),
-        sa.ForeignKeyConstraint(["experiment_id"], ["experiments.id"], ondelete="CASCADE"),
-        sa.PrimaryKeyConstraint("experiment_id", "key"),
-    )
+    inspector = sa.inspect(op.get_bind())
+    if not inspector.has_table("experiment_metrics"):
+        op.create_table(
+            "experiment_metrics",
+            sa.Column("experiment_id", sa.Uuid(), nullable=False),
+            sa.Column("key", sa.String(length=200), nullable=False),
+            sa.Column("value", sa.Float(), nullable=False),
+            sa.Column(
+                "updated_at",
+                sa.DateTime(timezone=True),
+                server_default=sa.text("now()"),
+                nullable=False,
+            ),
+            sa.ForeignKeyConstraint(["experiment_id"], ["experiments.id"], ondelete="CASCADE"),
+            sa.PrimaryKeyConstraint("experiment_id", "key"),
+        )
 
 
 def downgrade() -> None:
-    op.drop_table("experiment_metrics")
+    inspector = sa.inspect(op.get_bind())
+    if inspector.has_table("experiment_metrics"):
+        op.drop_table("experiment_metrics")
