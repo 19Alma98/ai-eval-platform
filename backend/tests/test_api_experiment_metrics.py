@@ -148,6 +148,12 @@ async def test_summary_includes_experiment_metrics(client: AsyncClient) -> None:
     summary = await client.get(f"/api/v1/experiments/{exp_id}/summary")
     assert summary.json()["experiment_metrics"] == {"cost_usd": 1.5}
 
+    await _score(client, ctx, exp_id, 1.0)
+    scored = await client.get(f"/api/v1/experiments/{exp_id}/summary")
+    assert scored.status_code == 200, scored.text
+    assert scored.json()["evaluators"] != []
+    assert scored.json()["experiment_metrics"] == {"cost_usd": 1.5}
+
 
 async def test_compare_reports_experiment_metric_deltas(client: AsyncClient) -> None:
     ctx = await _setup(client)

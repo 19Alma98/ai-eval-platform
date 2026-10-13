@@ -451,7 +451,7 @@ class ExperimentCompareResponse(BaseModel):
     insufficient_n: list[MetricComparisonResponse] = []
     candidate_runs: list[CompareRunRefResponse] = []
     baseline_runs: list[CompareRunRefResponse] = []
-    experiment_metrics: list[ExperimentMetricComparisonResponse] = []
+    experiment_metrics: list[ExperimentMetricComparisonResponse] = Field(default_factory=list)
 
 
 class AbsoluteMinRuleBody(BaseModel):
