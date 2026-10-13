@@ -8,7 +8,7 @@ DEST="$ROOT/backend/src/aiobs_server/_ui"
 
 cd "$FRONTEND"
 npm ci
-npm run build:package
+AIOBS_UI_EXPORT=1 npx --no-install next build --webpack
 
 rm -rf "$DEST"
 mkdir -p "$DEST"

@@ -36,6 +36,8 @@ run_frontend() {
     npm install
   fi
   npm run typecheck
+  npm run lint
+  npm test
 }
 
 for job in "$@"; do
