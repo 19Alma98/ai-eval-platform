@@ -31,6 +31,11 @@ from aiobs_server.application.evaluate import (
     StartEvaluateExperiment,
 )
 from aiobs_server.application.evaluators import CreateEvaluator, ListEvaluators
+from aiobs_server.application.experiment_metrics import (
+    GetExperimentMetrics,
+    LogExperimentMetrics,
+    UpdateExperimentParams,
+)
 from aiobs_server.application.experiment_outputs import (
     ListExperimentOutputs,
     UpsertExperimentOutputs,
@@ -85,6 +90,7 @@ from aiobs_server.infrastructure.repositories import (
     SqlAlchemyEvaluationRunRepository,
     SqlAlchemyEvaluatorRepository,
     SqlAlchemyExperimentItemOutputRepository,
+    SqlAlchemyExperimentMetricRepository,
     SqlAlchemyExperimentRepository,
     SqlAlchemyLiveInteractionRepository,
     SqlAlchemyMetricsSetRepository,
@@ -152,6 +158,12 @@ def get_experiment_item_output_repository(
     session: AsyncSession = Depends(get_db_session),
 ) -> SqlAlchemyExperimentItemOutputRepository:
     return SqlAlchemyExperimentItemOutputRepository(session)
+
+
+def get_experiment_metric_repository(
+    session: AsyncSession = Depends(get_db_session),
+) -> SqlAlchemyExperimentMetricRepository:
+    return SqlAlchemyExperimentMetricRepository(session)
 
 
 def get_create_project(
@@ -551,6 +563,27 @@ def get_submit_client_results(
     runs: SqlAlchemyEvaluationRunRepository = Depends(get_evaluation_run_repository),
 ) -> SubmitClientResults:
     return SubmitClientResults(experiments, datasets, outputs, evaluators, runs)
+
+
+def get_log_experiment_metrics(
+    experiments: SqlAlchemyExperimentRepository = Depends(get_experiment_repository),
+    metrics: SqlAlchemyExperimentMetricRepository = Depends(get_experiment_metric_repository),
+) -> LogExperimentMetrics:
+    return LogExperimentMetrics(experiments, metrics)
+
+
+def get_get_experiment_metrics(
+    experiments: SqlAlchemyExperimentRepository = Depends(get_experiment_repository),
+    metrics: SqlAlchemyExperimentMetricRepository = Depends(get_experiment_metric_repository),
+) -> GetExperimentMetrics:
+    return GetExperimentMetrics(experiments, metrics)
+
+
+def get_update_experiment_params(
+    experiments: SqlAlchemyExperimentRepository = Depends(get_experiment_repository),
+    runs: SqlAlchemyEvaluationRunRepository = Depends(get_evaluation_run_repository),
+) -> UpdateExperimentParams:
+    return UpdateExperimentParams(experiments, runs)
 
 
 def get_upsert_experiment_outputs(

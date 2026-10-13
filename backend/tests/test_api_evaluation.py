@@ -13,6 +13,7 @@ from aiobs_server.api.deps import (
     get_evaluation_run_repository,
     get_evaluator_repository,
     get_experiment_item_output_repository,
+    get_experiment_metric_repository,
     get_experiment_repository,
     get_metrics_set_repository,
     get_project_repository,
@@ -26,7 +27,11 @@ from aiobs_server.domain.experiment_output import ExperimentItemOutput
 from aiobs_server.domain.project import Project
 from aiobs_server.domain.trace import Trace
 from aiobs_server.main import create_app
-from support.repositories import InMemoryAppConfigRepository, InMemoryMetricsSetRepository
+from support.repositories import (
+    InMemoryAppConfigRepository,
+    InMemoryExperimentMetricRepository,
+    InMemoryMetricsSetRepository,
+)
 
 
 class InMemoryProjectRepository:
@@ -224,6 +229,7 @@ async def client() -> AsyncIterator[AsyncClient]:
     outputs = InMemoryExperimentItemOutputRepository()
     metrics_sets = InMemoryMetricsSetRepository()
     app_configs = InMemoryAppConfigRepository()
+    experiment_metrics = InMemoryExperimentMetricRepository()
 
     app = create_app()
     app.dependency_overrides[get_project_repository] = lambda: projects
@@ -235,6 +241,7 @@ async def client() -> AsyncIterator[AsyncClient]:
     app.dependency_overrides[get_evaluation_run_repository] = lambda: runs
     app.dependency_overrides[get_experiment_item_output_repository] = lambda: outputs
     app.dependency_overrides[get_app_config_repository] = lambda: app_configs
+    app.dependency_overrides[get_experiment_metric_repository] = lambda: experiment_metrics
 
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as ac:

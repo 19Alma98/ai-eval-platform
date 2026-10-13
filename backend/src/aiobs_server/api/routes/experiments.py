@@ -12,13 +12,16 @@ from aiobs_server.api.deps import (
     get_create_experiment,
     get_evaluate_background_runner,
     get_get_experiment,
+    get_get_experiment_metrics,
     get_list_experiment_outputs,
     get_list_experiment_runs,
     get_list_experiments,
+    get_log_experiment_metrics,
     get_score_experiment_from_pack,
     get_start_evaluate_experiment,
     get_submit_client_results,
     get_summarize_experiment,
+    get_update_experiment_params,
     get_upsert_experiment_outputs,
 )
 from aiobs_server.api.deps import (
@@ -35,12 +38,15 @@ from aiobs_server.api.schemas import (
     ExperimentCompareResponse,
     ExperimentItemCompareResponse,
     ExperimentItemOutputResponse,
+    ExperimentMetricsRequest,
+    ExperimentMetricsResponse,
     ExperimentResponse,
     ExperimentSummaryResponse,
     ItemComparisonRowResponse,
     ItemSideResponse,
     MetricComparisonResponse,
     SubmitClientResultsRequest,
+    UpdateExperimentParamsRequest,
     UpsertExperimentOutputItemRequest,
     UpsertExperimentOutputsRequest,
     UpsertExperimentOutputsResponse,
@@ -84,6 +90,12 @@ from aiobs_server.application.evaluate import (
     StartEvaluateExperiment,
 )
 from aiobs_server.application.evaluators import EvaluatorNotFoundError
+from aiobs_server.application.experiment_metrics import (
+    ExperimentParamsLockedError,
+    GetExperimentMetrics,
+    LogExperimentMetrics,
+    UpdateExperimentParams,
+)
 from aiobs_server.application.experiment_outputs import (
     ExperimentItemNotInDatasetError,
     ListExperimentOutputs,
@@ -480,6 +492,59 @@ async def submit_client_results(
     except ClientMetricNameConflictError as exc:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
     return [_run_response(s.run, s.results) for s in submitted]
+
+
+@router.put(
+    "/api/v1/experiments/{experiment_id}/metrics",
+    response_model=ExperimentMetricsResponse,
+)
+async def log_experiment_metrics(
+    experiment_id: uuid.UUID,
+    body: ExperimentMetricsRequest,
+    use_case: LogExperimentMetrics = Depends(get_log_experiment_metrics),
+) -> ExperimentMetricsResponse:
+    try:
+        metrics = await use_case.execute(experiment_id, body.metrics)
+    except ExperimentNotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+    return ExperimentMetricsResponse(experiment_id=experiment_id, metrics=metrics)
+
+
+@router.get(
+    "/api/v1/experiments/{experiment_id}/metrics",
+    response_model=ExperimentMetricsResponse,
+)
+async def get_experiment_metrics(
+    experiment_id: uuid.UUID,
+    use_case: GetExperimentMetrics = Depends(get_get_experiment_metrics),
+) -> ExperimentMetricsResponse:
+    try:
+        metrics = await use_case.execute(experiment_id)
+    except ExperimentNotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    return ExperimentMetricsResponse(experiment_id=experiment_id, metrics=metrics)
+
+
+@router.patch(
+    "/api/v1/experiments/{experiment_id}/params",
+    response_model=ExperimentResponse,
+)
+async def update_experiment_params(
+    experiment_id: uuid.UUID,
+    body: UpdateExperimentParamsRequest,
+    use_case: UpdateExperimentParams = Depends(get_update_experiment_params),
+) -> ExperimentResponse:
+    try:
+        experiment = await use_case.execute(experiment_id, body.params)
+    except ExperimentNotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    except ExperimentParamsLockedError as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+    return _experiment_response(experiment)
 
 
 @router.get(

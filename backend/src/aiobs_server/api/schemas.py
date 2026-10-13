@@ -353,6 +353,20 @@ class SubmitClientResultsRequest(BaseModel):
     metrics: list[ClientMetricRequest] = Field(min_length=1)
 
 
+class ExperimentMetricsRequest(BaseModel):
+    # Values are checked by the use case (finite numbers, booleans rejected).
+    metrics: dict[str, Any]
+
+
+class ExperimentMetricsResponse(BaseModel):
+    experiment_id: uuid.UUID
+    metrics: dict[str, float]
+
+
+class UpdateExperimentParamsRequest(BaseModel):
+    params: dict[str, Any]
+
+
 class EvaluationResultResponse(BaseModel):
     id: uuid.UUID
     run_id: uuid.UUID
