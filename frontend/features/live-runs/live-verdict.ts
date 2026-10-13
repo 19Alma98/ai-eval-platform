@@ -10,8 +10,14 @@ export const LIVE_VERDICT_LABELS: Record<LiveVerdict, string> = {
   not_scored: "Not scored",
 };
 
-/** One overall verdict per live answer, derived from its judge scores. */
-export function liveVerdict(row: Pick<LiveInteraction, "judge_status" | "scores">): LiveVerdict {
+/** One overall verdict per live answer: judge scores plus SDK scores / user feedback. */
+export function liveVerdict(
+  row: Pick<LiveInteraction, "judge_status" | "scores" | "trace_scores">,
+): LiveVerdict {
+  // A failing SDK metric or a thumbs-down is a known failure, even before the judge runs.
+  if ((row.trace_scores ?? []).some((s) => (s.label ?? "").toUpperCase() === "FAIL")) {
+    return "failing";
+  }
   const status = row.judge_status.toLowerCase();
   if (status === "pending" || status === "running") return "waiting";
   if (status === "error") return "error";
