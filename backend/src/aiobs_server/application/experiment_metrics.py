@@ -70,7 +70,11 @@ class UpdateExperimentParams:
                 "params are locked: they come from the app config snapshot; "
                 "create a new experiment instead"
             )
-        if await self._runs.list_runs_by_experiment(experiment_id):
+        # Evaluate flows set status away from "created" before any run row exists;
+        # client-results / outputs never touch status, so runs are checked too.
+        if experiment.status != "created" or await self._runs.list_runs_by_experiment(
+            experiment_id
+        ):
             raise ExperimentParamsLockedError(
                 "params are locked: the experiment already has evaluation runs; "
                 "create a new experiment instead"

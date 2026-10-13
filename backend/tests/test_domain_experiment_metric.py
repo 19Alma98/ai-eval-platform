@@ -6,7 +6,10 @@ from typing import Any
 import pytest
 
 from aiobs_server.domain.experiment import Experiment
-from aiobs_server.domain.experiment_metric import validate_experiment_metrics
+from aiobs_server.domain.experiment_metric import (
+    MAX_METRICS_PER_REQUEST,
+    validate_experiment_metrics,
+)
 
 
 def test_validate_accepts_numbers_and_key_charset() -> None:
@@ -39,6 +42,13 @@ def test_validate_accepts_max_length_key() -> None:
 def test_validate_rejects(metrics: dict[str, Any], match: str) -> None:
     with pytest.raises(ValueError, match=match):
         validate_experiment_metrics(metrics)
+
+
+def test_validate_caps_metric_count() -> None:
+    at_cap = {f"m{i}": 1.0 for i in range(MAX_METRICS_PER_REQUEST)}
+    assert len(validate_experiment_metrics(at_cap)) == MAX_METRICS_PER_REQUEST
+    with pytest.raises(ValueError, match="at most 1000 metrics"):
+        validate_experiment_metrics({**at_cap, "extra": 1.0})
 
 
 def test_with_model_config_returns_updated_copy() -> None:

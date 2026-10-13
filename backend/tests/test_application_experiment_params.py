@@ -26,3 +26,16 @@ async def test_params_locked_for_app_config_experiment() -> None:
     use_case = UpdateExperimentParams(experiments, InMemoryEvaluationRunRepository())
     with pytest.raises(ExperimentParamsLockedError, match="app config"):
         await use_case.execute(exp.id, {"model": "b"})
+
+
+@pytest.mark.parametrize("status", ["running", "completed", "failed"])
+async def test_params_locked_when_evaluation_started_without_runs(status: str) -> None:
+    experiments = InMemoryExperimentRepository()
+    exp = await experiments.add(
+        Experiment.create(
+            uuid.uuid4(), "evaluating", uuid.uuid4(), model_config={"model": "a"}
+        ).with_status(status)
+    )
+    use_case = UpdateExperimentParams(experiments, InMemoryEvaluationRunRepository())
+    with pytest.raises(ExperimentParamsLockedError, match="evaluation"):
+        await use_case.execute(exp.id, {"model": "b"})

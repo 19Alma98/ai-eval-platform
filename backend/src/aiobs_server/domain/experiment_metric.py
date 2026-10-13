@@ -8,6 +8,7 @@ from collections.abc import Mapping
 from typing import Any
 
 METRIC_KEY_PATTERN = re.compile(r"[A-Za-z0-9_.\-/]{1,200}")
+MAX_METRICS_PER_REQUEST = 1000
 
 
 def validate_experiment_metrics(metrics: Mapping[str, Any]) -> dict[str, float]:
@@ -18,6 +19,8 @@ def validate_experiment_metrics(metrics: Mapping[str, Any]) -> dict[str, float]:
     """
     if not metrics:
         raise ValueError("metrics must not be empty")
+    if len(metrics) > MAX_METRICS_PER_REQUEST:
+        raise ValueError(f"at most {MAX_METRICS_PER_REQUEST} metrics per request")
     cleaned: dict[str, float] = {}
     for key, value in metrics.items():
         if not isinstance(key, str) or not METRIC_KEY_PATTERN.fullmatch(key):
