@@ -80,6 +80,11 @@ from aiobs_server.application.projects import (
 )
 from aiobs_server.application.release_check import ReleaseCheck
 from aiobs_server.application.scoring_inputs import CurrentScoringFingerprint
+from aiobs_server.application.trace_scores import (
+    ListTraceScores,
+    LogTraceScores,
+    SummarizeTraceScores,
+)
 from aiobs_server.application.traces import GetTrace, IngestNormalizedTraces, ResolveProject
 from aiobs_server.config import Settings, get_settings
 from aiobs_server.evaluation.runner import EvaluationRunner
@@ -96,6 +101,7 @@ from aiobs_server.infrastructure.repositories import (
     SqlAlchemyMetricsSetRepository,
     SqlAlchemyProjectRepository,
     SqlAlchemyTraceRepository,
+    SqlAlchemyTraceScoreRepository,
 )
 from aiobs_server.tracing.live_binding import CreateLiveInteractionsFromTraces
 from aiobs_server.tracing.run_binding import BindOtlpTracesToExperimentOutputs
@@ -164,6 +170,32 @@ def get_experiment_metric_repository(
     session: AsyncSession = Depends(get_db_session),
 ) -> SqlAlchemyExperimentMetricRepository:
     return SqlAlchemyExperimentMetricRepository(session)
+
+
+def get_trace_score_repository(
+    session: AsyncSession = Depends(get_db_session),
+) -> SqlAlchemyTraceScoreRepository:
+    return SqlAlchemyTraceScoreRepository(session)
+
+
+def get_log_trace_scores(
+    projects: SqlAlchemyProjectRepository = Depends(get_project_repository),
+    scores: SqlAlchemyTraceScoreRepository = Depends(get_trace_score_repository),
+) -> LogTraceScores:
+    return LogTraceScores(projects, scores)
+
+
+def get_list_trace_scores(
+    scores: SqlAlchemyTraceScoreRepository = Depends(get_trace_score_repository),
+) -> ListTraceScores:
+    return ListTraceScores(scores)
+
+
+def get_summarize_trace_scores(
+    projects: SqlAlchemyProjectRepository = Depends(get_project_repository),
+    scores: SqlAlchemyTraceScoreRepository = Depends(get_trace_score_repository),
+) -> SummarizeTraceScores:
+    return SummarizeTraceScores(projects, scores)
 
 
 def get_create_project(

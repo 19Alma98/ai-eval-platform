@@ -4,7 +4,15 @@ import uuid
 from datetime import datetime
 from typing import Any, Literal, Self
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    StrictFloat,
+    StrictInt,
+    field_validator,
+    model_validator,
+)
 
 from aiobs_server.regression.policy import META_KEYS
 
@@ -54,6 +62,65 @@ class SpanResponse(BaseModel):
     status: str
     attributes: dict[str, Any]
     events: list[dict[str, Any]]
+
+
+TraceScoreLabel = Literal["PASS", "FAIL", "ERROR", "SKIPPED"]
+TraceScoreSource = Literal["sdk", "human", "judge"]
+
+
+class TraceScoreItemRequest(BaseModel):
+    trace_id: str = Field(pattern=r"^\s*[0-9a-fA-F]{32}\s*$")
+    name: str = Field(min_length=1, max_length=200, pattern=r"\S")
+    # Strict: "1" is rejected instead of coerced; JSON ints (0, 1) stay valid.
+    value: StrictFloat | StrictInt | None = None
+    label: TraceScoreLabel | None = None
+    explanation: str | None = Field(default=None, max_length=4000)
+    threshold: StrictFloat | StrictInt | None = None
+    source: TraceScoreSource = "sdk"
+    author: str | None = Field(default=None, max_length=200)
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+    @field_validator("label", mode="before")
+    @classmethod
+    def _upper_label(cls, value: Any) -> Any:
+        return value.strip().upper() if isinstance(value, str) else value
+
+
+class LogTraceScoresRequest(BaseModel):
+    scores: list[TraceScoreItemRequest] = Field(min_length=1, max_length=500)
+
+
+class LogTraceScoresResponse(BaseModel):
+    accepted: int
+
+
+class TraceScoreResponse(BaseModel):
+    id: uuid.UUID
+    trace_id: str
+    name: str
+    value: float | None
+    label: str | None
+    explanation: str | None
+    threshold: float | None
+    source: str
+    author: str | None
+    metadata: dict[str, Any]
+    created_at: datetime
+    updated_at: datetime
+
+
+class TraceScoreSummaryRowResponse(BaseModel):
+    name: str
+    source: str
+    count: int
+    mean: float | None
+    pass_rate: float | None
+
+
+class TraceScoreSummaryResponse(BaseModel):
+    since: datetime
+    until: datetime
+    rows: list[TraceScoreSummaryRowResponse]
 
 
 class TraceDetailResponse(BaseModel):
