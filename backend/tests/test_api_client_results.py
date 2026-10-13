@@ -165,7 +165,7 @@ async def test_validation_errors(client: AsyncClient) -> None:
     assert (await client.post(url, json={"metrics": []})).status_code == 422
     nan = f'{{"metrics":[{{"name":"m","results":[{{"dataset_item_id":"{item}","score":NaN}}]}}]}}'
     resp = await client.post(url, content=nan, headers={"content-type": "application/json"})
-    assert resp.status_code == 400
+    assert resp.status_code == 422
     missing = "/api/v1/experiments/00000000-0000-0000-0000-000000000000/client-results"
     assert (await client.post(missing, json={"metrics": [one]})).status_code == 404
     # Nothing was written by the rejected calls.

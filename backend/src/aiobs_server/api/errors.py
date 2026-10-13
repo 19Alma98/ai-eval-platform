@@ -1,8 +1,12 @@
 from __future__ import annotations
 
+import math
 from collections.abc import Awaitable, Callable
+from typing import Any
 
 from fastapi import FastAPI, Request, status
+from fastapi.encoders import jsonable_encoder
+from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from sqlalchemy.exc import IntegrityError
 
@@ -91,7 +95,28 @@ def _handler_for(status_code: int) -> ExceptionHandler:
     return handler
 
 
+def _json_safe(value: Any) -> Any:
+    if isinstance(value, float) and not math.isfinite(value):
+        return str(value)
+    if isinstance(value, dict):
+        return {key: _json_safe(item) for key, item in value.items()}
+    if isinstance(value, list):
+        return [_json_safe(item) for item in value]
+    return value
+
+
+async def request_validation_error(_request: Request, exc: Exception) -> JSONResponse:
+    # FastAPI's default handler echoes each invalid input back, and a NaN/Infinity
+    # input (e.g. from a query string) cannot be serialized: that would be a 500.
+    assert isinstance(exc, RequestValidationError)
+    errors = _json_safe(jsonable_encoder(exc.errors()))
+    return JSONResponse(
+        status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, content={"detail": errors}
+    )
+
+
 def register_exception_handlers(app: FastAPI) -> None:
+    app.add_exception_handler(RequestValidationError, request_validation_error)
     not_found = _handler_for(status.HTTP_404_NOT_FOUND)
     conflict = _handler_for(status.HTTP_409_CONFLICT)
     bad_request = _handler_for(status.HTTP_400_BAD_REQUEST)

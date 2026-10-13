@@ -5,6 +5,7 @@ from fastapi import FastAPI
 
 from aiobs_server import __version__
 from aiobs_server.api.errors import register_exception_handlers
+from aiobs_server.api.json_guard import RejectNonFiniteJsonMiddleware
 from aiobs_server.api.routes import api_router
 from aiobs_server.api.schemas import HealthResponse
 from aiobs_server.config import get_settings
@@ -46,6 +47,7 @@ def create_app(*, mount_packaged_ui: bool = True) -> FastAPI:
         lifespan=lifespan,
     )
     register_exception_handlers(app)
+    app.add_middleware(RejectNonFiniteJsonMiddleware)
     app.include_router(api_router)
 
     @app.get("/health", response_model=HealthResponse, tags=["health"])

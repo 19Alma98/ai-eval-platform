@@ -175,8 +175,8 @@ class SubmitClientResults:
         if len(set(names)) != len(names):
             raise ClientResultsValidationError(f"duplicate metric names: {names}")
         for metric in metrics:
-            # Rejected here rather than in the schema: a 422 echoing NaN back cannot be
-            # serialized, and a stored NaN would break every later JSON response.
+            # HTTP bodies are already guarded by RejectNonFiniteJsonMiddleware; kept so no
+            # caller can store a NaN that would break every later JSON response.
             if metric.threshold is not None and not math.isfinite(metric.threshold):
                 raise ClientResultsValidationError(
                     f"metric {metric.name!r}: threshold must be finite"

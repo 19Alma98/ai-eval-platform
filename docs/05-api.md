@@ -195,7 +195,8 @@ Each metric becomes a regular evaluation run on a project evaluator of type `cus
 
 Errors:
 - 404: experiment not found.
-- 400: the request is rejected as a whole, so nothing is written. Causes: an empty or duplicate metric name, a duplicate `dataset_item_id` within a metric, an item outside the experiment's dataset, an unknown label, or a non-finite score or threshold.
+- 400: the request is rejected as a whole, so nothing is written. Causes: an empty or duplicate metric name, a duplicate `dataset_item_id` within a metric, an item outside the experiment's dataset, or an unknown label.
+- 422: a non-finite score or threshold (`NaN`, `Infinity`). Every endpoint rejects these in a JSON body.
 - 409: the name is already used by a server evaluator in the project.
 
 Client evaluators cannot be run by the server. Passing one to `POST .../evaluate` returns 400, and using its id in a metrics set entry is rejected.
