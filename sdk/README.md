@@ -147,7 +147,9 @@ aiobs.evaluate(dataset="gold-v1", task=answer_question, metrics=["hit_at_k", cit
 ```
 
 - `Sample` fields: `input`, `output`, `expected` (dataset `expected_output`), `documents` (from `set_retrieval_documents`), `context`, `metadata`, `trace_id`, `item_id`.
-- Return `aiobs.Score(value, label=, explanation=, metadata=)`, a float, a bool, `None` or `{"score": ...}`. The explanation shows per item in the UI; `metadata` is stored with the result. A non-finite score is an ERROR.
+- Return `aiobs.Score(value, label=, explanation=, metadata=)`, a float, a bool, `None` or `{"score": ...}`. The explanation shows per item in the UI; `metadata` (JSON-serializable, no NaN/inf) is stored with the result. A non-finite score is an ERROR.
+- `label` can only fail, skip or error an item (`"FAIL"`, `"SKIPPED"`, `"ERROR"`): PASS/FAIL otherwise comes from the threshold, so `label="PASS"` does not make a score below the threshold pass.
+- To change the threshold or name of an existing metric, wrap it again: `aiobs.LocalMetric(cites_source, threshold=0.8)` keeps its function, `requires` and config.
 - `fn(item, output)` (two parameters) still works and receives the dataset item. `async def` metrics work too.
 - `requires`: `Sample` fields that must be non-empty (`output`, `expected`, `documents`, `context`). When one is missing the item is SKIPPED, not failed.
 - `version` is stored in the metric config: bump it when the code changes, so compare reports a config mismatch instead of a misleading delta.
