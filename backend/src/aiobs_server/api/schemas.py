@@ -139,6 +139,7 @@ class TraceDetailResponse(BaseModel):
     user_id: str | None = None
     session_id: str | None = None
     spans: list[SpanResponse]
+    scores: list[TraceScoreResponse] = Field(default_factory=list)
 
 
 class CreateDatasetRequest(BaseModel):

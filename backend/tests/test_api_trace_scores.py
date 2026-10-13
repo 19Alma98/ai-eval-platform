@@ -15,6 +15,7 @@ from aiobs_server.api.deps import (
     get_trace_repository,
     get_trace_score_repository,
 )
+from aiobs_server.domain.trace import Trace
 from aiobs_server.domain.trace_score import MAX_TRACE_SCORE_BATCH
 from aiobs_server.main import create_app
 from support.repositories import InMemoryTraceScoreRepository
@@ -201,3 +202,27 @@ async def test_summary_accepts_naive_datetimes_as_utc(ctx: Ctx) -> None:
     )
     assert resp.status_code == 200, resp.text
     assert [(r["name"], r["count"]) for r in resp.json()["rows"]] == [("q", 1)]
+
+
+async def test_score_before_trace_then_listed_on_trace_detail(ctx: Ctx) -> None:
+    project_id = await _project(ctx.client)
+    await _log(ctx.client, project_id, [{"trace_id": TID, "name": "quality", "value": 1.0}])
+
+    before = await ctx.client.get(f"/api/v1/projects/{project_id}/traces/{TID}")
+    assert before.status_code == 404
+
+    await ctx.traces.upsert(
+        Trace(
+            id=uuid.uuid4(),
+            project_id=uuid.UUID(project_id),
+            trace_id=TID,
+            name="answer",
+            status="OK",
+            start_time=datetime.now(UTC),
+            end_time=None,
+        )
+    )
+    detail = await ctx.client.get(f"/api/v1/projects/{project_id}/traces/{TID}")
+    assert detail.status_code == 200, detail.text
+    (score,) = detail.json()["scores"]
+    assert score["name"] == "quality" and score["label"] == "PASS"

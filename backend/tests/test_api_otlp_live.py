@@ -15,6 +15,7 @@ from aiobs_server.api.deps import (
     get_metrics_set_repository,
     get_project_repository,
     get_trace_repository,
+    get_trace_score_repository,
 )
 from aiobs_server.config import get_settings
 from aiobs_server.domain.project import Project
@@ -26,7 +27,7 @@ from aiobs_server.tracing.live_binding import (
     live_command_from_trace,
     question_from_input,
 )
-from tests.support.repositories import InMemoryMetricsSetRepository
+from tests.support.repositories import InMemoryMetricsSetRepository, InMemoryTraceScoreRepository
 from tests.test_api_live_interactions import InMemoryLiveRepository, InMemoryProjectRepository
 from tests.test_api_otlp import InMemoryTraceRepository
 
@@ -113,6 +114,8 @@ async def env() -> AsyncIterator[tuple[AsyncClient, _Env, str]]:
     metrics_sets = InMemoryMetricsSetRepository()
     app.dependency_overrides[get_project_repository] = lambda: state.projects
     app.dependency_overrides[get_trace_repository] = lambda: traces
+    trace_scores = InMemoryTraceScoreRepository()
+    app.dependency_overrides[get_trace_score_repository] = lambda: trace_scores
     app.dependency_overrides[get_live_interaction_repository] = lambda: state.live
     app.dependency_overrides[get_metrics_set_repository] = lambda: metrics_sets
 
