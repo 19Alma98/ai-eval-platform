@@ -61,9 +61,11 @@ Distributions:
 
 ### Release steps
 
-1. Bump `version` in **both** `sdk/pyproject.toml` and `backend/pyproject.toml` (keep them identical). Keep `aiobs-eval[ui]` pinned to the same server version, and the server's `aiobs-eval` dependency pinned to the same SDK version.
-2. Commit, then tag and push: `git tag v0.1.0 && git push origin v0.1.0`
-3. The workflow builds the UI (`package-ui.sh`), builds both wheels, checks `_ui/index.html` is inside the server wheel, then uploads via OIDC.
+The git tag is the only source of the version. Both packages read it through [hatch-vcs](https://github.com/ofek/hatch-vcs); `aiobs.__version__`, `aiobs_server.__version__` and the API's OpenAPI version read the installed package metadata. Untagged builds get a dev version such as `0.1.1.dev3+g1a2b3c4`.
+
+1. Tag the commit and push the tag: `git tag v0.1.0 && git push origin v0.1.0`
+2. The workflow builds the UI (`package-ui.sh`) and both wheels with `AIOBS_RELEASE_BUILD=1`. That makes each package's `hatch_build.py` pin its sibling to the same version: the server needs `aiobs-eval==X`, and `aiobs-eval[ui]` needs `aiobs-eval-server==X`. Dev builds leave those requirements unpinned so `uv.lock` stays stable.
+3. The workflow checks that both wheels carry the tag's version and the exact pins, and that `_ui/index.html` is inside the server wheel. Then it uploads via OIDC.
 
 Dry-run (build only, no upload): Actions → **Publish** → Run workflow → leave **dry_run** checked.
 

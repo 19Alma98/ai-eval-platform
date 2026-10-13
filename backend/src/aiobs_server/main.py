@@ -3,6 +3,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 
+from aiobs_server import __version__
 from aiobs_server.api.errors import register_exception_handlers
 from aiobs_server.api.routes import api_router
 from aiobs_server.api.schemas import HealthResponse
@@ -41,7 +42,7 @@ def create_app(*, mount_packaged_ui: bool = True) -> FastAPI:
     _ensure_evaluators_registered()
     app = FastAPI(
         title="AI Evaluation & Observability Platform",
-        version="0.1.0",
+        version=__version__,
         lifespan=lifespan,
     )
     register_exception_handlers(app)

@@ -1,8 +1,8 @@
 name: Publish
 
 # Publishes aiobs-eval-server then aiobs-eval to PyPI via Trusted Publishing (OIDC).
-# Trigger: push tag vX.Y.Z (must match version in both pyproject.toml files),
-# or workflow_dispatch (dry-run by default).
+# Trigger: push tag vX.Y.Z, or workflow_dispatch (dry-run by default).
+# Both versions come from the git tag via hatch-vcs; no version is written in the repo.
 
 on:
   push:
@@ -25,6 +25,8 @@ jobs:
       version: ${{ steps.version.outputs.version }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # hatch-vcs needs tags and history
 
       - name: Install uv
         uses: astral-sh/setup-uv@v4
@@ -34,36 +36,14 @@ jobs:
       - name: Set up Python
         run: uv python install 3.12
 
-      - name: Resolve and check version
-        id: version
+      - name: Check tag
+        if: github.event_name == 'push'
         run: |
           set -euo pipefail
-          PY="uv run --python 3.12 --no-project python"
-          if [[ "${{ github.event_name }}" == "push" ]]; then
-            TAG="${GITHUB_REF_NAME}"
-            VERSION="${TAG#v}"
-            if [[ "$TAG" != "v$VERSION" || -z "$VERSION" ]]; then
-              echo "Tag must look like vX.Y.Z (got: $TAG)" >&2
-              exit 1
-            fi
-          else
-            VERSION="$($PY -c "import tomllib; print(tomllib.load(open('sdk/pyproject.toml','rb'))['project']['version'])")"
-          fi
-
-          SDK_VER="$($PY -c "import tomllib; print(tomllib.load(open('sdk/pyproject.toml','rb'))['project']['version'])")"
-          SRV_VER="$($PY -c "import tomllib; print(tomllib.load(open('backend/pyproject.toml','rb'))['project']['version'])")"
-
-          if [[ "$SDK_VER" != "$SRV_VER" ]]; then
-            echo "Version mismatch: sdk=$SDK_VER backend=$SRV_VER" >&2
+          if [[ ! "${GITHUB_REF_NAME}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+([a-z0-9.]*)?$ ]]; then
+            echo "Tag must look like vX.Y.Z (got: ${GITHUB_REF_NAME})" >&2
             exit 1
           fi
-          if [[ "$SDK_VER" != "$VERSION" ]]; then
-            echo "pyproject version ($SDK_VER) != release version ($VERSION)" >&2
-            exit 1
-          fi
-
-          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
-          echo "Publishing version $VERSION"
 
       - name: Set up Node
         uses: actions/setup-node@v4
@@ -77,13 +57,20 @@ jobs:
 
       - name: Build aiobs-eval-server
         working-directory: backend
+        env:
+          AIOBS_RELEASE_BUILD: "1"
         run: uv build
 
       - name: Build aiobs-eval
         working-directory: sdk
+        env:
+          AIOBS_RELEASE_BUILD: "1"
         run: uv build
 
       - name: Collect and verify dist
+        id: version
+        env:
+          EXPECTED_VERSION: ${{ github.event_name == 'push' && github.ref_name || '' }}
         run: |
           set -euo pipefail
           mkdir -p dist
@@ -92,8 +79,10 @@ jobs:
           ls -la dist/
 
           python3 <<'PY'
+          import os
           import sys
           import zipfile
+          from email.parser import Parser
           from pathlib import Path
 
           dist = Path("dist")
@@ -111,12 +100,26 @@ jobs:
                   print("server wheel missing aiobs_server/_ui/index.html", file=sys.stderr)
                   sys.exit(1)
               server_eps = dist_info(zf, "entry_points.txt")
+              server_meta = Parser().parsestr(dist_info(zf, "METADATA"))
 
           with zipfile.ZipFile(sdk_wheels[0]) as zf:
-              meta = dist_info(zf, "METADATA")
+              sdk_meta = Parser().parsestr(dist_info(zf, "METADATA"))
               sdk_eps = dist_info(zf, "entry_points.txt")
-          if "aiobs-eval-server" not in meta:
-              print("sdk wheel METADATA missing aiobs-eval-server dependency", file=sys.stderr)
+
+          # Both versions come from the same git tag; each wheel pins the other exactly.
+          version = sdk_meta["Version"]
+          if server_meta["Version"] != version:
+              print(f"version mismatch: sdk={version} server={server_meta['Version']}", file=sys.stderr)
+              sys.exit(1)
+          expected = os.environ["EXPECTED_VERSION"].removeprefix("v")
+          if expected and version != expected:
+              print(f"built version {version} != tag {expected}", file=sys.stderr)
+              sys.exit(1)
+          if f"aiobs-eval-server=={version}; extra == 'ui'" not in sdk_meta.get_all("Requires-Dist", []):
+              print("sdk wheel must pin aiobs-eval-server in the [ui] extra", file=sys.stderr)
+              sys.exit(1)
+          if f"aiobs-eval=={version}" not in server_meta.get_all("Requires-Dist", []):
+              print("server wheel must pin aiobs-eval", file=sys.stderr)
               sys.exit(1)
 
           # Exactly one dist may own the `aiobs` console script (the SDK).
@@ -127,6 +130,8 @@ jobs:
               print("server wheel must not ship the `aiobs` console script", file=sys.stderr)
               sys.exit(1)
           print("dist OK:", server_wheels[0].name, sdk_wheels[0].name)
+          with open(os.environ["GITHUB_OUTPUT"], "a") as out:
+              out.write(f"version={version}\n")
           PY
 
       - name: Upload dist artifacts

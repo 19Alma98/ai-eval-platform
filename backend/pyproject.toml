@@ -1,29 +1,9 @@
 [project]
 name = "aiobs-eval-server"
-version = "0.1.0"
+dynamic = ["version", "dependencies"]
 description = "AI Evaluation & Observability Platform server (FastAPI backend)"
 readme = "README.md"
 requires-python = ">=3.12"
-dependencies = [
-    "fastapi>=0.115.0",
-    "python-multipart>=0.0.9",
-    "uvicorn[standard]>=0.32.0",
-    "sqlalchemy[asyncio]>=2.0.36",
-    "asyncpg>=0.30.0",
-    "aiosqlite>=0.20.0",
-    "alembic>=1.14.0",
-    "typer>=0.15.0",
-    "rich>=13.9.0",
-    "httpx2>=2.13.0",
-    "pyyaml>=6.0.2",
-    "pydantic>=2.10.0",
-    "pydantic-settings>=2.6.0",
-    "opentelemetry-proto>=1.28.0",
-    "protobuf>=5.0.0",
-    "litellm>=1.55.0",
-    "jsonschema>=4.23.0",
-    "aiobs-eval==0.1.0",
-]
 
 [project.optional-dependencies]
 dev = [
@@ -44,8 +24,36 @@ examples = [
 aiobs-server = "aiobs_server.cli:app"
 
 [build-system]
-requires = ["hatchling"]
+requires = ["hatchling", "hatch-vcs"]
 build-backend = "hatchling.build"
+
+[tool.hatch.version]
+source = "vcs"
+raw-options = { root = "..", fallback_version = "0.0.0" }
+
+[tool.hatch.metadata.hooks.custom]
+dependencies = [
+    "fastapi>=0.115.0",
+    "python-multipart>=0.0.9",
+    "uvicorn[standard]>=0.32.0",
+    "sqlalchemy[asyncio]>=2.0.36",
+    "asyncpg>=0.30.0",
+    "aiosqlite>=0.20.0",
+    "alembic>=1.14.0",
+    "typer>=0.15.0",
+    "rich>=13.9.0",
+    "httpx2>=2.13.0",
+    "pyyaml>=6.0.2",
+    "pydantic>=2.10.0",
+    "pydantic-settings>=2.6.0",
+    "opentelemetry-proto>=1.28.0",
+    "protobuf>=5.0.0",
+    "litellm>=1.55.0",
+    "jsonschema>=4.23.0",
+]
+
+[tool.uv]
+cache-keys = [{ file = "pyproject.toml" }, { file = "hatch_build.py" }, { git = { commit = true, tags = true } }]
 
 [tool.uv.sources]
 aiobs-eval = { path = "../sdk", editable = true }

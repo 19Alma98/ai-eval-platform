@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+from importlib.metadata import PackageNotFoundError
+from importlib.metadata import version as _version
+
 from aiobs._eval_run import bind_evaluation, set_retrieval_documents
 from aiobs._http import AiobsAPIError
 from aiobs._otel import flush, init
@@ -37,4 +40,7 @@ __all__ = [
     "trace_async",
 ]
 
-__version__ = "0.1.0"
+try:
+    __version__ = _version("aiobs-eval")
+except PackageNotFoundError:  # running from a source tree without install
+    __version__ = "0.0.0"
