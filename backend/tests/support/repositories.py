@@ -147,9 +147,7 @@ class InMemoryExperimentMetricRepository:
     async def get(self, experiment_id: uuid.UUID) -> dict[str, float]:
         return dict(sorted(self._items.get(experiment_id, {}).items()))
 
-    async def upsert(
-        self, experiment_id: uuid.UUID, metrics: dict[str, float]
-    ) -> dict[str, float]:
+    async def upsert(self, experiment_id: uuid.UUID, metrics: dict[str, float]) -> dict[str, float]:
         self._items.setdefault(experiment_id, {}).update(metrics)
         return await self.get(experiment_id)
 

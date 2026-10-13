@@ -21,9 +21,7 @@ def validate_experiment_metrics(metrics: Mapping[str, Any]) -> dict[str, float]:
     cleaned: dict[str, float] = {}
     for key, value in metrics.items():
         if not isinstance(key, str) or not METRIC_KEY_PATTERN.fullmatch(key):
-            raise ValueError(
-                f"invalid metric key {key!r}: use 1-200 letters, digits or _ . - /"
-            )
+            raise ValueError(f"invalid metric key {key!r}: use 1-200 letters, digits or _ . - /")
         if isinstance(value, bool) or not isinstance(value, int | float):
             raise ValueError(f"metric {key!r} must be a number, got {value!r}")
         try:
