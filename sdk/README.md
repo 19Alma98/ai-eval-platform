@@ -11,7 +11,7 @@ pip install 'aiobs-eval[ai]'   # all tier-1 OpenInference instrumentors
 pip install 'aiobs-eval[ui]'  # also installs aiobs-eval-server (API + packaged UI)
 ```
 
-Individual extras: `openai`, `anthropic`, `langchain`, `llama-index`, `bedrock`, `ui`.
+Individual extras: `openai`, `anthropic`, `langchain`, `llama-index`, `bedrock`, `ui`, `ragas`, `deepeval` (the last two are not part of `ai`).
 
 Import path remains `import aiobs`. Local platform (SQLite + UI):
 
@@ -128,7 +128,7 @@ print(exp.result.summary())
 
 How it behaves:
 
-- **Metrics**: a string is a server metric kind (`hit_at_k`, `recall_at_k`, `mrr`, `must_contain`, `groundedness`, `correctness`, `answer_relevance`, `context_precision`, `context_recall`, `latency`). A dict sets threshold/config, for example `{"kind": "hit_at_k", "config": {"k": 3}}`. The SDK finds or creates a metrics set that holds exactly those kinds, using the project's defaults for anything you leave out. `metrics=None` uses the project default set. A Python metric runs locally (see *Custom metrics* below), and its scores are submitted to the platform (`POST /experiments/{id}/client-results`). From there they are aggregated, shown in the UI and compared with the baseline like server metrics. When the task fails on an item, that item counts as FAIL (score 0). When the metric itself raises, the item is recorded as ERROR. A local metric name must not match a server evaluator name (409). If the submission fails, `result.metrics` falls back to the in-process mean.
+- **Metrics**: a string is a server metric kind (`hit_at_k`, `recall_at_k`, `mrr`, `must_contain`, `groundedness`, `correctness`, `answer_relevance`, `context_precision`, `context_recall`, `latency`). A dict sets threshold/config, for example `{"kind": "hit_at_k", "config": {"k": 3}}`. The SDK finds or creates a metrics set that holds exactly those kinds, using the project's defaults for anything you leave out. `metrics=None` uses the project default set. A Python metric runs locally (see *Custom metrics* below), and its scores are submitted to the platform (`POST /experiments/{id}/client-results`). From there they are aggregated, shown in the UI and compared with the baseline like server metrics.
 - **Datasets**: a list of dicts or a DataFrame needs an `input` column. `expected_output`, `context` and `metadata` map to item fields, and any other column goes into `metadata` (so `expected_doc_ids` and `must_contain` work). The dataset name is a hash of the rows, so re-running on the same rows reuses the same dataset.
 - **Outputs** are uploaded with `PUT /experiments/{id}/outputs`, so this works without `aiobs.init()`. With tracing on, `finish()` waits for the OTLP traces to be bound (up to 30s) and merges their context in. Your explicit output always wins.
 - **Errors**: when a task raises, `evaluate` records it on the item (`result.errors`, `metadata.error`) and moves on. Pass `raise_on_error=True` to stop instead. When the `with` block raises, nothing is scored.
@@ -147,7 +147,7 @@ aiobs.evaluate(dataset="gold-v1", task=answer_question, metrics=["hit_at_k", cit
 ```
 
 - `Sample` fields: `input`, `output`, `expected` (dataset `expected_output`), `documents` (from `set_retrieval_documents`), `context`, `metadata`, `trace_id`, `item_id`.
-- Return `aiobs.Score(value, label=, explanation=, metadata=)`, a float, a bool, `None` or `{"score": ...}`. Explanation and metadata show up per item in the UI. A non-finite score is an ERROR.
+- Return `aiobs.Score(value, label=, explanation=, metadata=)`, a float, a bool, `None` or `{"score": ...}`. The explanation shows per item in the UI; `metadata` is stored with the result. A non-finite score is an ERROR.
 - `fn(item, output)` (two parameters) still works and receives the dataset item. `async def` metrics work too.
 - `requires`: `Sample` fields that must be non-empty (`output`, `expected`, `documents`, `context`). When one is missing the item is SKIPPED, not failed.
 - `version` is stored in the metric config: bump it when the code changes, so compare reports a config mismatch instead of a misleading delta.
