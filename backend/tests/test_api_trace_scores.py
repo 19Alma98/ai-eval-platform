@@ -15,6 +15,7 @@ from aiobs_server.api.deps import (
     get_trace_repository,
     get_trace_score_repository,
 )
+from aiobs_server.domain.live_interaction import LiveInteraction
 from aiobs_server.domain.trace import Trace
 from aiobs_server.domain.trace_score import MAX_TRACE_SCORE_BATCH
 from aiobs_server.main import create_app
@@ -226,3 +227,31 @@ async def test_score_before_trace_then_listed_on_trace_detail(ctx: Ctx) -> None:
     assert detail.status_code == 200, detail.text
     (score,) = detail.json()["scores"]
     assert score["name"] == "quality" and score["label"] == "PASS"
+
+
+async def test_live_list_and_detail_include_trace_scores(ctx: Ctx) -> None:
+    project_id = await _project(ctx.client)
+    interaction = await ctx.live.add(
+        LiveInteraction.create(uuid.UUID(project_id), "q", "a", metadata={"source_trace_id": TID})
+    )
+    await _log(
+        ctx.client,
+        project_id,
+        [{"trace_id": TID, "name": "user_feedback", "value": 0, "source": "human", "author": "u1"}],
+    )
+
+    listed = await ctx.client.get(f"/api/v1/projects/{project_id}/live-interactions")
+    assert listed.status_code == 200, listed.text
+    (row,) = listed.json()["items"]
+    assert [(s["name"], s["label"], s["author"]) for s in row["trace_scores"]] == [
+        ("user_feedback", "FAIL", "u1")
+    ]
+
+    failed = await ctx.client.get(
+        f"/api/v1/projects/{project_id}/live-interactions", params={"failed_only": "true"}
+    )
+    assert [r["id"] for r in failed.json()["items"]] == [str(interaction.id)]
+
+    detail = await ctx.client.get(f"/api/v1/live-interactions/{interaction.id}")
+    assert detail.status_code == 200, detail.text
+    assert detail.json()["trace_scores"][0]["name"] == "user_feedback"

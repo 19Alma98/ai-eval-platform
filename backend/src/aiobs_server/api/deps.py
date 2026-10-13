@@ -684,14 +684,16 @@ def get_score_live_interaction(
 
 def get_list_live_interactions(
     live: SqlAlchemyLiveInteractionRepository = Depends(get_live_interaction_repository),
+    trace_scores: SqlAlchemyTraceScoreRepository = Depends(get_trace_score_repository),
 ) -> ListLiveInteractions:
-    return ListLiveInteractions(live)
+    return ListLiveInteractions(live, trace_scores)
 
 
 def get_get_live_interaction(
     live: SqlAlchemyLiveInteractionRepository = Depends(get_live_interaction_repository),
+    trace_scores: SqlAlchemyTraceScoreRepository = Depends(get_trace_score_repository),
 ) -> GetLiveInteraction:
-    return GetLiveInteraction(live)
+    return GetLiveInteraction(live, trace_scores)
 
 
 def get_upsert_live_review(

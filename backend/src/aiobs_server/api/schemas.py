@@ -797,6 +797,7 @@ class LiveInteractionResponse(BaseModel):
     scored_at: datetime | None
     scores: list[LiveInteractionScoreResponse] = Field(default_factory=list)
     review: LiveReviewResponse | None = None
+    trace_scores: list[TraceScoreResponse] = Field(default_factory=list)
 
 
 class LiveJudgeWarningResponse(BaseModel):
