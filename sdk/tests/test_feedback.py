@@ -177,3 +177,41 @@ def test_feedback_truncates_author_and_normalizes_values(sent: Recorder) -> None
     aiobs.flush()
     (score,) = sent.scores
     assert score["trace_id"] == TID and score["value"] == 1.0 and len(score["author"]) == 200
+
+
+@pytest.mark.parametrize(
+    "kwargs",
+    [
+        {"metadata": {"k": float("nan")}},
+        {"metadata": {"k": [float("inf")]}},
+        {"metadata": {"k": "\ud800"}},
+        {"metadata": {"\ud800": 1}},
+        {"metadata": 0},
+        {"metadata": ""},
+        {"explanation": "bad \ud800"},
+        {"name": "q\ud800"},
+    ],
+)
+def test_unsendable_content_is_rejected(sent: Recorder, kwargs: dict[str, Any]) -> None:
+    args: dict[str, Any] = {"name": "q", "value": 1.0, "trace_id": TID, **kwargs}
+    assert aiobs.log_score(**args) is False
+    aiobs.flush()
+    assert sent.scores == []
+
+
+def test_feedback_rejects_surrogate_author(sent: Recorder) -> None:
+    assert aiobs.log_feedback(True, trace_id=TID, user_id="u\ud800") is False
+    assert sent.scores == []
+
+
+def test_queue_metric_score_validates_trace_id(sent: Recorder) -> None:
+    from aiobs import feedback
+
+    @aiobs.metric()
+    def m(s: aiobs.Sample) -> float:
+        return 1.0
+
+    assert feedback.queue_metric_score("p1", "nothex", m, aiobs.Score(1.0)) is False
+    assert feedback.queue_metric_score("p1", TID.upper(), m, aiobs.Score(1.0)) is True
+    aiobs.flush()
+    assert [s["trace_id"] for s in sent.scores] == [TID]

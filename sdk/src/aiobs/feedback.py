@@ -41,6 +41,36 @@ def _number(field_name: str, value: Any) -> float | None:
     return number
 
 
+def _text(field_name: str, value: str) -> str:
+    try:
+        value.encode("utf-8")
+    except UnicodeEncodeError:
+        raise ValueError(f"{field_name} is not valid UTF-8 text (lone surrogate)") from None
+    return value
+
+
+def _trace_id(value: Any) -> str:
+    if not isinstance(value, str):
+        raise ValueError(f"trace_id must be a string, got {value!r}")
+    normalized = value.strip().lower()
+    if not _TRACE_ID.fullmatch(normalized):
+        raise ValueError(f"trace_id must be 32 hex characters, got {value!r}")
+    return normalized
+
+
+def _metadata(metadata: Any) -> dict[str, Any]:
+    if not isinstance(metadata, Mapping):
+        raise ValueError(f"metadata must be a mapping, got {type(metadata).__name__}")
+    try:
+        dumped = json.dumps(dict(metadata), default=str, allow_nan=False, ensure_ascii=False)
+    except ValueError as exc:  # NaN/Infinity, circular reference
+        raise ValueError(f"metadata is not valid JSON: {exc}") from None
+    _text("metadata", dumped)
+    result = json.loads(dumped)
+    assert isinstance(result, dict)
+    return result
+
+
 def _payload(
     name: str,
     value: Any,
@@ -55,6 +85,7 @@ def _payload(
     cleaned = name.strip() if isinstance(name, str) else ""
     if not cleaned or len(cleaned) > 200:
         raise ValueError(f"score name must be 1-200 characters, got {name!r}")
+    _text("name", cleaned)
     payload: dict[str, Any] = {"name": cleaned, "value": _number("value", value), "source": source}
     if label is not None and not isinstance(label, str):
         raise ValueError(f"label must be a string, got {label!r}")
@@ -66,11 +97,13 @@ def _payload(
     if threshold is not None:
         payload["threshold"] = _number("threshold", threshold)
     if explanation is not None:
-        payload["explanation"] = str(explanation)[:_MAX_TEXT]
+        payload["explanation"] = _text("explanation", str(explanation)[:_MAX_TEXT])
     if author is not None and str(author).strip():
-        payload["author"] = str(author).strip()[:_MAX_AUTHOR]
-    if metadata:
-        payload["metadata"] = json.loads(json.dumps(dict(metadata), default=str))
+        payload["author"] = _text("author", str(author).strip()[:_MAX_AUTHOR])
+    if metadata is not None:
+        cleaned_metadata = _metadata(metadata)
+        if cleaned_metadata:
+            payload["metadata"] = cleaned_metadata
     return payload
 
 
@@ -80,11 +113,7 @@ def _queue(what: str, trace_id: str | None, build: Any) -> bool:
         resolved = trace_id or _trace.current_trace_id()
         if not resolved:
             raise ValueError("no trace_id and no active trace")
-        if not isinstance(resolved, str):
-            raise ValueError(f"trace_id must be a string, got {resolved!r}")
-        normalized = resolved.strip().lower()
-        if not _TRACE_ID.fullmatch(normalized):
-            raise ValueError(f"trace_id must be 32 hex characters, got {resolved!r}")
+        normalized = _trace_id(resolved)
         project_id = _config.resolve_project_id()
         payload = build()
     except (TypeError, ValueError) as exc:
@@ -152,6 +181,7 @@ def queue_metric_score(project_id: str, trace_id: str, metric: LocalMetric, resu
     """Queue one metric result computed for ``trace_id`` (used by production metrics)."""
     assert metric.name is not None
     try:
+        trace_id = _trace_id(trace_id)
         payload = _payload(
             metric.name,
             result.value,
