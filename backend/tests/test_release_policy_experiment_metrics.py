@@ -31,6 +31,8 @@ def test_parse_experiment_metric_rules() -> None:
         ({"experiment_metrics": {"c": {}}}, "requires min or max"),
         ({"experiment_metrics": {"c": {"avg": 1}}}, "unsupported keys"),
         ({"experiment_metrics": {"c": {"max": "2"}}}, "must be a number"),
+        ({"experiment_metrics": {"c": {"min": 3, "max": 2}}}, "min must be <= max"),
+        ({"experiment_metrics": {"bad key!": {"max": 2}}}, "invalid metric key"),
     ],
 )
 def test_parse_rejects_bad_rules(raw: dict[str, Any], match: str) -> None:

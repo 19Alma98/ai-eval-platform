@@ -212,3 +212,16 @@ async def test_release_check_rejects_bad_experiment_metric_rule(
         json={"experiment_id": exp_id, "policy": {"experiment_metrics": {"cost_usd": rule}}},
     )
     assert resp.status_code == 422, resp.text
+
+
+async def test_release_check_rejects_inverted_bounds(client: AsyncClient) -> None:
+    ctx = await _setup(client)
+    exp_id = await _experiment(client, ctx, "cand")
+    resp = await client.post(
+        f"/api/v1/projects/{ctx['project_id']}/release-check",
+        json={
+            "experiment_id": exp_id,
+            "policy": {"experiment_metrics": {"cost_usd": {"min": 3.0, "max": 2.0}}},
+        },
+    )
+    assert resp.status_code == 400, resp.text

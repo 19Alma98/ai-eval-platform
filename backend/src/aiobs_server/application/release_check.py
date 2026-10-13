@@ -70,12 +70,12 @@ class ReleaseCheck:
         fingerprints: CurrentScoringFingerprint | None = None,
         metrics: ExperimentMetricRepository | None = None,
     ) -> None:
-        self._metrics = metrics
         self._projects = projects
         self._experiments = experiments
         self._runs = runs
         self._compare = compare
         self._fingerprints = fingerprints
+        self._metrics = metrics
 
     async def execute(self, command: ReleaseCheckCommand) -> ReleaseCheckResult:
         project = await self._projects.get_by_id(command.project_id)
@@ -165,9 +165,9 @@ class ReleaseCheck:
         ):
             policy_for_eval = replace(policy, regression=None)
 
-        experiment_metrics = (
-            await self._metrics.get(command.experiment_id) if self._metrics is not None else {}
-        )
+        experiment_metrics: dict[str, float] = {}
+        if policy.experiment_metrics and self._metrics is not None:
+            experiment_metrics = await self._metrics.get(command.experiment_id)
         evaluation = evaluate_policy(
             policy_for_eval,
             candidate=candidate,

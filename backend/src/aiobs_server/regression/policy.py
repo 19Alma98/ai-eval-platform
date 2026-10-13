@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from typing import Any, Literal
 
 from aiobs_server.domain.evaluation import EvaluationResultRecord
+from aiobs_server.domain.experiment_metric import METRIC_KEY_PATTERN
 
 CheckStatus = Literal["passed", "failed", "unavailable"]
 OverallStatus = Literal["passed", "failed"]
@@ -213,6 +214,10 @@ def _parse_experiment_metrics(value: dict[str, Any]) -> tuple[ExperimentMetricRu
     rules: list[ExperimentMetricRule] = []
     for key, rule in value.items():
         block = f"{EXPERIMENT_METRICS_KEY}.{key}"
+        if not METRIC_KEY_PATTERN.fullmatch(key):
+            raise InvalidPolicyError(
+                f"policy.{EXPERIMENT_METRICS_KEY} has invalid metric key {key!r}"
+            )
         if not isinstance(rule, dict):
             raise InvalidPolicyError(f"policy.{block} must be an object")
         unknown = set(rule) - _EXPERIMENT_METRIC_KEYS
@@ -220,13 +225,11 @@ def _parse_experiment_metrics(value: dict[str, Any]) -> tuple[ExperimentMetricRu
             raise InvalidPolicyError(f"policy.{block} has unsupported keys: {sorted(unknown)}")
         if not rule:
             raise InvalidPolicyError(f"policy.{block} requires min or max")
-        rules.append(
-            ExperimentMetricRule(
-                key=key,
-                min_value=_require_float(block, "min", rule["min"]) if "min" in rule else None,
-                max_value=_require_float(block, "max", rule["max"]) if "max" in rule else None,
-            )
-        )
+        min_value = _require_float(block, "min", rule["min"]) if "min" in rule else None
+        max_value = _require_float(block, "max", rule["max"]) if "max" in rule else None
+        if min_value is not None and max_value is not None and min_value > max_value:
+            raise InvalidPolicyError(f"policy.{block} min must be <= max")
+        rules.append(ExperimentMetricRule(key=key, min_value=min_value, max_value=max_value))
     if not rules:
         raise InvalidPolicyError(f"policy.{EXPERIMENT_METRICS_KEY} must define at least one metric")
     return tuple(rules)
