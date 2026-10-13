@@ -16,6 +16,7 @@ from contextvars import ContextVar, Token
 from dataclasses import dataclass, field, replace
 from typing import Any
 
+import httpx2
 from opentelemetry import trace as otel_trace
 from opentelemetry.trace import Status, StatusCode
 
@@ -529,7 +530,7 @@ class Experiment:
     def _log_auto_metrics(self, records: list[ItemRun]) -> None:
         try:
             self.log_metrics(_auto_metrics(records))
-        except AiobsAPIError as exc:
+        except (AiobsAPIError, httpx2.HTTPError) as exc:
             logger.warning("aiobs: could not log run metrics for experiment %s: %s", self.id, exc)
 
     def runs(self) -> list[ItemRun]:
@@ -570,8 +571,13 @@ class Experiment:
                 timeout=timeout,
             )
         scored = evaluation is not None or submitted
-        if scored or self._metrics_logged:
+        if scored:
             server_summary = self._client.experiments.summary(self.id)
+        elif self._metrics_logged:
+            try:
+                server_summary = self._client.experiments.summary(self.id)
+            except (AiobsAPIError, httpx2.HTTPError) as exc:
+                logger.warning("aiobs: could not fetch summary for experiment %s: %s", self.id, exc)
         # Compare needs evaluator runs on both sides; experiment metrics ride along.
         if scored and self.baseline_id is not None:
             try:
@@ -645,7 +651,8 @@ def _nearest_rank(values: list[float], percentile: float) -> float:
 
 
 def _auto_metrics(records: list[ItemRun]) -> dict[str, float]:
-    """Run-level numbers logged on every finish (nearest-rank percentiles, like the server)."""
+    """Run-level numbers logged on every finish: error share and nearest-rank percentiles of
+    task wall-clock latency over items that did not fail."""
     metrics: dict[str, float] = {
         "aiobs.error_rate": sum(r.error is not None for r in records) / len(records)
     }

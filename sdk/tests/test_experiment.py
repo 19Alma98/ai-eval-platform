@@ -31,6 +31,7 @@ class FakeServer:
         self.scored_on_server: set[str] = set()
         self.reject_client_results = False
         self.experiment_metrics: dict[str, dict[str, float]] = {}
+        self.fail_metrics = False
         self.calls: list[tuple[str, str, Any]] = []
         self.add_metrics_set(
             "Default",
@@ -137,6 +138,8 @@ class FakeServer:
         if m := re.fullmatch(r"/api/v1/experiments/([^/]+)/metrics", path):
             if m[1] not in self.experiments:
                 return httpx2.Response(404, json={"detail": "experiment not found"})
+            if self.fail_metrics and method == "PUT":
+                return httpx2.Response(500, json={"detail": "boom"})
             store = self.experiment_metrics.setdefault(m[1], {})
             if method == "PUT":
                 store.update(body["metrics"])
@@ -675,6 +678,30 @@ def test_finish_logs_run_metrics_and_exposes_them(server: FakeServer) -> None:
     assert stored["aiobs.latency_p50_ms"] == stored["aiobs.latency_p95_ms"]
     assert result.experiment_metrics == stored
     assert "aiobs.error_rate" in result.summary()
+
+
+def test_finish_survives_run_metrics_failure(server: FakeServer) -> None:
+    server.fail_metrics = True
+    result = aiobs.evaluate(dataset=ROWS, task=_task, metrics=["hit_at_k"])
+
+    assert result.metrics == {"hit_at_k": 0.5}
+    assert result.experiment_metrics == {}
+    assert not any(
+        key.startswith("aiobs.") for stored in server.experiment_metrics.values() for key in stored
+    )
+
+
+def test_summary_shows_negative_experiment_metric_delta(server: FakeServer) -> None:
+    base = aiobs.evaluate(dataset=ROWS, task=_task, metrics=["hit_at_k"], name="base")
+    server.experiment_metrics[base.id]["cost_usd"] = 2.5
+
+    with aiobs.start_experiment("cand", dataset=ROWS, metrics=["hit_at_k"], baseline=base) as exp:
+        exp.run_task(_task)
+        exp.log_metrics({"cost_usd": 2.0})
+
+    assert exp.result is not None
+    cost_line = next(line for line in exp.result.summary().splitlines() if "cost_usd" in line)
+    assert "-0.500 vs baseline" in cost_line
 
 
 def test_summary_shows_experiment_metric_delta_vs_baseline(server: FakeServer) -> None:
