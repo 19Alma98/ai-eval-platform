@@ -1,6 +1,7 @@
 "use client";
 
 import { useRouter, useSearchParams } from "next/navigation";
+import { ThumbsDown, ThumbsUp } from "lucide-react";
 import { useCallback, useMemo, useState } from "react";
 import { DataTable, type DataTableColumn } from "@/components/data-table";
 import { EmptyState } from "@/components/empty-state";
@@ -18,6 +19,7 @@ import { metricLabel } from "@/lib/metrics-catalog";
 import { withProjectQuery } from "@/lib/project-href";
 import { useProjectId } from "@/lib/project-store";
 import { LIVE_VERDICT_LABELS, liveVerdict, type LiveVerdict } from "./live-verdict";
+import { feedbackThumb } from "./trace-feedback";
 import { useLiveJudgeCalibration, useLiveRuns } from "./use-live-runs";
 
 const VERDICT_STYLES: Record<LiveVerdict, string> = {
@@ -165,14 +167,30 @@ export function LiveRunList() {
         headerClassName: "w-[150px]",
         cell: (row) => {
           const verdict = liveVerdict(row);
+          const thumb = feedbackThumb(row.trace_scores);
           return (
-            <span
-              className={cn(
-                "inline-flex items-center rounded px-1.5 py-0.5 text-xs font-medium",
-                VERDICT_STYLES[verdict],
-              )}
-            >
-              {LIVE_VERDICT_LABELS[verdict]}
+            <span className="inline-flex items-center gap-1.5">
+              <span
+                className={cn(
+                  "inline-flex items-center rounded px-1.5 py-0.5 text-xs font-medium",
+                  VERDICT_STYLES[verdict],
+                )}
+              >
+                {LIVE_VERDICT_LABELS[verdict]}
+              </span>
+              {thumb === "up" ? (
+                <ThumbsUp
+                  role="img"
+                  className="size-3.5 text-status-ok"
+                  aria-label="Thumbs-up feedback"
+                />
+              ) : thumb === "down" ? (
+                <ThumbsDown
+                  role="img"
+                  className="size-3.5 text-status-fail"
+                  aria-label="Thumbs-down feedback"
+                />
+              ) : null}
             </span>
           );
         },
