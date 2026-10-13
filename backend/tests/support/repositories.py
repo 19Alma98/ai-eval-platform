@@ -140,6 +140,20 @@ class InMemoryExperimentRepository:
         return sum(1 for e in self._items.values() if e.metrics_set_id == metrics_set_id)
 
 
+class InMemoryExperimentMetricRepository:
+    def __init__(self) -> None:
+        self._items: dict[uuid.UUID, dict[str, float]] = {}
+
+    async def get(self, experiment_id: uuid.UUID) -> dict[str, float]:
+        return dict(sorted(self._items.get(experiment_id, {}).items()))
+
+    async def upsert(
+        self, experiment_id: uuid.UUID, metrics: dict[str, float]
+    ) -> dict[str, float]:
+        self._items.setdefault(experiment_id, {}).update(metrics)
+        return await self.get(experiment_id)
+
+
 class InMemoryEvaluationRunRepository:
     """Empty evaluation-run stub so dataset mutations do not open a SQL session."""
 

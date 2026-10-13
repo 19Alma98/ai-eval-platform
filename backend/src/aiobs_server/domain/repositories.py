@@ -117,6 +117,16 @@ class ExperimentRepository(Protocol):
     async def count_by_metrics_set_id(self, metrics_set_id: uuid.UUID) -> int: ...
 
 
+class ExperimentMetricRepository(Protocol):
+    """Experiment-level scalars: one value per (experiment, key), last write wins."""
+
+    async def get(self, experiment_id: uuid.UUID) -> dict[str, float]: ...
+
+    async def upsert(
+        self, experiment_id: uuid.UUID, metrics: dict[str, float]
+    ) -> dict[str, float]: ...
+
+
 class MetricsSetRepository(Protocol):
     async def add(self, metrics_set: MetricsSet) -> MetricsSet: ...
 

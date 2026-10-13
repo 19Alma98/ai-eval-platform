@@ -58,6 +58,9 @@ class Experiment:
     def with_metrics_set_id(self, metrics_set_id: uuid.UUID | None) -> Experiment:
         return replace(self, metrics_set_id=metrics_set_id)
 
+    def with_model_config(self, model_config: dict[str, Any]) -> Experiment:
+        return replace(self, model_config=dict(model_config))
+
     def with_status(self, status: str) -> Experiment:
         if status not in EXPERIMENT_STATUSES:
             raise ValueError(f"Invalid experiment status: {status}")
