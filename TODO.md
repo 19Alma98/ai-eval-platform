@@ -20,6 +20,23 @@ repair (2026-10-12). Thresholds: `examples/hr_it_assistant/judge_sanity_threshol
 
 - [ ] Run the missing **refusal** variant and the **live** mode (groundedness + answer_relevance).
 
+## Ragas / DeepEval adapters
+
+`aiobs.integrations.ragas` / `.deepeval` (2026-10-13) are tested only against fake modules: neither
+library is installed, so `test_real_ragas_sample_accepts_our_fields` and
+`test_real_deepeval_case_accepts_our_fields` are skipped.
+
+- [ ] **Verify against the real libraries.** Install `aiobs-eval[ragas]` and `aiobs-eval[deepeval]`
+  and run one real metric each end to end (e.g. `Faithfulness`, `AnswerRelevancyMetric`) with a
+  local judge. Check what the fakes assume: Ragas `required_columns` format (incl. `:optional`),
+  DeepEval `_required_params` / `evaluation_params`, the `a_measure` kwargs (`_show_indicator`,
+  `_log_metric_to_confident`), judge model name extraction for `config["llm"]`.
+- [ ] **Run the real-library tests in CI** (a job with both extras), so a library upgrade that breaks
+  the mapping fails a build instead of every item turning ERROR.
+- [ ] Known limits, decide if worth lifting: Ragas multi-turn metrics unsupported; DeepEval
+  lower-is-better metrics (Bias, Toxicity, Hallucination, PIILeakage) rejected; `GEval` without
+  `evaluation_steps` regenerates steps per item; DeepEval `context` / `tools_called` not mapped.
+
 ## Tooling
 
 - [ ] **UI packaging tests fail locally** without a packaged UI
