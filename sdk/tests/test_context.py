@@ -21,8 +21,6 @@ def _project(pid: str, name: str, slug: str) -> dict[str, Any]:
 def reset_state(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
     for name in (
         "AIOBS_TRACKING_URI",
-        "AIOBS_API_BASE_URL",
-        "AIOBS_BASE_URL",
         "AIOBS_OTLP_ENDPOINT",
         "AIOBS_PROJECT_ID",
         "AIOBS_PROJECT_SLUG",
@@ -65,8 +63,6 @@ class FakeServer:
 
 def test_tracking_uri_default_and_env(monkeypatch: pytest.MonkeyPatch) -> None:
     assert aiobs.get_tracking_uri() == "http://localhost:8000"
-    monkeypatch.setenv("AIOBS_API_BASE_URL", "http://legacy:1/")
-    assert aiobs.get_tracking_uri() == "http://legacy:1"
     monkeypatch.setenv("AIOBS_TRACKING_URI", "http://env:2/")
     assert aiobs.get_tracking_uri() == "http://env:2"
     aiobs.set_tracking_uri("http://explicit:3/")

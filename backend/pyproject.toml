@@ -12,13 +12,6 @@ dev = [
     "ruff>=0.8.0",
     "mypy>=1.13.0",
 ]
-# Deprecated: rag_faq now uses the SDK package (`cd sdk && uv sync --extra openai`).
-# Kept so existing `uv sync --extra examples` / --all-extras installs still succeed.
-examples = [
-    "opentelemetry-api>=1.28.0",
-    "opentelemetry-sdk>=1.28.0",
-    "opentelemetry-exporter-otlp-proto-http>=1.28.0",
-]
 
 [project.scripts]
 aiobs-server = "aiobs_server.cli:app"

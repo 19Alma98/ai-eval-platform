@@ -7,36 +7,9 @@ from pydantic import BaseModel, ConfigDict, Field
 
 
 class _ApiModel(BaseModel):
-    """Base API model with dict-like access for backward-compatible callers."""
+    """Base API model; fields are read as attributes."""
 
     model_config = ConfigDict(extra="allow", populate_by_name=True)
-
-    def __getitem__(self, key: str) -> Any:
-        fields = type(self).model_fields
-        if key in fields:
-            return getattr(self, key)
-        for name, field in fields.items():
-            if field.alias == key:
-                return getattr(self, name)
-        extras = self.__pydantic_extra__ or {}
-        if key in extras:
-            return extras[key]
-        raise KeyError(key)
-
-    def get(self, key: str, default: Any = None) -> Any:
-        try:
-            return self[key]
-        except KeyError:
-            return default
-
-    def __contains__(self, key: object) -> bool:
-        if not isinstance(key, str):
-            return False
-        try:
-            self[key]
-        except KeyError:
-            return False
-        return True
 
 
 class HealthResponse(_ApiModel):

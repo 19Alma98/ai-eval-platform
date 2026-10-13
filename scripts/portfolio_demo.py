@@ -19,21 +19,22 @@ BACKEND_DIR = ROOT / "backend"
 sys.path.insert(0, str(SDK_DIR / "src"))
 
 from aiobs import Client  # noqa: E402
+from aiobs.models import ProjectResponse  # noqa: E402
 
 
-def ensure_project(client: Client, slug: str, name: str) -> dict[str, Any]:
+def ensure_project(client: Client, slug: str, name: str) -> ProjectResponse:
     for project in client.projects.list():
-        if project.get("slug") == slug:
-            print(f"reusing project {slug} ({project['id']})")
+        if project.slug == slug:
+            print(f"reusing project {slug} ({project.id})")
             return project
     project = client.projects.create(name=name, slug=slug)
-    print(f"created project {slug} ({project['id']})")
+    print(f"created project {slug} ({project.id})")
     return project
 
 
 def ensure_metrics_pack(client: Client, project_id: str) -> None:
     pack = client.metrics_packs.ensure(project_id)
-    kinds = [e["kind"] for e in pack.get("entries") or []]
+    kinds = [e.kind for e in pack.entries]
     print(f"metrics pack ready: {', '.join(kinds)}")
 
 
@@ -141,7 +142,7 @@ def run_aiobs_check(policy: Path, base: str) -> int:
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--base-url", default=os.getenv("AIOBS_BASE_URL", "http://localhost:8000"))
+    parser.add_argument("--base-url", default=os.getenv("AIOBS_TRACKING_URI", "http://localhost:8000"))
     parser.add_argument("--project-slug", default="hr-it-assistant")
     parser.add_argument("--skip-check", action="store_true", help="Skip aiobs check subprocess")
     args = parser.parse_args(argv)
@@ -149,11 +150,11 @@ def main(argv: list[str] | None = None) -> int:
     base = args.base_url.rstrip("/")
     client = Client(base, timeout=120.0)
     health = client.health()
-    if not health or health.get("status") != "ok":
+    if health.status != "ok":
         raise SystemExit(f"API unhealthy at {base}/health: {health}")
 
     project = ensure_project(client, args.project_slug, "Acme People Ops")
-    project_id = project["id"]
+    project_id = project.id
     ensure_metrics_pack(client, project_id)
 
     stamp = time.strftime("%Y%m%d-%H%M%S")

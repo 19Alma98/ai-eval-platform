@@ -280,7 +280,6 @@ Install the extra for the providers you use, then `init(instrument="auto")` acti
 | `AIOBS_PROJECT_SLUG` | Project slug header (`X-Project-Slug`); the project must already exist |
 | `AIOBS_SERVICE_NAME` | OpenTelemetry `service.name` (default `aiobs-app`) |
 | `AIOBS_OTLP_ENDPOINT` | Optional override of the derived OTLP URL (e.g. a separate collector) |
-| `AIOBS_API_BASE_URL` / `AIOBS_BASE_URL` | Legacy aliases of `AIOBS_TRACKING_URI` (lower priority) |
 | `AIOBS_DISABLED` | `1` / `true` / `yes` / `on` turns `init()` into a no-op (decorators keep working, nothing is exported) |
 
 Project precedence for `init()`: arguments > `set_project()` > env.

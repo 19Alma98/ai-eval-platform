@@ -26,6 +26,13 @@ repair (2026-10-12). Thresholds: `examples/hr_it_assistant/judge_sanity_threshol
   (`test_sqlite_smoke.py::test_sqlite_ui_index_served`, `test_ui_resolve.py::test_ui_root_detects_packaged_index`).
   Skip them when the UI is not built.
 
+## Cleanup
+
+- [ ] **Remove interaction-level `LiveReview`.** Superseded by per-score `LiveScoreReview`; kept
+  only "for compatibility", but nothing is shipped yet. Drop the DB model + migration (drops the
+  table), domain, repository, `POST .../live-interactions/{id}/review`, `frontend/lib/api/live-runs.ts`
+  usage, SDK and docs (`02-domain-model.md`, `05-api.md`). Also reword the "Legacy pack view"
+  comment in `frontend/lib/api/metrics-packs.ts` (the code is still used).
 
 ## Performance
 

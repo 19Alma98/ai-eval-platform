@@ -13,7 +13,7 @@ Requires:
 
 Usage (from repo root)::
 
-    export AIOBS_API_BASE_URL=http://localhost:8000
+    export AIOBS_TRACKING_URI=http://localhost:8000
     cd sdk && uv run python ../scripts/live_run_demo.py
 
     # or, with sdk/.venv activated:
@@ -36,17 +36,18 @@ sys.path.insert(0, str(SDK_DIR / "src"))
 
 from aiobs import AiobsAPIError, Client  # noqa: E402
 from aiobs._http import resolve_api_base_url  # noqa: E402
+from aiobs.models import ProjectResponse  # noqa: E402
 
 KNOWLEDGE_PATH = ROOT / "examples" / "hr_it_assistant" / "knowledge.json"
 
 
-def ensure_project(client: Client, slug: str, name: str) -> dict[str, Any]:
+def ensure_project(client: Client, slug: str, name: str) -> ProjectResponse:
     for project in client.projects.list():
-        if project.get("slug") == slug:
-            print(f"reusing project {slug} ({project['id']})")
+        if project.slug == slug:
+            print(f"reusing project {slug} ({project.id})")
             return project
     project = client.projects.create(name=name, slug=slug)
-    print(f"created project {slug} ({project['id']})")
+    print(f"created project {slug} ({project.id})")
     return project
 
 
@@ -131,7 +132,7 @@ def summarize(interaction: Any) -> str:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--base-url", default=None, help="API base (or AIOBS_API_BASE_URL)")
+    parser.add_argument("--base-url", default=None, help="API base (or AIOBS_TRACKING_URI)")
     parser.add_argument("--project-slug", default="live-demo")
     parser.add_argument("--project-name", default="Live Run Demo")
     parser.add_argument(
@@ -155,7 +156,7 @@ def main() -> int:
     print(f"health: {health}")
 
     project = ensure_project(client, args.project_slug, args.project_name)
-    project_id = project["id"]
+    project_id = project.id
 
     pack = client.metrics_packs.ensure(project_id)
     kinds = [e.kind for e in pack.entries]
@@ -203,13 +204,13 @@ def main() -> int:
             task_type="rag_qa",
         )
         # Gold is written by a reviewer, never copied from the prod answer/retrieval.
-        item = client.live_runs.promote(
+        promoted = client.live_runs.promote(
             target["id"],
             dataset_id=dataset.id,
             expected_output="Full-time employees get 20 PTO days per calendar year.",
             expected_doc_ids=["pto"],
         )
-        print(f"\npromoted [{target['_label']}] → dataset {dataset.name} item {item.id[:8]}…")
+        print(f"\npromoted [{target['_label']}] → dataset {dataset.name} item {promoted.id[:8]}…")
 
     listed = client.live_runs.list(project_id, limit=20)
     print(f"\nLive interactions in project: {len(listed.items)}")

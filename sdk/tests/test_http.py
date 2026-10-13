@@ -99,15 +99,11 @@ def test_request_multipart() -> None:
 
 
 def test_resolve_api_base_url(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.delenv("AIOBS_API_BASE_URL", raising=False)
-    monkeypatch.delenv("AIOBS_BASE_URL", raising=False)
+    monkeypatch.delenv("AIOBS_TRACKING_URI", raising=False)
     assert resolve_api_base_url() == "http://localhost:8000"
     assert resolve_api_base_url("http://x/") == "http://x"
-    monkeypatch.setenv("AIOBS_API_BASE_URL", "http://from-api/")
-    assert resolve_api_base_url() == "http://from-api"
-    monkeypatch.delenv("AIOBS_API_BASE_URL")
-    monkeypatch.setenv("AIOBS_BASE_URL", "http://legacy/")
-    assert resolve_api_base_url() == "http://legacy"
+    monkeypatch.setenv("AIOBS_TRACKING_URI", "http://from-env/")
+    assert resolve_api_base_url() == "http://from-env"
 
 
 def test_read_upload(tmp_path: Path) -> None:

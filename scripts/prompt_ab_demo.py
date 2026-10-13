@@ -21,6 +21,7 @@ BACKEND_DIR = ROOT / "backend"
 sys.path.insert(0, str(SDK_DIR / "src"))
 
 from aiobs import Client  # noqa: E402
+from aiobs.models import AppConfigResponse, ProjectResponse  # noqa: E402
 
 CONFIG_FAMILY = "people-ops-rag"
 
@@ -37,19 +38,19 @@ CANDIDATE_SYSTEM_PROMPT = (
 )
 
 
-def ensure_project(client: Client, slug: str, name: str) -> dict[str, Any]:
+def ensure_project(client: Client, slug: str, name: str) -> ProjectResponse:
     for project in client.projects.list():
-        if project.get("slug") == slug:
-            print(f"reusing project {slug} ({project['id']})")
+        if project.slug == slug:
+            print(f"reusing project {slug} ({project.id})")
             return project
     project = client.projects.create(name=name, slug=slug)
-    print(f"created project {slug} ({project['id']})")
+    print(f"created project {slug} ({project.id})")
     return project
 
 
 def ensure_metrics_pack(client: Client, project_id: str) -> None:
     pack = client.metrics_packs.ensure(project_id)
-    kinds = [e["kind"] for e in pack.get("entries") or []]
+    kinds = [e.kind for e in pack.entries]
     print(f"metrics pack ready: {', '.join(kinds)}")
 
 
@@ -60,7 +61,7 @@ def create_app_config(
     system_prompt: str,
     model: str,
     description: str,
-) -> dict[str, Any]:
+) -> AppConfigResponse:
     created = client.app_configs.create_app_config(
         project_id,
         CONFIG_FAMILY,
@@ -70,8 +71,8 @@ def create_app_config(
         retrieval={"top_k": 2},
     )
     print(
-        f"app config {created.get('name')}@v{created.get('version')} "
-        f"id={created['id'][:8]}… hash={str(created.get('content_hash', ''))[:12]}…"
+        f"app config {created.name}@v{created.version} "
+        f"id={created.id[:8]}… hash={created.content_hash[:12]}…"
     )
     return created
 
@@ -184,7 +185,7 @@ def run_aiobs_check(policy: Path, base: str) -> int:
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--base-url", default=os.getenv("AIOBS_BASE_URL", "http://localhost:8000"))
+    parser.add_argument("--base-url", default=os.getenv("AIOBS_TRACKING_URI", "http://localhost:8000"))
     parser.add_argument("--project-slug", default="hr-it-assistant")
     parser.add_argument("--skip-check", action="store_true", help="Skip aiobs check subprocess")
     args = parser.parse_args(argv)
@@ -192,11 +193,11 @@ def main(argv: list[str] | None = None) -> int:
     base = args.base_url.rstrip("/")
     client = Client(base, timeout=120.0)
     health = client.health()
-    if not health or health.get("status") != "ok":
+    if health.status != "ok":
         raise SystemExit(f"API unhealthy at {base}/health: {health}")
 
     project = ensure_project(client, args.project_slug, "Acme People Ops")
-    project_id = project["id"]
+    project_id = project.id
     ensure_metrics_pack(client, project_id)
 
     stamp = time.strftime("%Y%m%d-%H%M%S")
@@ -222,14 +223,14 @@ def main(argv: list[str] | None = None) -> int:
     baseline = run_experiment(
         model,
         name=f"prompt-baseline-{stamp}",
-        app_config_id=baseline_cfg["id"],
+        app_config_id=baseline_cfg.id,
         base=base,
         project_slug=args.project_slug,
     )
     candidate = run_experiment(
         model,
         name=f"prompt-candidate-{stamp}",
-        app_config_id=candidate_cfg["id"],
+        app_config_id=candidate_cfg.id,
         base=base,
         project_slug=args.project_slug,
         baseline=baseline["experiment_id"],

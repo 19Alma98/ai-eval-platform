@@ -4,8 +4,9 @@ from __future__ import annotations
 
 import os
 
-import aiobs
 from openai import OpenAI
+
+import aiobs
 
 aiobs.set_tracking_uri(os.getenv("AIOBS_TRACKING_URI", "http://localhost:8000"))
 aiobs.set_project(os.getenv("AIOBS_PROJECT_SLUG", "demo"))

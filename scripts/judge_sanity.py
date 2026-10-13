@@ -103,7 +103,9 @@ async def _score_variant(
     bootstrap_evaluators()
     judge_config = {"method": method} if method else {}
     judges = {
-        kind: create_llm_judge(kind, judge_config if kind != "answer_relevance" else {}, llm, defaults=defaults)
+        kind: create_llm_judge(
+            kind, judge_config if kind != "answer_relevance" else {}, llm, defaults=defaults
+        )
         for kind in JUDGE_KINDS
         if kind in METRIC_KINDS
     }

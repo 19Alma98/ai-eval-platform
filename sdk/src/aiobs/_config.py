@@ -34,15 +34,13 @@ def set_tracking_uri(uri: str) -> None:
 def get_tracking_uri() -> str:
     """Resolve the platform URI.
 
-    Order: ``set_tracking_uri()`` > ``AIOBS_TRACKING_URI`` >
-    ``AIOBS_API_BASE_URL`` / ``AIOBS_BASE_URL`` (legacy) > ``http://localhost:8000``.
+    Order: ``set_tracking_uri()`` > ``AIOBS_TRACKING_URI`` > ``http://localhost:8000``.
     """
     if _TRACKING_URI is not None:
         return _TRACKING_URI
-    for name in ("AIOBS_TRACKING_URI", "AIOBS_API_BASE_URL", "AIOBS_BASE_URL"):
-        value = os.getenv(name)
-        if value and value.strip():
-            return _normalize_uri(value)
+    value = os.getenv("AIOBS_TRACKING_URI")
+    if value and value.strip():
+        return _normalize_uri(value)
     return DEFAULT_TRACKING_URI
 
 

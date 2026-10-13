@@ -52,9 +52,6 @@ DEFAULT_SYSTEM_PROMPT = (
     "say you do not know."
 )
 
-# Back-compat alias for importers / docs that expect SYSTEM_PROMPT.
-SYSTEM_PROMPT = DEFAULT_SYSTEM_PROMPT
-
 
 def system_prompt_from_params(params: dict[str, Any]) -> str | None:
     """``prompt.system`` from experiment params (an App Config snapshot has one)."""
