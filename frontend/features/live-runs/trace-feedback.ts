@@ -4,10 +4,23 @@ export const FEEDBACK_NAME = "user_feedback";
 
 export type Feedback = "up" | "down";
 
-/** Most recent end-user thumbs on this answer, if any. */
-export function latestFeedback(scores: TraceScore[] | undefined): Feedback | null {
-  const feedback = (scores ?? []).filter((s) => s.name === FEEDBACK_NAME && s.value != null);
-  if (feedback.length === 0) return null;
-  const latest = feedback.reduce((a, b) => (b.updated_at > a.updated_at ? b : a));
-  return (latest.value ?? 0) >= 0.5 ? "up" : "down";
+function rowThumb(s: TraceScore): Feedback | null {
+  const label = (s.label ?? "").toUpperCase();
+  if (label === "FAIL") return "down";
+  if (label === "PASS") return "up";
+  if (s.value == null) return null;
+  return s.value < 0.5 ? "down" : "up";
+}
+
+/**
+ * End-user thumb for this answer, matching the live verdict: "down" if any
+ * user_feedback row failed, else "up" if any passed, else null.
+ */
+export function feedbackThumb(scores: TraceScore[] | undefined): Feedback | null {
+  const thumbs = (scores ?? [])
+    .filter((s) => s.name === FEEDBACK_NAME)
+    .map(rowThumb);
+  if (thumbs.includes("down")) return "down";
+  if (thumbs.includes("up")) return "up";
+  return null;
 }
