@@ -17,8 +17,9 @@ services:
 
   api:
     build:
-      context: ./backend
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: backend/Dockerfile
+
     env_file:
       - ./backend/.env
     extra_hosts:
