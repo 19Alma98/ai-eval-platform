@@ -47,7 +47,7 @@ class BodyLimitedRoute(APIRoute):
                 too_large = len(await request.body()) > limit
             if too_large:
                 return JSONResponse(
-                    status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+                    status_code=status.HTTP_413_CONTENT_TOO_LARGE,
                     content={"detail": "Trace score payload too large"},
                 )
             return await original(request)

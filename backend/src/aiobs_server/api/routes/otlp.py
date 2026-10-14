@@ -53,7 +53,7 @@ async def export_traces(
     body = await request.body()
     if len(body) > settings.otlp_max_body_bytes:
         return JSONResponse(
-            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            status_code=status.HTTP_413_CONTENT_TOO_LARGE,
             content={"detail": "OTLP payload too large"},
         )
 

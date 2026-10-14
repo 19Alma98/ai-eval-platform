@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import uuid
 from collections.abc import AsyncIterator
 from dataclasses import dataclass
@@ -277,4 +278,24 @@ async def test_oversized_body_is_413(ctx: Ctx) -> None:
         for i in range(120)
     ]
     resp = await _log(ctx.client, pid, scores)
+    assert resp.status_code == 413
+
+
+async def test_chunked_oversized_body_is_413(ctx: Ctx) -> None:
+    pid = await _project(ctx.client)
+    scores = [
+        {"trace_id": TID, "name": f"m{i}", "value": 1, "metadata": {"b": "x" * 10_000}}
+        for i in range(120)
+    ]
+    payload = json.dumps({"scores": scores}).encode()
+
+    async def chunks() -> AsyncIterator[bytes]:
+        for start in range(0, len(payload), 65_536):
+            yield payload[start : start + 65_536]
+
+    resp = await ctx.client.post(
+        f"/api/v1/projects/{pid}/trace-scores",
+        content=chunks(),
+        headers={"content-type": "application/json"},
+    )
     assert resp.status_code == 413
