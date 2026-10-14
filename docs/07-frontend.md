@@ -99,7 +99,7 @@ experiments is shown as *Locked* (imports create a new version).
 
 Guided form: pick candidate + baseline, then a *quality bar* built from the experiment's
 metrics (defaults from the project metrics thresholds), latency budget and maximum allowed
-drop vs baseline. The same rules can be edited as YAML or copied for CI (`aiobs check`).
+drop vs baseline. The same rules can be edited as YAML or copied for CI (`opengrade check`).
 The result reads “Ready to ship” / “Not ready to ship” with each rule, the actual value and
 the target; failed regression rules link to the comparison.
 

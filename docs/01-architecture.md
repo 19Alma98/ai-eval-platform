@@ -65,7 +65,7 @@ Next.js web app and Typer CLI.
 ```text
 repo/
 ├── backend/
-│   ├── src/aiobs/
+│   ├── src/opengrade_server/
 │   │   ├── api/
 │   │   ├── application/
 │   │   ├── domain/

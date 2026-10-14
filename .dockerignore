@@ -11,7 +11,7 @@
 frontend/out
 frontend/test-results
 frontend/playwright-report
-backend/src/aiobs_server/_ui
+backend/src/opengrade_server/_ui
 docs
 examples
 **/.env

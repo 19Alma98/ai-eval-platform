@@ -33,10 +33,10 @@ postgres_data/
 docs/superpowers/
 
 # Packaged Next.js UI (built by scripts/package-ui.sh)
-backend/src/aiobs_server/_ui/**
-!backend/src/aiobs_server/_ui/.gitkeep
+backend/src/opengrade_server/_ui/**
+!backend/src/opengrade_server/_ui/.gitkeep
 
-aiobs.db
-**/aiobs.db
+opengrade.db
+**/opengrade.db
 
-.aiobs/
+.opengrade/

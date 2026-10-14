@@ -3,7 +3,7 @@
 # Copy to release-gate.yml (or into a consumer repo) and adapt.
 # Requires a reachable AIOBS API with evaluated experiment runs already available.
 #
-# Exit codes from `aiobs check`:
+# Exit codes from `opengrade check`:
 #   0 pass | 1 gate failed | 2 config error | 3 infra error
 
 name: Release gate example
@@ -39,26 +39,26 @@ jobs:
       - name: Set up Python
         run: uv python install 3.12
 
-      - name: Install aiobs-eval-server (CLI)
+      - name: Install opengrade-ai-server (CLI)
         working-directory: backend
         run: uv sync
 
       - name: Run release check
         working-directory: backend
         env:
-          AIOBS_BASE_URL: ${{ inputs.api_base_url }}
-          AIOBS_PROJECT_ID: ${{ inputs.project_id }}
-          AIOBS_EXPERIMENT_ID: ${{ inputs.experiment_id }}
-          AIOBS_BASELINE_ID: ${{ inputs.baseline_experiment_id }}
+          OPENGRADE_BASE_URL: ${{ inputs.api_base_url }}
+          OPENGRADE_PROJECT_ID: ${{ inputs.project_id }}
+          OPENGRADE_EXPERIMENT_ID: ${{ inputs.experiment_id }}
+          OPENGRADE_BASELINE_ID: ${{ inputs.baseline_experiment_id }}
         run: |
           ARGS=(
             check
-            --policy ../examples/aiobs.yaml
-            --base-url "$AIOBS_BASE_URL"
-            --project-id "$AIOBS_PROJECT_ID"
-            --experiment-id "$AIOBS_EXPERIMENT_ID"
+            --policy ../examples/opengrade.yaml
+            --base-url "$OPENGRADE_BASE_URL"
+            --project-id "$OPENGRADE_PROJECT_ID"
+            --experiment-id "$OPENGRADE_EXPERIMENT_ID"
           )
-          if [ -n "${AIOBS_BASELINE_ID:-}" ]; then
-            ARGS+=(--baseline-experiment-id "$AIOBS_BASELINE_ID")
+          if [ -n "${OPENGRADE_BASELINE_ID:-}" ]; then
+            ARGS+=(--baseline-experiment-id "$OPENGRADE_BASELINE_ID")
           fi
-          uv run aiobs "${ARGS[@]}"
+          uv run opengrade "${ARGS[@]}"

@@ -13,14 +13,14 @@ Zero external infra — SQLite file + packaged UI in one process:
 
 ```bash
 # from a built/release install, or after ./scripts/package-ui.sh + pip install -e backend
-pip install 'aiobs-eval[ui]'   # SDK + aiobs-eval-server (includes UI)
-aiobs ui                       # http://127.0.0.1:8000  → creates ./aiobs.db
+pip install 'opengrade-ai[ui]'   # SDK + opengrade-ai-server (includes UI)
+opengrade ui                       # http://127.0.0.1:8000  → creates ./opengrade.db
 ```
 
 Optional Postgres (production / Compose):
 
 ```bash
-aiobs ui --backend-store-uri 'postgresql+asyncpg://aiobs:aiobs@localhost:5434/aiobs'
+opengrade ui --backend-store-uri 'postgresql+asyncpg://opengrade:opengrade@localhost:5434/opengrade'
 ```
 
 ## Quickstart (Docker Compose)
@@ -29,7 +29,7 @@ aiobs ui --backend-store-uri 'postgresql+asyncpg://aiobs:aiobs@localhost:5434/ai
 docker compose up --build
 ```
 
-UI and API: http://localhost:8000 — one image serves both (the same static UI that `aiobs ui` ships). For UI development run `npm run dev` in `frontend/` (http://localhost:3000, proxies `/api` to `API_ORIGIN`).
+UI and API: http://localhost:8000 — one image serves both (the same static UI that `opengrade ui` ships). For UI development run `npm run dev` in `frontend/` (http://localhost:3000, proxies `/api` to `API_ORIGIN`).
 
 Check health:
 
@@ -39,7 +39,7 @@ curl http://localhost:8000/health
 
 ### Portfolio demo (People Ops assistant + Ollama)
 
-Dataset-first RAG loop: gold test set → metrics pack → `aiobs.evaluate` experiment per model (traces bound per item, outputs uploaded, pack scored) → compare → release gate. Compares two local models (`OLLAMA_MODEL1` vs `OLLAMA_MODEL2`) on the same test set and pipeline.
+Dataset-first RAG loop: gold test set → metrics pack → `opengrade.evaluate` experiment per model (traces bound per item, outputs uploaded, pack scored) → compare → release gate. Compares two local models (`OLLAMA_MODEL1` vs `OLLAMA_MODEL2`) on the same test set and pipeline.
 
 1. `docker compose up --build`
 2. Pull two chat models, e.g. `ollama pull gemma4:e2b` and `ollama pull tinyllama`
@@ -83,7 +83,7 @@ Or run the Python example:
 ```bash
 cd examples/otlp_hello
 pip install -r requirements.txt
-set AIOBS_PROJECT_SLUG=demo
+set OPENGRADE_PROJECT_SLUG=demo
 python main.py
 ```
 
@@ -110,7 +110,7 @@ After evaluating an experiment, check a YAML policy:
 
 ```bash
 cd backend && uv sync
-uv run aiobs check --policy ../examples/aiobs.yaml \
+uv run opengrade check --policy ../examples/opengrade.yaml \
   --base-url http://localhost:8000 \
   --project-id <project-uuid> \
   --experiment-id <experiment-uuid>
@@ -120,7 +120,7 @@ Exit codes: `0` pass, `1` gate failed, `2` config error, `3` infra error. Exampl
 
 ## PyPI release
 
-Packages: **`aiobs-eval`** (SDK) and **`aiobs-eval-server`** (API + UI). Publish via tag `vX.Y.Z` and [`.github/workflows/publish.yml`](.github/workflows/publish.yml) (Trusted Publishing). Setup and checklist: [`docs/08-cli-ci.md`](docs/08-cli-ci.md#publishing-to-pypi).
+Packages: **`opengrade-ai`** (SDK) and **`opengrade-ai-server`** (API + UI). Publish via tag `vX.Y.Z` and [`.github/workflows/publish.yml`](.github/workflows/publish.yml) (Trusted Publishing). Setup and checklist: [`docs/08-cli-ci.md`](docs/08-cli-ci.md#publishing-to-pypi).
 
 ## Development (backend)
 
@@ -129,10 +129,10 @@ cd backend
 cp .env.example .env   # edit as needed
 uv sync --all-extras
 uv run alembic upgrade head
-uv run uvicorn aiobs_server.main:app --reload --host 0.0.0.0 --port 8000
+uv run uvicorn opengrade_server.main:app --reload --host 0.0.0.0 --port 8000
 ```
 
-Requires PostgreSQL. With Compose, Postgres is published on host port **5434** (`DATABASE_URL=postgresql+asyncpg://aiobs:aiobs@localhost:5434/aiobs`).
+Requires PostgreSQL. With Compose, Postgres is published on host port **5434** (`DATABASE_URL=postgresql+asyncpg://opengrade:opengrade@localhost:5434/opengrade`).
 
 ### LLM judges (LiteLLM / Ollama)
 
@@ -147,7 +147,7 @@ When creating an evaluator, use `"type": "llm_judge"` and `"config": {"kind": "c
 
 ### RAG metrics naming
 
-| aiobs `kind` | Notes |
+| opengrade `kind` | Notes |
 |---|---|
 | `groundedness` | Answer claims supported by retrieved docs |
 | `answer_relevance` | Question–answer relevance (rubric) |

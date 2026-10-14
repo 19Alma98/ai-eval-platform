@@ -117,7 +117,7 @@ PATCH /experiments/{experiment_id}/params
 
 An empty body (or omitted body) is valid and equivalent to defaults. Resolution order: request `metrics_set_id` → experiment `metrics_set_id` → project default metrics set (created on demand). When `save_as_default` is true and the request supplies `metrics_set_id`, the experiment pin is persisted after resolve. Foreign or missing set IDs return 404. Ad-hoc `POST .../evaluate` with explicit `evaluator_ids` is unchanged and ignores metrics sets.
 
-OTLP traces with `aiobs.experiment_id` and `aiobs.dataset_item_id` on root/CHAIN spans upsert experiment item outputs on ingest.
+OTLP traces with `opengrade.experiment_id` and `opengrade.dataset_item_id` on root/CHAIN spans upsert experiment item outputs on ingest.
 
 `POST /projects/{project_id}/experiments` body (in addition to `name`, `dataset_id`):
 
@@ -216,7 +216,7 @@ PUT /experiments/{experiment_id}/metrics
 {"metrics": {"cost_usd": 1.42, "accuracy": 0.91}}
 ```
 
-Stores one final value per key (no steps); the last write wins. Keys use 1-200 letters, digits or `_ . - /`, and a request carries at most 1000 metrics. Keys starting with `aiobs.` are reserved by convention for the SDK (`aiobs.error_rate`, `aiobs.latency_p50_ms`, `aiobs.latency_p95_ms`), which overwrites them on every `finish()`, so do not write them yourself. Response `200`: `{"experiment_id", "metrics": {...}}` with **all** the experiment's metrics. `GET` returns the same shape.
+Stores one final value per key (no steps); the last write wins. Keys use 1-200 letters, digits or `_ . - /`, and a request carries at most 1000 metrics. Keys starting with `opengrade.` are reserved by convention for the SDK (`opengrade.error_rate`, `opengrade.latency_p50_ms`, `opengrade.latency_p95_ms`), which overwrites them on every `finish()`, so do not write them yourself. Response `200`: `{"experiment_id", "metrics": {...}}` with **all** the experiment's metrics. `GET` returns the same shape.
 
 ```http
 PATCH /experiments/{experiment_id}/params
@@ -445,8 +445,8 @@ Errors: 404 project/experiment not found; 400 invalid policy, missing baseline f
 
 ## CLI contract
 
-Phase 4 ships `aiobs check` (see `docs/08-cli-ci.md`). Additional CLI commands remain planned:
+Phase 4 ships `opengrade check` (see `docs/08-cli-ci.md`). Additional CLI commands remain planned:
 
 ```bash
-aiobs check --policy aiobs.yaml
+opengrade check --policy opengrade.yaml
 ```

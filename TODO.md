@@ -31,7 +31,7 @@ Postgres is source of truth for job state; the queue is a deployment detail. No 
   `BackgroundTasks` directly; call a `JobQueue.enqueue(name, payload)` port.
   Default backend: in-process (current BackgroundTasks behavior). Stable
   idempotent runners (`run_live_score`, `run_experiment_score`, …) stay the
-  execution API. Optional later: Postgres `SKIP LOCKED` + `aiobs worker`,
+  execution API. Optional later: Postgres `SKIP LOCKED` + `opengrade worker`,
   Redis/SQS/etc. as extras or docs (“bring your broker”), or a hook so operators
   push to their own orchestrator. Fix when: restarts drop work under load, API
   latency suffers from in-process judges, or multi-replica API needs shared queue.
@@ -62,4 +62,4 @@ the minimum just because a newer CPython shipped.
 
 ## Other
 
-- Nome su PyPI
+- **PyPI naming (done):** Public distributions are `opengrade-ai` / `opengrade-ai-server` — see `docs/superpowers/specs/2026-10-14-opengrade-ai-rename-design.md`.

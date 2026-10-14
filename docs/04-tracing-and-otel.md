@@ -14,7 +14,7 @@ Initial options:
 
 1. OTLP/HTTP ingestion endpoint.
 2. OTLP/gRPC in a later milestone.
-3. Native SDK helper for Python applications — delivered as [`sdk/README.md`](../sdk/README.md) (`pip install aiobs-eval`).
+3. Native SDK helper for Python applications — delivered as [`sdk/README.md`](../sdk/README.md) (`pip install opengrade-ai`).
 
 ## Trace normalization
 
@@ -62,14 +62,14 @@ The project should expose a documented compatibility matrix:
 | OTLP HTTP | supported |
 | OTLP gRPC | planned |
 | OpenTelemetry Python | supported |
-| Python SDK (`aiobs`) | supported (v0.1) |
+| Python SDK (`opengrade`) | supported (v0.1) |
 | OpenInference attributes | supported where applicable |
 | GenAI semantic conventions | supported/normalized |
-| Instrumentor `openai` | documented / best-effort outside CI — `aiobs[openai]` + `openai` |
-| Instrumentor `anthropic` | documented / best-effort outside CI — `aiobs[anthropic]` + `anthropic` |
-| Instrumentor `langchain` | documented / best-effort outside CI — `aiobs[langchain]` + LangChain |
-| Instrumentor `llama_index` | documented / best-effort outside CI — `aiobs[llama-index]` + `llama_index` |
-| Instrumentor `bedrock` | documented / best-effort outside CI — `aiobs[bedrock]` + Bedrock runtime (`boto3`) |
+| Instrumentor `openai` | documented / best-effort outside CI — `opengrade[openai]` + `openai` |
+| Instrumentor `anthropic` | documented / best-effort outside CI — `opengrade[anthropic]` + `anthropic` |
+| Instrumentor `langchain` | documented / best-effort outside CI — `opengrade[langchain]` + LangChain |
+| Instrumentor `llama_index` | documented / best-effort outside CI — `opengrade[llama-index]` + `llama_index` |
+| Instrumentor `bedrock` | documented / best-effort outside CI — `opengrade[bedrock]` + Bedrock runtime (`boto3`) |
 
 Install extras and manual smoke steps for tier-1 instrumentors: [`sdk/README.md`](../sdk/README.md).
 

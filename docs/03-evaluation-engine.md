@@ -59,7 +59,7 @@ LLM judges return structured, validated output and are versioned by `prompt_vers
 
 ### Naming vs Ragas
 
-| Ragas | aiobs `kind` |
+| Ragas | opengrade `kind` |
 |---|---|
 | Faithfulness | `groundedness` |
 | Response / answer relevancy | `answer_relevance` |
@@ -67,7 +67,7 @@ LLM judges return structured, validated output and are versioned by `prompt_vers
 | Context recall | `context_recall` |
 | Factual correctness (approx.) | `correctness` |
 
-Use aiobs kinds in API/config; there is no Ragas-name alias in the registry.
+Use opengrade kinds in API/config; there is no Ragas-name alias in the registry.
 
 ## RAG metrics sets and pack scoring
 
@@ -89,7 +89,7 @@ Live scoring: a failing judge records an `ERROR` score for its kind without disc
 
 ## LLM judges
 
-Code: `aiobs.evaluation.judges` (`prompts`, `parsing`, `claims`, `rubric`, `evaluators`, `cache`, `snapshots`, `warnings`). Judges return `label=None`; `explanation` is a short human-readable summary and structured details go into `metadata`.
+Code: `opengrade.evaluation.judges` (`prompts`, `parsing`, `claims`, `rubric`, `evaluators`, `cache`, `snapshots`, `warnings`). Judges return `label=None`; `explanation` is a short human-readable summary and structured details go into `metadata`.
 
 ### Methods and config
 
@@ -127,7 +127,7 @@ Entry config keys (part of `config_hash`). Invalid values raise `ValueError` whe
 
 - `LLM_TEMPERATURE` (default `0.0`) and `LLM_SEED` (default `42`) are sent on every judge call; `LiteLlmClient` passes `drop_params=True` so providers without `seed` ignore it. Entry `temperature` / `model` override them per entry.
 - `prompt_version = "{kind}.{method}.{sha256[:12]}"` is derived from a canonical JSON hash of the system prompt templates that `(kind, method)` uses (e.g. `groundedness.claims.a1b2c3d4e5f6`). Changing any of those templates changes the hash automatically — no manual revision bump. The id is stored in each result's metadata and in `run.metadata.prompt_version`. Compare flags a `prompt_version` mismatch between candidate and baseline as a config mismatch (flagged, not blocked); older runs with a different string (including legacy `*.v5`) are flagged accordingly.
-- For personal audit, the full prompt bundle is upserted into a local gitignored JSON file (default `.aiobs/judge_prompt_snapshots.json`, override with `AIOBS_JUDGE_PROMPT_SNAPSHOTS`). Entries are keyed by the full SHA-256. This file is not shared and is not required for compare/cache — those use the hash in metadata only.
+- For personal audit, the full prompt bundle is upserted into a local gitignored JSON file (default `.opengrade/judge_prompt_snapshots.json`, override with `OPENGRADE_JUDGE_PROMPT_SNAPSHOTS`). Entries are keyed by the full SHA-256. This file is not shared and is not required for compare/cache — those use the hash in metadata only.
 - Result metadata: `method`, `prompt_version`, `model`, `claims` (per claim `text` and `verdict`, plus `doc_ids`/`quote`/`reasoning` where applicable), counts (`n_claims`, `n_supported`, `n_contradicted`; correctness: `n_gold`, `n_covered`, `n_missing`, `recall`, and `precision` for f1), `claims_truncated`, `llm_calls`, `cache_hit`. Rubric results store `level` and `reasoning`.
 - Explanations are capped at 1000 characters (claim lists are abbreviated).
 
@@ -239,7 +239,7 @@ Outcome classes:
 - **SKIPPED** — metric cannot be evaluated (missing gold / required fields). `score` is null; excluded from mean/pass_rate.
 - **FAIL** with minimum score (usually `0.0`) — quality miss, including empty/missing retrieval when gold is present. Lowers mean/pass_rate and can fail gates.
 
-Helpers: `aiobs.evaluation.outcomes` (`skip`, `fail_min`, `error`, `pass_`).
+Helpers: `opengrade.evaluation.outcomes` (`skip`, `fail_min`, `error`, `pass_`).
 
 ## LLM judge requirements
 
