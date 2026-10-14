@@ -42,8 +42,6 @@ library is installed, so `test_real_ragas_sample_accepts_our_fields` and
 Branch `feat/production-trace-scores` (2026-10-14): `aiobs.log_score`, `aiobs.log_feedback`,
 `aiobs.score`, `@aiobs.trace(metrics=...)`, `trace_scores` table and API, Live + overview UI.
 
-- [ ] **Manual smoke** with the dev stack (plan Task 15 step 2): traced call with `metrics=`, a
-  `log_feedback`, then check `/trace-scores/summary` and the "SDK scores & feedback" section on Live.
 - [ ] **Naming:** `aiobs.score` (function) vs `aiobs.Score` (class) differ only by case and `score` is
   a common local name. Decide before release (e.g. `score_trace`).
   app-wide before the 1 MiB `/trace-scores` limit (and the OTLP limit) is checked. Add a size check
