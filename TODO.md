@@ -48,7 +48,6 @@ Branch `feat/production-trace-scores` (2026-10-14): `aiobs.log_score`, `aiobs.lo
 - [ ] **`flush()` waits on a global count.** `_scores.flush` / `_production.drain` wait until the
   queue is empty, so under steady traffic they can time out even though everything queued before
   the call was sent. Use sequence numbers if per-request `flush()` (serverless) matters.
-- [ ] **Score retry has no backoff** (network / 5xx retried immediately once).
 - [ ] **Captured data by reference:** queued metric jobs hold the call's args/result until scored
   (memory, and mutation after return changes what the metric sees). Consider a size guard.
 - [ ] Small test gaps: multi-page `failed_only` with a trace FAIL on a later page; upper-case

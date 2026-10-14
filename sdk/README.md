@@ -303,7 +303,7 @@ aiobs.log_feedback(True, trace_id=trace_id, user_id="user-42", comment="great")
     `trace_async` also accepts `functools.partial` of a coroutine function; other async wrappers
     need `inspect.markcoroutinefunction`.
 - These calls never raise. `log_score`, `log_feedback` and `trace(metrics=...)` never block the caller; `score_trace()` blocks for as long as the metric takes. Invalid input (bad value, label or trace id, or metadata over 16 KB serialized) logs a warning and returns `False`; setup problems (no project id, no active trace) warn at most once a minute.
-- Scores are sent in the background (batches every 2 s, 100 scores or about 512 KB). A 413 (body over the server's 1 MiB limit) splits the batch in half and resends, dropping only a single score that is still too large. A batch rejected with 400/422 is resent item by item so only the bad scores are dropped; 401/403/404 and other 4xx drop the batch at once; only network errors and 5xx are retried once, then dropped with a warning.
+- Scores are sent in the background (batches every 2 s, 100 scores or about 512 KB). A 413 (body over the server's 1 MiB limit) splits the batch in half and resends, dropping only a single score that is still too large. A batch rejected with 400/422 is resent item by item so only the bad scores are dropped; 401/403/404 and other 4xx drop the batch at once; only network errors and 5xx are retried once after a 1 s backoff, then dropped with a warning.
 - `aiobs.flush(timeout_millis)` is one total budget: spans, then pending metrics, then scores. At exit, spans, pending metrics, and scores share one ~5 s budget (span flush is capped at ~2 s of that).
 
 ### Live runs → TestSet loop

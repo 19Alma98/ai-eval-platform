@@ -83,7 +83,7 @@ def test_full_queue_drops_with_one_warning(caplog: pytest.LogCaptureFixture) -> 
 
 def test_retries_once_then_succeeds() -> None:
     post = Recorder(fail_times=1)
-    sender = ScoreSender(post, interval=60.0)
+    sender = ScoreSender(post, interval=60.0, retry_backoff=0)
     sender.enqueue("p1", _score(0))
     assert sender.flush(5.0)
     assert len(post.calls) == 2
@@ -91,7 +91,7 @@ def test_retries_once_then_succeeds() -> None:
 
 def test_drops_after_second_failure(caplog: pytest.LogCaptureFixture) -> None:
     post = Recorder(fail_times=5)
-    sender = ScoreSender(post, interval=60.0)
+    sender = ScoreSender(post, interval=60.0, retry_backoff=0)
     sender.enqueue("p1", _score(0))
     with caplog.at_level(logging.WARNING, logger="aiobs"):
         assert sender.flush(5.0)
@@ -101,7 +101,7 @@ def test_drops_after_second_failure(caplog: pytest.LogCaptureFixture) -> None:
 
 def test_client_error_is_sent_once_and_dropped(caplog: pytest.LogCaptureFixture) -> None:
     post = Recorder(fail_times=5, error=AiobsAPIError(422, "invalid score"))
-    sender = ScoreSender(post, interval=60.0)
+    sender = ScoreSender(post, interval=60.0, retry_backoff=0)
     sender.enqueue("p1", _score(0))
     with caplog.at_level(logging.WARNING, logger="aiobs"):
         assert sender.flush(5.0)
@@ -111,10 +111,32 @@ def test_client_error_is_sent_once_and_dropped(caplog: pytest.LogCaptureFixture)
 
 def test_server_error_is_retried() -> None:
     post = Recorder(fail_times=1, error=AiobsAPIError(503, "unavailable"))
-    sender = ScoreSender(post, interval=60.0)
+    sender = ScoreSender(post, interval=60.0, retry_backoff=0)
     sender.enqueue("p1", _score(0))
     assert sender.flush(5.0)
     assert len(post.calls) == 2
+
+
+def test_server_error_retries_after_backoff(monkeypatch: pytest.MonkeyPatch) -> None:
+    slept: list[float] = []
+    monkeypatch.setattr(scores_module.time, "sleep", slept.append)
+    post = Recorder(fail_times=1, error=AiobsAPIError(503, "unavailable"))
+    sender = ScoreSender(post, interval=60.0, retry_backoff=1.5)
+    sender.enqueue("p1", _score(0))
+    assert sender.flush(5.0)
+    assert slept == [1.5]
+    assert len(post.calls) == 2
+
+
+def test_client_error_does_not_backoff(monkeypatch: pytest.MonkeyPatch) -> None:
+    slept: list[float] = []
+    monkeypatch.setattr(scores_module.time, "sleep", slept.append)
+    post = Recorder(fail_times=5, error=AiobsAPIError(422, "invalid score"))
+    sender = ScoreSender(post, interval=60.0, retry_backoff=1.5)
+    sender.enqueue("p1", _score(0))
+    assert sender.flush(5.0)
+    assert slept == []
+    assert len(post.calls) == 1
 
 
 def test_enqueue_and_flush_survive_thread_start_failure(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -174,7 +196,7 @@ def test_client_error_in_batch_resends_items_individually(
 
 def test_send_failure_warnings_are_rate_limited(caplog: pytest.LogCaptureFixture) -> None:
     post = Recorder(fail_times=100)
-    sender = ScoreSender(post, interval=60.0)
+    sender = ScoreSender(post, interval=60.0, retry_backoff=0)
     with caplog.at_level(logging.DEBUG, logger="aiobs"):
         for i in range(3):
             sender.enqueue("p1", _score(i))

@@ -1,14 +1,4 @@
-"""Background sender for trace scores: never blocks or raises into user code.
-
-Scores go into a bounded in-memory queue drained by one daemon thread, in batches
-every ``interval`` seconds or ``batch_size`` items. A POST that failed on the network
-or with a 5xx is retried once, then dropped with a warning. A 400/422 rejects the
-whole batch for one bad item, so its scores are re-sent one by one (once) and only the
-failing ones dropped; a 413 (body over the server limit) is split in half and resent
-recursively, a single item still too large is dropped; any other 4xx (auth, unknown
-project) drops the batch at once.
-``flush()`` waits (bounded) until the queue is empty.
-"""
+"""Background sender for trace scores: never blocks or raises into user code."""
 
 from __future__ import annotations
 
@@ -32,6 +22,7 @@ MAX_QUEUE = 10_000
 BATCH_SIZE = 100
 BATCH_MAX_BYTES = 512 * 1024  # half the server's 1 MiB body limit
 FLUSH_INTERVAL_S = 2.0
+RETRY_BACKOFF_S = 1.0
 EXIT_FLUSH_TIMEOUT_S = 5.0
 _DROP_WARNING_EVERY_S = 60.0
 
@@ -54,11 +45,13 @@ class ScoreSender:
         max_queue: int = MAX_QUEUE,
         batch_size: int = BATCH_SIZE,
         interval: float = FLUSH_INTERVAL_S,
+        retry_backoff: float = RETRY_BACKOFF_S,
     ) -> None:
         self._post = post
         self._max_queue = max_queue
         self._batch_size = batch_size
         self._interval = interval
+        self._retry_backoff = retry_backoff
         self._queue: deque[tuple[str, dict[str, Any]]] = deque()
         self._cond = threading.Condition()
         self._in_flight = 0
@@ -179,6 +172,8 @@ class ScoreSender:
                     return
                 if attempt == 2:
                     self._drop(project_id, len(scores), exc)
+                elif self._retry_backoff > 0:
+                    time.sleep(self._retry_backoff)
 
     def _resend_individually(
         self, project_id: str, scores: list[dict[str, Any]], batch_error: Exception
