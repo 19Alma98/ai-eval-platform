@@ -2,7 +2,8 @@
 
 Each traced call records its input/documents in a contextvar; after the function
 returns, a sampled call's metrics run on a small pool of daemon threads (never on the
-request path) and their results are queued as trace scores.
+request path) and their results are queued as trace scores. The Sample is snapshotted
+when the job is queued so later mutation of the caller's objects is invisible.
 
 Nothing here raises into, or blocks, the traced call: when the bounded job queue is
 full the call is not scored (rate-limited warning), and a failing metric or worker
@@ -16,8 +17,10 @@ built on traced helpers) never creates spans, live interactions or more metrics.
 from __future__ import annotations
 
 import atexit
+import copy
 import functools
 import inspect
+import json
 import logging
 import numbers
 import os
@@ -42,6 +45,8 @@ MAX_QUEUE = 1000
 MIN_WORKERS = 1
 MAX_WORKERS_CAP = 64
 METRIC_TIMEOUT_S = 60.0  # per async metric call; a sync metric cannot be interrupted
+# Bound memory held by queued jobs; oversized samples are skipped (not truncated).
+MAX_METRIC_SAMPLE_BYTES = 256 * 1024
 _WARN_EVERY_S = 60.0
 
 # The key OTel instrumentors check (opentelemetry.instrumentation.utils); the plain
@@ -296,6 +301,30 @@ def call_input(args: tuple[Any, ...], kwargs: dict[str, Any]) -> Any:
     return {"args": list(args), "kwargs": dict(kwargs)}
 
 
+def _snapshot(value: Any) -> Any:
+    """Copy ``value`` so later mutation by the caller is invisible to metrics."""
+    try:
+        return copy.deepcopy(value)
+    except Exception:
+        pass
+    try:
+        return json.loads(json.dumps(value, default=str, allow_nan=False))
+    except Exception as exc:
+        raise ValueError(f"uncopyable sample value: {feedback._describe(exc)}") from exc
+
+
+def _sample_bytes(sample: Sample) -> int:
+    """Serialized size of the fields a metric job retains until scored."""
+    payload = {
+        "input": sample.input,
+        "output": sample.output,
+        "documents": sample.documents,
+    }
+    return len(
+        json.dumps(payload, default=str, separators=(",", ":"), allow_nan=False).encode("utf-8")
+    )
+
+
 def after_call(
     metrics: tuple[LocalMetric, ...],
     sample_rate: float,
@@ -317,12 +346,29 @@ def after_call(
         except ValueError as exc:
             _warn("project", "aiobs: production metrics skipped: %s", exc)
             return
-        sample = Sample(
-            input=capture.input if capture.has_input else call_input(args, kwargs),
-            output=result,
-            documents=[dict(d) for d in capture.documents or []],
-            trace_id=format(ctx.trace_id, "032x"),
-        )
+        try:
+            sample = Sample(
+                input=_snapshot(capture.input if capture.has_input else call_input(args, kwargs)),
+                output=_snapshot(result),
+                documents=_snapshot(list(capture.documents or [])),
+                trace_id=format(ctx.trace_id, "032x"),
+            )
+            size = _sample_bytes(sample)
+        except Exception as exc:
+            _warn(
+                "snapshot",
+                "aiobs: production metrics skipped: could not snapshot call data: %s",
+                feedback._describe(exc),
+            )
+            return
+        if size > MAX_METRIC_SAMPLE_BYTES:
+            _warn(
+                "sample_size",
+                "aiobs: production metrics skipped: sample is %d bytes (limit %d)",
+                size,
+                MAX_METRIC_SAMPLE_BYTES,
+            )
+            return
         _submit(metrics, sample, project_id)
     except Exception as exc:  # noqa: BLE001 — scoring must never break the traced call
         _warn("schedule", "aiobs: production metrics skipped: %s", feedback._describe(exc))

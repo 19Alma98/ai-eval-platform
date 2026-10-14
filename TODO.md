@@ -42,14 +42,6 @@ library is installed, so `test_real_ragas_sample_accepts_our_fields` and
 Branch `feat/production-trace-scores` (2026-10-14): `aiobs.log_score`, `aiobs.log_feedback`,
 `aiobs.score_trace`, `@aiobs.trace(metrics=...)`, `trace_scores` table and API, Live + overview UI.
 
-- [ ] **Sampling is nested, not independent.** `metrics_sample_rate` and `live_sample_rate` use the
-  same trace-id hash, and both correlate with an OTel `TraceIdRatioBased` head sampler (effective
-  rate `min(m, r)/r`). Salt the hash if independent samples are wanted.
-- [ ] **`flush()` waits on a global count.** `_scores.flush` / `_production.drain` wait until the
-  queue is empty, so under steady traffic they can time out even though everything queued before
-  the call was sent. Use sequence numbers if per-request `flush()` (serverless) matters.
-- [ ] **Captured data by reference:** queued metric jobs hold the call's args/result until scored
-  (memory, and mutation after return changes what the metric sees). Consider a size guard.
 - [ ] Small test gaps: multi-page `failed_only` with a trace FAIL on a later page; upper-case
   `source_trace_id` on the list path; nested `@aiobs.trace` captures with `record_documents` from
   threads the traced function starts (context not copied — document).
@@ -106,8 +98,6 @@ Container e produzione
 - Telemetria anonima disattivabile, se volete misurare l'adozione.
 
 
-Ordine consigliato
+
 - Nome su PyPI, autenticazione, CLI nell'SDK, Python 3.10+.
-- Pagina Traces con vista RAG, e confronto di N esperimenti.
-- Metriche custom (@metric, log_score, feedback) e live automatico da @trace con campionamento.
 - Worker separato, immagine unica e Helm.

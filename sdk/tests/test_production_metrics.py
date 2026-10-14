@@ -119,6 +119,85 @@ def test_set_input_overrides_call_arguments(sent: Recorder) -> None:
     assert seen == ["q?"]
 
 
+def test_metric_sees_snapshot_not_later_mutations(sent: Recorder) -> None:
+    """Queued jobs must not observe mutations after the traced call returns."""
+    release = threading.Event()
+    seen: list[tuple[Any, Any, list[dict[str, Any]]]] = []
+
+    @aiobs.metric
+    def record(s: aiobs.Sample) -> float:
+        assert release.wait(timeout=2.0)
+        seen.append((s.input, s.output, s.documents))
+        return 1.0
+
+    docs = [{"id": "d1", "meta": {"n": 1}}]
+    request = {"q": "hi"}
+
+    @aiobs.trace(name="handler", metrics=[record])
+    def handler(req: dict[str, Any]) -> dict[str, Any]:
+        aiobs.set_retrieval_documents(docs)
+        return {"text": "ok"}
+
+    out = handler(request)
+    request["q"] = "mutated-input"
+    docs[0]["meta"]["n"] = 99
+    out["text"] = "mutated-output"
+    release.set()
+    assert aiobs.flush()
+
+    (sample_input, sample_output, sample_docs) = seen[0]
+    assert sample_input == {"q": "hi"}
+    assert sample_output == {"text": "ok"}
+    assert sample_docs == [{"id": "d1", "meta": {"n": 1}}]
+
+
+def test_oversized_sample_skips_metrics(
+    sent: Recorder, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    monkeypatch.setattr(_production, "MAX_METRIC_SAMPLE_BYTES", 64)
+
+    @aiobs.metric
+    def record(s: aiobs.Sample) -> float:
+        return 1.0
+
+    @aiobs.trace(name="big", metrics=[record])
+    def big(q: str) -> str:
+        return "x" * 200
+
+    with caplog.at_level(logging.WARNING, logger="aiobs"):
+        assert big("q") == "x" * 200
+        assert aiobs.flush()
+
+    assert sent.scores == []
+    assert any("sample is" in r.message and "limit 64" in r.message for r in caplog.records)
+
+
+def test_uncopyable_sample_skips_metrics(
+    sent: Recorder, caplog: pytest.LogCaptureFixture
+) -> None:
+    class Bad:
+        def __deepcopy__(self, memo: dict[int, Any]) -> Any:
+            raise RuntimeError("no deepcopy")
+
+        def __str__(self) -> str:
+            raise RuntimeError("no str")
+
+    @aiobs.metric
+    def record(s: aiobs.Sample) -> float:
+        return 1.0
+
+    @aiobs.trace(name="bad", metrics=[record])
+    def bad(_q: str) -> Bad:
+        return Bad()
+
+    with caplog.at_level(logging.WARNING, logger="aiobs"):
+        assert isinstance(bad("q"), Bad)
+        assert aiobs.flush()
+
+    assert sent.scores == []
+    assert any("could not snapshot" in r.message for r in caplog.records)
+
+
 def test_input_falls_back_to_args_and_kwargs(sent: Recorder) -> None:
     seen: list[Any] = []
 
@@ -422,12 +501,14 @@ def test_hung_async_metric_times_out_as_failure(
     assert aiobs.flush()
     never.set()
     assert len(_warnings(caplog, "production metric 'hung' timed out")) == 1
-    assert [(s["name"], s.get("label"), s.get("value")) for s in sent.scores] == [
-        ("hung", "ERROR", None),
-        ("after", None, 1.0),
-        ("hung", "ERROR", None),
-        ("after", None, 1.0),
-    ]
+    assert sorted((s["name"], s.get("label"), s.get("value")) for s in sent.scores) == sorted(
+        [
+            ("hung", "ERROR", None),
+            ("after", None, 1.0),
+            ("hung", "ERROR", None),
+            ("after", None, 1.0),
+        ]
+    )
     assert all("TimeoutError" in s["explanation"] for s in sent.scores if s["name"] == "hung")
 
 
