@@ -44,12 +44,6 @@ llama-index = [
 bedrock = [
     "openinference-instrumentation-bedrock>=0.1.0",
 ]
-ragas = [
-    "ragas>=0.2.0",
-]
-deepeval = [
-    "deepeval>=1.0.0",
-]
 ai = [
     "aiobs-eval[openai,anthropic,langchain,llama-index,bedrock]",
 ]

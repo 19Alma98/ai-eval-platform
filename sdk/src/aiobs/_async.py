@@ -1,9 +1,4 @@
-"""Run coroutines from sync code on one shared background event loop.
-
-A long-lived loop (not ``asyncio.run`` per call) keeps async clients that bind to
-their loop — e.g. the httpx clients inside Ragas/DeepEval judges — usable across
-calls, and works when the caller already runs a loop (Jupyter).
-"""
+"""Run coroutines from sync code on one shared background event loop."""
 
 from __future__ import annotations
 

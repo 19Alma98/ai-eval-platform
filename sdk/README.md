@@ -11,7 +11,7 @@ pip install 'aiobs-eval[ai]'   # all tier-1 OpenInference instrumentors
 pip install 'aiobs-eval[ui]'  # also installs aiobs-eval-server (API + packaged UI)
 ```
 
-Individual extras: `openai`, `anthropic`, `langchain`, `llama-index`, `bedrock`, `ui`, `ragas`, `deepeval` (the last two are not part of `ai`).
+Individual extras: `openai`, `anthropic`, `langchain`, `llama-index`, `bedrock`, `ui`.
 
 Import path remains `import aiobs`. Local platform (SQLite + UI):
 
@@ -158,28 +158,7 @@ aiobs.evaluate(dataset="gold-v1", task=answer_question, metrics=["hit_at_k", cit
 - `version` is stored in the metric config: bump it when the code changes, so compare reports a config mismatch instead of a misleading delta.
 - When the task fails on an item, that item counts as FAIL (score 0). When the metric raises, the item is ERROR. A local metric name must not match a server evaluator name (409). If the submission fails, `result.metrics` falls back to the in-process mean.
 
-### Ragas and DeepEval
-
-```bash
-pip install "aiobs-eval[ragas]"     # or "aiobs-eval[deepeval]"
-```
-
-```python
-from aiobs.integrations.ragas import from_ragas
-from aiobs.integrations.deepeval import from_deepeval
-from ragas.metrics import Faithfulness
-from deepeval.metrics import AnswerRelevancyMetric
-
-metrics = [from_ragas(Faithfulness(llm=judge)), from_deepeval(AnswerRelevancyMetric())]
-```
-
-The adapters map `Sample` to `SingleTurnSample` / `LLMTestCase` (documents → retrieved/retrieval context), run the library's async scorer, and keep DeepEval's `reason` as the explanation. `requires` comes from the metric's required fields, so a metric that needs a reference is SKIPPED where there is none. Library version, metric class and judge model are stored in the config: upgrading Ragas or swapping the judge is reported as a config mismatch in compare.
-
-- Only single-turn Ragas metrics are supported. DeepEval's lower-is-better metrics (`BiasMetric`, `ToxicityMetric`, `HallucinationMetric`, `PIILeakageMetric`) are rejected, because aiobs thresholds pass at or above the threshold: wrap them in your own `@aiobs.metric` instead.
-- For `GEval`, pass explicit `evaluation_steps`: otherwise DeepEval generates new steps for every item, and scores are not comparable across items or runs.
-
 ### Params and run metrics
-
 ```python
 with aiobs.start_experiment("v2", dataset="gold-v1", params={"model": "gemma4"}) as exp:
     exp.log_params(temperature=0.2)  # merged into the experiment's model_config

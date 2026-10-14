@@ -1,5 +1,5 @@
 version = 1
-revision = 2
+revision = 3
 requires-python = ">=3.12"
 resolution-markers = [
     "python_full_version >= '3.15'",
@@ -21,7 +21,6 @@ dependencies = [
 [package.metadata]
 requires-dist = [
     { name = "aiobs-eval-server", marker = "extra == 'ui'", editable = "." },
-    { name = "deepeval", marker = "extra == 'deepeval'", specifier = ">=1.0.0" },
     { name = "httpx2", specifier = ">=2.13.0" },
     { name = "mypy", marker = "extra == 'dev'", specifier = ">=1.13.0" },
     { name = "openinference-instrumentation-anthropic", marker = "extra == 'ai'", specifier = ">=0.1.0" },
@@ -39,10 +38,9 @@ requires-dist = [
     { name = "opentelemetry-sdk", specifier = ">=1.28.0" },
     { name = "pydantic", specifier = ">=2.10.0" },
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=8.3.0" },
-    { name = "ragas", marker = "extra == 'ragas'", specifier = ">=0.2.0" },
     { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.8.0" },
 ]
-provides-extras = ["ai", "anthropic", "bedrock", "deepeval", "dev", "langchain", "llama-index", "openai", "ragas", "ui"]
+provides-extras = ["ai", "anthropic", "bedrock", "dev", "langchain", "llama-index", "openai", "ui"]
 
 [[package]]
 name = "aiobs-eval-server"

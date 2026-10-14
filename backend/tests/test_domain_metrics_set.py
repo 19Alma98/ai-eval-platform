@@ -22,7 +22,7 @@ def test_create_project_default_seeds_is_default_rows() -> None:
     assert all(e.is_default for e in s.entries)
 
 
-def test_default_rag_set_includes_ragas_core_and_answer_relevance() -> None:
+def test_default_rag_set_includes_core_retrieval_and_judge_metrics() -> None:
     kinds = [e.kind for e in DEFAULT_RAG_SET_ENTRIES]
     assert kinds == [
         "hit_at_k",
