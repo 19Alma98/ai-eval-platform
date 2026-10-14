@@ -314,14 +314,20 @@ def test_score_trace_misuse_never_raises(sent: Recorder, caplog: pytest.LogCaptu
     assert sent.scores == []
 
 
-def test_score_trace_with_raising_metric_returns_false(sent: Recorder) -> None:
+def test_score_trace_with_raising_metric_queues_error(sent: Recorder) -> None:
     @aiobs.metric()
     def broken(s: aiobs.Sample) -> float:
         raise RuntimeError("boom")
 
-    assert aiobs.score_trace(broken, aiobs.Sample(output="x"), trace_id=TID) is False
+    assert aiobs.score_trace(broken, aiobs.Sample(output="x"), trace_id=TID) is True
     assert aiobs.flush()
-    assert sent.scores == []
+    assert len(sent.scores) == 1
+    score = sent.scores[0]
+    assert score["name"] == "broken"
+    assert score["label"] == "ERROR"
+    assert score["value"] is None
+    assert "RuntimeError" in score["explanation"]
+    assert "boom" in score["explanation"]
 
 
 def test_score_trace_from_sample(sent: Recorder) -> None:

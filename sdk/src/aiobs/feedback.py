@@ -153,6 +153,11 @@ def _describe(exc: BaseException) -> str:
         return type(exc).__name__
 
 
+def error_score(exc: BaseException) -> Score:
+    """Score for a raising or timed-out metric (same shape as experiment ERROR rows)."""
+    return Score(label="ERROR", explanation=_describe(exc)[:_MAX_TEXT])
+
+
 def _name_for_log(name: Any) -> str:
     return repr(name) if isinstance(name, str) else type(name).__name__
 
@@ -281,7 +286,8 @@ def score_trace(metric: LocalMetric, sample: Sample, *, trace_id: str | None = N
 
     Trace: ``trace_id``, else ``sample.trace_id``, else the current trace. A metric
     whose ``requires`` are not met is skipped (False). A raising metric logs a
-    warning and returns False.
+    warning and queues ``label="ERROR"`` with the exception as explanation (True
+    when that score is queued).
     """
 
     def action() -> bool:
@@ -297,7 +303,7 @@ def score_trace(metric: LocalMetric, sample: Sample, *, trace_id: str | None = N
             result = evaluate_metric(metric, sample)
         except Exception as exc:  # noqa: BLE001 — a broken metric must not break the caller
             logger.warning("aiobs: metric %s failed: %s", metric.name, _describe(exc))
-            return False
+            result = error_score(exc)
         return _queue(
             f"score_trace({_name_for_log(metric.name)})",
             trace_id if trace_id is not None else sample.trace_id,

@@ -321,6 +321,7 @@ def _run_metrics(metrics: tuple[LocalMetric, ...], sample: Sample, project_id: s
                 METRIC_TIMEOUT_S,
                 feedback._describe(exc),
             )
+            feedback.queue_metric_score(project_id, trace_id, spec, feedback.error_score(exc))
             continue
         except Exception as exc:  # noqa: BLE001 — one broken metric must not stop the others
             _warn(
@@ -330,6 +331,7 @@ def _run_metrics(metrics: tuple[LocalMetric, ...], sample: Sample, project_id: s
                 trace_id,
                 feedback._describe(exc),
             )
+            feedback.queue_metric_score(project_id, trace_id, spec, feedback.error_score(exc))
             continue
         feedback.queue_metric_score(project_id, trace_id, spec, result)
 

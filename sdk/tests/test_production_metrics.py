@@ -194,7 +194,7 @@ def test_raising_function_is_not_scored(sent: Recorder) -> None:
     assert sent.scores == []
 
 
-def test_broken_metric_and_missing_requirement_store_nothing(sent: Recorder) -> None:
+def test_broken_metric_and_missing_requirement_store_error_and_success(sent: Recorder) -> None:
     @aiobs.metric
     def broken(s: aiobs.Sample) -> float:
         raise ValueError("bad metric")
@@ -213,7 +213,13 @@ def test_broken_metric_and_missing_requirement_store_nothing(sent: Recorder) -> 
 
     assert mixed("q") == "ok"
     aiobs.flush()
-    assert [s["name"] for s in sent.scores] == ["fine"]
+    by_name = {s["name"]: s for s in sent.scores}
+    assert set(by_name) == {"broken", "fine"}
+    assert by_name["broken"]["label"] == "ERROR"
+    assert by_name["broken"]["value"] is None
+    assert "ValueError" in by_name["broken"]["explanation"]
+    assert "bad metric" in by_name["broken"]["explanation"]
+    assert by_name["fine"]["value"] == 0.5
 
 
 def test_invalid_metric_configuration_fails_at_decoration() -> None:
@@ -416,7 +422,13 @@ def test_hung_async_metric_times_out_as_failure(
     assert aiobs.flush()
     never.set()
     assert len(_warnings(caplog, "production metric 'hung' timed out")) == 1
-    assert [s["name"] for s in sent.scores] == ["after", "after"]
+    assert [(s["name"], s.get("label"), s.get("value")) for s in sent.scores] == [
+        ("hung", "ERROR", None),
+        ("after", None, 1.0),
+        ("hung", "ERROR", None),
+        ("after", None, 1.0),
+    ]
+    assert all("TimeoutError" in s["explanation"] for s in sent.scores if s["name"] == "hung")
 
 
 def test_fractional_sample_rate_is_deterministic_per_trace(
@@ -530,7 +542,8 @@ def test_metric_failures_are_rate_limited(sent: Recorder, caplog: pytest.LogCapt
         often(str(i))
     assert aiobs.flush()
     assert len(_warnings(caplog, "production metric 'broken' failed")) == 1
-    assert sent.scores == []
+    assert len(sent.scores) == 3
+    assert all(s["label"] == "ERROR" and s["name"] == "broken" for s in sent.scores)
 
 
 def test_unexpected_worker_error_is_logged_and_worker_survives(

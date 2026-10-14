@@ -42,9 +42,6 @@ library is installed, so `test_real_ragas_sample_accepts_our_fields` and
 Branch `feat/production-trace-scores` (2026-10-14): `aiobs.log_score`, `aiobs.log_feedback`,
 `aiobs.score_trace`, `@aiobs.trace(metrics=...)`, `trace_scores` table and API, Live + overview UI.
 
-- [ ] **Metric failures are invisible.** A raising or timed-out production metric (and `score_trace()`)
-  logs a warning and sends nothing; experiments record ERROR. Decide whether to send
-  `label="ERROR"` with the exception as explanation.
 - [ ] **Sampling is nested, not independent.** `metrics_sample_rate` and `live_sample_rate` use the
   same trace-id hash, and both correlate with an OTel `TraceIdRatioBased` head sampler (effective
   rate `min(m, r)/r`). Salt the hash if independent samples are wanted.
