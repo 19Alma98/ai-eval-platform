@@ -39,8 +39,8 @@ import aiobs
 from openai import OpenAI
 
 aiobs.set_tracking_uri("http://localhost:8000")  # or AIOBS_TRACKING_URI
-aiobs.set_project("demo")                        # created if it does not exist
-aiobs.init(instrument="auto")                    # OTLP → <tracking_uri>/v1/traces
+aiobs.set_project("demo")  # created if it does not exist
+aiobs.init(instrument="auto")  # OTLP → <tracking_uri>/v1/traces
 
 client = OpenAI(base_url="http://localhost:11434/v1", api_key="ollama")
 
@@ -94,23 +94,23 @@ aiobs.set_project("demo")
 aiobs.init()  # optional: adds trace context (tokens, cost, tool calls) to each item
 
 
-def answer_question(item):            # item.input, item.expected_output, item.metadata
+def answer_question(item):  # item.input, item.expected_output, item.metadata
     docs = retrieve(item.input)
     aiobs.set_retrieval_documents(docs)  # feeds hit_at_k / recall_at_k / groundedness
     return generate(item.input, docs)
 
 
-def short(item, output) -> bool:       # local metric: float | bool | None
+def short(item, output) -> bool:  # local metric: float | bool | None
     return len(output) < 400
 
 
 result = aiobs.evaluate(
-    dataset="gold-v1",                 # name (latest version), id, list of dicts, DataFrame
+    dataset="gold-v1",  # name (latest version), id, list of dicts, DataFrame
     task=answer_question,
     metrics=["groundedness", "hit_at_k", short],
     name="gemma-prompt-v2",
-    params={"model": "gemma4"},        # stored as the experiment's model_config
-    baseline="prod",                   # experiment name (latest) or id
+    params={"model": "gemma4"},  # stored as the experiment's model_config
+    baseline="prod",  # experiment name (latest) or id
     max_concurrency=8,
 )
 print(result.summary(), result.url)
@@ -121,7 +121,7 @@ Manual loop, same plumbing (binding, flush, output upload, scoring on exit):
 ```python
 with aiobs.start_experiment("v2", dataset="gold-v1", metrics=["hit_at_k"]) as exp:
     for item in exp.items():
-        with exp.run(item) as run:   # root span bound to (experiment, item)
+        with exp.run(item) as run:  # root span bound to (experiment, item)
             run.log(my_app(item.input))  # or aiobs.set_output(...) anywhere inside
 print(exp.result.summary())
 ```
@@ -179,7 +179,7 @@ The adapters map `Sample` to `SingleTurnSample` / `LLMTestCase` (documents → r
 
 ```python
 with aiobs.start_experiment("v2", dataset="gold-v1", params={"model": "gemma4"}) as exp:
-    exp.log_params(temperature=0.2)              # merged into the experiment's model_config
+    exp.log_params(temperature=0.2)  # merged into the experiment's model_config
     exp.run_task(answer_question)
     aiobs.log_metrics({"cost_usd": total_cost})  # experiment-level scalar, last value wins
 print(exp.result.experiment_metrics)
@@ -242,11 +242,14 @@ Namespaces: `projects`, `datasets` (`create`, `create_with_items`, `add_item`, `
 With `live=True`, the outermost `@aiobs.trace` call outside an experiment becomes a live interaction at OTLP ingestion; no separate `live_runs.submit` call is needed.
 
 ```python
-aiobs.init(project_slug="acme", live=True, live_sample_rate=0.1)  # or AIOBS_LIVE=1, AIOBS_LIVE_SAMPLE_RATE=0.1
+aiobs.init(
+    project_slug="acme", live=True, live_sample_rate=0.1
+)  # or AIOBS_LIVE=1, AIOBS_LIVE_SAMPLE_RATE=0.1
+
 
 @aiobs.trace
 def answer(question: str) -> str:
-    docs = retrieve(question)            # documents from RETRIEVER spans or set_retrieval_documents()
+    docs = retrieve(question)  # documents from RETRIEVER spans or set_retrieval_documents()
     return llm(question, docs)
 ```
 
@@ -269,7 +272,9 @@ def cites_source(s: aiobs.Sample) -> float:
     return float(any(d["id"] in s.output for d in s.documents))
 
 
-@aiobs.trace(metrics=[cites_source], metrics_sample_rate=0.2)  # 20% of traces, scored off the request path
+@aiobs.trace(
+    metrics=[cites_source], metrics_sample_rate=0.2
+)  # 20% of traces, scored off the request path
 def answer(question: str) -> str:
     docs = retrieve(question)
     aiobs.set_retrieval_documents(docs)
@@ -279,7 +284,7 @@ def answer(question: str) -> str:
 @aiobs.trace
 def handle(question: str) -> dict:
     out = answer(question)
-    aiobs.log_score("answer_chars", len(out))          # current trace
+    aiobs.log_score("answer_chars", len(out))  # current trace
     return {"answer": out, "trace_id": aiobs.current_trace_id()}  # send the id to your frontend
 
 

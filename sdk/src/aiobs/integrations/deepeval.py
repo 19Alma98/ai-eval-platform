@@ -91,6 +91,4 @@ def from_deepeval(
         config["llm"] = model
     if threshold is None:
         threshold = getattr(metric, "threshold", None)
-    return LocalMetric(
-        score, name or f"deepeval.{snake(metric_name)}", threshold, config, requires
-    )
+    return LocalMetric(score, name or f"deepeval.{snake(metric_name)}", threshold, config, requires)

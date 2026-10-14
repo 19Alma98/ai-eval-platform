@@ -56,9 +56,7 @@ class FakeServer:
         return httpx2.Response(404, json={"detail": "not found"})
 
     def install(self) -> None:
-        _context._CLIENT = aiobs.Client(
-            "http://test", transport=httpx2.MockTransport(self.handler)
-        )
+        _context._CLIENT = aiobs.Client("http://test", transport=httpx2.MockTransport(self.handler))
 
 
 def test_tracking_uri_default_and_env(monkeypatch: pytest.MonkeyPatch) -> None:

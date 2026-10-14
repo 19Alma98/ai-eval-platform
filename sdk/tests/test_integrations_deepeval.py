@@ -102,9 +102,7 @@ def test_from_deepeval_maps_case_reason_and_config(fake_deepeval: None) -> None:
 
     result = evaluate_metric(m, Sample(input="q", output="ok", documents=[{"text": "d1"}]))
     assert result == Score(1.0, explanation="saw ok")
-    assert original.cases == [
-        FakeTestCase(input="q", actual_output="ok", retrieval_context=["d1"])
-    ]
+    assert original.cases == [FakeTestCase(input="q", actual_output="ok", retrieval_context=["d1"])]
     assert original.score is None  # measured on a copy
 
 

@@ -16,9 +16,7 @@ def import_or_explain(module: str, extra: str) -> ModuleType:
     try:
         return importlib.import_module(module)
     except ImportError as exc:
-        raise ImportError(
-            f"{module} is not installed: pip install 'aiobs-eval[{extra}]'"
-        ) from exc
+        raise ImportError(f"{module} is not installed: pip install 'aiobs-eval[{extra}]'") from exc
 
 
 def lib_version(module: ModuleType) -> str:
