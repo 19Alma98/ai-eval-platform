@@ -65,11 +65,11 @@ The project should expose a documented compatibility matrix:
 | Python SDK (`opengrade`) | supported (v0.1) |
 | OpenInference attributes | supported where applicable |
 | GenAI semantic conventions | supported/normalized |
-| Instrumentor `openai` | documented / best-effort outside CI — `opengrade[openai]` + `openai` |
-| Instrumentor `anthropic` | documented / best-effort outside CI — `opengrade[anthropic]` + `anthropic` |
-| Instrumentor `langchain` | documented / best-effort outside CI — `opengrade[langchain]` + LangChain |
-| Instrumentor `llama_index` | documented / best-effort outside CI — `opengrade[llama-index]` + `llama_index` |
-| Instrumentor `bedrock` | documented / best-effort outside CI — `opengrade[bedrock]` + Bedrock runtime (`boto3`) |
+| Instrumentor `openai` | documented / best-effort outside CI — `opengrade-ai[openai]` + `openai` |
+| Instrumentor `anthropic` | documented / best-effort outside CI — `opengrade-ai[anthropic]` + `anthropic` |
+| Instrumentor `langchain` | documented / best-effort outside CI — `opengrade-ai[langchain]` + LangChain |
+| Instrumentor `llama_index` | documented / best-effort outside CI — `opengrade-ai[llama-index]` + `llama_index` |
+| Instrumentor `bedrock` | documented / best-effort outside CI — `opengrade-ai[bedrock]` + Bedrock runtime (`boto3`) |
 
 Install extras and manual smoke steps for tier-1 instrumentors: [`sdk/README.md`](../sdk/README.md).
 
