@@ -31,7 +31,7 @@ from aiobs.experiment import (
     log_params,
     start_experiment,
 )
-from aiobs.feedback import log_feedback, log_score, score
+from aiobs.feedback import log_feedback, log_score, score_trace
 from aiobs.metrics import Sample, Score, metric
 from aiobs.registry import AppConfigClient
 
@@ -59,7 +59,7 @@ __all__ = [
     "log_params",
     "log_score",
     "metric",
-    "score",
+    "score_trace",
     "set_attribute",
     "set_attributes",
     "set_error",

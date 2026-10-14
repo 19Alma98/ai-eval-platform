@@ -40,13 +40,9 @@ library is installed, so `test_real_ragas_sample_accepts_our_fields` and
 ## Production trace scores & feedback
 
 Branch `feat/production-trace-scores` (2026-10-14): `aiobs.log_score`, `aiobs.log_feedback`,
-`aiobs.score`, `@aiobs.trace(metrics=...)`, `trace_scores` table and API, Live + overview UI.
+`aiobs.score_trace`, `@aiobs.trace(metrics=...)`, `trace_scores` table and API, Live + overview UI.
 
-- [ ] **Naming:** `aiobs.score` (function) vs `aiobs.Score` (class) differ only by case and `score` is
-  a common local name. Decide before release (e.g. `score_trace`).
-  app-wide before the 1 MiB `/trace-scores` limit (and the OTLP limit) is checked. Add a size check
-  in the middleware or rely on a proxy limit.
-- [ ] **Metric failures are invisible.** A raising or timed-out production metric (and `score()`)
+- [ ] **Metric failures are invisible.** A raising or timed-out production metric (and `score_trace()`)
   logs a warning and sends nothing; experiments record ERROR. Decide whether to send
   `label="ERROR"` with the exception as explanation.
 - [ ] **Sampling is nested, not independent.** `metrics_sample_rate` and `live_sample_rate` use the

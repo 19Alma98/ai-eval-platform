@@ -276,7 +276,7 @@ def queue_metric_score(project_id: str, trace_id: str, metric: LocalMetric, resu
     return _guarded(f"metric {_name_for_log(getattr(metric, 'name', None))} result", action)
 
 
-def score(metric: LocalMetric, sample: Sample, *, trace_id: str | None = None) -> bool:
+def score_trace(metric: LocalMetric, sample: Sample, *, trace_id: str | None = None) -> bool:
     """Run ``metric`` on ``sample`` now and queue the result for the trace.
 
     Trace: ``trace_id``, else ``sample.trace_id``, else the current trace. A metric
@@ -299,9 +299,9 @@ def score(metric: LocalMetric, sample: Sample, *, trace_id: str | None = None) -
             logger.warning("aiobs: metric %s failed: %s", metric.name, _describe(exc))
             return False
         return _queue(
-            f"score({_name_for_log(metric.name)})",
+            f"score_trace({_name_for_log(metric.name)})",
             trace_id if trace_id is not None else sample.trace_id,
             lambda: _metric_payload(metric, result),
         )
 
-    return _guarded("score()", action)
+    return _guarded("score_trace()", action)

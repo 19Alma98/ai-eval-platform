@@ -131,12 +131,12 @@ def test_no_project_warns(
     assert any("No project" in r.message for r in caplog.records)
 
 
-def test_score_runs_metric_and_queues_result(sent: Recorder) -> None:
+def test_score_trace_runs_metric_and_queues_result(sent: Recorder) -> None:
     @aiobs.metric(threshold=0.5)
     def short(s: aiobs.Sample) -> aiobs.Score:
         return aiobs.Score(0.2, explanation="too long", metadata={"chars": len(s.output)})
 
-    assert aiobs.score(short, aiobs.Sample(input="q", output="abc"), trace_id=TID)
+    assert aiobs.score_trace(short, aiobs.Sample(input="q", output="abc"), trace_id=TID)
     aiobs.flush()
     assert sent.scores == [
         {
@@ -151,12 +151,12 @@ def test_score_runs_metric_and_queues_result(sent: Recorder) -> None:
     ]
 
 
-def test_score_skips_missing_requirement(sent: Recorder) -> None:
+def test_score_trace_skips_missing_requirement(sent: Recorder) -> None:
     @aiobs.metric(requires=("expected",))
     def exact(s: aiobs.Sample) -> bool:
         return bool(s.output == s.expected)
 
-    assert aiobs.score(exact, aiobs.Sample(output="a"), trace_id=TID) is False
+    assert aiobs.score_trace(exact, aiobs.Sample(output="a"), trace_id=TID) is False
     aiobs.flush()
     assert sent.scores == []
 
@@ -296,30 +296,30 @@ def test_flush_shares_one_timeout_budget(monkeypatch: pytest.MonkeyPatch) -> Non
     assert _otel.flush(1000) is False
 
 
-def test_score_misuse_never_raises(sent: Recorder, caplog: pytest.LogCaptureFixture) -> None:
+def test_score_trace_misuse_never_raises(sent: Recorder, caplog: pytest.LogCaptureFixture) -> None:
     def plain(s: aiobs.Sample) -> float:
         return 1.0
 
     with caplog.at_level(logging.WARNING, logger="aiobs"):
-        assert aiobs.score(plain, aiobs.Sample(), trace_id=TID) is False  # type: ignore[arg-type]
-        assert aiobs.score(None, aiobs.Sample(), trace_id=TID) is False  # type: ignore[arg-type]
+        assert aiobs.score_trace(plain, aiobs.Sample(), trace_id=TID) is False  # type: ignore[arg-type]
+        assert aiobs.score_trace(None, aiobs.Sample(), trace_id=TID) is False  # type: ignore[arg-type]
 
         @aiobs.metric()
         def ok(s: aiobs.Sample) -> float:
             return 1.0
 
-        assert aiobs.score(ok, "not a sample", trace_id=TID) is False  # type: ignore[arg-type]
+        assert aiobs.score_trace(ok, "not a sample", trace_id=TID) is False  # type: ignore[arg-type]
     assert len(caplog.records) == 3
     assert aiobs.flush()
     assert sent.scores == []
 
 
-def test_score_with_raising_metric_returns_false(sent: Recorder) -> None:
+def test_score_trace_with_raising_metric_returns_false(sent: Recorder) -> None:
     @aiobs.metric()
     def broken(s: aiobs.Sample) -> float:
         raise RuntimeError("boom")
 
-    assert aiobs.score(broken, aiobs.Sample(output="x"), trace_id=TID) is False
+    assert aiobs.score_trace(broken, aiobs.Sample(output="x"), trace_id=TID) is False
     assert aiobs.flush()
     assert sent.scores == []
 
@@ -329,7 +329,7 @@ def test_score_trace_from_sample(sent: Recorder) -> None:
     def ok(s: aiobs.Sample) -> float:
         return 1.0
 
-    assert aiobs.score(ok, aiobs.Sample(output="x", trace_id=TID.upper()))
+    assert aiobs.score_trace(ok, aiobs.Sample(output="x", trace_id=TID.upper()))
     aiobs.flush()
     assert sent.scores[0]["trace_id"] == TID
 
