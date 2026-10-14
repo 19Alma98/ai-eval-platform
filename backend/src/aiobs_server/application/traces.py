@@ -4,6 +4,7 @@ import uuid
 
 from aiobs_server.domain.repositories import ProjectRepository, TraceRepository
 from aiobs_server.domain.trace import Trace
+from aiobs_server.domain.trace_score import normalize_trace_id
 
 
 class TraceNotFoundError(Exception):
@@ -45,6 +46,10 @@ class GetTrace:
         project = await self._projects.get_by_id(project_id)
         if project is None:
             raise ProjectMissingError(project_id=project_id)
+        try:
+            trace_id = normalize_trace_id(trace_id)
+        except ValueError as exc:
+            raise TraceNotFoundError(project_id, trace_id) from exc
         trace = await self._repository.get_by_trace_id(project_id, trace_id)
         if trace is None:
             raise TraceNotFoundError(project_id, trace_id)

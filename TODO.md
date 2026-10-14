@@ -69,7 +69,6 @@ Branch `feat/production-trace-scores` (2026-10-14): `aiobs.log_score`, `aiobs.lo
   (worst case ~7 s at exit).
 - [ ] **`trace_async(metrics=...)` rejects `functools.partial` / async callables** because
   `inspect.iscoroutinefunction` is False for them; mention `inspect.markcoroutinefunction`.
-- [ ] **Trace detail is case-sensitive** (`GET .../traces/ABAB...` 404s) while trace-score endpoints
   lower-case ids. Normalize in `GetTrace`.
 - [ ] **Overview live KPIs ignore trace scores** while the Live "Failing" filter counts thumbs-down
   and SDK FAILs (deliberate per spec B). Add a UI note if users ask.

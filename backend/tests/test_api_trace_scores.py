@@ -230,6 +230,24 @@ async def test_score_before_trace_then_listed_on_trace_detail(ctx: Ctx) -> None:
     assert score["name"] == "quality" and score["label"] == "PASS"
 
 
+async def test_get_trace_accepts_uppercase_trace_id(ctx: Ctx) -> None:
+    project_id = await _project(ctx.client)
+    await ctx.traces.upsert(
+        Trace(
+            id=uuid.uuid4(),
+            project_id=uuid.UUID(project_id),
+            trace_id=TID,
+            name="answer",
+            status="OK",
+            start_time=datetime.now(UTC),
+            end_time=None,
+        )
+    )
+    detail = await ctx.client.get(f"/api/v1/projects/{project_id}/traces/{TID.upper()}")
+    assert detail.status_code == 200, detail.text
+    assert detail.json()["trace_id"] == TID
+
+
 async def test_live_list_and_detail_include_trace_scores(ctx: Ctx) -> None:
     project_id = await _project(ctx.client)
     interaction = await ctx.live.add(
