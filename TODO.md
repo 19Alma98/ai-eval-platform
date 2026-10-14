@@ -48,8 +48,18 @@ Trusted-network / reverse-proxy remains the default self-hosted model.
   the trusted-network model. Fix when: an operator asks for app-level auth (SSO/RBAC
   stay out of scope unless the product later owns identity).
 
+### Platform
+
+Floor stays `requires-python = ">=3.12"` (CI/mypy pinned to 3.12). Do not raise
+the minimum just because a newer CPython shipped.
+
+- [ ] **Python version bump.** Optionally CI-matrix-test on 3.13/3.14; raise the
+  floor only if a dependency drops 3.12 or we need language features that justify
+  cutting older envs. 3.15 (2026-10) is too new for a floor bump. Fix when:
+  deps force it, or we deliberately want newer typing/runtime and accept the
+  support cut.
+
 
 ## Other
 
 - Nome su PyPI
-- Python 3.10+.
