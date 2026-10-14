@@ -192,16 +192,24 @@ def parse_sample_rate(value: object) -> float:
     return rate
 
 
+def _is_coroutine_function(fn: Callable[..., Any]) -> bool:
+    """True for ``async def`` and ``functools.partial`` / marked coroutine callables."""
+    while isinstance(fn, functools.partial):
+        fn = fn.func
+    return inspect.iscoroutinefunction(fn)
+
+
 def check_function(fn: Callable[..., Any], *, is_async: bool) -> None:
     """With metrics, the decorator must see the call's real result: reject the wrong kind."""
     if is_async:
-        if not inspect.iscoroutinefunction(fn):
+        if not _is_coroutine_function(fn):
             raise TypeError(
                 "@aiobs.trace_async(metrics=...) needs a coroutine function (async def); "
-                f"got {fn!r}: use @aiobs.trace for regular functions"
+                f"got {fn!r}: use @aiobs.trace for regular functions, or "
+                "inspect.markcoroutinefunction for other async wrappers"
             )
     elif (
-        inspect.iscoroutinefunction(fn)
+        _is_coroutine_function(fn)
         or inspect.isgeneratorfunction(fn)
         or inspect.isasyncgenfunction(fn)
     ):

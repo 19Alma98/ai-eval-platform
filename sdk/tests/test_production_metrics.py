@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import asyncio
+import functools
+import inspect
 import logging
 import threading
 from collections.abc import Iterator
@@ -262,8 +264,34 @@ def test_trace_async_with_metrics_rejects_non_coroutine_functions() -> None:
         yield "x"
 
     for fn in (plain, agen):
-        with pytest.raises(TypeError, match="coroutine function"):
+        with pytest.raises(TypeError, match="markcoroutinefunction"):
             decorate(fn)
+
+
+def test_trace_async_with_metrics_accepts_partial_and_marked_callables() -> None:
+    decorate = aiobs.trace_async(metrics=[aiobs.metric(lambda s: 1.0, name="m")])
+
+    async def coro(prefix: str, q: str) -> str:
+        return f"{prefix}{q}"
+
+    decorate(functools.partial(coro, "p:"))
+    decorate(functools.partial(functools.partial(coro, "a:"), "b:"))
+
+    def looks_sync(q: str) -> str:
+        return q
+
+    inspect.markcoroutinefunction(looks_sync)
+    decorate(looks_sync)
+
+
+def test_sync_trace_with_metrics_rejects_partial_of_coroutine() -> None:
+    decorate = aiobs.trace(metrics=[aiobs.metric(lambda s: 1.0, name="m")])
+
+    async def coro(prefix: str, q: str) -> str:
+        return f"{prefix}{q}"
+
+    with pytest.raises(TypeError, match="trace_async|regular function"):
+        decorate(functools.partial(coro, "p:"))  # type: ignore[arg-type]
 
 
 def test_without_metrics_decorators_accept_any_callable() -> None:

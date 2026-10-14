@@ -61,9 +61,6 @@ Branch `feat/production-trace-scores` (2026-10-14): `aiobs.log_score`, `aiobs.lo
   cached httpx client (`_context.get_client()`). Reset `_CLIENT` in an `after_in_child` hook.
 - [ ] **OTel exit flush has its own 2 s budget** on top of the 5 s scores/metrics exit budget
   (worst case ~7 s at exit).
-- [ ] **`trace_async(metrics=...)` rejects `functools.partial` / async callables** because
-  `inspect.iscoroutinefunction` is False for them; mention `inspect.markcoroutinefunction`.
-  lower-case ids. Normalize in `GetTrace`.
 - [ ] **Overview live KPIs ignore trace scores** while the Live "Failing" filter counts thumbs-down
   and SDK FAILs (deliberate per spec B). Add a UI note if users ask.
 - [ ] **Live detail layout:** on `lg` screens the "SDK scores & feedback" section lands under the
