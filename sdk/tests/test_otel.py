@@ -15,7 +15,7 @@ from opengrade import _otel
 
 
 @contextmanager
-def aiobs_span() -> Iterator[None]:
+def opengrade_span() -> Iterator[None]:
     with trace.get_tracer("test").start_as_current_span("s"):
         yield
 
@@ -67,7 +67,7 @@ def test_at_exit_with_unreachable_server_is_fast_and_silent(
 ) -> None:
     # Nothing listens on port 9: connection refused.
     opengrade.init(project_slug="demo", endpoint="http://127.0.0.1:9/v1/traces", instrument=False)
-    with aiobs_span():
+    with opengrade_span():
         pass
     start = time.monotonic()
     with caplog.at_level(logging.DEBUG):

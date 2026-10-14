@@ -16,7 +16,7 @@ from opengrade_server.infrastructure.db import dispose_db, init_db
 from opengrade_server.infrastructure.models import Base
 from opengrade_server.main import create_app
 
-DEFAULT_TEST_DATABASE_URL = "postgresql+asyncpg://opengrade:opengrade@localhost:5434/aiobs_test"
+DEFAULT_TEST_DATABASE_URL = "postgresql+asyncpg://opengrade:opengrade@localhost:5434/opengrade_test"
 _DB_NAME_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 
 

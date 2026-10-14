@@ -57,7 +57,7 @@ _SUPPRESS_KEY: str = getattr(
 _SUPPRESS_KEY_PLAIN = "suppress_instrumentation"
 
 # True while a production metric runs: ``@opengrade.trace`` then just calls the function.
-_IN_METRIC: ContextVar[bool] = ContextVar("aiobs_in_metric", default=False)
+_IN_METRIC: ContextVar[bool] = ContextVar("opengrade_in_metric", default=False)
 
 
 def in_metric() -> bool:

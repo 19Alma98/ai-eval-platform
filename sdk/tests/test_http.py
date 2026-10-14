@@ -50,7 +50,7 @@ def test_request_empty_body_returns_none() -> None:
     transport.close()
 
 
-def test_request_raises_aiobs_api_error() -> None:
+def test_request_raises_opengrade_api_error() -> None:
     def handler(request: httpx2.Request) -> httpx2.Response:
         return httpx2.Response(404, text='{"detail":"missing"}')
 

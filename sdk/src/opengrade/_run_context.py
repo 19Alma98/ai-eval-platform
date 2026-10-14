@@ -13,7 +13,7 @@ class _Recorder(Protocol):
     def _capture_documents(self, documents: list[dict[str, Any]]) -> None: ...
 
 
-ACTIVE_RUN: ContextVar[_Recorder | None] = ContextVar("aiobs_active_run", default=None)
+ACTIVE_RUN: ContextVar[_Recorder | None] = ContextVar("opengrade_active_run", default=None)
 
 
 @dataclass
@@ -34,7 +34,7 @@ class ProductionCapture:
 
 
 PRODUCTION_CAPTURE: ContextVar[ProductionCapture | None] = ContextVar(
-    "aiobs_production_capture", default=None
+    "opengrade_production_capture", default=None
 )
 
 

@@ -29,7 +29,7 @@ _ENABLED: bool | None = None
 _SAMPLE_RATE: float | None = None
 
 # True while inside a live-marked span: nested traced calls are part of it.
-_IN_LIVE: ContextVar[bool] = ContextVar("aiobs_in_live", default=False)
+_IN_LIVE: ContextVar[bool] = ContextVar("opengrade_in_live", default=False)
 
 
 def _parse_rate(value: object) -> float:

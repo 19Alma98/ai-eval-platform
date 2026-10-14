@@ -22,14 +22,14 @@ python -m venv .venv
 # Unix: source .venv/bin/activate
 pip install -r requirements.txt
 
-set AIOBS_PROJECT_SLUG=demo
+set OPENGRADE_PROJECT_SLUG=demo
 python main.py
 ```
 
 Or with project UUID:
 
 ```bash
-set AIOBS_PROJECT_ID=<project-uuid>
+set OPENGRADE_PROJECT_ID=<project-uuid>
 python main.py
 ```
 

@@ -124,7 +124,7 @@ regression:
     return POLICY_PATH
 
 
-def run_aiobs_check(policy: Path, base: str) -> int:
+def run_opengrade_check(policy: Path, base: str) -> int:
     cmd = [
         "uv",
         "run",
@@ -195,7 +195,7 @@ def main(argv: list[str] | None = None) -> int:
         print("skipping opengrade check")
         return 0
 
-    code = run_aiobs_check(policy, base)
+    code = run_opengrade_check(policy, base)
     if code == 0:
         print("gate passed")
         return 0
