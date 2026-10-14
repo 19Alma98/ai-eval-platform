@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import uuid
+from dataclasses import replace
+from datetime import UTC, datetime, timedelta
 
 from aiobs_server.application.live_interactions import GetLiveInteraction, ListLiveInteractions
 from aiobs_server.domain.live_interaction import LiveInteraction, LiveInteractionScore
@@ -12,10 +14,16 @@ PROJECT = uuid.uuid4()
 
 
 async def _interaction(
-    live: InMemoryLiveRepository, question: str, trace_id: str | None
+    live: InMemoryLiveRepository,
+    question: str,
+    trace_id: str | None,
+    *,
+    created_at: datetime | None = None,
 ) -> LiveInteraction:
     metadata = {"source_trace_id": trace_id} if trace_id else {}
     interaction = LiveInteraction.create(PROJECT, question, "answer", metadata=metadata)
+    if created_at is not None:
+        interaction = replace(interaction, created_at=created_at)
     return await live.add(interaction)
 
 
@@ -62,6 +70,43 @@ async def test_failed_only_counts_trace_score_fails() -> None:
     result = await ListLiveInteractions(live, scores).execute(PROJECT, failed_only=True)
 
     assert {i[0].id for i in result.items} == {judged_fail.id, thumbs_down.id, sdk_fail.id}
+
+
+async def test_failed_only_pages_past_recent_passing_to_find_trace_fail() -> None:
+    """Trace FAIL beyond the first failed_only page still surfaces (page_size >= 50)."""
+    live, scores = InMemoryLiveRepository(), InMemoryTraceScoreRepository()
+    base = datetime(2026, 1, 1, tzinfo=UTC)
+    failed_ids: list[uuid.UUID] = []
+    # 120 rows; only the 3 oldest fail via a joined trace score (no judge scores).
+    for i in range(120):
+        tid = f"{i:032x}"
+        interaction = await _interaction(
+            live, f"q{i}", tid, created_at=base + timedelta(minutes=i)
+        )
+        if i < 3:
+            await scores.upsert_many(
+                [TraceScore.create(PROJECT, tid, "cited", value=0.0, label="FAIL")]
+            )
+            failed_ids.append(interaction.id)
+        else:
+            await scores.upsert_many(
+                [TraceScore.create(PROJECT, tid, "cited", value=1.0, label="PASS")]
+            )
+
+    result = await ListLiveInteractions(live, scores).execute(PROJECT, failed_only=True, limit=10)
+
+    assert [row[0].id for row in result.items] == list(reversed(failed_ids))
+    assert scores.list_calls >= 2  # first page of passes, then the page with FAILs
+
+
+async def test_list_joins_upper_case_source_trace_id() -> None:
+    live, scores = InMemoryLiveRepository(), InMemoryTraceScoreRepository()
+    a = await _interaction(live, "qa", "AA" * 16)  # metadata may store upper-case
+    await scores.upsert_many([TraceScore.create(PROJECT, "aa" * 16, "quality", value=1.0)])
+
+    result = await ListLiveInteractions(live, scores).execute(PROJECT)
+
+    assert [s.name for s in result.trace_scores[a.id]] == ["quality"]
 
 
 async def test_list_without_trace_score_repository_is_unchanged() -> None:

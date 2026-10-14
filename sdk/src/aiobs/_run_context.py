@@ -22,7 +22,9 @@ class ProductionCapture:
 
     ``span`` is the call's own span: only ``set_input`` on that span sets ``input``
     (a nested call rewriting its own input must not change it); documents from nested
-    retrieval stages do bubble up.
+    retrieval stages on the same thread do bubble up. ContextVars are not copied into
+    threads the traced function starts, so ``set_retrieval_documents`` there is a no-op
+    for this capture.
     """
 
     span: object = None

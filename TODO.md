@@ -37,15 +37,6 @@ library is installed, so `test_real_ragas_sample_accepts_our_fields` and
   lower-is-better metrics (Bias, Toxicity, Hallucination, PIILeakage) rejected; `GEval` without
   `evaluation_steps` regenerates steps per item; DeepEval `context` / `tools_called` not mapped.
 
-## Production trace scores & feedback
-
-Branch `feat/production-trace-scores` (2026-10-14): `aiobs.log_score`, `aiobs.log_feedback`,
-`aiobs.score_trace`, `@aiobs.trace(metrics=...)`, `trace_scores` table and API, Live + overview UI.
-
-- [ ] Small test gaps: multi-page `failed_only` with a trace FAIL on a later page; upper-case
-  `source_trace_id` on the list path; nested `@aiobs.trace` captures with `record_documents` from
-  threads the traced function starts (context not copied — document).
-
 ## Performance
 
 Deferred until list latency, DB pool pressure, or large projects make them hurt.

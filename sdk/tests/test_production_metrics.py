@@ -457,6 +457,32 @@ def test_nested_set_input_does_not_overwrite_outer_input(sent: Recorder) -> None
     assert sample.documents == [{"id": "d1"}]  # documents still bubble up
 
 
+def test_set_retrieval_documents_from_worker_thread_is_not_captured(sent: Recorder) -> None:
+    """ContextVars are not copied into threads the traced function starts."""
+    seen: list[aiobs.Sample] = []
+    done = threading.Event()
+
+    @aiobs.metric
+    def record(s: aiobs.Sample) -> float:
+        seen.append(s)
+        return 1.0
+
+    @aiobs.trace(name="threaded_docs", metrics=[record])
+    def threaded_docs(q: str) -> str:
+        def worker() -> None:
+            aiobs.set_retrieval_documents([{"id": "from-thread"}])
+            done.set()
+
+        threading.Thread(target=worker).start()
+        assert done.wait(timeout=2.0)
+        return q
+
+    threaded_docs("q")
+    assert aiobs.flush()
+    (sample,) = seen
+    assert sample.documents == []
+
+
 def test_async_metric_runs_on_worker(sent: Recorder) -> None:
     threads: list[str] = []
 
