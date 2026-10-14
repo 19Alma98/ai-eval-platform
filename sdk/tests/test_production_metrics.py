@@ -478,16 +478,36 @@ def test_exit_handlers_share_one_deadline(monkeypatch: pytest.MonkeyPatch) -> No
         clock.now += 1.0
         return True
 
+    class Provider:
+        def force_flush(self, timeout_millis: int) -> bool:
+            calls.append(("spans", timeout_millis / 1000))
+            return True
+
+        def shutdown(self) -> None:
+            return None
+
     monkeypatch.setattr(_scores, "time", clock)
     monkeypatch.setattr(_production, "time", clock)
     monkeypatch.setattr(_scores, "_EXIT_DEADLINE", None)
     monkeypatch.setattr(_production, "drain", drain)
     monkeypatch.setattr(_scores, "flush", scores_flush)
+    monkeypatch.setattr(_otel, "_PROVIDER", Provider())
+    monkeypatch.setattr(_otel, "_EXPORTER", None)
 
     _production._at_exit()
     _scores._at_exit()
+    _otel._at_exit()
     total = _scores.EXIT_FLUSH_TIMEOUT_S
-    assert calls == [("metrics", total), ("scores", total - 2.0), ("scores", total - 3.0)]
+    span_cap = _otel.EXIT_FLUSH_TIMEOUT_MS / 1000
+    # metrics +2s, each scores.flush +1s → 4s elapsed before OTel atexit
+    remaining_for_spans = total - 4.0
+    assert calls == [
+        ("metrics", total),
+        ("scores", total - 2.0),
+        ("scores", total - 3.0),
+        ("spans", min(span_cap, remaining_for_spans)),
+    ]
+    assert min(span_cap, remaining_for_spans) + 4.0 <= total
 
 
 # --- never raise / never block the caller -------------------------------------------
@@ -703,3 +723,98 @@ def test_flush_budget_is_never_negative(monkeypatch: pytest.MonkeyPatch) -> None
 
     assert _otel.flush(1000) is False
     assert calls == [("metrics", 1.0), ("scores", 0.0)]
+
+
+# --- configurable metrics workers ---------------------------------------------------
+
+
+def test_init_metrics_workers_sets_pool_size(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("AIOBS_METRICS_WORKERS", raising=False)
+    _production._reset_for_tests()
+    try:
+        aiobs.init(project_slug="demo", instrument=False, metrics_workers=4, force=True)
+        pool = _production._pool()
+        assert pool._workers == 4
+        assert _production._POOL_SIZE == (4, _production.MAX_QUEUE)
+    finally:
+        _otel._reset_for_tests()
+        _production._reset_for_tests()
+
+
+def test_env_metrics_workers_sets_pool_size(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("AIOBS_METRICS_WORKERS", "8")
+    _production._reset_for_tests()
+    try:
+        aiobs.init(project_slug="demo", instrument=False, force=True)
+        assert _production._pool()._workers == 8
+    finally:
+        _otel._reset_for_tests()
+        _production._reset_for_tests()
+
+
+def test_init_metrics_workers_wins_over_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("AIOBS_METRICS_WORKERS", "8")
+    _production._reset_for_tests()
+    try:
+        aiobs.init(project_slug="demo", instrument=False, metrics_workers=3, force=True)
+        assert _production._pool()._workers == 3
+    finally:
+        _otel._reset_for_tests()
+        _production._reset_for_tests()
+
+
+def test_invalid_env_metrics_workers_falls_back(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    monkeypatch.setenv("AIOBS_METRICS_WORKERS", "nope")
+    _production._reset_for_tests()
+    try:
+        with caplog.at_level(logging.WARNING, logger="aiobs"):
+            aiobs.init(project_slug="demo", instrument=False, force=True)
+        assert _production._pool()._workers == _production.MAX_WORKERS
+        assert any("AIOBS_METRICS_WORKERS" in r.message for r in caplog.records)
+    finally:
+        _otel._reset_for_tests()
+        _production._reset_for_tests()
+
+
+def test_invalid_init_metrics_workers_ignored(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    monkeypatch.delenv("AIOBS_METRICS_WORKERS", raising=False)
+    _production._reset_for_tests()
+    try:
+        with caplog.at_level(logging.WARNING, logger="aiobs"):
+            aiobs.init(project_slug="demo", instrument=False, metrics_workers=0, force=True)
+        assert _otel._INITIALIZED is True
+        assert _production._pool()._workers == _production.MAX_WORKERS
+        assert any("metrics_workers ignored" in r.message for r in caplog.records)
+    finally:
+        _otel._reset_for_tests()
+        _production._reset_for_tests()
+
+
+def test_force_reinit_rebuilds_pool_with_new_workers(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("AIOBS_METRICS_WORKERS", raising=False)
+    _production._reset_for_tests()
+    try:
+        aiobs.init(project_slug="demo", instrument=False, metrics_workers=2, force=True)
+        first = _production._pool()
+        assert first._workers == 2
+        aiobs.init(project_slug="demo", instrument=False, metrics_workers=5, force=True)
+        second = _production._pool()
+        assert second is not first
+        assert second._workers == 5
+        assert first._closed
+    finally:
+        _otel._reset_for_tests()
+        _production._reset_for_tests()
+
+
+def test_configure_rejects_out_of_range_workers() -> None:
+    with pytest.raises(ValueError, match="metrics_workers"):
+        _production.configure(workers=0)
+    with pytest.raises(ValueError, match="metrics_workers"):
+        _production.configure(workers=65)
+    with pytest.raises(ValueError, match="metrics_workers"):
+        _production.configure(workers=1.5)  # type: ignore[arg-type]

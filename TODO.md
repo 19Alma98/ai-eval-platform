@@ -49,15 +49,10 @@ Branch `feat/production-trace-scores` (2026-10-14): `aiobs.log_score`, `aiobs.lo
   queue is empty, so under steady traffic they can time out even though everything queued before
   the call was sent. Use sequence numbers if per-request `flush()` (serverless) matters.
 - [ ] **Score retry has no backoff** (network / 5xx retried immediately once).
-- [ ] **Throughput of production metrics:** 2 workers, queue of 1000; slow LLM judges (~5 s) cap at
-  ~0.4 calls/s, then calls are not scored. Sync metrics cannot be interrupted. Consider a
-  configurable worker count.
 - [ ] **Captured data by reference:** queued metric jobs hold the call's args/result until scored
   (memory, and mutation after return changes what the metric sees). Consider a size guard.
 - [ ] **Fork and the shared HTTP client:** after fork the child's score sender reuses the parent's
   cached httpx client (`_context.get_client()`). Reset `_CLIENT` in an `after_in_child` hook.
-- [ ] **OTel exit flush has its own 2 s budget** on top of the 5 s scores/metrics exit budget
-  (worst case ~7 s at exit).
 - [ ] Small test gaps: multi-page `failed_only` with a trace FAIL on a later page; upper-case
   `source_trace_id` on the list path; nested `@aiobs.trace` captures with `record_documents` from
   threads the traced function starts (context not copied — document).

@@ -15,7 +15,7 @@ from opentelemetry.sdk.trace import ReadableSpan, TracerProvider
 from opentelemetry.sdk.trace.export import BatchSpanProcessor, SpanExporter, SpanExportResult
 from opentelemetry.util._once import Once
 
-from aiobs import _live
+from aiobs import _live, _production
 from aiobs._config import project_headers, resolve_config
 from aiobs.instrumentation import activate_instrumentors
 
@@ -28,6 +28,7 @@ _TRUTHY = frozenset({"1", "true", "yes", "on"})
 EXPORT_TIMEOUT_S = 5.0
 # After a failed export, drop batches without touching the network for this long.
 FAILURE_COOLDOWN_S = 30.0
+# Per-stage cap for span flush at exit (shares EXIT_FLUSH_TIMEOUT_S with metrics/scores).
 EXIT_FLUSH_TIMEOUT_MS = 2000
 
 _PROVIDER: TracerProvider | None = None
@@ -159,8 +160,12 @@ def _at_exit() -> None:
     provider, exporter = _PROVIDER, _EXPORTER
     if provider is None:
         return
+    from aiobs import _scores  # lazy: avoids an import cycle through aiobs._context
+
     try:
-        provider.force_flush(EXIT_FLUSH_TIMEOUT_MS)
+        remaining_ms = int(_scores.exit_remaining() * 1000)
+        timeout_ms = min(EXIT_FLUSH_TIMEOUT_MS, remaining_ms)
+        provider.force_flush(timeout_ms)
     except Exception:  # noqa: BLE001
         logger.debug("aiobs: flush at exit raised", exc_info=True)
     if exporter is not None:
@@ -181,12 +186,15 @@ def init(
     force: bool = False,
     live: bool | None = None,
     live_sample_rate: float | None = None,
+    metrics_workers: int | None = None,
 ) -> None:
     """Configure OTLP export. Never raises: on bad config it warns and stays a no-op.
 
     ``live=True`` (or ``AIOBS_LIVE=1``) turns each outermost ``@aiobs.trace`` call
     outside an experiment into a platform live interaction; ``live_sample_rate``
     (or ``AIOBS_LIVE_SAMPLE_RATE``, default 1.0) is the fraction sent to the judge.
+    ``metrics_workers`` (or ``AIOBS_METRICS_WORKERS``, default 2) is the size of the
+    background pool that runs ``@aiobs.trace(metrics=...)``.
     """
     global _PROVIDER, _EXPORTER, _INITIALIZED, _ATEXIT_REGISTERED
 
@@ -207,6 +215,11 @@ def init(
     except (TypeError, ValueError) as exc:
         logger.warning("aiobs: live capture disabled: %s", exc)
         _live.configure(enabled=False)
+
+    try:
+        _production.configure(workers=metrics_workers)
+    except (TypeError, ValueError) as exc:
+        logger.warning("aiobs: metrics_workers ignored: %s", exc)
 
     try:
         config = resolve_config(

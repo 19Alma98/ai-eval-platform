@@ -297,14 +297,14 @@ aiobs.log_feedback(True, trace_id=trace_id, user_id="user-42", comment="great")
 - `aiobs.score_trace(metric, sample, trace_id=...)` runs one metric now, on the calling thread (only the sending is in the background), and stores the result. The trace is `trace_id`, else `sample.trace_id`, else the current trace. A raising metric queues `label="ERROR"` with the exception as explanation (returns `True` when that score is queued); missing `requires` skips with `False`.
 - `@aiobs.trace(metrics=[...], metrics_sample_rate=1.0)` runs your metrics after the function returns successfully (not when it raises, not inside experiments, which score their own metrics). Needs `aiobs.init()`. Sampling is per trace and configured separately from the judge's `live_sample_rate`; both use the same hash of the trace id, so when both are set the sampled traces are nested (the lower rate's traces are a subset of the higher rate's).
   - `Sample.input` is what you passed to `aiobs.set_input()` inside the call, else the only argument, else `{"args", "kwargs"}`; `Sample.documents` is the last `set_retrieval_documents()` inside the call; `expected` is `None`, so metrics with `requires=("expected",)` are skipped. Input and output are scored by reference after the function returns, so don't mutate them afterwards.
-  - Metrics run on 2 background threads fed by a bounded queue; when it is full the call is not scored and a warning is logged. Async metrics time out after 60 s; a sync metric cannot be interrupted. A raising or timed-out metric stores `label="ERROR"` with the exception as explanation (never breaks the traced call). For LLM judges lower `metrics_sample_rate`.
+  - Metrics run on a background pool (default 2 threads; `init(metrics_workers=...)` or `AIOBS_METRICS_WORKERS`) fed by a bounded queue; when it is full the call is not scored and a warning is logged. Async metrics time out after 60 s; a sync metric cannot be interrupted. A raising or timed-out metric stores `label="ERROR"` with the exception as explanation (never breaks the traced call). For LLM judges raise `metrics_workers` or lower `metrics_sample_rate`.
   - Metrics run with instrumentation suppressed: LLM calls a judge makes and `@aiobs.trace` helpers it calls do not create production traces (spans started manually with an OpenTelemetry tracer still do).
   - `trace(metrics=...)` rejects async and generator functions; use `trace_async` for coroutines.
     `trace_async` also accepts `functools.partial` of a coroutine function; other async wrappers
     need `inspect.markcoroutinefunction`.
 - These calls never raise. `log_score`, `log_feedback` and `trace(metrics=...)` never block the caller; `score_trace()` blocks for as long as the metric takes. Invalid input (bad value, label or trace id, or metadata over 16 KB serialized) logs a warning and returns `False`; setup problems (no project id, no active trace) warn at most once a minute.
 - Scores are sent in the background (batches every 2 s, 100 scores or about 512 KB). A 413 (body over the server's 1 MiB limit) splits the batch in half and resends, dropping only a single score that is still too large. A batch rejected with 400/422 is resent item by item so only the bad scores are dropped; 401/403/404 and other 4xx drop the batch at once; only network errors and 5xx are retried once, then dropped with a warning.
-- `aiobs.flush(timeout_millis)` is one total budget: spans, then pending metrics, then scores. At exit, pending metrics and scores are flushed within ~5 s.
+- `aiobs.flush(timeout_millis)` is one total budget: spans, then pending metrics, then scores. At exit, spans, pending metrics, and scores share one ~5 s budget (span flush is capped at ~2 s of that).
 
 ### Live runs → TestSet loop
 
@@ -387,6 +387,7 @@ Install the extra for the providers you use, then `init(instrument="auto")` acti
 | `AIOBS_SERVICE_NAME` | OpenTelemetry `service.name` (default `aiobs-app`) |
 | `AIOBS_OTLP_ENDPOINT` | Optional override of the derived OTLP URL (e.g. a separate collector) |
 | `AIOBS_DISABLED` | `1` / `true` / `yes` / `on` turns `init()` into a no-op (decorators keep working, nothing is exported) |
+| `AIOBS_METRICS_WORKERS` | Size of the `@aiobs.trace(metrics=...)` background pool (default `2`, range 1–64); `init(metrics_workers=...)` wins |
 
 Project precedence for `init()`: arguments > `set_project()` > env.
 
@@ -395,7 +396,7 @@ Project precedence for `init()`: arguments > `set_project()` > env.
 Tracing never breaks the host app:
 
 - `init()` never raises. Without a project it logs a warning on the `aiobs` logger and stays a no-op; a broken instrumentor is skipped with a warning.
-- Pending spans are flushed at interpreter exit (`atexit`, max ~2s), so short scripts don't need `aiobs.flush()`.
+- Pending spans are flushed at interpreter exit (`atexit`, sharing the ~5 s exit budget with metrics/scores; span stage capped at ~2 s), so short scripts don't need `aiobs.flush()`.
 - If the platform is unreachable, spans are dropped: one warning when export starts failing, one info when it recovers. After a failure, export pauses for 30s, so a platform that is down adds no network calls and doesn't slow down exit.
 
 ## Content capture

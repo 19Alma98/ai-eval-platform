@@ -143,8 +143,9 @@ def trace[**P, R](
     request path) and stores the results as trace scores; ``metrics_sample_rate`` is
     the fraction of traces scored, deterministic per trace. Skipped inside experiments.
 
-    Metrics run on a pool of ``_production.MAX_WORKERS`` (2) threads, which caps
-    throughput: for slow metrics such as LLM judges, lower ``metrics_sample_rate``.
+    Metrics run on a background pool (default ``_production.MAX_WORKERS`` threads;
+    set ``init(metrics_workers=...)`` or ``AIOBS_METRICS_WORKERS``). For slow metrics
+    such as LLM judges, raise the worker count or lower ``metrics_sample_rate``.
     An async metric is cancelled after ``_production.METRIC_TIMEOUT_S`` (60 s) and
     counted as failed; a sync metric cannot be interrupted. Calls that a metric makes
     to ``@aiobs.trace`` functions are not traced (and not scored).

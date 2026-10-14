@@ -39,6 +39,8 @@ logger = logging.getLogger("aiobs")
 
 MAX_WORKERS = 2
 MAX_QUEUE = 1000
+MIN_WORKERS = 1
+MAX_WORKERS_CAP = 64
 METRIC_TIMEOUT_S = 60.0  # per async metric call; a sync metric cannot be interrupted
 _WARN_EVERY_S = 60.0
 
@@ -153,8 +155,59 @@ class _MetricPool:
 
 _POOL: _MetricPool | None = None
 _POOL_SIZE: tuple[int, int] = (MAX_WORKERS, MAX_QUEUE)
+_WORKERS: int | None = None  # from init(metrics_workers=...); None → env / default
 _LOCK = threading.Lock()
 _ATEXIT_REGISTERED = False
+
+
+def parse_workers(value: object) -> int:
+    """Validate ``metrics_workers``; raises ValueError when out of range or not an int."""
+    message = (
+        f"metrics_workers must be an integer in [{MIN_WORKERS}, {MAX_WORKERS_CAP}], got {value!r}"
+    )
+    if isinstance(value, bool) or not isinstance(value, numbers.Integral):
+        raise ValueError(message)
+    n = int(value)
+    if n < MIN_WORKERS or n > MAX_WORKERS_CAP:
+        raise ValueError(message)
+    return n
+
+
+def resolve_workers() -> int:
+    """``init(metrics_workers=...)`` > ``AIOBS_METRICS_WORKERS`` > ``MAX_WORKERS``."""
+    if _WORKERS is not None:
+        return _WORKERS
+    raw = os.getenv("AIOBS_METRICS_WORKERS", "").strip()
+    if not raw:
+        return MAX_WORKERS
+    try:
+        return parse_workers(int(raw, 10))
+    except ValueError:
+        logger.warning(
+            "aiobs: invalid AIOBS_METRICS_WORKERS=%r; using %d", raw, MAX_WORKERS
+        )
+        return MAX_WORKERS
+
+
+def configure(*, workers: int | None = None) -> None:
+    """Set pool size from ``init()``; None falls back to the env var / default.
+
+    If a pool already exists with a different worker count it is closed and rebuilt
+    lazily on the next submit.
+    """
+    global _WORKERS, _POOL_SIZE, _POOL
+    if workers is not None:
+        workers = parse_workers(workers)
+    _WORKERS = workers
+    resolved = resolve_workers()
+    new_size = (resolved, MAX_QUEUE)
+    with _LOCK:
+        old = None
+        if _POOL is not None and _POOL._workers != resolved:
+            old, _POOL = _POOL, None
+        _POOL_SIZE = new_size
+    if old is not None:
+        old.close()
 
 
 def normalize_metrics(
@@ -359,9 +412,10 @@ def _at_exit() -> None:
 
 def _reset_for_tests(*, workers: int = MAX_WORKERS, max_queue: int = MAX_QUEUE) -> None:
     """Drop the shared pool (rebuilt lazily with this size) and the warning limiter."""
-    global _POOL, _POOL_SIZE
+    global _POOL, _POOL_SIZE, _WORKERS
     with _LOCK:
         old, _POOL = _POOL, None
+        _WORKERS = None
         _POOL_SIZE = (workers, max_queue)
     if old is not None:
         old.close()
