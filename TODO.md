@@ -51,8 +51,6 @@ Branch `feat/production-trace-scores` (2026-10-14): `aiobs.log_score`, `aiobs.lo
 - [ ] **Score retry has no backoff** (network / 5xx retried immediately once).
 - [ ] **Captured data by reference:** queued metric jobs hold the call's args/result until scored
   (memory, and mutation after return changes what the metric sees). Consider a size guard.
-- [ ] **Fork and the shared HTTP client:** after fork the child's score sender reuses the parent's
-  cached httpx client (`_context.get_client()`). Reset `_CLIENT` in an `after_in_child` hook.
 - [ ] Small test gaps: multi-page `failed_only` with a trace FAIL on a later page; upper-case
   `source_trace_id` on the list path; nested `@aiobs.trace` captures with `record_documents` from
   threads the traced function starts (context not copied — document).

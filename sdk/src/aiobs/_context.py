@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import os
 import re
 import threading
 
@@ -103,3 +104,15 @@ def _reset_for_tests() -> None:
     _reset_client()
     _ACTIVE_PROJECT = None
     _config._reset_for_tests()
+
+
+def _after_fork_in_child() -> None:
+    """The child inherits the parent's httpx client (sockets/locks); drop it so
+    the child lazily builds a fresh one. Do not close — that would affect the parent."""
+    global _CLIENT, _LOCK
+    _CLIENT = None
+    _LOCK = threading.Lock()
+
+
+if hasattr(os, "register_at_fork"):  # not on Windows
+    os.register_at_fork(after_in_child=_after_fork_in_child)

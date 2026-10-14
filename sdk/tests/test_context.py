@@ -90,6 +90,14 @@ def test_get_client_is_shared_and_reset_on_uri_change() -> None:
     assert second.base_url == "http://other:1"
 
 
+def test_after_fork_hook_resets_shared_client() -> None:
+    parent = aiobs.get_client()
+    _context._after_fork_in_child()
+    assert _context._CLIENT is None
+    child = aiobs.get_client()
+    assert child is not parent
+
+
 def test_set_project_creates_when_missing() -> None:
     server = FakeServer()
     server.install()
