@@ -21,6 +21,7 @@ from aiobs_server.api.deps import (
     get_start_evaluate_experiment,
     get_submit_client_results,
     get_summarize_experiment,
+    get_summarize_experiments,
     get_update_experiment_params,
     get_upsert_experiment_outputs,
 )
@@ -68,6 +69,7 @@ from aiobs_server.application.compare import (
     ExperimentSummary,
     InvalidCompareSelectionError,
     SummarizeExperiment,
+    SummarizeExperiments,
 )
 from aiobs_server.application.compare_items import (
     AmbiguousEvaluatorError,
@@ -336,6 +338,19 @@ async def list_experiments(
 ) -> list[ExperimentResponse]:
     experiments = await use_case.execute(project_id)
     return [_experiment_response(e) for e in experiments]
+
+
+@router.get(
+    "/api/v1/projects/{project_id}/experiments/summaries",
+    response_model=list[ExperimentSummaryResponse],
+)
+async def summarize_project_experiments(
+    project_id: uuid.UUID,
+    experiment_ids: list[uuid.UUID] | None = Query(default=None),
+    use_case: SummarizeExperiments = Depends(get_summarize_experiments),
+) -> list[ExperimentSummaryResponse]:
+    summaries = await use_case.execute(project_id, experiment_ids=experiment_ids)
+    return [_summary_response(s) for s in summaries]
 
 
 @router.get("/api/v1/experiments/{experiment_id}", response_model=ExperimentResponse)

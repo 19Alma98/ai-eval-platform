@@ -301,6 +301,7 @@ class SqlAlchemyTraceRepository:
         project_id: uuid.UUID,
         *,
         status: str | None = None,
+        search: str | None = None,
         start_time: datetime | None = None,
         end_time: datetime | None = None,
         cursor_start_time: datetime | None = None,
@@ -310,6 +311,14 @@ class SqlAlchemyTraceRepository:
         stmt = select(TraceModel).where(TraceModel.project_id == project_id)
         if status is not None:
             stmt = stmt.where(TraceModel.status == status)
+        if search and search.strip():
+            pattern = f"%{escape_like(search.strip())}%"
+            stmt = stmt.where(
+                TraceModel.name.ilike(pattern, escape="\\")
+                | TraceModel.trace_id.ilike(pattern, escape="\\")
+                | TraceModel.session_id.ilike(pattern, escape="\\")
+                | TraceModel.user_id.ilike(pattern, escape="\\")
+            )
         if start_time is not None:
             stmt = stmt.where(TraceModel.start_time >= start_time)
         if end_time is not None:
@@ -353,6 +362,27 @@ class SqlAlchemyTraceRepository:
             )
             for t in traces
         ]
+
+    async def list_with_spans_in_range(
+        self,
+        project_id: uuid.UUID,
+        *,
+        since: datetime,
+        until: datetime,
+        limit: int = 5000,
+    ) -> list[Trace]:
+        result = await self._session.execute(
+            select(TraceModel)
+            .options(selectinload(TraceModel.spans))
+            .where(
+                TraceModel.project_id == project_id,
+                TraceModel.start_time >= since,
+                TraceModel.start_time <= until,
+            )
+            .order_by(TraceModel.start_time.desc(), TraceModel.id.desc())
+            .limit(limit)
+        )
+        return [_trace_to_domain(row) for row in result.scalars().all()]
 
 
 def _dataset_to_domain(row: DatasetModel) -> Dataset:
@@ -1348,6 +1378,19 @@ class SqlAlchemyLiveInteractionRepository:
         )
         row = result.scalar_one_or_none()
         return _live_interaction_to_domain(row) if row is not None else None
+
+    async def ids_by_external_ids(
+        self, project_id: uuid.UUID, external_ids: list[str]
+    ) -> dict[str, uuid.UUID]:
+        if not external_ids:
+            return {}
+        result = await self._session.execute(
+            select(LiveInteractionModel.external_id, LiveInteractionModel.id).where(
+                LiveInteractionModel.project_id == project_id,
+                LiveInteractionModel.external_id.in_(sorted(set(external_ids))),
+            )
+        )
+        return {ext: pk for ext, pk in result.all() if ext is not None}
 
     async def list_by_project(
         self,

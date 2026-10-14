@@ -33,6 +33,30 @@ export type TraceDetail = {
   session_id: string | null;
   spans: Span[];
   scores?: TraceScore[];
+  live_interaction_id?: string | null;
+};
+
+export type TraceSummary = {
+  id: string;
+  trace_id: string;
+  name: string;
+  status: string;
+  start_time: string;
+  end_time: string | null;
+  duration_ms: number | null;
+  span_count: number;
+  environment: string | null;
+  user_id: string | null;
+  session_id: string | null;
+  input_preview: string | null;
+  output_preview: string | null;
+  scores: TraceScore[];
+  live_interaction_id: string | null;
+};
+
+export type TraceListResponse = {
+  items: TraceSummary[];
+  next_cursor: string | null;
 };
 
 export type Dataset = {
@@ -187,6 +211,7 @@ export type EvaluatorSummary = {
 export type ExperimentSummary = {
   experiment_id: string;
   evaluators: EvaluatorSummary[];
+  experiment_metrics?: Record<string, number>;
 };
 
 export type MetricComparison = {
@@ -504,4 +529,55 @@ export type ProjectOverview = {
   offline: OfflineOverview;
   calibration_alerts: CalibrationAlert[];
   warnings: string[];
+};
+
+export type LatencyPercentiles = {
+  p50_ms: number | null;
+  p90_ms: number | null;
+  p99_ms: number | null;
+};
+
+export type TrafficBucket = {
+  bucket_start: string;
+  n_traces: number;
+  n_errors: number;
+  latency: LatencyPercentiles;
+  total_tokens: number;
+  cost_usd: number;
+};
+
+export type MetricBucket = {
+  bucket_start: string;
+  n: number;
+  mean: number | null;
+  fail_rate: number | null;
+};
+
+export type MetricMonitor = {
+  name: string;
+  source: string;
+  n: number;
+  mean: number | null;
+  fail_rate: number | null;
+  threshold: number | null;
+  histogram_edges: number[];
+  histogram_counts: number[];
+  series: MetricBucket[];
+};
+
+export type ProductionMonitoring = {
+  since: string;
+  until: string;
+  bucket_seconds: number;
+  n_traces: number;
+  n_errors: number;
+  latency: LatencyPercentiles;
+  prompt_tokens: number;
+  completion_tokens: number;
+  total_tokens: number;
+  cost_usd: number;
+  traces_truncated: boolean;
+  n_needs_review: number;
+  traffic: TrafficBucket[];
+  metrics: MetricMonitor[];
 };

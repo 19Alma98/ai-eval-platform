@@ -1,6 +1,7 @@
 "use client";
 
 import { useMutation, useQueryClient } from "@tanstack/react-query";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useMemo, useState, type SubmitEvent } from "react";
 import { Plus, RotateCcw, ThumbsDown, ThumbsUp } from "lucide-react";
@@ -42,6 +43,7 @@ import type { LiveInteractionScore, TraceScore } from "@/lib/api/types";
 import { cn } from "@/lib/cn";
 import { formatScore } from "@/lib/format";
 import { metricInfo } from "@/lib/metrics-catalog";
+import { traceHref } from "@/lib/links";
 import { withProjectQuery } from "@/lib/project-href";
 import { useProjectId } from "@/lib/project-store";
 import { LIVE_VERDICT_LABELS, liveVerdict } from "./live-verdict";
@@ -339,6 +341,16 @@ export function LiveRunDetail({ interactionId }: { interactionId: string }) {
             <MetaItem label="Received">
               <RelativeTime date={row.created_at} />
             </MetaItem>
+            {typeof row.metadata.source_trace_id === "string" ? (
+              <MetaItem label="Trace">
+                <Link
+                  href={traceHref(projectId, row.metadata.source_trace_id)}
+                  className="text-primary hover:underline"
+                >
+                  Open steps
+                </Link>
+              </MetaItem>
+            ) : null}
             {row.scores.length > 0 ? (
               <MetaItem label="Reviewed">
                 {reviewedKinds} of {row.scores.length} verdicts

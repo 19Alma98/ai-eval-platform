@@ -14,6 +14,7 @@ from aiobs_server.api.deps import (
     get_evaluator_repository,
     get_experiment_item_output_repository,
     get_experiment_repository,
+    get_live_interaction_repository,
     get_metrics_set_repository,
     get_project_repository,
     get_trace_repository,
@@ -33,6 +34,7 @@ from tests.test_api_experiment_outputs import (
     InMemoryProjectRepository,
     InMemoryTraceRepository,
 )
+from tests.test_api_live_interactions import InMemoryLiveRepository
 
 
 @pytest.fixture
@@ -57,6 +59,8 @@ async def client() -> AsyncIterator[AsyncClient]:
     app.dependency_overrides[get_trace_repository] = lambda: traces
     trace_scores = InMemoryTraceScoreRepository()
     app.dependency_overrides[get_trace_score_repository] = lambda: trace_scores
+    live = InMemoryLiveRepository()
+    app.dependency_overrides[get_live_interaction_repository] = lambda: live
     app.dependency_overrides[get_dataset_repository] = lambda: datasets
     app.dependency_overrides[get_experiment_repository] = lambda: experiments
     app.dependency_overrides[get_experiment_item_output_repository] = lambda: outputs

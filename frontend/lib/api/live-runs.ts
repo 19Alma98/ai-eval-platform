@@ -13,6 +13,7 @@ export function listLiveInteractions(
     judgeStatus?: string;
     search?: string;
     failedOnly?: boolean;
+    unreviewedOnly?: boolean;
     limit?: number;
   },
 ) {
@@ -20,6 +21,7 @@ export function listLiveInteractions(
   if (opts?.judgeStatus) params.set("judge_status", opts.judgeStatus);
   if (opts?.search) params.set("search", opts.search);
   if (opts?.failedOnly) params.set("failed_only", "true");
+  if (opts?.unreviewedOnly) params.set("unreviewed_only", "true");
   if (opts?.limit != null) params.set("limit", String(opts.limit));
   const qs = params.toString();
   return apiGet<ListLiveInteractionsResponse>(

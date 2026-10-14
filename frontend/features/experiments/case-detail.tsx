@@ -1,6 +1,8 @@
 "use client";
 
+import Link from "next/link";
 import { useState, type ReactNode } from "react";
+import { toast } from "sonner";
 import { CheckCircle2, ChevronDown, ChevronRight, XCircle } from "lucide-react";
 import { JsonBlock } from "@/components/json-block";
 import { JudgeClaimsTable } from "@/components/judge-claims-table";
@@ -8,6 +10,7 @@ import { StatusBadge } from "@/components/status-badge";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/cn";
 import { formatScore } from "@/lib/format";
+import { experimentItemHref, traceHref } from "@/lib/links";
 import {
   contextStats,
   parseRetrievedDocuments,
@@ -16,6 +19,15 @@ import {
   type Outcome,
 } from "./case-results";
 import { RunItemTimeline } from "./run-item-timeline";
+
+async function copyItemLink(href: string) {
+  try {
+    await navigator.clipboard.writeText(new URL(href, window.location.origin).toString());
+    toast.success("Link copied");
+  } catch {
+    toast.error("Could not copy");
+  }
+}
 
 function asText(value: unknown): string {
   if (value === null || value === undefined) return "";
@@ -179,11 +191,13 @@ function DocumentCard({
 
 export function CaseDetail({
   projectId,
+  experimentId,
   item,
   position,
   total,
 }: {
   projectId: string;
+  experimentId: string;
   item: CaseView;
   position: number;
   total: number;
@@ -310,6 +324,18 @@ export function CaseDetail({
             {showTrace ? "Hide execution steps" : "Show execution steps"}
           </button>
         ) : null}
+        {item.sourceTraceId ? (
+          <Link href={traceHref(projectId, item.sourceTraceId)} className="text-primary hover:underline">
+            Open trace
+          </Link>
+        ) : null}
+        <button
+          type="button"
+          className="text-muted-foreground hover:text-foreground hover:underline"
+          onClick={() => void copyItemLink(experimentItemHref(projectId, experimentId, item.datasetItemId))}
+        >
+          Copy link to this answer
+        </button>
         <button
           type="button"
           className="text-muted-foreground hover:text-foreground hover:underline"

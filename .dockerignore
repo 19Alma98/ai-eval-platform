@@ -8,7 +8,10 @@
 **/.ruff_cache
 **/.next
 **/node_modules
-frontend
+frontend/out
+frontend/test-results
+frontend/playwright-report
+backend/src/aiobs_server/_ui
 docs
 examples
 **/.env

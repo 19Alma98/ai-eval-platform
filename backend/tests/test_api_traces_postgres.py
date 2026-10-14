@@ -66,7 +66,9 @@ async def test_otlp_persist_and_get(client: AsyncClient) -> None:
     assert otlp.status_code == 200
 
     listed = await client.get(f"/api/v1/projects/{project_id}/traces")
-    assert listed.status_code == 404
+    assert listed.status_code == 200
+    assert [t["trace_id"] for t in listed.json()["items"]] == ["11" * 16]
+    assert listed.json()["items"][0]["span_count"] == 2
 
     created = await client.post(
         f"/api/v1/projects/{project_id}/traces",
@@ -78,7 +80,7 @@ async def test_otlp_persist_and_get(client: AsyncClient) -> None:
             "spans": [],
         },
     )
-    assert created.status_code == 404
+    assert created.status_code == 405
 
     detail = await client.get(f"/api/v1/projects/{project_id}/traces/{'11' * 16}")
     assert detail.status_code == 200
@@ -141,7 +143,7 @@ async def test_rest_create_rejected(client: AsyncClient) -> None:
             "spans": [],
         },
     )
-    assert create.status_code == 404
+    assert create.status_code == 405
 
 
 @pytest.mark.asyncio

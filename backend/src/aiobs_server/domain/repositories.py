@@ -44,11 +44,21 @@ class TraceRepository(Protocol):
         project_id: uuid.UUID,
         *,
         status: str | None = None,
+        search: str | None = None,
         start_time: datetime | None = None,
         end_time: datetime | None = None,
         cursor_start_time: datetime | None = None,
         cursor_id: uuid.UUID | None = None,
         limit: int = 50,
+    ) -> list[Trace]: ...
+
+    async def list_with_spans_in_range(
+        self,
+        project_id: uuid.UUID,
+        *,
+        since: datetime,
+        until: datetime,
+        limit: int = 5000,
     ) -> list[Trace]: ...
 
 
@@ -199,6 +209,10 @@ class LiveInteractionRepository(Protocol):
     async def get_by_external_id(
         self, project_id: uuid.UUID, external_id: str
     ) -> LiveInteraction | None: ...
+
+    async def ids_by_external_ids(
+        self, project_id: uuid.UUID, external_ids: list[str]
+    ) -> dict[str, uuid.UUID]: ...
 
     async def list_by_project(
         self,

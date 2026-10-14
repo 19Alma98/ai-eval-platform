@@ -74,7 +74,8 @@ export function CompareItemsTable({
   evaluatorId,
 }: CompareItemsTableProps) {
   const evaluatorsQuery = useEvaluators(projectId);
-  const [regressionsOnly, setRegressionsOnly] = useState(false);
+  const [changeFilter, setChangeFilter] = useState<"all" | "worse" | "better">("all");
+  const regressionsOnly = changeFilter === "worse";
   const userEvaluatorId = evaluatorId ?? "";
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [detailRow, setDetailRow] = useState<ItemComparisonRow | null>(null);
@@ -149,9 +150,13 @@ export function CompareItemsTable({
     enabled: Boolean(experimentId && baselineId && queryReady),
   });
 
-  const rows = itemsQuery.data?.items ?? [];
+  const fetchedRows = itemsQuery.data?.items ?? [];
+  const rows =
+    changeFilter === "better"
+      ? fetchedRows.filter((r) => r.status === "improved")
+      : fetchedRows;
 
-  const itemsListResetKey = `${rows.length}:${regressionsOnly}:${selectedEvaluatorId}`;
+  const itemsListResetKey = `${rows.length}:${changeFilter}:${selectedEvaluatorId}`;
   const [prevItemsListResetKey, setPrevItemsListResetKey] =
     useState(itemsListResetKey);
   if (itemsListResetKey !== prevItemsListResetKey) {
@@ -257,15 +262,33 @@ export function CompareItemsTable({
             . Pick another metric in the table above. Click a row to read both answers.
           </p>
         </div>
-        <label className="flex cursor-pointer items-center gap-2 text-sm text-foreground">
-          <input
-            type="checkbox"
-            className="size-4 rounded border-border"
-            checked={regressionsOnly}
-            onChange={(e) => setRegressionsOnly(e.target.checked)}
-          />
-          Only answers that got worse
-        </label>
+        <div
+          role="radiogroup"
+          aria-label="Show answers"
+          className="flex rounded-md border border-border bg-surface p-0.5"
+        >
+          {(
+            [
+              ["all", "All answers"],
+              ["worse", "Got worse"],
+              ["better", "Got better"],
+            ] as const
+          ).map(([key, label]) => (
+            <button
+              key={key}
+              type="button"
+              role="radio"
+              aria-checked={changeFilter === key}
+              onClick={() => setChangeFilter(key)}
+              className={cn(
+                "rounded px-2.5 py-1 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground",
+                changeFilter === key && "bg-row-selected text-foreground",
+              )}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
       </div>
 
       {evaluatorOptions.length === 0 &&
@@ -292,10 +315,14 @@ export function CompareItemsTable({
           onRetry={() => itemsQuery.refetch()}
         />
       ) : rows.length === 0 ? (
-        regressionsOnly ? (
+        changeFilter !== "all" ? (
           <EmptyState
-            title="Nothing got worse"
-            description="No answer scores lower than in the baseline for this metric."
+            title={changeFilter === "worse" ? "Nothing got worse" : "Nothing got better"}
+            description={
+              changeFilter === "worse"
+                ? "No answer scores lower than in the baseline for this metric."
+                : "No answer scores higher than in the baseline for this metric."
+            }
           />
         ) : (
           <EmptyState

@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useCallback, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
+import { Columns3 } from "lucide-react";
 import { DataTable, type DataTableColumn } from "@/components/data-table";
 import { EmptyState } from "@/components/empty-state";
 import { ErrorState } from "@/components/error-state";
@@ -11,9 +12,11 @@ import { PageIntro } from "@/components/page-intro";
 import { RefreshControl } from "@/components/refresh-control";
 import { RelativeTime } from "@/components/relative-time";
 import { StatusBadge } from "@/components/status-badge";
+import { Button } from "@/components/ui/button";
 import { formatErrorForUi } from "@/lib/api/client";
 import type { Experiment } from "@/lib/api/types";
 import { resolveLabel } from "@/lib/format";
+import { experimentsCompareHref } from "@/lib/links";
 import { withProjectQuery } from "@/lib/project-href";
 import { useProjectId } from "@/lib/project-store";
 import { useDatasets } from "@/features/datasets/use-datasets";
@@ -174,6 +177,16 @@ export function ExperimentList() {
                 queryKey={queryOpts.queryKey}
                 dataUpdatedAt={query.dataUpdatedAt}
               />
+            ) : null}
+            {projectId && rows.length > 1 ? (
+              <Button
+                size="sm"
+                variant="outline"
+                render={<Link href={experimentsCompareHref(projectId, [])} />}
+              >
+                <Columns3 className="size-4" />
+                Compare all
+              </Button>
             ) : null}
             {projectId && rows.length > 0 ? (
               <CreateExperimentDialog

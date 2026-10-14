@@ -1,3 +1,14 @@
+# One image for API and UI: the static UI export is built here and served by
+# FastAPI, exactly like `aiobs ui` serves the packaged wheel.
+
+FROM node:22-alpine AS ui
+WORKDIR /frontend
+COPY frontend/package.json frontend/package-lock.json ./
+RUN npm ci
+COPY frontend/ ./
+ENV NEXT_TELEMETRY_DISABLED=1
+RUN npm run build
+
 FROM python:3.12-slim
 
 WORKDIR /app
@@ -9,6 +20,7 @@ COPY sdk/src /sdk/src
 
 COPY backend/pyproject.toml backend/README.md backend/hatch_build.py ./
 COPY backend/src ./src
+COPY --from=ui /frontend/out ./src/aiobs_server/_ui
 COPY backend/alembic ./alembic
 COPY backend/alembic.ini ./
 COPY backend/docker-entrypoint.sh ./

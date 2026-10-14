@@ -259,6 +259,22 @@ def test_evaluate_inline_rows_writes_outputs_and_scores(server: FakeServer) -> N
     assert result.url == f"http://test/experiments/{result.id}?project={PROJECT_ID}"
     text = result.summary()
     assert "hit_at_k" in text and "exact" in text and "local only" not in text
+    assert f"view: {result.url}" in text
+    item = result.items[0]
+    assert item.url == (
+        f"http://test/experiments/{result.id}?item={item.item.id}&project={PROJECT_ID}"
+    )
+
+
+def test_evaluate_prints_the_results_link(
+    server: FakeServer, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    result = aiobs.evaluate(dataset=ROWS, task=_task, metrics=["hit_at_k"], name="linked")
+    assert f"aiobs: experiment linked → {result.url}" in capsys.readouterr().err
+
+    monkeypatch.setenv("AIOBS_QUIET", "1")
+    aiobs.evaluate(dataset=ROWS, task=_task, metrics=["hit_at_k"], name="quiet")
+    assert capsys.readouterr().err == ""
 
 
 def test_evaluate_reuses_inline_dataset_and_metrics_set(server: FakeServer) -> None:

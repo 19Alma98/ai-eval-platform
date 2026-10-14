@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { LoadingBlock } from "@/components/loading-block";
@@ -10,6 +11,7 @@ import {
 } from "@/components/ui/resizable";
 import { formatErrorForUi } from "@/lib/api/client";
 import { getTrace } from "@/lib/api/traces";
+import { traceHref } from "@/lib/links";
 import { SpanSidebar } from "@/features/traces/span-sidebar";
 import { TraceWaterfall } from "@/features/traces/trace-waterfall";
 
@@ -66,9 +68,14 @@ export function RunItemTimeline({ projectId, traceId }: RunItemTimelineProps) {
 
   return (
     <div className="flex flex-col gap-2">
-      <h4 className="text-xs font-medium text-muted-foreground">
-        Source trace timeline
-      </h4>
+      <div className="flex items-center justify-between gap-2">
+        <h4 className="text-xs font-medium text-muted-foreground">
+          Source trace timeline
+        </h4>
+        <Link href={traceHref(projectId, traceId)} className="text-xs text-primary hover:underline">
+          Open full trace
+        </Link>
+      </div>
       <ResizablePanelGroup
         orientation="horizontal"
         className="h-[min(280px,40vh)] min-h-[200px] rounded-md border border-border"

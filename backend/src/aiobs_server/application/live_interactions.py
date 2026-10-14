@@ -437,11 +437,13 @@ class ListLiveInteractions:
         judge_status: str | None = None,
         search: str | None = None,
         failed_only: bool = False,
+        unreviewed_only: bool = False,
         limit: int = 50,
     ) -> ListLiveInteractionsResult:
-        # failed_only filters after loading scores, so page through until enough
-        # failures are found instead of scanning a fixed window.
-        page_size = min(max(limit, 50), 200) if failed_only else limit
+        # failed_only / unreviewed_only filter after loading scores, so page through
+        # until enough rows match instead of scanning a fixed window.
+        post_filter = failed_only or unreviewed_only
+        page_size = min(max(limit, 50), 200) if post_filter else limit
         offset = 0
         out: list[
             tuple[
@@ -469,13 +471,16 @@ class ListLiveInteractions:
                 score_reviews = await self._live.list_score_reviews_by_score_ids(
                     [s.id for s in scores]
                 )
+                # Annotation queue: judged answers no human has looked at yet.
+                if unreviewed_only and (not scores or score_reviews):
+                    continue
                 out.append((item, scores, score_reviews))
                 if extra:
                     joined[item.id] = extra
                 if len(out) >= limit:
                     break
             else:
-                if not failed_only or len(items) < page_size:
+                if not post_filter or len(items) < page_size:
                     break
                 offset += page_size
                 continue

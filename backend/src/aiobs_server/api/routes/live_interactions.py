@@ -255,6 +255,7 @@ async def list_live_interactions(
     judge_status: str | None = Query(default=None),
     search: str | None = Query(default=None),
     failed_only: bool = Query(default=False),
+    unreviewed_only: bool = Query(default=False),
     limit: int = Query(default=50, ge=1, le=200),
     use_case: ListLiveInteractions = Depends(get_list_live_interactions),
 ) -> ListLiveInteractionsResponse:
@@ -263,6 +264,7 @@ async def list_live_interactions(
         judge_status=judge_status,
         search=search,
         failed_only=failed_only,
+        unreviewed_only=unreviewed_only,
         limit=limit,
     )
     return _list_response(result)

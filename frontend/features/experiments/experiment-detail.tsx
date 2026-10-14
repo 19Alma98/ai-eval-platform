@@ -2,7 +2,8 @@
 
 import Link from "next/link";
 import { useMutation, useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useMemo, useState, type SubmitEvent } from "react";
+import { useCallback, useMemo, useState, type SubmitEvent } from "react";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { ChevronDown, GitCompare, Play, ShieldCheck } from "lucide-react";
 import { toast } from "sonner";
 import { formatConfigValue } from "@/features/app-configs/format-config-value";
@@ -132,7 +133,23 @@ export function ExperimentDetailView({
   const [focusedRunId, setFocusedRunId] = useState<string | null>(null);
   const [caseFilter, setCaseFilter] = useState<CaseFilter>("all");
   const [search, setSearch] = useState("");
-  const [selectedCaseIndex, setSelectedCaseIndex] = useState(0);
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+  // The selected answer lives in ?item= so every answer has a shareable URL.
+  const [selectedItemId, setSelectedItemId] = useState<string | null>(() =>
+    searchParams.get("item"),
+  );
+  const selectCase = useCallback(
+    (itemId: string | null) => {
+      setSelectedItemId(itemId);
+      const params = new URLSearchParams(searchParams.toString());
+      if (itemId) params.set("item", itemId);
+      else params.delete("item");
+      router.replace(`${pathname}?${params.toString()}`, { scroll: false });
+    },
+    [pathname, router, searchParams],
+  );
 
   const experiment = experimentQuery.data;
   const evaluators = useMemo(
@@ -287,6 +304,10 @@ export function ExperimentDetailView({
     (projectsQuery.data ?? []).find((p) => p.id === projectId)?.slug ?? null;
   const nQuestions = datasetDetailQuery.data?.items.length ?? 0;
   const itemsLoading = outputsQuery.isLoading || datasetDetailQuery.isLoading;
+  const selectedCaseIndex = Math.max(
+    0,
+    visibleCases.findIndex((v) => v.c.datasetItemId === selectedItemId),
+  );
   const selected = visibleCases[Math.min(selectedCaseIndex, Math.max(visibleCases.length - 1, 0))];
   const focusedMetric = focusedRunId
     ? evaluators.find((e) => e.run_id === focusedRunId)
@@ -444,7 +465,7 @@ export function ExperimentDetailView({
             onFocus={(runId) => {
               setFocusedRunId(runId);
               setCaseFilter(runId ? "failing" : "all");
-              setSelectedCaseIndex(0);
+              selectCase(null);
             }}
           />
         </section>
@@ -505,7 +526,7 @@ export function ExperimentDetailView({
                     aria-checked={caseFilter === key}
                     onClick={() => {
                       setCaseFilter(key);
-                      setSelectedCaseIndex(0);
+                      selectCase(null);
                     }}
                     className={cn(
                       "rounded px-2.5 py-1 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground",
@@ -523,7 +544,7 @@ export function ExperimentDetailView({
               value={search}
               onChange={(e) => {
                 setSearch(e.target.value);
-                setSelectedCaseIndex(0);
+                selectCase(null);
               }}
               className="h-8 w-56"
               aria-label="Search questions"
@@ -563,7 +584,7 @@ export function ExperimentDetailView({
               columns={caseColumns}
               getRowKey={(row) => row.c.datasetItemId}
               selectedIndex={Math.min(selectedCaseIndex, visibleCases.length - 1)}
-              onSelectedIndexChange={setSelectedCaseIndex}
+              onSelectedIndexChange={(i) => selectCase(visibleCases[i]?.c.datasetItemId ?? null)}
               onRowActivate={() => {}}
               selectionMode="persistent"
               className="max-h-[min(75vh,760px)] self-start"
@@ -574,6 +595,7 @@ export function ExperimentDetailView({
                 <div className="pr-3">
                   <CaseDetail
                     projectId={projectId}
+                    experimentId={experimentId}
                     item={selected.c}
                     position={selected.index + 1}
                     total={cases.length}

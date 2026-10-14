@@ -7,6 +7,7 @@ from aiobs_server.api.routes.experiments import router as experiments_router
 from aiobs_server.api.routes.live_interactions import router as live_interactions_router
 from aiobs_server.api.routes.metrics_packs import router as metrics_packs_router
 from aiobs_server.api.routes.metrics_sets import router as metrics_sets_router
+from aiobs_server.api.routes.monitoring import router as monitoring_router
 from aiobs_server.api.routes.otlp import router as otlp_router
 from aiobs_server.api.routes.overview import router as overview_router
 from aiobs_server.api.routes.projects import router as projects_router
@@ -26,5 +27,6 @@ api_router.include_router(metrics_sets_router)
 api_router.include_router(experiments_router)
 api_router.include_router(live_interactions_router)
 api_router.include_router(overview_router)
+api_router.include_router(monitoring_router)
 api_router.include_router(release_router)
 api_router.include_router(otlp_router)

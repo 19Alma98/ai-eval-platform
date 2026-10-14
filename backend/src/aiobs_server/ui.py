@@ -21,6 +21,7 @@ _DYNAMIC_REWRITES: list[tuple[re.Pattern[str], str]] = [
     (re.compile(r"^experiments/[^/]+(/.*)?$"), rf"experiments/{_PLACEHOLDER}\1"),
     (re.compile(r"^datasets/[^/]+(/.*)?$"), rf"datasets/{_PLACEHOLDER}\1"),
     (re.compile(r"^live-runs/[^/]+(/.*)?$"), rf"live-runs/{_PLACEHOLDER}\1"),
+    (re.compile(r"^traces/[^/]+(/.*)?$"), rf"traces/{_PLACEHOLDER}\1"),
     (re.compile(r"^metrics/[^/]+(/.*)?$"), rf"metrics/{_PLACEHOLDER}\1"),
     (re.compile(r"^app-configs/[^/]+(/.*)?$"), rf"app-configs/{_PLACEHOLDER}\1"),
 ]

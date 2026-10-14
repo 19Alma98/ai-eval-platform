@@ -29,7 +29,7 @@ aiobs ui --backend-store-uri 'postgresql+asyncpg://aiobs:aiobs@localhost:5434/ai
 docker compose up --build
 ```
 
-Frontend UI: http://localhost:3000 (Compose `web` service). API: http://localhost:8000.
+UI and API: http://localhost:8000 — one image serves both (the same static UI that `aiobs ui` ships). For UI development run `npm run dev` in `frontend/` (http://localhost:3000, proxies `/api` to `API_ORIGIN`).
 
 Check health:
 
