@@ -103,7 +103,7 @@ export function mapOverviewToDualKpi(
         label: "Failing answers",
         value: failRate,
         href: "/live-runs?failed=1",
-        hint: "Answers the judge marked as failing",
+        hint: "Judge fail, failing SDK metric, or thumbs-down",
         tone:
           live.n_interactions === 0 || live.fail_rate == null
             ? "neutral"
@@ -195,7 +195,9 @@ export function mergeAttentionItems(
       kind: "live_fail",
       title: item.question,
       subtitle:
-        item.reason === "fail" ? "The judge marked this answer as failing" : item.reason,
+        item.reason === "fail"
+          ? "Judge fail, failing SDK metric, or thumbs-down"
+          : item.reason,
       href: `/live-runs/${item.interaction_id}`,
       createdAt: item.created_at,
     });

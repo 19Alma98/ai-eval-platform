@@ -17,6 +17,8 @@ from aiobs_server.domain.experiment import Experiment
 from aiobs_server.domain.live_interaction import LiveInteraction, LiveInteractionScore
 from aiobs_server.domain.live_overview import LiveInRangeResult, LiveInteractionInRange
 from aiobs_server.domain.project import Project
+from aiobs_server.domain.trace_score import TraceScore
+from support.repositories import InMemoryTraceScoreRepository
 
 
 class InMemoryProjectRepository:
@@ -158,6 +160,7 @@ def _build_use_case(
     live: InMemoryLiveRepository | None = None,
     runs: InMemoryEvaluationRunRepository | None = None,
     evaluators: InMemoryEvaluatorRepository | None = None,
+    trace_scores: InMemoryTraceScoreRepository | None = None,
 ) -> GetProjectOverview:
     datasets = datasets or InMemoryDatasetRepository()
     experiments = experiments or InMemoryExperimentRepository()
@@ -172,6 +175,7 @@ def _build_use_case(
         live=live,
         compare=CompareExperiments(experiments, runs, evaluators),
         calibration=SummarizeLiveJudgeCalibration(projects, live),
+        trace_scores=trace_scores,
     )
 
 
@@ -234,6 +238,66 @@ async def test_live_interactions_in_range() -> None:
     assert len(result.live.series) >= 1
     assert len(result.live.attention) == 1
     assert result.live.attention[0].interaction_id == i2.id
+
+
+@pytest.mark.asyncio
+async def test_live_fail_counts_trace_score_fails() -> None:
+    projects = InMemoryProjectRepository()
+    project = Project.create("Trace fails")
+    await projects.add(project)
+    live = InMemoryLiveRepository()
+    scores = InMemoryTraceScoreRepository()
+    since = datetime(2026, 10, 9, 10, 0, tzinfo=UTC)
+    until = since + timedelta(hours=24)
+    t_thumbs = "aa" * 16
+    t_sdk = "bb" * 16
+    t_error = "cc" * 16
+    t_ok = "dd" * 16
+    thumbs = replace(
+        LiveInteraction.create(
+            project.id, "thumbs", "a", metadata={"source_trace_id": t_thumbs}
+        ).with_status("scored"),
+        created_at=since + timedelta(hours=1),
+    )
+    sdk = replace(
+        LiveInteraction.create(
+            project.id, "sdk", "a", metadata={"source_trace_id": t_sdk}
+        ).with_status("scored"),
+        created_at=since + timedelta(hours=2),
+    )
+    errored = replace(
+        LiveInteraction.create(
+            project.id, "error", "a", metadata={"source_trace_id": t_error}
+        ).with_status("scored"),
+        created_at=since + timedelta(hours=3),
+    )
+    ok = replace(
+        LiveInteraction.create(
+            project.id, "ok", "a", metadata={"source_trace_id": t_ok}
+        ).with_status("scored"),
+        created_at=since + timedelta(hours=4),
+    )
+    await live.add_with_scores(thumbs, [])
+    await live.add_with_scores(sdk, [])
+    await live.add_with_scores(errored, [])
+    await live.add_with_scores(ok, [])
+    await scores.upsert_many(
+        [
+            TraceScore.create(
+                project.id, t_thumbs, "user_feedback", value=0.0, source="human", label="FAIL"
+            ),
+            TraceScore.create(project.id, t_sdk, "cited", value=0.0, label="FAIL"),
+            TraceScore.create(project.id, t_error, "cited", value=None, label="ERROR"),
+            TraceScore.create(project.id, t_ok, "cited", value=1.0, label="PASS"),
+        ]
+    )
+    use_case = _build_use_case(projects=projects, live=live, trace_scores=scores)
+    result = await use_case.execute(project.id, since=since, until=until)
+    assert result.live.n_interactions == 4
+    assert result.live.n_failed == 2
+    assert result.live.fail_rate == pytest.approx(0.5)
+    assert {a.interaction_id for a in result.live.attention} == {thumbs.id, sdk.id}
+    assert result.live.mean_score is None
 
 
 @pytest.mark.asyncio

@@ -6,7 +6,7 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 
 from aiobs_server.application.compare import CompareExperiments
-from aiobs_server.application.live_interactions import score_is_failed
+from aiobs_server.application.live_interactions import live_row_is_failed, source_trace_id
 from aiobs_server.application.live_judge_calibration import SummarizeLiveJudgeCalibration
 from aiobs_server.application.projects import ProjectNotFoundError
 from aiobs_server.domain.live_overview import (
@@ -22,7 +22,9 @@ from aiobs_server.domain.repositories import (
     LiveInteractionRepository,
     MetricsSetRepository,
     ProjectRepository,
+    TraceScoreRepository,
 )
+from aiobs_server.domain.trace_score import TraceScore
 
 __all__ = [
     "CalibrationAlert",
@@ -159,7 +161,9 @@ def _aggregate_live(
     since: datetime,
     until: datetime,
     bucket: timedelta,
+    trace_scores_by_interaction: dict[uuid.UUID, list[TraceScore]] | None = None,
 ) -> LiveOverviewStats:
+    extras = trace_scores_by_interaction or {}
     n_interactions = len(rows)
     if n_interactions == 0:
         return LiveOverviewStats(
@@ -182,7 +186,7 @@ def _aggregate_live(
         interaction = row.interaction
         if interaction.judge_status in ("pending", "running"):
             n_pending += 1
-        failed = any(score_is_failed(s) for s in row.scores)
+        failed = live_row_is_failed(row.scores, extras.get(interaction.id))
         if failed:
             n_failed += 1
             failed_rows.append(row)
@@ -201,7 +205,11 @@ def _aggregate_live(
     while since + bucket * idx < until:
         bucket_rows = bucket_counts.get(idx, [])
         bucket_scores = [s.score for row in bucket_rows for s in row.scores if s.score is not None]
-        bucket_failed = sum(1 for row in bucket_rows if any(score_is_failed(s) for s in row.scores))
+        bucket_failed = sum(
+            1
+            for row in bucket_rows
+            if live_row_is_failed(row.scores, extras.get(row.interaction.id))
+        )
         n = len(bucket_rows)
         series.append(
             LiveSeriesBucket(
@@ -245,6 +253,7 @@ class GetProjectOverview:
         live: LiveInteractionRepository,
         compare: CompareExperiments,
         calibration: SummarizeLiveJudgeCalibration,
+        trace_scores: TraceScoreRepository | None = None,
     ) -> None:
         self._projects = projects
         self._datasets = datasets
@@ -253,6 +262,28 @@ class GetProjectOverview:
         self._live = live
         self._compare = compare
         self._calibration = calibration
+        self._trace_scores = trace_scores
+
+    async def _trace_scores_by_interaction(
+        self, project_id: uuid.UUID, rows: list[LiveInteractionInRange]
+    ) -> dict[uuid.UUID, list[TraceScore]]:
+        if self._trace_scores is None:
+            return {}
+        trace_ids = sorted(
+            {tid for row in rows if (tid := source_trace_id(row.interaction))}
+        )
+        if not trace_ids:
+            return {}
+        by_trace = await self._trace_scores.list_by_trace_ids(project_id, trace_ids)
+        out: dict[uuid.UUID, list[TraceScore]] = {}
+        for row in rows:
+            tid = source_trace_id(row.interaction)
+            if tid is None:
+                continue
+            extra = by_trace.get(tid)
+            if extra:
+                out[row.interaction.id] = extra
+        return out
 
     async def execute(
         self,
@@ -276,7 +307,16 @@ class GetProjectOverview:
         live_range = await self._live.list_in_range(project_id, since=since, until=until)
         if live_range.truncated:
             warnings.append("live_truncated")
-        live = _aggregate_live(live_range.items, since=since, until=until, bucket=bucket)
+        trace_by_interaction = await self._trace_scores_by_interaction(
+            project_id, live_range.items
+        )
+        live = _aggregate_live(
+            live_range.items,
+            since=since,
+            until=until,
+            bucket=bucket,
+            trace_scores_by_interaction=trace_by_interaction,
+        )
 
         datasets = await self._datasets.list_by_project(project_id)
         metrics_set = await self._metrics_sets.get_project_default(project_id)

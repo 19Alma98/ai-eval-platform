@@ -58,8 +58,6 @@ Branch `feat/production-trace-scores` (2026-10-14): `aiobs.log_score`, `aiobs.lo
   cached httpx client (`_context.get_client()`). Reset `_CLIENT` in an `after_in_child` hook.
 - [ ] **OTel exit flush has its own 2 s budget** on top of the 5 s scores/metrics exit budget
   (worst case ~7 s at exit).
-- [ ] **Overview live KPIs ignore trace scores** while the Live "Failing" filter counts thumbs-down
-  and SDK FAILs (deliberate per spec B). Add a UI note if users ask.
 - [ ] Small test gaps: multi-page `failed_only` with a trace FAIL on a later page; upper-case
   `source_trace_id` on the list path; nested `@aiobs.trace` captures with `record_documents` from
   threads the traced function starts (context not copied — document).

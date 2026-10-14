@@ -167,6 +167,16 @@ def score_is_failed(score: LiveInteractionScore) -> bool:
     return item_verdict(score.score, score.label, score.threshold) == "FAIL"
 
 
+def live_row_is_failed(
+    scores: list[LiveInteractionScore],
+    trace_scores: list[TraceScore] | None = None,
+) -> bool:
+    """True if any judge score fails or any joined trace score is FAIL (SDK / thumbs-down)."""
+    if any(score_is_failed(s) for s in scores):
+        return True
+    return any(trace_score_is_failed(t) for t in (trace_scores or ()))
+
+
 def source_trace_id(interaction: LiveInteraction) -> str | None:
     """OTel trace id a trace-derived interaction came from (lower-case), if any."""
     value = interaction.metadata.get("source_trace_id")
@@ -466,10 +476,7 @@ class ListLiveInteractions:
             for item in items:
                 scores = await self._live.list_scores(item.id)
                 extra = by_trace.get(source_trace_id(item) or "", [])
-                failed = any(score_is_failed(s) for s in scores) or any(
-                    trace_score_is_failed(t) for t in extra
-                )
-                if failed_only and not failed:
+                if failed_only and not live_row_is_failed(scores, extra):
                     continue
                 review = await self._live.get_review(item.id)
                 score_reviews = await self._live.list_score_reviews_by_score_ids(

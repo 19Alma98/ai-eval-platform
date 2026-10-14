@@ -64,8 +64,10 @@ Projects are managed from the project switcher (`/projects`).
 - **Getting started** — four numbered steps (test set → metrics → experiment → release),
   shown only while one is incomplete.
 - **KPIs** — Live (questions answered, failing answers, average quality, waiting for
-  judge) and Offline (test sets, metrics, latest experiment, release gate).
-- **Needs attention** — failing live answers, regressions, unreliable judges.
+  judge) and Offline (test sets, metrics, latest experiment, release gate). Failing
+  answers matches the Live "Failing" filter (judge FAIL, SDK metric FAIL, or thumbs-down);
+  average quality is still the mean judge score.
+- **Needs attention** — failing live answers (same fail rule), regressions, unreliable judges.
 - **Latest experiment vs baseline** — pass rate per metric with the change in points.
 - **Live quality over time** chart.
 

@@ -31,7 +31,7 @@ DELETE /projects/{project_id}
 GET /projects/{project_id}/overview?since={iso}&until={iso}
 ```
 
-`since` required; `until` optional (default now). Returns live range KPIs + series, offline project snapshot (datasets, default metrics set, latest experiment, optional compare/`pass_rate` metrics, regressions), calibration alerts, and `warnings` for degraded sections. Unknown project → 404. Compare failures degrade to `compare: null` with HTTP 200.
+`since` required; `until` optional (default now). Returns live range KPIs + series, offline project snapshot (datasets, default metrics set, latest experiment, optional compare/`pass_rate` metrics, regressions), calibration alerts, and `warnings` for degraded sections. Unknown project → 404. Compare failures degrade to `compare: null` with HTTP 200. Live `n_failed` / `fail_rate` / attention use the same fail rule as `failed_only` on live interactions: judge FAIL, or any joined trace score with label `FAIL` (SDK metric under threshold, thumbs-down); `ERROR` does not count. `mean_score` stays judge-only.
 
 `warnings` codes (non-exhaustive): `compare_unavailable`, `calibration_unavailable`, `live_truncated` (live interactions in the window exceeded the 10k aggregate cap — KPIs and series may undercount).
 

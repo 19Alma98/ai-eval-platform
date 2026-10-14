@@ -723,6 +723,7 @@ def get_project_overview(
     live: SqlAlchemyLiveInteractionRepository = Depends(get_live_interaction_repository),
     compare: CompareExperiments = Depends(get_compare_experiments),
     calibration: SummarizeLiveJudgeCalibration = Depends(get_summarize_live_judge_calibration),
+    trace_scores: SqlAlchemyTraceScoreRepository = Depends(get_trace_score_repository),
 ) -> GetProjectOverview:
     return GetProjectOverview(
         projects,
@@ -732,6 +733,7 @@ def get_project_overview(
         live,
         compare,
         calibration,
+        trace_scores,
     )
 
 
