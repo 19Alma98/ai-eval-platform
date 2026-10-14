@@ -3,11 +3,13 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
+  Activity,
   Database,
   FileCode,
   FlaskConical,
   Gauge,
   LayoutDashboard,
+  ListTree,
   Radio,
   ShieldCheck,
 } from "lucide-react";
@@ -67,6 +69,18 @@ const NAV: { section: string | null; items: NavItem[] }[] = [
         label: "Live traffic",
         icon: Radio,
         hint: "Real user questions scored by an LLM judge",
+      },
+      {
+        href: "/traces",
+        label: "Traces",
+        icon: ListTree,
+        hint: "Every call step by step: retrieval, prompt, answer",
+      },
+      {
+        href: "/monitoring",
+        label: "Production",
+        icon: Activity,
+        hint: "Latency, cost and quality over time, alarms and review queue",
       },
     ],
   },

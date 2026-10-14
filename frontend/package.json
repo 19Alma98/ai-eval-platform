@@ -7,8 +7,7 @@
   },
   "scripts": {
     "dev": "next dev --turbopack",
-    "build": "next build --turbopack",
-    "start": "next start",
+    "build": "next build --webpack",
     "lint": "eslint",
     "typecheck": "tsc --noEmit",
     "test": "node --import tsx --test \"lib/**/*.test.ts\" \"features/**/*.test.ts\" \"components/**/*.test.ts\""

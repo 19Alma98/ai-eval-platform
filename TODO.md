@@ -61,25 +61,32 @@ Altro:
 - oggetti Dataset da pandas, HuggingFace, CSV, iterabili;
 - annotare sessioni e utenti (session_id, user_id) per raggruppare le conversazioni.
 
-UI
+## UI
 
-Manca una pagina Traces, che in Langfuse è il cuore. Le API delle trace esistono, ma nella navigazione non c'è una lista con vista ad albero o timeline degli span. Per un RAG serve una vista dedicata: query → chunk recuperati con punteggio → prompt → risposta → claim del judge evidenziati sui chunk.
-
-Confronto tra esperimenti alla MLflow. I grafici (recharts) ci sono solo in Overview e Live. Mancano:
-- confronto di N esperimenti in tabella, con metriche come colonne e ordinamento;
-- andamento delle metriche tra versioni;
-diff tra item affiancati, con le domande che peggiorano o migliorano;
-- filtri per parametro (modello, prompt).
-
-Monitoraggio della produzione:
-- serie temporali per metrica, con percentili di latenza, costi e token;
-- distribuzione dei punteggi e soglie di allarme;
-- coda di annotazione per revisione umana (il modello delle review esiste già) e promozione nel dataset in un clic.
-
-Due modalità di build della UI. La UI viene costruita in due modi: export statico servito da FastAPI per aiobs ui, e Next standalone con un servizio web per Compose. Sono due percorsi da testare e possono divergere. Consiglio un'unica immagine con API e UI statica, la stessa servita da aiobs ui.
-
-Collegamenti diretti. Ogni oggetto (trace, esperimento, item) deve avere un URL stabile, che l'SDK stampa a fine esecuzione.
-
+- [x] **Pagina Traces.** `/traces`: lista con filtri (stato, intervallo, ricerca su nome / trace / sessione / utente)
+  e paginazione a cursore (`GET /projects/{id}/traces`). `/traces/{trace_id}`: vista RAG
+  (query → chunk recuperati con punteggio, per stadio retriever / reranker → prompt → risposta →
+  claim del giudice evidenziati sui chunk) e timeline ad albero degli span.
+- [x] **Confronto esperimenti alla MLflow.** `/experiments/compare`: N esperimenti in tabella con le
+  metriche come colonne e ordinamento, filtri per modello, prompt, test set e qualsiasi parametro di
+  `model_config`, andamento delle metriche tra versioni. Selezionandone due si apre il diff domanda per
+  domanda, ora filtrabile su "peggiorate" / "migliorate". API: `GET /projects/{id}/experiments/summaries`.
+- [x] **Monitoraggio della produzione.** `/monitoring`: serie temporali con percentili di latenza
+  (p50/p90/p99), token e costi, distribuzione dei punteggi per metrica con soglia di pass, soglie di
+  allarme sul fail rate, coda di annotazione (`live-interactions?unreviewed_only=true`) con review e
+  promozione nel test set dalla coda. API: `GET /projects/{id}/monitoring`.
+  - [ ] Le soglie di allarme stanno nel browser (localStorage, per progetto): portarle sul server
+    se servono notifiche (email / webhook) o condivisione tra utenti.
+  - [ ] Il monitoraggio legge fino a 5000 trace per finestra in memoria; per volumi alti servono
+    aggregati in SQL o tabelle di rollup (vedi ingestione OTLP ad alto volume).
+- [x] **Una sola build della UI.** Solo export statico (`npm run build`), servito da FastAPI sia da
+  `aiobs ui` sia dall'immagine Docker (`backend/Dockerfile` costruisce la UI in uno stage Node).
+  Compose non ha più il servizio `web`: UI e API su http://localhost:8000. `npm run dev` resta per
+  sviluppare la UI (proxy verso `API_ORIGIN`).
+- [x] **Collegamenti diretti.** URL stabili: `/traces/{trace_id}`, `/experiments/{id}`,
+  `/experiments/{id}?item={dataset_item_id}` (la selezione dell'item è nell'URL), con `?project=`.
+  L'SDK espone `result.url`, `item.url`, `item.trace_url`, li elenca in `result.summary()` e stampa il
+  link a fine esecuzione su stderr (`AIOBS_QUIET=1` per silenziarlo).
 
 Container e produzione
 

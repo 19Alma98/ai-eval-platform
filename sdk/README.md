@@ -132,7 +132,7 @@ How it behaves:
 - **Datasets**: a list of dicts or a DataFrame needs an `input` column. `expected_output`, `context` and `metadata` map to item fields, and any other column goes into `metadata` (so `expected_doc_ids` and `must_contain` work). The dataset name is a hash of the rows, so re-running on the same rows reuses the same dataset.
 - **Outputs** are uploaded with `PUT /experiments/{id}/outputs`, so this works without `aiobs.init()`. With tracing on, `finish()` waits for the OTLP traces to be bound (up to 30s) and merges their context in. Your explicit output always wins.
 - **Errors**: when a task raises, `evaluate` records it on the item (`result.errors`, `metadata.error`) and moves on. Pass `raise_on_error=True` to stop instead. When the `with` block raises, nothing is scored.
-- **Link**: `result.url` points to the experiment page on the tracking URI. Set `AIOBS_UI_URL` when the UI is served elsewhere (for example `http://localhost:3000` in the docker dev setup).
+- **Links**: every object has a stable URL. `result.url` is the experiment page, `item.url` (on `result.items`) opens that answer, and `item.trace_url` its trace; `result.summary()` lists them and `finish()` / `evaluate()` print the experiment link to stderr (silence with `AIOBS_QUIET=1`). Links use the tracking URI, which serves the UI too; set `AIOBS_UI_URL` when the UI lives elsewhere (for example `http://localhost:3000` with `npm run dev`).
 
 ### Custom metrics
 

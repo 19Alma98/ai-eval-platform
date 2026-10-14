@@ -7,6 +7,7 @@ import math
 import numbers
 import os
 import re
+import sys
 import threading
 import time
 from collections.abc import Callable, Iterator, Mapping, Sequence
@@ -24,6 +25,7 @@ from aiobs import _config, _otel
 from aiobs._context import get_client, set_project
 from aiobs._eval_run import bind_evaluation
 from aiobs._http import AiobsAPIError
+from aiobs._links import experiment_item_url, experiment_url, trace_url, ui_base_url
 from aiobs._run_context import ACTIVE_RUN
 from aiobs._trace import current_trace_id, truncate_value
 from aiobs.client import Client
@@ -77,14 +79,6 @@ def _digest(value: Any) -> str:
     return hashlib.sha256(raw).hexdigest()
 
 
-def ui_base_url(api_base_url: str) -> str:
-    """UI host for result links: ``AIOBS_UI_URL``, else the API host (``aiobs ui``)."""
-    override = os.getenv("AIOBS_UI_URL")
-    if override and override.strip():
-        return override.strip().rstrip("/")
-    return api_base_url.rstrip("/")
-
-
 # ---------------------------------------------------------------------------
 # Per-item run
 # ---------------------------------------------------------------------------
@@ -105,6 +99,9 @@ class ItemRun:
     results: dict[str, Score] = field(default_factory=dict)
     documents: list[dict[str, Any]] | None = None
     context: dict[str, Any] = field(default_factory=dict)
+    # Stable UI links, filled in by ``Experiment.finish()``.
+    url: str | None = None
+    trace_url: str | None = None
     _explicit_output: bool = field(default=False, repr=False)
 
     def log(
@@ -263,10 +260,23 @@ class ExperimentResult:
         else:
             lines.append("  (no metrics scored)")
         lines.extend(self._experiment_metric_lines())
+        lines.append(f"  view: {self.url}")
+        for run in self.errors[:_MAX_ERROR_LINKS]:
+            lines.append(f"  error: {run.trace_url or run.url or run.item.id}")
         return "\n".join(line.rstrip() for line in lines)
 
     def __str__(self) -> str:
         return self.summary()
+
+
+_MAX_ERROR_LINKS = 5
+
+
+def announce(result: ExperimentResult) -> None:
+    """Print where to see the results; ``AIOBS_QUIET=1`` silences it."""
+    if os.getenv("AIOBS_QUIET", "").strip().lower() in {"1", "true", "yes"}:
+        return
+    print(f"aiobs: experiment {result.experiment.name} → {result.url}", file=sys.stderr)
 
 
 def _fmt(value: float | None) -> str:
@@ -330,10 +340,11 @@ class Experiment:
 
     @property
     def url(self) -> str:
-        url = f"{ui_base_url(self._client.base_url)}/experiments/{self.id}"
-        if self.experiment.project_id:
-            url += f"?project={self.experiment.project_id}"
-        return url
+        return experiment_url(self._ui_base, self.id, self.experiment.project_id or None)
+
+    @property
+    def _ui_base(self) -> str:
+        return ui_base_url(self._client.base_url)
 
     @property
     def params(self) -> dict[str, Any]:
@@ -585,6 +596,12 @@ class Experiment:
             except AiobsAPIError as exc:
                 logger.warning("aiobs: compare with baseline %s failed: %s", self.baseline_id, exc)
 
+        project_id = self.experiment.project_id or None
+        for record in records:
+            record.url = experiment_item_url(self._ui_base, self.id, record.item.id, project_id)
+            if record.trace_id:
+                record.trace_url = trace_url(self._ui_base, record.trace_id, project_id)
+
         self.result = ExperimentResult(
             experiment=evaluation.experiment if evaluation else self.experiment,
             url=self.url,
@@ -594,6 +611,7 @@ class Experiment:
             comparison=comparison,
             baseline_id=self.baseline_id,
         )
+        announce(self.result)
         return self.result
 
     def _await_trace_binding(

@@ -72,6 +72,19 @@ export function summarizeExperiment(id: string) {
   return apiGet<ExperimentSummary>(`/api/v1/experiments/${id}/summary`);
 }
 
+/** Summaries of many experiments at once (N-way comparison table). */
+export function summarizeProjectExperiments(
+  projectId: string,
+  experimentIds?: string[],
+) {
+  const params = new URLSearchParams();
+  for (const id of experimentIds ?? []) params.append("experiment_ids", id);
+  const qs = params.toString();
+  return apiGet<ExperimentSummary[]>(
+    `/api/v1/projects/${projectId}/experiments/summaries${qs ? `?${qs}` : ""}`,
+  );
+}
+
 export function compareExperiments(experimentId: string, baselineId: string) {
   return apiGet<ExperimentCompareResponse>(
     `/api/v1/experiments/${experimentId}/compare/${baselineId}`,

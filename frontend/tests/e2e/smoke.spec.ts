@@ -20,7 +20,7 @@ test("overview, live traffic and release gate render", async ({ page, request })
   await expect(
     keyMetrics.getByRole("heading", { name: "Offline", exact: true }),
   ).toBeVisible();
-  await expect(page.getByRole("link", { name: "Traces" })).toHaveCount(0);
+  await expect(page.getByRole("link", { name: "Traces" })).toBeVisible();
 
   await page.goto(`/live-runs?project=${id}`);
   await expect(page.getByRole("heading", { name: "Live traffic" })).toBeVisible();
@@ -66,4 +66,65 @@ test("create experiment dialog select works", async ({ page, request }) => {
   await page.getByLabel("Test set").click();
   await page.getByRole("option").first().click();
   await expect(page.getByRole("dialog")).toBeVisible();
+});
+
+test("traces, production and experiment comparison render", async ({ page, request }) => {
+  const proj = await request.post(`${API}/api/v1/projects`, {
+    data: { name: "E2E Monitor", slug: `e2e-mon-${Date.now()}` },
+  });
+  expect(proj.ok()).toBeTruthy();
+  const { id } = await proj.json();
+
+  const traceId = "ab".repeat(16);
+  const nanos = (msAgo: number) => `${Date.now() - msAgo}000000`;
+  const otlp = await request.post(`${API}/v1/traces`, {
+    headers: { "X-Project-Id": id },
+    data: {
+      resourceSpans: [
+        {
+          scopeSpans: [
+            {
+              spans: [
+                {
+                  traceId,
+                  spanId: "11".repeat(8),
+                  name: "answer",
+                  startTimeUnixNano: nanos(2000),
+                  endTimeUnixNano: nanos(1000),
+                  status: { code: "STATUS_CODE_OK" },
+                  attributes: [
+                    { key: "openinference.span.kind", value: { stringValue: "RETRIEVER" } },
+                    {
+                      key: "retrieval.documents",
+                      value: {
+                        stringValue: JSON.stringify([
+                          { id: "doc-1", text: "Remote work is allowed.", score: 0.9 },
+                        ]),
+                      },
+                    },
+                  ],
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    },
+  });
+  expect(otlp.ok()).toBeTruthy();
+
+  await page.goto(`/traces?project=${id}`);
+  await expect(page.getByRole("heading", { name: "Traces" })).toBeVisible();
+  await page.getByRole("region", { name: "Traces" }).getByText("answer").click();
+  await expect(page).toHaveURL(new RegExp(`/traces/${traceId}`));
+  await expect(page.getByText("Retrieved chunks")).toBeVisible();
+  await expect(page.getByText("doc-1")).toBeVisible();
+
+  await page.goto(`/monitoring?project=${id}&range=1h`);
+  await expect(page.getByRole("heading", { name: "Production" })).toBeVisible();
+  await expect(page.getByRole("region", { name: "Production KPIs" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Annotation queue" })).toBeVisible();
+
+  await page.goto(`/experiments/compare?project=${id}`);
+  await expect(page.getByRole("heading", { name: "Compare experiments" })).toBeVisible();
 });

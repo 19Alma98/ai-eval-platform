@@ -92,3 +92,26 @@ export function isRedactedValue(value: unknown): boolean {
   }
   return false;
 }
+
+/** Token and cost totals over all spans; null when no span recorded them. */
+export function traceUsage(spans: Span[]): { tokens: number | null; cost: number | null } {
+  let tokens: number | null = null;
+  let cost: number | null = null;
+  for (const span of spans) {
+    const attrs = span.attributes ?? {};
+    const total =
+      attrNumber(attrs, "gen_ai.usage.total_tokens", "llm.token_count.total") ??
+      sumOrNull(
+        attrNumber(attrs, "gen_ai.usage.input_tokens", "llm.token_count.prompt", "gen_ai.usage.prompt_tokens"),
+        attrNumber(attrs, "gen_ai.usage.output_tokens", "llm.token_count.completion", "gen_ai.usage.completion_tokens"),
+      );
+    if (total != null) tokens = (tokens ?? 0) + total;
+    const spanCostValue = attrNumber(attrs, "gen_ai.usage.cost", "llm.cost");
+    if (spanCostValue != null) cost = (cost ?? 0) + spanCostValue;
+  }
+  return { tokens, cost };
+}
+
+function sumOrNull(a: number | null, b: number | null): number | null {
+  return a == null && b == null ? null : (a ?? 0) + (b ?? 0);
+}

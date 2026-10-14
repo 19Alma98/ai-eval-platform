@@ -15,6 +15,7 @@ services:
       timeout: 5s
       retries: 15
 
+  # API and UI in one image (same static UI as `aiobs ui`): http://localhost:8000
   api:
     build:
       context: .
@@ -35,19 +36,6 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
-
-  web:
-    build:
-      context: ./frontend
-      dockerfile: Dockerfile
-      args:
-        API_ORIGIN: http://api:8000
-    environment:
-      API_ORIGIN: http://api:8000
-    ports:
-      - "3000:3000"
-    depends_on:
-      - api
 
 volumes:
   postgres_data:

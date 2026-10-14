@@ -31,6 +31,7 @@ from aiobs_server.application.traces import (
 )
 from aiobs_server.domain.trace import Trace
 from aiobs_server.domain.trace_score import TraceScore
+from aiobs_server.tracing.live_binding import answer_from_output, question_from_input
 
 router = APIRouter(prefix="/api/v1/projects/{project_id}/traces", tags=["traces"])
 
@@ -70,8 +71,9 @@ def _to_summary(
         environment=trace.environment,
         user_id=trace.user_id,
         session_id=trace.session_id,
-        input_preview=_preview(trace.input),
-        output_preview=_preview(trace.output),
+        # `@aiobs.trace` records {"args", "kwargs"}: show the question, not the envelope.
+        input_preview=_preview(question_from_input(trace.input) if trace.input else None),
+        output_preview=_preview(answer_from_output(trace.output) if trace.output else None),
         scores=[trace_score_response(s) for s in scores],
         live_interaction_id=live_interaction_id,
     )
