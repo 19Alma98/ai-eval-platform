@@ -118,23 +118,9 @@ uv run aiobs check --policy ../examples/aiobs.yaml \
 
 Exit codes: `0` pass, `1` gate failed, `2` config error, `3` infra error. Example workflow: [`.github/workflows/release-gate.yml.example`](.github/workflows/release-gate.yml.example). Design: [`docs/superpowers/specs/2026-10-01-phase4-release-gates-design.md`](docs/superpowers/specs/2026-10-01-phase4-release-gates-design.md).
 
-## Documentation
-
-Technical specification lives in [`docs/`](docs/). Phase 1 design: [`docs/superpowers/specs/2026-09-30-phase1-otlp-traces-design.md`](docs/superpowers/specs/2026-09-30-phase1-otlp-traces-design.md).
-
 ## PyPI release
 
 Packages: **`aiobs-eval`** (SDK) and **`aiobs-eval-server`** (API + UI). Publish via tag `vX.Y.Z` and [`.github/workflows/publish.yml`](.github/workflows/publish.yml) (Trusted Publishing). Setup and checklist: [`docs/08-cli-ci.md`](docs/08-cli-ci.md#publishing-to-pypi).
-
-## Local CI checks
-
-Same checks as [`.github/workflows/ci.yml`](.github/workflows/ci.yml) (ruff / mypy / pytest for backend+sdk, frontend typecheck). Backend integration tests use a dedicated `aiobs_test` database on host port **5434** (created automatically; they do not wipe the Compose `aiobs` demo DB).
-
-```bash
-./scripts/ci-local.sh              # all jobs
-./scripts/ci-local.sh backend      # one job
-./scripts/ci-local.sh sdk frontend # subset
-```
 
 ## Development (backend)
 
@@ -157,19 +143,15 @@ LLM_MODEL=ollama/gemma4:e2b
 LLM_API_BASE=http://localhost:11434
 ```
 
-**Minimum judge:** `ollama/gemma4:e2b` is fine for local smoke and demos (`claims` method + one format-repair retry). For release gates or CI, use a stronger model or set `method: rubric` on claim-based kinds — invalid JSON after repair surfaces as `judge_output_invalid` / `judge_model_unsuitable`, not a silent fallback. Check a model with `scripts/judge_sanity.py` (see [`docs/03-evaluation-engine.md`](docs/03-evaluation-engine.md)).
-
 When creating an evaluator, use `"type": "llm_judge"` and `"config": {"kind": "correctness"}` (or `answer_relevance` / `groundedness` / `context_precision` / `context_recall`).
 
-### RAG metrics naming (Ragas ↔ aiobs)
+### RAG metrics naming
 
-| Ragas (common name) | aiobs `kind` | Notes |
-|---|---|---|
-| Faithfulness | `groundedness` | Answer claims supported by retrieved docs |
-| Response / answer relevancy | `answer_relevance` | Question–answer relevance (rubric) |
-| Context precision | `context_precision` | RAGAS-style average precision over retrieved docs |
-| Context recall | `context_recall` | Gold-answer claims covered by retrieved docs |
-| Factual correctness (approx.) | `correctness` | Gold claims covered by the answer |
-| — | `hit_at_k` / `recall_at_k` / `mrr` | Deterministic retrieval metrics on `expected_doc_ids` |
-
-There is no API alias for Ragas names: use the aiobs `kind` values above.
+| aiobs `kind` | Notes |
+|---|---|
+| `groundedness` | Answer claims supported by retrieved docs |
+| `answer_relevance` | Question–answer relevance (rubric) |
+| `context_precision` | RAGAS-style average precision over retrieved docs |
+| `context_recall` | Gold-answer claims covered by retrieved docs |
+| `correctness` | Gold claims covered by the answer |
+| `hit_at_k` / `recall_at_k` / `mrr` | Deterministic retrieval metrics on `expected_doc_ids` |
