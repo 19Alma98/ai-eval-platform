@@ -40,7 +40,7 @@ Manca una pagina Traces, che in Langfuse è il cuore. Le API delle trace esiston
 Confronto tra esperimenti alla MLflow. I grafici (recharts) ci sono solo in Overview e Live. Mancano:
 - confronto di N esperimenti in tabella, con metriche come colonne e ordinamento;
 - andamento delle metriche tra versioni;
-diff tra item affiancati, con le domande che peggiorano o migliorano;
+- diff tra item affiancati, con le domande che peggiorano o migliorano;
 - filtri per parametro (modello, prompt).
 
 Monitoraggio della produzione:
