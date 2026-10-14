@@ -537,78 +537,80 @@ export function LiveRunDetail({ interactionId }: { interactionId: string }) {
           </section>
         </div>
 
-        <section className="flex flex-col gap-2">
-          <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-            Judge verdicts
-          </h2>
-          {row.scores.length === 0 ? (
-            <p className="text-sm text-muted-foreground">
-              The judge has not scored this answer yet.
-            </p>
-          ) : (
-            row.scores.map((score) => {
-              const info = metricInfo(score.kind);
-              return (
-                <div
-                  key={score.id}
-                  className="rounded-lg border border-border bg-surface p-4 text-sm"
-                >
-                  <div className="flex items-center justify-between gap-2">
-                    <span className="font-medium text-foreground" title={info.description}>
-                      {info.label}
-                    </span>
-                    <span className="flex items-center gap-2">
-                      <span className="tabular-nums text-muted-foreground">
-                        {formatScore(score.score)}
-                        {score.threshold != null ? ` / needs ${formatScore(score.threshold)}` : ""}
-                      </span>
-                      {score.label ? <StatusBadge status={score.label} /> : null}
-                    </span>
-                  </div>
-                  {info.description ? (
-                    <p className="mt-0.5 text-xs text-muted-foreground">{info.description}</p>
-                  ) : null}
-                  {score.explanation ? (
-                    <p className="mt-2 text-foreground">{score.explanation}</p>
-                  ) : null}
-                  {score.review?.corrected_explanation ? (
-                    <p className="mt-2 rounded-md bg-surface-2 px-2 py-1.5 text-foreground">
-                      <span className="text-xs font-medium text-muted-foreground">
-                        Reviewer correction:{" "}
-                      </span>
-                      {score.review.corrected_explanation}
-                    </p>
-                  ) : null}
-                  <div className="mt-2">
-                    <JudgeClaimsTable metadata={score.metadata} title="Claims checked" />
-                  </div>
-                  <ScoreReviewControls
-                    key={[
-                      score.id,
-                      score.explanation ?? "",
-                      score.review?.corrected_explanation ?? "",
-                      score.review?.note ?? "",
-                    ].join("|")}
-                    score={score}
-                    interactionId={interactionId}
-                    projectId={projectId}
-                  />
-                </div>
-              );
-            })
-          )}
-        </section>
-
-        {(row.trace_scores ?? []).length > 0 ? (
+        <div className="flex flex-col gap-6">
           <section className="flex flex-col gap-2">
             <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-              SDK scores &amp; feedback
+              Judge verdicts
             </h2>
-            {(row.trace_scores ?? []).map((score) => (
-              <TraceScoreCard key={score.id} score={score} />
-            ))}
+            {row.scores.length === 0 ? (
+              <p className="text-sm text-muted-foreground">
+                The judge has not scored this answer yet.
+              </p>
+            ) : (
+              row.scores.map((score) => {
+                const info = metricInfo(score.kind);
+                return (
+                  <div
+                    key={score.id}
+                    className="rounded-lg border border-border bg-surface p-4 text-sm"
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="font-medium text-foreground" title={info.description}>
+                        {info.label}
+                      </span>
+                      <span className="flex items-center gap-2">
+                        <span className="tabular-nums text-muted-foreground">
+                          {formatScore(score.score)}
+                          {score.threshold != null ? ` / needs ${formatScore(score.threshold)}` : ""}
+                        </span>
+                        {score.label ? <StatusBadge status={score.label} /> : null}
+                      </span>
+                    </div>
+                    {info.description ? (
+                      <p className="mt-0.5 text-xs text-muted-foreground">{info.description}</p>
+                    ) : null}
+                    {score.explanation ? (
+                      <p className="mt-2 text-foreground">{score.explanation}</p>
+                    ) : null}
+                    {score.review?.corrected_explanation ? (
+                      <p className="mt-2 rounded-md bg-surface-2 px-2 py-1.5 text-foreground">
+                        <span className="text-xs font-medium text-muted-foreground">
+                          Reviewer correction:{" "}
+                        </span>
+                        {score.review.corrected_explanation}
+                      </p>
+                    ) : null}
+                    <div className="mt-2">
+                      <JudgeClaimsTable metadata={score.metadata} title="Claims checked" />
+                    </div>
+                    <ScoreReviewControls
+                      key={[
+                        score.id,
+                        score.explanation ?? "",
+                        score.review?.corrected_explanation ?? "",
+                        score.review?.note ?? "",
+                      ].join("|")}
+                      score={score}
+                      interactionId={interactionId}
+                      projectId={projectId}
+                    />
+                  </div>
+                );
+              })
+            )}
           </section>
-        ) : null}
+
+          {(row.trace_scores ?? []).length > 0 ? (
+            <section className="flex flex-col gap-2">
+              <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                SDK scores &amp; feedback
+              </h2>
+              {(row.trace_scores ?? []).map((score) => (
+                <TraceScoreCard key={score.id} score={score} />
+              ))}
+            </section>
+          ) : null}
+        </div>
       </div>
     </div>
   );
