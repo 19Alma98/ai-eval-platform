@@ -47,7 +47,10 @@ def create_app(*, mount_packaged_ui: bool = True) -> FastAPI:
         lifespan=lifespan,
     )
     register_exception_handlers(app)
-    app.add_middleware(RejectNonFiniteJsonMiddleware)
+    app.add_middleware(
+        RejectNonFiniteJsonMiddleware,
+        max_body_bytes=get_settings().json_max_body_bytes,
+    )
     app.include_router(api_router)
 
     @app.get("/health", response_model=HealthResponse, tags=["health"])

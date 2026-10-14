@@ -1,16 +1,31 @@
 from __future__ import annotations
 
+from collections.abc import AsyncIterator
+
 import pytest
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from httpx2 import ASGITransport, AsyncClient
 from pydantic import BaseModel, ConfigDict
 
 import test_api_evaluation
 from aiobs_server.api.errors import register_exception_handlers
+from aiobs_server.api.json_guard import RejectNonFiniteJsonMiddleware
 
 client = test_api_evaluation.client  # shared in-memory app fixture
 
 JSON = {"content-type": "application/json"}
+
+
+def _body_limited_app(*, max_body_bytes: int) -> FastAPI:
+    app = FastAPI()
+    app.add_middleware(RejectNonFiniteJsonMiddleware, max_body_bytes=max_body_bytes)
+
+    @app.post("/echo")
+    async def echo(request: Request) -> dict[str, int]:
+        body = await request.body()
+        return {"n": len(body)}
+
+    return app
 
 
 @pytest.mark.asyncio
@@ -80,3 +95,55 @@ async def test_validation_error_echoing_nan_is_422_not_500() -> None:
     (error,) = resp.json()["detail"]
     assert error["type"] == "finite_number"
     assert error["input"] == "nan"
+
+
+@pytest.mark.asyncio
+async def test_content_length_over_limit_is_413() -> None:
+    app = _body_limited_app(max_body_bytes=64)
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as ac:
+        resp = await ac.post("/echo", content=b"{" + b"x" * 64 + b"}", headers=JSON)
+
+    assert resp.status_code == 413, resp.text
+    assert resp.json() == {"detail": "Request body too large"}
+
+
+@pytest.mark.asyncio
+async def test_chunked_body_over_limit_is_413() -> None:
+    app = _body_limited_app(max_body_bytes=64)
+    payload = b'{"x":"' + b"y" * 80 + b'"}'
+
+    async def chunks() -> AsyncIterator[bytes]:
+        for start in range(0, len(payload), 16):
+            yield payload[start : start + 16]
+
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as ac:
+        resp = await ac.post("/echo", content=chunks(), headers=JSON)
+
+    assert resp.status_code == 413, resp.text
+    assert resp.json() == {"detail": "Request body too large"}
+
+
+@pytest.mark.asyncio
+async def test_body_at_limit_reaches_handler() -> None:
+    app = _body_limited_app(max_body_bytes=64)
+    body = b'{"x":"' + b"z" * 56 + b'"}'  # exactly 64 bytes
+    assert len(body) == 64
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as ac:
+        resp = await ac.post("/echo", content=body, headers=JSON)
+
+    assert resp.status_code == 200, resp.text
+    assert resp.json() == {"n": 64}
+
+
+@pytest.mark.asyncio
+async def test_non_finite_still_422_under_size_limit() -> None:
+    app = _body_limited_app(max_body_bytes=1024)
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as ac:
+        resp = await ac.post("/echo", content=b'{"x": NaN}', headers=JSON)
+
+    assert resp.status_code == 422, resp.text
+    assert resp.json()["detail"][0]["type"] == "finite_number"

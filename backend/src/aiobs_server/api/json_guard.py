@@ -4,6 +4,9 @@ Python's json module accepts these non-standard tokens, so a non-finite float wo
 either break the 422 response that echoes it back or be stored and break every later
 response that serializes it. Checking the raw body covers every endpoint, including
 free-form ``Any`` fields that pydantic's ``allow_inf_nan`` cannot reach.
+
+Also enforces ``max_body_bytes`` while buffering so route-level size checks are not
+the first memory bound for JSON requests.
 """
 
 from __future__ import annotations
@@ -52,23 +55,60 @@ def _is_json(scope: Scope) -> bool:
     return False
 
 
+def _content_length(scope: Scope) -> int | None:
+    for name, value in scope["headers"]:
+        if name == b"content-length":
+            try:
+                return int(value)
+            except ValueError:
+                return None
+    return None
+
+
+def _too_large_response() -> JSONResponse:
+    return JSONResponse(
+        status_code=status.HTTP_413_CONTENT_TOO_LARGE,
+        content={"detail": "Request body too large"},
+    )
+
+
+async def _drain(receive: Receive) -> None:
+    while True:
+        message = await receive()
+        if message["type"] != "http.request" or not message.get("more_body", False):
+            return
+
+
 class RejectNonFiniteJsonMiddleware:
-    def __init__(self, app: ASGIApp) -> None:
+    def __init__(self, app: ASGIApp, *, max_body_bytes: int = 4 * 1024 * 1024) -> None:
         self.app = app
+        self.max_body_bytes = max_body_bytes
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
         if scope["type"] != "http" or not _is_json(scope):
             await self.app(scope, receive, send)
             return
 
+        declared = _content_length(scope)
+        if declared is not None and declared > self.max_body_bytes:
+            await _too_large_response()(scope, receive, send)
+            return
+
         messages: list[Message] = []
         body = bytearray()
         while True:
             message = await receive()
-            messages.append(message)
             if message["type"] != "http.request":
+                messages.append(message)
                 break
-            body += message.get("body", b"")
+            chunk = message.get("body", b"")
+            if len(body) + len(chunk) > self.max_body_bytes:
+                if message.get("more_body", False):
+                    await _drain(receive)
+                await _too_large_response()(scope, receive, send)
+                return
+            body += chunk
+            messages.append(message)
             if not message.get("more_body", False):
                 break
 

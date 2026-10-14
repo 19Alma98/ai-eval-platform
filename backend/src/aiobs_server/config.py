@@ -18,6 +18,7 @@ class Settings(BaseSettings):
     project_slug_max_length: int = 200
     content_capture_enabled: bool = False
     otlp_max_body_bytes: int = 4 * 1024 * 1024
+    json_max_body_bytes: int = 4 * 1024 * 1024
     trace_scores_max_body_bytes: int = 1024 * 1024
     llm_model: str = "gemini/gemini-3.8-flash"
     llm_api_key: str | None = None

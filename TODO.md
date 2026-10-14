@@ -42,14 +42,10 @@ library is installed, so `test_real_ragas_sample_accepts_our_fields` and
 Branch `feat/production-trace-scores` (2026-10-14): `aiobs.log_score`, `aiobs.log_feedback`,
 `aiobs.score`, `@aiobs.trace(metrics=...)`, `trace_scores` table and API, Live + overview UI.
 
-- [ ] **Run the Postgres integration tests** (`backend/tests/test_postgres_trace_score_repository.py`)
-  against a real Postgres, and `alembic upgrade head` / `downgrade -1` / `upgrade head` for
-  `0014_trace_scores`. Not run yet (no Postgres locally; SQLite uses `create_all`).
 - [ ] **Manual smoke** with the dev stack (plan Task 15 step 2): traced call with `metrics=`, a
   `log_feedback`, then check `/trace-scores/summary` and the "SDK scores & feedback" section on Live.
 - [ ] **Naming:** `aiobs.score` (function) vs `aiobs.Score` (class) differ only by case and `score` is
   a common local name. Decide before release (e.g. `score_trace`).
-- [ ] **Body size is not a memory bound.** `RejectNonFiniteJsonMiddleware` buffers every JSON body
   app-wide before the 1 MiB `/trace-scores` limit (and the OTLP limit) is checked. Add a size check
   in the middleware or rely on a proxy limit.
 - [ ] **Metric failures are invisible.** A raising or timed-out production metric (and `score()`)
