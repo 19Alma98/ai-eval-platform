@@ -5,7 +5,7 @@ import uuid
 from datetime import UTC, datetime
 from typing import Any
 
-from sqlalchemy import func, select
+from sqlalchemy import case, func, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.exc import IntegrityError
@@ -29,6 +29,7 @@ from aiobs_server.domain.live_overview import LiveInRangeResult, LiveInteraction
 from aiobs_server.domain.metrics_set import MetricsSet, MetricsSetEntry
 from aiobs_server.domain.project import Project
 from aiobs_server.domain.trace import Span, Trace
+from aiobs_server.domain.trace_score import TraceScore, TraceScoreSummaryRow
 from aiobs_server.infrastructure.models import (
     AppConfigAliasModel,
     AppConfigModel,
@@ -50,6 +51,7 @@ from aiobs_server.infrastructure.models import (
     ProjectModel,
     SpanModel,
     TraceModel,
+    TraceScoreModel,
 )
 
 
@@ -1162,6 +1164,128 @@ class SqlAlchemyExperimentMetricRepository:
         await self._session.execute(stmt)
         await self._session.commit()
         return await self.get(experiment_id)
+
+
+_TRACE_SCORE_KEY = ["project_id", "trace_id", "name", "source", "author"]
+_TRACE_SCORE_UPDATED = ["value", "label", "explanation", "threshold", "metadata", "updated_at"]
+
+
+def _trace_score_to_domain(row: TraceScoreModel) -> TraceScore:
+    return TraceScore(
+        id=row.id,
+        project_id=row.project_id,
+        trace_id=row.trace_id,
+        name=row.name,
+        value=row.value,
+        label=row.label,
+        explanation=row.explanation,
+        threshold=row.threshold,
+        source=row.source,
+        author=row.author or None,
+        metadata=dict(row.metadata_json or {}),
+        created_at=row.created_at,
+        updated_at=row.updated_at,
+    )
+
+
+class SqlAlchemyTraceScoreRepository:
+    def __init__(self, session: AsyncSession) -> None:
+        self._session = session
+
+    async def upsert_many(self, scores: list[TraceScore]) -> int:
+        latest = {s.key: s for s in scores}  # one statement cannot update a row twice
+        if not latest:
+            return 0
+        bind = self._session.get_bind()
+        insert_fn = pg_insert if bind.dialect.name == "postgresql" else sqlite_insert
+        now = datetime.now(UTC)
+        stmt = insert_fn(TraceScoreModel).values(
+            [
+                {
+                    "id": s.id,
+                    "project_id": s.project_id,
+                    "trace_id": s.trace_id,
+                    "name": s.name,
+                    "value": s.value,
+                    "label": s.label,
+                    "explanation": s.explanation,
+                    "threshold": s.threshold,
+                    "source": s.source,
+                    "author": s.author or "",
+                    "metadata": s.metadata,
+                    "created_at": s.created_at,
+                    "updated_at": now,
+                }
+                for _, s in sorted(latest.items())  # stable lock order avoids deadlocks
+            ]
+        )
+        stmt = stmt.on_conflict_do_update(
+            index_elements=_TRACE_SCORE_KEY,
+            set_={column: stmt.excluded[column] for column in _TRACE_SCORE_UPDATED},
+        )
+        await self._session.execute(stmt)
+        await self._session.commit()
+        return len(latest)
+
+    async def list_by_trace_ids(
+        self, project_id: uuid.UUID, trace_ids: list[str]
+    ) -> dict[str, list[TraceScore]]:
+        if not trace_ids:
+            return {}
+        result = await self._session.execute(
+            select(TraceScoreModel)
+            .where(
+                TraceScoreModel.project_id == project_id,
+                TraceScoreModel.trace_id.in_(sorted(set(trace_ids))),
+            )
+            .order_by(
+                TraceScoreModel.trace_id,
+                TraceScoreModel.name,
+                TraceScoreModel.source,
+                TraceScoreModel.author,
+            )
+            .execution_options(populate_existing=True)
+        )
+        out: dict[str, list[TraceScore]] = {}
+        for row in result.scalars().all():
+            out.setdefault(row.trace_id, []).append(_trace_score_to_domain(row))
+        return out
+
+    async def summarize(
+        self, project_id: uuid.UUID, *, since: datetime, until: datetime
+    ) -> list[TraceScoreSummaryRow]:
+        n_pass = func.sum(case((TraceScoreModel.label == "PASS", 1), else_=0))
+        n_fail = func.sum(case((TraceScoreModel.label == "FAIL", 1), else_=0))
+        result = await self._session.execute(
+            select(
+                TraceScoreModel.name,
+                TraceScoreModel.source,
+                func.count(),
+                func.avg(TraceScoreModel.value),
+                n_pass,
+                n_fail,
+            )
+            .where(
+                TraceScoreModel.project_id == project_id,
+                TraceScoreModel.updated_at >= since,
+                TraceScoreModel.updated_at <= until,
+            )
+            .group_by(TraceScoreModel.name, TraceScoreModel.source)
+            .order_by(TraceScoreModel.name, TraceScoreModel.source)
+        )
+        rows: list[TraceScoreSummaryRow] = []
+        for name, source, count, mean, passed, failed in result.all():
+            judged = int(passed or 0) + int(failed or 0)
+            rows.append(
+                TraceScoreSummaryRow(
+                    name=name,
+                    source=source,
+                    count=int(count),
+                    mean=None if mean is None else float(mean),
+                    pass_rate=int(passed or 0) / judged if judged else None,
+                )
+            )
+        return rows
 
 
 class SqlAlchemyLiveInteractionRepository:

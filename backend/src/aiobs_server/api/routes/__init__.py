@@ -11,12 +11,14 @@ from aiobs_server.api.routes.otlp import router as otlp_router
 from aiobs_server.api.routes.overview import router as overview_router
 from aiobs_server.api.routes.projects import router as projects_router
 from aiobs_server.api.routes.release import router as release_router
+from aiobs_server.api.routes.trace_scores import router as trace_scores_router
 from aiobs_server.api.routes.traces import router as traces_router
 
 api_router = APIRouter()
 api_router.include_router(projects_router)
 api_router.include_router(app_configs_router)
 api_router.include_router(traces_router)
+api_router.include_router(trace_scores_router)
 api_router.include_router(datasets_router)
 api_router.include_router(evaluators_router)
 api_router.include_router(metrics_packs_router)

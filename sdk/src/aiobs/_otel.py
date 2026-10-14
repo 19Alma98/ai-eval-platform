@@ -252,10 +252,29 @@ def init(
 
 
 def flush(timeout_millis: int = 5000) -> bool:
-    if _PROVIDER is None:
-        return True
+    """Flush spans, then production metrics, then queued trace scores.
+
+    ``timeout_millis`` is the total budget: each stage gets what the previous left.
+    Metrics are drained before scores are flushed because they produce scores.
+    """
+    deadline = time.monotonic() + timeout_millis / 1000
+    ok = True
+    if _PROVIDER is not None:
+        try:
+            ok = bool(_PROVIDER.force_flush(timeout_millis))
+        except Exception:  # noqa: BLE001
+            logger.debug("aiobs: flush raised", exc_info=True)
+            ok = False
+    from aiobs import _production, _scores  # lazy: avoids an import cycle through aiobs._context
+
     try:
-        return bool(_PROVIDER.force_flush(timeout_millis))
+        ok = _production.drain(max(0.0, deadline - time.monotonic())) and ok
     except Exception:  # noqa: BLE001
-        logger.debug("aiobs: flush raised", exc_info=True)
-        return False
+        logger.debug("aiobs: production metrics drain raised", exc_info=True)
+        ok = False
+    try:
+        scores_ok = _scores.flush(max(0.0, deadline - time.monotonic()))
+    except Exception:  # noqa: BLE001
+        logger.debug("aiobs: score flush raised", exc_info=True)
+        scores_ok = False
+    return scores_ok and ok

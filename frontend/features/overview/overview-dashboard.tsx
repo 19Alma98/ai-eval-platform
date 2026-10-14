@@ -18,6 +18,8 @@ import { LiveQualityChart } from "./live-quality-chart";
 import { CompareBars } from "./compare-bars";
 import { AttentionQueue } from "./attention-queue";
 import { LoopProgress } from "./loop-progress";
+import { ProductionScoresCard } from "./production-scores-card";
+import { traceScoreSummaryQueryKey } from "./use-trace-score-summary";
 import {
   buildLoopCards,
   mapOverviewToDualKpi,
@@ -72,9 +74,10 @@ export function OverviewDashboard() {
 
   const onRefresh = useCallback(async () => {
     if (!projectId) return;
-    await queryClient.refetchQueries({
-      queryKey: overviewQueryKey(projectId, since, until),
-    });
+    await Promise.all([
+      queryClient.refetchQueries({ queryKey: overviewQueryKey(projectId, since, until) }),
+      queryClient.refetchQueries({ queryKey: traceScoreSummaryQueryKey(projectId, since, until) }),
+    ]);
   }, [projectId, queryClient, since, until]);
 
   const overview = overviewQuery.data;
@@ -160,6 +163,8 @@ export function OverviewDashboard() {
               referenceThreshold={overview.offline.reference_threshold}
               onWidenRange={widenRange}
             />
+
+            <ProductionScoresCard projectId={projectId} since={since} until={until} />
           </>
         ) : null}
       </div>

@@ -13,6 +13,7 @@ from aiobs_server.api.deps import (
     get_live_interaction_repository,
     get_metrics_set_repository,
     get_project_repository,
+    get_trace_score_repository,
 )
 from aiobs_server.domain.dataset import Dataset, DatasetItem
 from aiobs_server.domain.live_interaction import (
@@ -26,7 +27,11 @@ from aiobs_server.evaluation import bootstrap_evaluators
 from aiobs_server.evaluation.registry import clear_registry
 from aiobs_server.main import create_app
 from support.fake_llm import ScriptedJudgeLlm
-from support.repositories import InMemoryEvaluatorRepository, InMemoryMetricsSetRepository
+from support.repositories import (
+    InMemoryEvaluatorRepository,
+    InMemoryMetricsSetRepository,
+    InMemoryTraceScoreRepository,
+)
 
 FakeLlm = ScriptedJudgeLlm
 
@@ -224,6 +229,8 @@ async def client() -> AsyncIterator[AsyncClient]:
 
     app.dependency_overrides[get_project_repository] = lambda: projects
     app.dependency_overrides[get_live_interaction_repository] = lambda: live
+    trace_scores = InMemoryTraceScoreRepository()
+    app.dependency_overrides[get_trace_score_repository] = lambda: trace_scores
     app.dependency_overrides[get_metrics_set_repository] = lambda: metrics
     app.dependency_overrides[get_evaluator_repository] = lambda: evaluators
     app.dependency_overrides[get_dataset_repository] = lambda: datasets

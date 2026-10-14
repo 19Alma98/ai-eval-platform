@@ -16,6 +16,7 @@ from aiobs_server.api.deps import (
     get_upsert_live_review,
     get_upsert_live_score_review,
 )
+from aiobs_server.api.routes.trace_scores import trace_score_response
 from aiobs_server.api.schemas import (
     DatasetItemResponse,
     JudgeCalibrationBucketResponse,
@@ -63,6 +64,7 @@ from aiobs_server.domain.live_interaction import (
     LiveReview,
     LiveScoreReview,
 )
+from aiobs_server.domain.trace_score import TraceScore
 
 router = APIRouter(tags=["live-interactions"])
 
@@ -122,6 +124,7 @@ def _interaction_response(
     scores: list[LiveInteractionScore] | None = None,
     review: LiveReview | None = None,
     score_reviews: dict[uuid.UUID, LiveScoreReview] | None = None,
+    trace_scores: list[TraceScore] | None = None,
 ) -> LiveInteractionResponse:
     reviews = score_reviews or {}
     return LiveInteractionResponse.model_validate(
@@ -141,6 +144,7 @@ def _interaction_response(
             "scored_at": interaction.scored_at,
             "scores": [_score_response(s, review=reviews.get(s.id)) for s in (scores or [])],
             "review": _review_response(review) if review is not None else None,
+            "trace_scores": [trace_score_response(t) for t in (trace_scores or [])],
         }
     )
 
@@ -151,6 +155,7 @@ def _detail_response(detail: LiveInteractionDetail) -> LiveInteractionResponse:
         scores=detail.scores,
         review=detail.review,
         score_reviews=detail.score_reviews,
+        trace_scores=detail.trace_scores,
     )
 
 
@@ -256,6 +261,7 @@ def _list_response(result: ListLiveInteractionsResult) -> ListLiveInteractionsRe
                 scores=scores,
                 review=review,
                 score_reviews=score_reviews,
+                trace_scores=result.trace_scores.get(interaction.id),
             )
             for interaction, scores, review, score_reviews in result.items
         ],

@@ -38,13 +38,14 @@ import {
   rescoreLiveInteraction,
   reviewLiveScore,
 } from "@/lib/api/live-runs";
-import type { LiveInteractionScore } from "@/lib/api/types";
+import type { LiveInteractionScore, TraceScore } from "@/lib/api/types";
 import { cn } from "@/lib/cn";
 import { formatScore } from "@/lib/format";
 import { metricInfo } from "@/lib/metrics-catalog";
 import { withProjectQuery } from "@/lib/project-href";
 import { useProjectId } from "@/lib/project-store";
 import { LIVE_VERDICT_LABELS, liveVerdict } from "./live-verdict";
+import { FEEDBACK_NAME, feedbackThumb } from "./trace-feedback";
 import { liveRunQueryKey, useLiveRun } from "./use-live-runs";
 
 function ScoreReviewControls({
@@ -151,6 +152,55 @@ function ScoreReviewControls({
             {mutation.isPending ? "Saving…" : "Save review"}
           </Button>
         </div>
+      ) : null}
+    </div>
+  );
+}
+
+const SOURCE_LABELS: Record<string, string> = {
+  sdk: "SDK metric",
+  human: "User feedback",
+  judge: "External judge",
+};
+
+function TraceScoreCard({ score }: { score: TraceScore }) {
+  const isFeedback = score.name === FEEDBACK_NAME;
+  const thumb = isFeedback ? feedbackThumb([score]) : null;
+  return (
+    <div className="rounded-lg border border-border bg-surface p-4 text-sm">
+      <div className="flex items-center justify-between gap-2">
+        <span className="flex items-center gap-2 font-medium text-foreground">
+          {thumb === "up" ? (
+            <ThumbsUp className="size-4" role="img" aria-label="Thumbs-up feedback" />
+          ) : thumb === "down" ? (
+            <ThumbsDown className="size-4" role="img" aria-label="Thumbs-down feedback" />
+          ) : null}
+          <span className="min-w-0 break-words">
+            {isFeedback ? "User feedback" : score.name}
+          </span>
+          {isFeedback ? null : (
+            <Badge variant="outline" className="font-normal">
+              {SOURCE_LABELS[score.source] ?? score.source}
+            </Badge>
+          )}
+        </span>
+        <span className="flex items-center gap-2">
+          {isFeedback ? null : (
+            <span className="tabular-nums text-muted-foreground">
+              {formatScore(score.value)}
+              {score.threshold != null ? ` / needs ${formatScore(score.threshold)}` : ""}
+            </span>
+          )}
+          {score.label ? <StatusBadge status={score.label} /> : null}
+        </span>
+      </div>
+      {score.author ? (
+        <p className="mt-0.5 text-xs text-muted-foreground">by {score.author}</p>
+      ) : null}
+      {score.explanation ? (
+        <p className="mt-2 whitespace-pre-wrap break-words text-foreground">
+          {score.explanation}
+        </p>
       ) : null}
     </div>
   );
@@ -548,6 +598,17 @@ export function LiveRunDetail({ interactionId }: { interactionId: string }) {
             })
           )}
         </section>
+
+        {(row.trace_scores ?? []).length > 0 ? (
+          <section className="flex flex-col gap-2">
+            <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+              SDK scores &amp; feedback
+            </h2>
+            {(row.trace_scores ?? []).map((score) => (
+              <TraceScoreCard key={score.id} score={score} />
+            ))}
+          </section>
+        ) : null}
       </div>
     </div>
   );

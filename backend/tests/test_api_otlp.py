@@ -8,10 +8,15 @@ from datetime import UTC, datetime
 import pytest
 from httpx2 import ASGITransport, AsyncClient
 
-from aiobs_server.api.deps import get_project_repository, get_trace_repository
+from aiobs_server.api.deps import (
+    get_project_repository,
+    get_trace_repository,
+    get_trace_score_repository,
+)
 from aiobs_server.domain.project import Project
 from aiobs_server.domain.trace import Trace
 from aiobs_server.main import create_app
+from tests.support.repositories import InMemoryTraceScoreRepository
 
 
 class InMemoryProjectRepository:
@@ -111,6 +116,8 @@ async def client() -> AsyncIterator[AsyncClient]:
     app = create_app()
     app.dependency_overrides[get_project_repository] = lambda: projects
     app.dependency_overrides[get_trace_repository] = lambda: traces
+    trace_scores = InMemoryTraceScoreRepository()
+    app.dependency_overrides[get_trace_score_repository] = lambda: trace_scores
 
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as ac:

@@ -512,6 +512,41 @@ class ExperimentMetricModel(Base):
     )
 
 
+class TraceScoreModel(Base):
+    __tablename__ = "trace_scores"
+    __table_args__ = (
+        UniqueConstraint(
+            "project_id", "trace_id", "name", "source", "author", name="uq_trace_scores_key"
+        ),
+        Index("ix_trace_scores_project_updated", "project_id", "updated_at"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True)
+    project_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey("projects.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    trace_id: Mapped[str] = mapped_column(String(32), nullable=False)
+    name: Mapped[str] = mapped_column(String(200), nullable=False)
+    value: Mapped[float | None] = mapped_column(Float, nullable=True)
+    label: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    explanation: Mapped[str | None] = mapped_column(Text, nullable=True)
+    threshold: Mapped[float | None] = mapped_column(Float, nullable=True)
+    source: Mapped[str] = mapped_column(String(16), nullable=False)
+    # '' instead of NULL so the unique key works the same on SQLite and Postgres.
+    author: Mapped[str] = mapped_column(String(200), nullable=False, server_default="", default="")
+    metadata_json: Mapped[dict[str, Any]] = mapped_column(
+        "metadata", PortableJSON, nullable=False, server_default="{}", default=dict
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        UtcDateTime(), nullable=False, server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        UtcDateTime(), nullable=False, server_default=func.now()
+    )
+
+
 class LiveInteractionModel(Base):
     __tablename__ = "live_interactions"
     __table_args__ = (

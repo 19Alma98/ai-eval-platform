@@ -31,6 +31,7 @@ from aiobs.experiment import (
     log_params,
     start_experiment,
 )
+from aiobs.feedback import log_feedback, log_score, score
 from aiobs.metrics import Sample, Score, metric
 from aiobs.registry import AppConfigClient
 
@@ -53,9 +54,12 @@ __all__ = [
     "get_project",
     "get_tracking_uri",
     "init",
+    "log_feedback",
     "log_metrics",
     "log_params",
+    "log_score",
     "metric",
+    "score",
     "set_attribute",
     "set_attributes",
     "set_error",

@@ -30,7 +30,10 @@ async def _await[T](awaitable: Awaitable[T]) -> T:
 
 
 def run_sync[T](awaitable: Awaitable[T], timeout: float | None = None) -> T:
-    """Block until ``awaitable`` finishes on the background loop and return its result."""
+    """Block until ``awaitable`` finishes on the background loop and return its result.
+
+    On ``timeout`` the coroutine is cancelled and ``TimeoutError`` is raised.
+    """
     loop = _loop()
     try:
         running = asyncio.get_running_loop()
@@ -38,4 +41,9 @@ def run_sync[T](awaitable: Awaitable[T], timeout: float | None = None) -> T:
         running = None
     if running is loop:
         raise RuntimeError("run_sync() called from the aiobs background loop would deadlock")
-    return asyncio.run_coroutine_threadsafe(_await(awaitable), loop).result(timeout)
+    future = asyncio.run_coroutine_threadsafe(_await(awaitable), loop)
+    try:
+        return future.result(timeout)
+    except TimeoutError:
+        future.cancel()
+        raise

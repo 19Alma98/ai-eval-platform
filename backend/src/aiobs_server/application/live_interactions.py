@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import logging
 import uuid
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime
 from typing import Any
 
@@ -35,8 +35,10 @@ from aiobs_server.domain.repositories import (
     LiveInteractionRepository,
     MetricsSetRepository,
     ProjectRepository,
+    TraceScoreRepository,
 )
 from aiobs_server.domain.retrieval import normalize_documents
+from aiobs_server.domain.trace_score import TraceScore, trace_score_is_failed
 from aiobs_server.evaluation.judges.errors import JUDGE_OUTPUT_INVALID
 from aiobs_server.evaluation.judges.warnings import JUDGE_MODEL_UNSUITABLE, unsuitable_model_warning
 from aiobs_server.evaluation.outcomes import item_verdict
@@ -66,6 +68,8 @@ class ListLiveInteractionsResult:
         ]
     ]
     judge_warnings: list[LiveJudgeWarning]
+    # Trace scores (SDK metrics, user feedback) per interaction id, joined on source_trace_id.
+    trace_scores: dict[uuid.UUID, list[TraceScore]] = field(default_factory=dict)
 
 
 class LiveInteractionNotFoundError(Exception):
@@ -105,6 +109,7 @@ class LiveInteractionDetail:
     scores: list[LiveInteractionScore]
     review: LiveReview | None
     score_reviews: dict[uuid.UUID, LiveScoreReview]
+    trace_scores: list[TraceScore] = field(default_factory=list)
 
 
 @dataclass(frozen=True, slots=True)
@@ -160,6 +165,14 @@ async def _ensure_goldless_evaluator_ids(
 
 def score_is_failed(score: LiveInteractionScore) -> bool:
     return item_verdict(score.score, score.label, score.threshold) == "FAIL"
+
+
+def source_trace_id(interaction: LiveInteraction) -> str | None:
+    """OTel trace id a trace-derived interaction came from (lower-case), if any."""
+    value = interaction.metadata.get("source_trace_id")
+    if isinstance(value, str) and value.strip():
+        return value.strip().lower()
+    return None
 
 
 def _verdict_explanation(
@@ -402,8 +415,21 @@ class ScoreLiveInteraction:
 
 
 class ListLiveInteractions:
-    def __init__(self, live: LiveInteractionRepository) -> None:
+    def __init__(
+        self, live: LiveInteractionRepository, trace_scores: TraceScoreRepository | None = None
+    ) -> None:
         self._live = live
+        self._trace_scores = trace_scores
+
+    async def _trace_scores_by_trace(
+        self, project_id: uuid.UUID, items: list[LiveInteraction]
+    ) -> dict[str, list[TraceScore]]:
+        if self._trace_scores is None:
+            return {}
+        trace_ids = sorted({tid for item in items if (tid := source_trace_id(item))})
+        if not trace_ids:
+            return {}
+        return await self._trace_scores.list_by_trace_ids(project_id, trace_ids)
 
     async def execute(
         self,
@@ -426,6 +452,7 @@ class ListLiveInteractions:
                 dict[uuid.UUID, LiveScoreReview],
             ]
         ] = []
+        joined: dict[uuid.UUID, list[TraceScore]] = {}
         while True:
             items = await self._live.list_by_project(
                 project_id,
@@ -434,15 +461,23 @@ class ListLiveInteractions:
                 limit=page_size,
                 offset=offset,
             )
+            # One trace-score query per page, not per row.
+            by_trace = await self._trace_scores_by_trace(project_id, items)
             for item in items:
                 scores = await self._live.list_scores(item.id)
-                if failed_only and not any(score_is_failed(s) for s in scores):
+                extra = by_trace.get(source_trace_id(item) or "", [])
+                failed = any(score_is_failed(s) for s in scores) or any(
+                    trace_score_is_failed(t) for t in extra
+                )
+                if failed_only and not failed:
                     continue
                 review = await self._live.get_review(item.id)
                 score_reviews = await self._live.list_score_reviews_by_score_ids(
                     [s.id for s in scores]
                 )
                 out.append((item, scores, review, score_reviews))
+                if extra:
+                    joined[item.id] = extra
                 if len(out) >= limit:
                     break
             else:
@@ -468,12 +503,17 @@ class ListLiveInteractions:
                     warning_detail=detail,
                 )
             )
-        return ListLiveInteractionsResult(items=out, judge_warnings=judge_warnings)
+        return ListLiveInteractionsResult(
+            items=out, judge_warnings=judge_warnings, trace_scores=joined
+        )
 
 
 class GetLiveInteraction:
-    def __init__(self, live: LiveInteractionRepository) -> None:
+    def __init__(
+        self, live: LiveInteractionRepository, trace_scores: TraceScoreRepository | None = None
+    ) -> None:
         self._live = live
+        self._trace_scores = trace_scores
 
     async def execute(self, interaction_id: uuid.UUID) -> LiveInteractionDetail:
         interaction = await self._live.get_by_id(interaction_id)
@@ -482,11 +522,17 @@ class GetLiveInteraction:
         scores = await self._live.list_scores(interaction_id)
         review = await self._live.get_review(interaction_id)
         score_reviews = await self._live.list_score_reviews_by_score_ids([s.id for s in scores])
+        trace_scores: list[TraceScore] = []
+        trace_id = source_trace_id(interaction)
+        if self._trace_scores is not None and trace_id is not None:
+            found = await self._trace_scores.list_by_trace_ids(interaction.project_id, [trace_id])
+            trace_scores = found.get(trace_id, [])
         return LiveInteractionDetail(
             interaction=interaction,
             scores=scores,
             review=review,
             score_reviews=score_reviews,
+            trace_scores=trace_scores,
         )
 
 

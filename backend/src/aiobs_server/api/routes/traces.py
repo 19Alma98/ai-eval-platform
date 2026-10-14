@@ -4,15 +4,18 @@ import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, status
 
-from aiobs_server.api.deps import get_get_trace
+from aiobs_server.api.deps import get_get_trace, get_list_trace_scores
+from aiobs_server.api.routes.trace_scores import trace_score_response
 from aiobs_server.api.schemas import SpanResponse, TraceDetailResponse
+from aiobs_server.application.trace_scores import ListTraceScores
 from aiobs_server.application.traces import GetTrace, ProjectMissingError, TraceNotFoundError
 from aiobs_server.domain.trace import Trace
+from aiobs_server.domain.trace_score import TraceScore
 
 router = APIRouter(prefix="/api/v1/projects/{project_id}/traces", tags=["traces"])
 
 
-def _to_detail(trace: Trace) -> TraceDetailResponse:
+def _to_detail(trace: Trace, scores: list[TraceScore]) -> TraceDetailResponse:
     return TraceDetailResponse(
         id=trace.id,
         project_id=trace.project_id,
@@ -41,6 +44,7 @@ def _to_detail(trace: Trace) -> TraceDetailResponse:
             )
             for span in trace.spans
         ],
+        scores=[trace_score_response(s) for s in scores],
     )
 
 
@@ -49,6 +53,7 @@ async def get_trace(
     project_id: uuid.UUID,
     trace_id: str,
     use_case: GetTrace = Depends(get_get_trace),
+    list_scores: ListTraceScores = Depends(get_list_trace_scores),
 ) -> TraceDetailResponse:
     try:
         trace = await use_case.execute(project_id, trace_id)
@@ -56,4 +61,4 @@ async def get_trace(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
     except TraceNotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
-    return _to_detail(trace)
+    return _to_detail(trace, await list_scores.execute(project_id, trace.trace_id))

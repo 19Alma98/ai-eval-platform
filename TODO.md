@@ -37,6 +37,52 @@ library is installed, so `test_real_ragas_sample_accepts_our_fields` and
   lower-is-better metrics (Bias, Toxicity, Hallucination, PIILeakage) rejected; `GEval` without
   `evaluation_steps` regenerates steps per item; DeepEval `context` / `tools_called` not mapped.
 
+## Production trace scores & feedback
+
+Branch `feat/production-trace-scores` (2026-10-14): `aiobs.log_score`, `aiobs.log_feedback`,
+`aiobs.score`, `@aiobs.trace(metrics=...)`, `trace_scores` table and API, Live + overview UI.
+
+- [ ] **Run the Postgres integration tests** (`backend/tests/test_postgres_trace_score_repository.py`)
+  against a real Postgres, and `alembic upgrade head` / `downgrade -1` / `upgrade head` for
+  `0014_trace_scores`. Not run yet (no Postgres locally; SQLite uses `create_all`).
+- [ ] **Manual smoke** with the dev stack (plan Task 15 step 2): traced call with `metrics=`, a
+  `log_feedback`, then check `/trace-scores/summary` and the "SDK scores & feedback" section on Live.
+- [ ] **Naming:** `aiobs.score` (function) vs `aiobs.Score` (class) differ only by case and `score` is
+  a common local name. Decide before release (e.g. `score_trace`).
+- [ ] **Body size is not a memory bound.** `RejectNonFiniteJsonMiddleware` buffers every JSON body
+  app-wide before the 1 MiB `/trace-scores` limit (and the OTLP limit) is checked. Add a size check
+  in the middleware or rely on a proxy limit.
+- [ ] **Metric failures are invisible.** A raising or timed-out production metric (and `score()`)
+  logs a warning and sends nothing; experiments record ERROR. Decide whether to send
+  `label="ERROR"` with the exception as explanation.
+- [ ] **Sampling is nested, not independent.** `metrics_sample_rate` and `live_sample_rate` use the
+  same trace-id hash, and both correlate with an OTel `TraceIdRatioBased` head sampler (effective
+  rate `min(m, r)/r`). Salt the hash if independent samples are wanted.
+- [ ] **`flush()` waits on a global count.** `_scores.flush` / `_production.drain` wait until the
+  queue is empty, so under steady traffic they can time out even though everything queued before
+  the call was sent. Use sequence numbers if per-request `flush()` (serverless) matters.
+- [ ] **Score retry has no backoff** (network / 5xx retried immediately once).
+- [ ] **Throughput of production metrics:** 2 workers, queue of 1000; slow LLM judges (~5 s) cap at
+  ~0.4 calls/s, then calls are not scored. Sync metrics cannot be interrupted. Consider a
+  configurable worker count.
+- [ ] **Captured data by reference:** queued metric jobs hold the call's args/result until scored
+  (memory, and mutation after return changes what the metric sees). Consider a size guard.
+- [ ] **Fork and the shared HTTP client:** after fork the child's score sender reuses the parent's
+  cached httpx client (`_context.get_client()`). Reset `_CLIENT` in an `after_in_child` hook.
+- [ ] **OTel exit flush has its own 2 s budget** on top of the 5 s scores/metrics exit budget
+  (worst case ~7 s at exit).
+- [ ] **`trace_async(metrics=...)` rejects `functools.partial` / async callables** because
+  `inspect.iscoroutinefunction` is False for them; mention `inspect.markcoroutinefunction`.
+- [ ] **Trace detail is case-sensitive** (`GET .../traces/ABAB...` 404s) while trace-score endpoints
+  lower-case ids. Normalize in `GetTrace`.
+- [ ] **Overview live KPIs ignore trace scores** while the Live "Failing" filter counts thumbs-down
+  and SDK FAILs (deliberate per spec B). Add a UI note if users ask.
+- [ ] **Live detail layout:** on `lg` screens the "SDK scores & feedback" section lands under the
+  answer column, not under Judge verdicts. Group the two sections if wanted.
+- [ ] Small test gaps: multi-page `failed_only` with a trace FAIL on a later page; upper-case
+  `source_trace_id` on the list path; nested `@aiobs.trace` captures with `record_documents` from
+  threads the traced function starts (context not copied — document).
+
 ## Tooling
 
 - [ ] **UI packaging tests fail locally** without a packaged UI
@@ -64,3 +110,47 @@ Do not block feature work on these. When optimizing, do N+1 batching first, then
   rows). Persist the verdict per interaction (e.g. `has_failed_score`) at scoring time and filter in
   SQL. Fix when: thousands+ interactions and the filter is used often (or empty full scans hurt).
   Do not replace with a fixed recent window — older failures must still surface.
+  Trace scores now add one `list_by_trace_ids` query per *scanned* page; the denormalized verdict
+  must also account for trace-score FAILs (they can arrive after the interaction).
+
+
+
+Altro:
+
+- serve un AsyncClient, perché molte app RAG sono async;
+- oggetti Dataset da pandas, HuggingFace, CSV, iterabili;
+- annotare sessioni e utenti (session_id, user_id) per raggruppare le conversazioni.
+
+UI
+
+Manca una pagina Traces, che in Langfuse è il cuore. Le API delle trace esistono, ma nella navigazione non c'è una lista con vista ad albero o timeline degli span. Per un RAG serve una vista dedicata: query → chunk recuperati con punteggio → prompt → risposta → claim del judge evidenziati sui chunk.
+
+Confronto tra esperimenti alla MLflow. I grafici (recharts) ci sono solo in Overview e Live. Mancano:
+- confronto di N esperimenti in tabella, con metriche come colonne e ordinamento;
+- andamento delle metriche tra versioni;
+diff tra item affiancati, con le domande che peggiorano o migliorano;
+- filtri per parametro (modello, prompt).
+
+Monitoraggio della produzione:
+- serie temporali per metrica, con percentili di latenza, costi e token;
+- distribuzione dei punteggi e soglie di allarme;
+- coda di annotazione per revisione umana (il modello delle review esiste già) e promozione nel dataset in un clic.
+
+Due modalità di build della UI. La UI viene costruita in due modi: export statico servito da FastAPI per aiobs ui, e Next standalone con un servizio web per Compose. Sono due percorsi da testare e possono divergere. Consiglio un'unica immagine con API e UI statica, la stessa servita da aiobs ui.
+
+Collegamenti diretti. Ogni oggetto (trace, esperimento, item) deve avere un URL stabile, che l'SDK stampa a fine esecuzione.
+
+
+Container e produzione
+
+- Il punteggio viene calcolato con le BackgroundTasks di FastAPI, nello stesso processo dell'API: non scala e non è affidabile sotto carico. Serve un comando aiobs worker separato con una coda (tabella Postgres con SKIP LOCKED oppure Redis).
+- Ingestione OTLP ad alto volume: scrittura in batch e conservazione dei dati con TTL.
+- Immagine ufficiale su GHCR o Docker Hub, chart Helm, migrazioni come job separato.
+- Telemetria anonima disattivabile, se volete misurare l'adozione.
+
+
+Ordine consigliato
+- Nome su PyPI, autenticazione, CLI nell'SDK, Python 3.10+.
+- Pagina Traces con vista RAG, e confronto di N esperimenti.
+- Metriche custom (@metric, log_score, feedback) e live automatico da @trace con campionamento.
+- Worker separato, immagine unica e Helm.

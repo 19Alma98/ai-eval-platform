@@ -17,10 +17,15 @@ from aiobs_server.api.deps import (
     get_metrics_set_repository,
     get_project_repository,
     get_trace_repository,
+    get_trace_score_repository,
 )
 from aiobs_server.domain.trace import Trace
 from aiobs_server.main import create_app
-from tests.support.repositories import InMemoryEvaluatorRepository, InMemoryMetricsSetRepository
+from tests.support.repositories import (
+    InMemoryEvaluatorRepository,
+    InMemoryMetricsSetRepository,
+    InMemoryTraceScoreRepository,
+)
 from tests.test_api_experiment_outputs import (
     InMemoryDatasetRepository,
     InMemoryExperimentItemOutputRepository,
@@ -50,6 +55,8 @@ async def client() -> AsyncIterator[AsyncClient]:
     app = create_app()
     app.dependency_overrides[get_project_repository] = lambda: projects
     app.dependency_overrides[get_trace_repository] = lambda: traces
+    trace_scores = InMemoryTraceScoreRepository()
+    app.dependency_overrides[get_trace_score_repository] = lambda: trace_scores
     app.dependency_overrides[get_dataset_repository] = lambda: datasets
     app.dependency_overrides[get_experiment_repository] = lambda: experiments
     app.dependency_overrides[get_experiment_item_output_repository] = lambda: outputs

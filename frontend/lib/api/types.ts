@@ -32,6 +32,7 @@ export type TraceDetail = {
   user_id: string | null;
   session_id: string | null;
   spans: Span[];
+  scores?: TraceScore[];
 };
 
 export type Dataset = {
@@ -370,6 +371,35 @@ export type JudgeCalibrationBucket = {
   explanation_edit_rate: number;
 };
 
+export type TraceScore = {
+  id: string;
+  trace_id: string;
+  name: string;
+  value: number | null;
+  label: string | null;
+  explanation: string | null;
+  threshold: number | null;
+  source: "sdk" | "human" | "judge" | string;
+  author: string | null;
+  metadata: Record<string, unknown>;
+  created_at: string;
+  updated_at: string;
+};
+
+export type TraceScoreSummaryRow = {
+  name: string;
+  source: string;
+  count: number;
+  mean: number | null;
+  pass_rate: number | null;
+};
+
+export type TraceScoreSummary = {
+  since: string;
+  until: string;
+  rows: TraceScoreSummaryRow[];
+};
+
 export type LiveInteraction = {
   id: string;
   project_id: string;
@@ -386,6 +416,7 @@ export type LiveInteraction = {
   scored_at: string | null;
   scores: LiveInteractionScore[];
   review: LiveReview | null;
+  trace_scores?: TraceScore[];
 };
 
 export type LiveJudgeWarning = {
