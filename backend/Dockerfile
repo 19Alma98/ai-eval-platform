@@ -1,5 +1,5 @@
 # One image for API and UI: the static UI export is built here and served by
-# FastAPI, exactly like `aiobs ui` serves the packaged wheel.
+# FastAPI, exactly like `opengrade ui` serves the packaged wheel.
 
 FROM node:22-alpine AS ui
 WORKDIR /frontend
@@ -20,7 +20,7 @@ COPY sdk/src /sdk/src
 
 COPY backend/pyproject.toml backend/README.md backend/hatch_build.py ./
 COPY backend/src ./src
-COPY --from=ui /frontend/out ./src/aiobs_server/_ui
+COPY --from=ui /frontend/out ./src/opengrade_server/_ui
 COPY backend/alembic ./alembic
 COPY backend/alembic.ini ./
 COPY backend/docker-entrypoint.sh ./

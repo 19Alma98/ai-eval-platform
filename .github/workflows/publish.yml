@@ -1,6 +1,6 @@
 name: Publish
 
-# Publishes aiobs-eval-server then aiobs-eval to PyPI via Trusted Publishing (OIDC).
+# Publishes opengrade-ai-server then opengrade-ai to PyPI via Trusted Publishing (OIDC).
 # Trigger: push tag vX.Y.Z, or workflow_dispatch (dry-run by default).
 # Both versions come from the git tag via hatch-vcs; no version is written in the repo.
 
@@ -52,19 +52,19 @@ jobs:
           cache: npm
           cache-dependency-path: frontend/package-lock.json
 
-      - name: Package UI into aiobs_server
+      - name: Package UI into opengrade_server
         run: ./scripts/package-ui.sh
 
-      - name: Build aiobs-eval-server
+      - name: Build opengrade-ai-server
         working-directory: backend
         env:
-          AIOBS_RELEASE_BUILD: "1"
+          OPENGRADE_RELEASE_BUILD: "1"
         run: uv build
 
-      - name: Build aiobs-eval
+      - name: Build opengrade-ai
         working-directory: sdk
         env:
-          AIOBS_RELEASE_BUILD: "1"
+          OPENGRADE_RELEASE_BUILD: "1"
         run: uv build
 
       - name: Collect and verify dist
@@ -86,8 +86,8 @@ jobs:
           from pathlib import Path
 
           dist = Path("dist")
-          server_wheels = list(dist.glob("aiobs_eval_server-*-py3-none-any.whl"))
-          sdk_wheels = list(dist.glob("aiobs_eval-*-py3-none-any.whl"))
+          server_wheels = list(dist.glob("opengrade_ai_server-*-py3-none-any.whl"))
+          sdk_wheels = list(dist.glob("opengrade_ai-*-py3-none-any.whl"))
           if len(server_wheels) != 1 or len(sdk_wheels) != 1:
               print("expected one wheel each for server and sdk:", server_wheels, sdk_wheels, file=sys.stderr)
               sys.exit(1)
@@ -96,8 +96,8 @@ jobs:
               return zf.read(next(n for n in zf.namelist() if n.endswith(f".dist-info/{suffix}"))).decode()
 
           with zipfile.ZipFile(server_wheels[0]) as zf:
-              if "aiobs_server/_ui/index.html" not in zf.namelist():
-                  print("server wheel missing aiobs_server/_ui/index.html", file=sys.stderr)
+              if "opengrade_server/_ui/index.html" not in zf.namelist():
+                  print("server wheel missing opengrade_server/_ui/index.html", file=sys.stderr)
                   sys.exit(1)
               server_eps = dist_info(zf, "entry_points.txt")
               server_meta = Parser().parsestr(dist_info(zf, "METADATA"))
@@ -115,19 +115,19 @@ jobs:
           if expected and version != expected:
               print(f"built version {version} != tag {expected}", file=sys.stderr)
               sys.exit(1)
-          if f"aiobs-eval-server=={version}; extra == 'ui'" not in sdk_meta.get_all("Requires-Dist", []):
-              print("sdk wheel must pin aiobs-eval-server in the [ui] extra", file=sys.stderr)
+          if f"opengrade-ai-server=={version}; extra == 'ui'" not in sdk_meta.get_all("Requires-Dist", []):
+              print("sdk wheel must pin opengrade-ai-server in the [ui] extra", file=sys.stderr)
               sys.exit(1)
-          if f"aiobs-eval=={version}" not in server_meta.get_all("Requires-Dist", []):
-              print("server wheel must pin aiobs-eval", file=sys.stderr)
+          if f"opengrade-ai=={version}" not in server_meta.get_all("Requires-Dist", []):
+              print("server wheel must pin opengrade-ai", file=sys.stderr)
               sys.exit(1)
 
-          # Exactly one dist may own the `aiobs` console script (the SDK).
-          if "aiobs = aiobs.cli:main" not in sdk_eps:
-              print("sdk wheel missing `aiobs` console script", file=sys.stderr)
+          # Exactly one dist may own the `opengrade` console script (the SDK).
+          if "opengrade = opengrade.cli:main" not in sdk_eps:
+              print("sdk wheel missing `opengrade` console script", file=sys.stderr)
               sys.exit(1)
-          if any(line.split("=")[0].strip() == "aiobs" for line in server_eps.splitlines()):
-              print("server wheel must not ship the `aiobs` console script", file=sys.stderr)
+          if any(line.split("=")[0].strip() == "opengrade" for line in server_eps.splitlines()):
+              print("server wheel must not ship the `opengrade` console script", file=sys.stderr)
               sys.exit(1)
           print("dist OK:", server_wheels[0].name, sdk_wheels[0].name)
           with open(os.environ["GITHUB_OUTPUT"], "a") as out:
@@ -149,7 +149,7 @@ jobs:
       || (github.event_name == 'workflow_dispatch' && inputs.dry_run == false)
     environment:
       name: pypi
-      url: https://pypi.org/project/aiobs-eval/${{ needs.build.outputs.version }}/
+      url: https://pypi.org/project/opengrade-ai/${{ needs.build.outputs.version }}/
     permissions:
       id-token: write
       contents: read

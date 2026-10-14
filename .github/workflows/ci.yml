@@ -12,13 +12,13 @@ jobs:
       postgres:
         image: postgres:16-alpine
         env:
-          POSTGRES_USER: aiobs
-          POSTGRES_PASSWORD: aiobs
-          POSTGRES_DB: aiobs
+          POSTGRES_USER: opengrade
+          POSTGRES_PASSWORD: opengrade
+          POSTGRES_DB: opengrade
         ports:
           - 5432:5432
         options: >-
-          --health-cmd "pg_isready -U aiobs -d aiobs"
+          --health-cmd "pg_isready -U opengrade -d opengrade"
           --health-interval 2s
           --health-timeout 5s
           --health-retries 15
@@ -28,8 +28,8 @@ jobs:
         working-directory: backend
 
     env:
-      DATABASE_URL: postgresql+asyncpg://aiobs:aiobs@localhost:5432/aiobs
-      TEST_DATABASE_URL: postgresql+asyncpg://aiobs:aiobs@localhost:5432/aiobs
+      DATABASE_URL: postgresql+asyncpg://opengrade:opengrade@localhost:5432/opengrade
+      TEST_DATABASE_URL: postgresql+asyncpg://opengrade:opengrade@localhost:5432/opengrade
 
     steps:
       - uses: actions/checkout@v4
@@ -41,7 +41,7 @@ jobs:
           cache: npm
           cache-dependency-path: frontend/package-lock.json
 
-      - name: Package UI into aiobs_server
+      - name: Package UI into opengrade_server
         working-directory: .
         run: ./scripts/package-ui.sh
 
@@ -63,7 +63,7 @@ jobs:
         run: uv run ruff format --check src
 
       - name: Mypy
-        run: uv run mypy src/aiobs_server
+        run: uv run mypy src/opengrade_server
 
       - name: Pytest
         run: uv run pytest -v
@@ -94,7 +94,7 @@ jobs:
         run: uv run ruff format --check src
 
       - name: Mypy
-        run: uv run mypy src/aiobs
+        run: uv run mypy src/opengrade
 
       - name: Pytest
         run: uv run pytest -v

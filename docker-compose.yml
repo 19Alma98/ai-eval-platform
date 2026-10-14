@@ -2,20 +2,20 @@ services:
   postgres:
     image: postgres:16-alpine
     environment:
-      POSTGRES_USER: aiobs
-      POSTGRES_PASSWORD: aiobs
-      POSTGRES_DB: aiobs
+      POSTGRES_USER: opengrade
+      POSTGRES_PASSWORD: opengrade
+      POSTGRES_DB: opengrade
     ports:
       - "5434:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U aiobs -d aiobs"]
+      test: ["CMD-SHELL", "pg_isready -U opengrade -d opengrade"]
       interval: 2s
       timeout: 5s
       retries: 15
 
-  # API and UI in one image (same static UI as `aiobs ui`): http://localhost:8000
+  # API and UI in one image (same static UI as `opengrade ui`): http://localhost:8000
   api:
     build:
       context: .
@@ -26,7 +26,7 @@ services:
     extra_hosts:
       - "host.docker.internal:host-gateway"
     environment:
-      DATABASE_URL: postgresql+asyncpg://aiobs:aiobs@postgres:5432/aiobs
+      DATABASE_URL: postgresql+asyncpg://opengrade:opengrade@postgres:5432/opengrade
       APP_HOST: 0.0.0.0
       APP_PORT: "8000"
       # Required for OTLP → dataset from-trace (portfolio demo)
