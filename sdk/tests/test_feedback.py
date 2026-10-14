@@ -106,6 +106,10 @@ def test_log_feedback_maps_to_human_score(sent: Recorder) -> None:
         ({"name": "  ", "value": 1.0, "trace_id": TID}, "name"),
         ({"name": "q", "value": 1.0, "trace_id": "nothex"}, "trace_id"),
         ({"name": "q", "value": 1.0, "trace_id": TID, "label": "MAYBE"}, "label"),
+        (
+            {"name": "q", "value": 1.0, "trace_id": TID, "metadata": {"blob": "x" * 17_000}},
+            "metadata",
+        ),
     ],
 )
 def test_invalid_calls_warn_and_return_false(

@@ -62,6 +62,9 @@ def _trace_id(value: Any) -> str:
     return normalized
 
 
+_MAX_METADATA_BYTES = 16_384
+
+
 def _metadata(metadata: Any) -> dict[str, Any]:
     if not isinstance(metadata, Mapping):
         raise ValueError(f"metadata must be a mapping, got {type(metadata).__name__}")
@@ -72,6 +75,10 @@ def _metadata(metadata: Any) -> dict[str, Any]:
     _text("metadata", dumped)
     result = json.loads(dumped)
     assert isinstance(result, dict)
+    # Same serialization the server measures, so the cap matches its 422.
+    size = len(json.dumps(result, separators=(",", ":"), ensure_ascii=False).encode("utf-8"))
+    if size > _MAX_METADATA_BYTES:
+        raise ValueError(f"metadata is {size} bytes serialized, the limit is {_MAX_METADATA_BYTES}")
     return result
 
 
