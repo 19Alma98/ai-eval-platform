@@ -2,24 +2,6 @@
 
 Open items from the RAG evaluation reviews (2026-10-08, 2026-10-11). Fixed items are in git history.
 
-## Before publishing on PyPI
-
-- [ ] **Authentication.** No auth at all today. At minimum an API key for `/api/v1/*` and
-  `/v1/traces`; people will expose it once it is on PyPI.
-
-## Judge validation (meta-eval)
-
-Synthetic runs on the 12-item HR gold set, judge `gemma4:e2b`, content-hashed prompts + format
-repair (2026-10-12). Thresholds: `examples/hr_it_assistant/judge_sanity_thresholds.yaml`.
-
-| variant | correctness | groundedness | answer_relevance | hit@k | context_recall |
-|---|---|---|---|---|---|
-| good | 1.0 | 1.0 | 1.0 | 1.0 | 1.0 |
-| wrong_fact | 0.17 | 0.08 | 1.0 | 1.0 | — |
-| hallucination | 1.0 | 0.58 | 0.83 | 1.0 | 1.0 |
-
-- [ ] Run the missing **refusal** variant and the **live** mode (groundedness + answer_relevance).
-
 ## Performance
 
 Deferred until list latency, DB pool pressure, or large projects make them hurt.
@@ -37,8 +19,21 @@ Do not block feature work on these. When optimizing, do N+1 batching first, then
   must also account for trace-score FAILs (they can arrive after the interaction).
 
 
+Container e produzione
+- Il punteggio viene calcolato con le BackgroundTasks di FastAPI, nello stesso processo dell'API: non scala e non è affidabile sotto carico. Serve un comando aiobs worker separato con una coda (tabella Postgres con SKIP LOCKED oppure Redis).
+- Ingestione OTLP ad alto volume: scrittura in batch e conservazione dei dati con TTL.
+
+
+Other 
+- Nome su PyPI, CLI nell'SDK, Python 3.10+.
+- [ ] **Optional auth (later).** Opt-in API key / basic auth for `/api/v1/*` and `/v1/traces`
+  when someone wants app-level protection without an edge layer. Not required for the
+  self-hosted trusted-network model.
+
 
 UI
+
+se non ho selezionato un progetto, cliccando le cose nel pannello di sinistra ("Test set", "Experiment", ...) non capita nulla. Dovrei forse gestire il click con nessun progetto selezionato perchè così sembra che non funzioni la selezione
 
 Manca una pagina Traces, che in Langfuse è il cuore. Le API delle trace esistono, ma nella navigazione non c'è una lista con vista ad albero o timeline degli span. Per un RAG serve una vista dedicata: query → chunk recuperati con punteggio → prompt → risposta → claim del judge evidenziati sui chunk.
 
@@ -56,12 +51,3 @@ Monitoraggio della produzione:
 Due modalità di build della UI. La UI viene costruita in due modi: export statico servito da FastAPI per aiobs ui, e Next standalone con un servizio web per Compose. Sono due percorsi da testare e possono divergere. Consiglio un'unica immagine con API e UI statica, la stessa servita da aiobs ui.
 
 Collegamenti diretti. Ogni oggetto (trace, esperimento, item) deve avere un URL stabile, che l'SDK stampa a fine esecuzione.
-
-
-Container e produzione
-
-- Il punteggio viene calcolato con le BackgroundTasks di FastAPI, nello stesso processo dell'API: non scala e non è affidabile sotto carico. Serve un comando aiobs worker separato con una coda (tabella Postgres con SKIP LOCKED oppure Redis).
-- Ingestione OTLP ad alto volume: scrittura in batch e conservazione dei dati con TTL.
-
-
-- Nome su PyPI, autenticazione, CLI nell'SDK, Python 3.10+.

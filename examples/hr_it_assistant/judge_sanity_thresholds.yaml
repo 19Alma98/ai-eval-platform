@@ -26,3 +26,9 @@ variants:
     hit_at_k: { max: 0.20 }
     context_recall: { max: 0.35 }
     groundedness: { max: 0.35 }
+
+  refusal:
+    groundedness: { "null": true }
+    correctness: { max: 0.25 }
+    hit_at_k: { min: 0.95 }
+    context_recall: { min: 0.85 }

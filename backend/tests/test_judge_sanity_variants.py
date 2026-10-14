@@ -10,6 +10,7 @@ APP_DIR = ROOT / "examples" / "hr_it_assistant"
 sys.path.insert(0, str(APP_DIR))
 
 from judge_sanity_lib import (  # noqa: E402
+    REFUSAL_ANSWER,
     VARIANTS,
     build_variant_sample,
     build_variant_samples,
@@ -65,6 +66,14 @@ def test_bad_retrieval_uses_wrong_doc(docs: list[dict]) -> None:
     assert sample["metadata"]["expected_doc_ids"] == ["pto"]
 
 
+def test_refusal_uses_fixed_answer_and_gold_doc(docs: list[dict]) -> None:
+    item = iter_gold_items(docs)[0]
+    sample = build_variant_sample(item, "refusal", docs=docs)
+    assert sample["actual_output"] == REFUSAL_ANSWER
+    assert sample["context"]["documents"][0]["id"] == item["doc_id"]
+    assert sample["metadata"]["expected_doc_ids"] == [item["doc_id"]]
+
+
 def test_build_variant_samples_covers_all_variants(docs: list[dict]) -> None:
     for variant in VARIANTS:
         samples = build_variant_samples(variant, docs=docs)
@@ -75,6 +84,7 @@ def test_build_variant_samples_covers_all_variants(docs: list[dict]) -> None:
 def test_load_thresholds_and_check() -> None:
     thresholds = load_thresholds(APP_DIR / "judge_sanity_thresholds.yaml")
     assert "good" in thresholds["variants"]
+    assert "refusal" in thresholds["variants"]
     ok = check_thresholds(
         {
             "good": {
@@ -93,6 +103,29 @@ def test_load_thresholds_and_check() -> None:
         thresholds,
     )
     assert any("correctness" in msg for msg in bad)
+
+
+def test_null_threshold_requires_none_aggregate() -> None:
+    thresholds = {
+        "variants": {
+            "refusal": {
+                "groundedness": {"null": True},
+                "correctness": {"max": 0.25},
+            }
+        }
+    }
+    assert (
+        check_thresholds(
+            {"refusal": {"groundedness": None, "correctness": 0.0}},
+            thresholds,
+        )
+        == []
+    )
+    bad = check_thresholds(
+        {"refusal": {"groundedness": 0.5, "correctness": 0.0}},
+        thresholds,
+    )
+    assert any("expected null aggregate" in msg for msg in bad)
 
 
 def test_mean_applicable_skips_none() -> None:

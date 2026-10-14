@@ -11,7 +11,7 @@ from kb import load_knowledge
 HERE = Path(__file__).resolve().parent
 DEFAULT_THRESHOLDS = HERE / "judge_sanity_thresholds.yaml"
 
-VARIANTS = ("good", "wrong_fact", "hallucination", "bad_retrieval")
+VARIANTS = ("good", "wrong_fact", "hallucination", "bad_retrieval", "refusal")
 METRIC_KINDS = (
     "correctness",
     "groundedness",
@@ -38,6 +38,11 @@ _WRONG_FACT: dict[str, str] = {
 
 _HALLUCINATION_TAIL = (
     " Employees also receive an unlimited free parking stipend downtown."
+)
+
+REFUSAL_ANSWER = (
+    "I don't know. I don't have enough information in the available policy "
+    "to answer that."
 )
 
 
@@ -123,6 +128,9 @@ def build_variant_sample(
     elif variant == "hallucination":
         actual = expected + _HALLUCINATION_TAIL
         documents = [_doc_payload(gold_doc)]
+    elif variant == "refusal":
+        actual = REFUSAL_ANSWER
+        documents = [_doc_payload(gold_doc)]
     else:  # bad_retrieval
         actual = expected
         documents = [_doc_payload(_other_doc(docs, gold_id))]
@@ -172,6 +180,12 @@ def check_thresholds(
         for metric, value in metrics.items():
             rules = cfg.get(metric) or {}
             if not rules:
+                continue
+            if rules.get("null") is True:
+                if value is not None:
+                    failures.append(
+                        f"{variant}.{metric}: expected null aggregate, got {value:.3f}"
+                    )
                 continue
             if value is None:
                 failures.append(f"{variant}.{metric}: no applicable scores")

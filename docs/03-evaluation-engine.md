@@ -169,7 +169,7 @@ A capable model should give groundedness about 0.5, correctness about 0.5 and an
 
 ### Judge sanity suite (meta-eval)
 
-`scripts/judge_sanity.py` scores the HR gold set (`examples/hr_it_assistant/knowledge.json`) under synthetic variants (`good`, `wrong_fact`, `hallucination`, `bad_retrieval`) and checks aggregates against `examples/hr_it_assistant/judge_sanity_thresholds.yaml`. On `ERROR` / `judge_output_invalid` it prints `kind`, item index, explanation, and truncated `raw_output` to stderr for diagnosis. In-process judges only — no API server. Not part of default PR CI.
+`scripts/judge_sanity.py` scores the HR gold set (`examples/hr_it_assistant/knowledge.json`) under synthetic variants (`good`, `wrong_fact`, `hallucination`, `bad_retrieval`, `refusal`) and checks aggregates against `examples/hr_it_assistant/judge_sanity_thresholds.yaml`. On `ERROR` / `judge_output_invalid` it prints `kind`, item index, explanation, and truncated `raw_output` to stderr for diagnosis. In-process judges only — no API server. Not part of default PR CI.
 
 ```bash
 cd backend
