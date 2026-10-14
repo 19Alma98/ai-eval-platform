@@ -260,12 +260,6 @@ class LiveInteractionScoreResponse(_ApiModel):
     metadata: dict[str, Any] = Field(default_factory=dict)
 
 
-class LiveReviewResponse(_ApiModel):
-    verdict: str | None = None
-    note: str | None = None
-    reviewer: str | None = None
-
-
 class LiveJudgeWarningResponse(_ApiModel):
     kind: str
     warnings: list[str] = Field(default_factory=list)
@@ -287,7 +281,6 @@ class LiveInteractionResponse(_ApiModel):
     created_at: datetime | str | None = None
     scored_at: datetime | str | None = None
     scores: list[LiveInteractionScoreResponse] = Field(default_factory=list)
-    review: LiveReviewResponse | None = None
 
 
 class ListLiveInteractionsResponse(_ApiModel):

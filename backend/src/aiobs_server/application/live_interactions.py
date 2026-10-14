@@ -24,7 +24,6 @@ from aiobs_server.domain.live_interaction import (
     DuplicateExternalIdError,
     LiveInteraction,
     LiveInteractionScore,
-    LiveReview,
     LiveScoreReview,
     filter_goldless_entries,
 )
@@ -63,7 +62,6 @@ class ListLiveInteractionsResult:
         tuple[
             LiveInteraction,
             list[LiveInteractionScore],
-            LiveReview | None,
             dict[uuid.UUID, LiveScoreReview],
         ]
     ]
@@ -107,7 +105,6 @@ class SubmitLiveInteractionResult:
 class LiveInteractionDetail:
     interaction: LiveInteraction
     scores: list[LiveInteractionScore]
-    review: LiveReview | None
     score_reviews: dict[uuid.UUID, LiveScoreReview]
     trace_scores: list[TraceScore] = field(default_factory=list)
 
@@ -129,14 +126,6 @@ class PromoteLiveInteractionCommand:
     # system under test, so using them as gold makes later evals pass by construction.
     expected_output: Any | None = None
     expected_doc_ids: list[str] | None = None
-
-
-@dataclass(frozen=True, slots=True)
-class UpsertLiveReviewCommand:
-    interaction_id: uuid.UUID
-    verdict: str
-    note: str | None = None
-    reviewer: str | None = None
 
 
 async def _ensure_goldless_evaluator_ids(
@@ -458,7 +447,6 @@ class ListLiveInteractions:
             tuple[
                 LiveInteraction,
                 list[LiveInteractionScore],
-                LiveReview | None,
                 dict[uuid.UUID, LiveScoreReview],
             ]
         ] = []
@@ -478,11 +466,10 @@ class ListLiveInteractions:
                 extra = by_trace.get(source_trace_id(item) or "", [])
                 if failed_only and not live_row_is_failed(scores, extra):
                     continue
-                review = await self._live.get_review(item.id)
                 score_reviews = await self._live.list_score_reviews_by_score_ids(
                     [s.id for s in scores]
                 )
-                out.append((item, scores, review, score_reviews))
+                out.append((item, scores, score_reviews))
                 if extra:
                     joined[item.id] = extra
                 if len(out) >= limit:
@@ -527,7 +514,6 @@ class GetLiveInteraction:
         if interaction is None:
             raise LiveInteractionNotFoundError(interaction_id)
         scores = await self._live.list_scores(interaction_id)
-        review = await self._live.get_review(interaction_id)
         score_reviews = await self._live.list_score_reviews_by_score_ids([s.id for s in scores])
         trace_scores: list[TraceScore] = []
         trace_id = source_trace_id(interaction)
@@ -537,27 +523,9 @@ class GetLiveInteraction:
         return LiveInteractionDetail(
             interaction=interaction,
             scores=scores,
-            review=review,
             score_reviews=score_reviews,
             trace_scores=trace_scores,
         )
-
-
-class UpsertLiveReview:
-    def __init__(self, live: LiveInteractionRepository) -> None:
-        self._live = live
-
-    async def execute(self, command: UpsertLiveReviewCommand) -> LiveReview:
-        interaction = await self._live.get_by_id(command.interaction_id)
-        if interaction is None:
-            raise LiveInteractionNotFoundError(command.interaction_id)
-        review = LiveReview.create(
-            command.interaction_id,
-            command.verdict,
-            note=command.note,
-            reviewer=command.reviewer,
-        )
-        return await self._live.upsert_review(review)
 
 
 class UpsertLiveScoreReview:

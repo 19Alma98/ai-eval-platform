@@ -143,38 +143,6 @@ class LiveInteractionScore:
 
 
 @dataclass(frozen=True, slots=True)
-class LiveReview:
-    id: uuid.UUID
-    live_interaction_id: uuid.UUID
-    verdict: str
-    note: str | None
-    reviewer: str | None
-    created_at: datetime
-
-    @classmethod
-    def create(
-        cls,
-        live_interaction_id: uuid.UUID,
-        verdict: str,
-        *,
-        note: str | None = None,
-        reviewer: str | None = None,
-    ) -> LiveReview:
-        v = verdict.strip().lower()
-        if v not in REVIEW_VERDICTS:
-            raise ValueError(f"verdict must be one of: {', '.join(sorted(REVIEW_VERDICTS))}")
-        cleaned_note = note.strip() if note else None
-        return cls(
-            id=uuid.uuid4(),
-            live_interaction_id=live_interaction_id,
-            verdict=v,
-            note=cleaned_note or None,
-            reviewer=reviewer.strip() if reviewer else None,
-            created_at=datetime.now(UTC),
-        )
-
-
-@dataclass(frozen=True, slots=True)
 class LiveScoreReview:
     """Per-score human review: agree/disagree with judge label + optional explanation edit."""
 

@@ -349,15 +349,6 @@ export type LiveInteractionScore = {
   review?: LiveScoreReview | null;
 };
 
-export type LiveReview = {
-  id: string;
-  live_interaction_id: string;
-  verdict: string;
-  note: string | null;
-  reviewer: string | null;
-  created_at: string;
-};
-
 export type JudgeCalibrationBucket = {
   kind: string;
   model: string | null;
@@ -415,7 +406,6 @@ export type LiveInteraction = {
   created_at: string;
   scored_at: string | null;
   scores: LiveInteractionScore[];
-  review: LiveReview | null;
   trace_scores?: TraceScore[];
 };
 

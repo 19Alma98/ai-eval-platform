@@ -57,14 +57,6 @@ Branch `feat/production-trace-scores` (2026-10-14): `aiobs.log_score`, `aiobs.lo
   `source_trace_id` on the list path; nested `@aiobs.trace` captures with `record_documents` from
   threads the traced function starts (context not copied — document).
 
-## Cleanup
-
-- [ ] **Remove interaction-level `LiveReview`.** Superseded by per-score `LiveScoreReview`; kept
-  only "for compatibility", but nothing is shipped yet. Drop the DB model + migration (drops the
-  table), domain, repository, `POST .../live-interactions/{id}/review`, `frontend/lib/api/live-runs.ts`
-  usage, SDK and docs (`02-domain-model.md`, `05-api.md`). Also reword the "Legacy pack view"
-  comment in `frontend/lib/api/metrics-packs.ts` (the code is still used).
-
 ## Performance
 
 Deferred until list latency, DB pool pressure, or large projects make them hurt.

@@ -4,7 +4,6 @@ import type {
   JudgeCalibrationBucket,
   ListLiveInteractionsResponse,
   LiveInteraction,
-  LiveReview,
   LiveScoreReview,
 } from "./types";
 
@@ -39,13 +38,6 @@ export function getLiveJudgeCalibration(projectId: string, since?: string) {
 
 export function getLiveInteraction(id: string) {
   return apiGet<LiveInteraction>(`/api/v1/live-interactions/${id}`);
-}
-
-export function reviewLiveInteraction(
-  id: string,
-  body: { verdict: string; note?: string; reviewer?: string },
-) {
-  return apiPost<LiveReview>(`/api/v1/live-interactions/${id}/review`, body);
 }
 
 export function reviewLiveScore(

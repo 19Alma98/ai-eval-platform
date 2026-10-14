@@ -783,15 +783,6 @@ class LiveInteractionScoreResponse(BaseModel):
     review: LiveScoreReviewResponse | None = None
 
 
-class LiveReviewResponse(BaseModel):
-    id: uuid.UUID
-    live_interaction_id: uuid.UUID
-    verdict: str
-    note: str | None
-    reviewer: str | None
-    created_at: datetime
-
-
 class LiveInteractionResponse(BaseModel):
     id: uuid.UUID
     project_id: uuid.UUID
@@ -807,7 +798,6 @@ class LiveInteractionResponse(BaseModel):
     created_at: datetime
     scored_at: datetime | None
     scores: list[LiveInteractionScoreResponse] = Field(default_factory=list)
-    review: LiveReviewResponse | None = None
     trace_scores: list[TraceScoreResponse] = Field(default_factory=list)
 
 
@@ -820,12 +810,6 @@ class LiveJudgeWarningResponse(BaseModel):
 class ListLiveInteractionsResponse(BaseModel):
     items: list[LiveInteractionResponse]
     judge_warnings: list[LiveJudgeWarningResponse] = Field(default_factory=list)
-
-
-class UpsertLiveReviewRequest(BaseModel):
-    verdict: str = Field(min_length=1, max_length=32)
-    note: str | None = None
-    reviewer: str | None = Field(default=None, max_length=200)
 
 
 class UpsertLiveScoreReviewRequest(BaseModel):

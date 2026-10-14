@@ -13,7 +13,6 @@ from aiobs_server.domain.experiment_output import ExperimentItemOutput
 from aiobs_server.domain.live_interaction import (
     LiveInteraction,
     LiveInteractionScore,
-    LiveReview,
     LiveScoreReview,
 )
 from aiobs_server.domain.live_overview import LiveInRangeResult
@@ -241,10 +240,6 @@ class LiveInteractionRepository(Protocol):
     ) -> dict[str, list[LiveInteractionScore]]: ...
 
     async def get_score(self, score_id: uuid.UUID) -> LiveInteractionScore | None: ...
-
-    async def upsert_review(self, review: LiveReview) -> LiveReview: ...
-
-    async def get_review(self, interaction_id: uuid.UUID) -> LiveReview | None: ...
 
     async def upsert_score_review(self, review: LiveScoreReview) -> LiveScoreReview: ...
 

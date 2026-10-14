@@ -13,7 +13,6 @@ from aiobs_server.api.deps import (
     get_score_live_interaction,
     get_submit_live_interaction,
     get_summarize_live_judge_calibration,
-    get_upsert_live_review,
     get_upsert_live_score_review,
 )
 from aiobs_server.api.routes.trace_scores import trace_score_response
@@ -24,11 +23,9 @@ from aiobs_server.api.schemas import (
     LiveInteractionResponse,
     LiveInteractionScoreResponse,
     LiveJudgeWarningResponse,
-    LiveReviewResponse,
     LiveScoreReviewResponse,
     PromoteLiveInteractionRequest,
     SubmitLiveInteractionRequest,
-    UpsertLiveReviewRequest,
     UpsertLiveScoreReviewRequest,
 )
 from aiobs_server.application.datasets import DatasetNotFoundError
@@ -45,8 +42,6 @@ from aiobs_server.application.live_interactions import (
     ScoreLiveInteraction,
     SubmitLiveInteraction,
     SubmitLiveInteractionCommand,
-    UpsertLiveReview,
-    UpsertLiveReviewCommand,
     UpsertLiveScoreReview,
     UpsertLiveScoreReviewCommand,
     schedule_live_score,
@@ -61,7 +56,6 @@ from aiobs_server.domain.dataset import DatasetItem
 from aiobs_server.domain.live_interaction import (
     LiveInteraction,
     LiveInteractionScore,
-    LiveReview,
     LiveScoreReview,
 )
 from aiobs_server.domain.trace_score import TraceScore
@@ -105,24 +99,10 @@ def _score_response(
     )
 
 
-def _review_response(review: LiveReview) -> LiveReviewResponse:
-    return LiveReviewResponse.model_validate(
-        {
-            "id": review.id,
-            "live_interaction_id": review.live_interaction_id,
-            "verdict": review.verdict,
-            "note": review.note,
-            "reviewer": review.reviewer,
-            "created_at": review.created_at,
-        }
-    )
-
-
 def _interaction_response(
     interaction: LiveInteraction,
     *,
     scores: list[LiveInteractionScore] | None = None,
-    review: LiveReview | None = None,
     score_reviews: dict[uuid.UUID, LiveScoreReview] | None = None,
     trace_scores: list[TraceScore] | None = None,
 ) -> LiveInteractionResponse:
@@ -143,7 +123,6 @@ def _interaction_response(
             "created_at": interaction.created_at,
             "scored_at": interaction.scored_at,
             "scores": [_score_response(s, review=reviews.get(s.id)) for s in (scores or [])],
-            "review": _review_response(review) if review is not None else None,
             "trace_scores": [trace_score_response(t) for t in (trace_scores or [])],
         }
     )
@@ -153,7 +132,6 @@ def _detail_response(detail: LiveInteractionDetail) -> LiveInteractionResponse:
     return _interaction_response(
         detail.interaction,
         scores=detail.scores,
-        review=detail.review,
         score_reviews=detail.score_reviews,
         trace_scores=detail.trace_scores,
     )
@@ -259,11 +237,10 @@ def _list_response(result: ListLiveInteractionsResult) -> ListLiveInteractionsRe
             _interaction_response(
                 interaction,
                 scores=scores,
-                review=review,
                 score_reviews=score_reviews,
                 trace_scores=result.trace_scores.get(interaction.id),
             )
-            for interaction, scores, review, score_reviews in result.items
+            for interaction, scores, score_reviews in result.items
         ],
         judge_warnings=[_judge_warning_response(w) for w in result.judge_warnings],
     )
@@ -304,31 +281,6 @@ async def get_live_interaction(
     except LiveInteractionNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     return _detail_response(detail)
-
-
-@router.post(
-    "/api/v1/live-interactions/{interaction_id}/review",
-    response_model=LiveReviewResponse,
-)
-async def upsert_live_review(
-    interaction_id: uuid.UUID,
-    body: UpsertLiveReviewRequest,
-    use_case: UpsertLiveReview = Depends(get_upsert_live_review),
-) -> LiveReviewResponse:
-    try:
-        review = await use_case.execute(
-            UpsertLiveReviewCommand(
-                interaction_id=interaction_id,
-                verdict=body.verdict,
-                note=body.note,
-                reviewer=body.reviewer,
-            )
-        )
-    except LiveInteractionNotFoundError as exc:
-        raise HTTPException(status_code=404, detail=str(exc)) from exc
-    except ValueError as exc:
-        raise HTTPException(status_code=422, detail=str(exc)) from exc
-    return _review_response(review)
 
 
 @router.post(

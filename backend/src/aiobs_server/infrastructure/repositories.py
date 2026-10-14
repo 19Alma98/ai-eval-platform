@@ -22,7 +22,6 @@ from aiobs_server.domain.live_interaction import (
     DuplicateExternalIdError,
     LiveInteraction,
     LiveInteractionScore,
-    LiveReview,
     LiveScoreReview,
 )
 from aiobs_server.domain.live_overview import LiveInRangeResult, LiveInteractionInRange
@@ -44,7 +43,6 @@ from aiobs_server.infrastructure.models import (
     JudgeClaimCacheModel,
     LiveInteractionModel,
     LiveInteractionScoreModel,
-    LiveReviewModel,
     LiveScoreReviewModel,
     MetricsSetEntryModel,
     MetricsSetModel,
@@ -1106,17 +1104,6 @@ def _live_score_to_domain(row: LiveInteractionScoreModel) -> LiveInteractionScor
     )
 
 
-def _live_review_to_domain(row: LiveReviewModel) -> LiveReview:
-    return LiveReview(
-        id=row.id,
-        live_interaction_id=row.live_interaction_id,
-        verdict=row.verdict,
-        note=row.note,
-        reviewer=row.reviewer,
-        created_at=row.created_at,
-    )
-
-
 def _live_score_review_to_domain(row: LiveScoreReviewModel) -> LiveScoreReview:
     return LiveScoreReview(
         id=row.id,
@@ -1512,41 +1499,6 @@ class SqlAlchemyLiveInteractionRepository:
     async def get_score(self, score_id: uuid.UUID) -> LiveInteractionScore | None:
         row = await self._session.get(LiveInteractionScoreModel, score_id)
         return _live_score_to_domain(row) if row is not None else None
-
-    async def upsert_review(self, review: LiveReview) -> LiveReview:
-        result = await self._session.execute(
-            select(LiveReviewModel).where(
-                LiveReviewModel.live_interaction_id == review.live_interaction_id
-            )
-        )
-        existing = result.scalar_one_or_none()
-        if existing is None:
-            row = LiveReviewModel(
-                id=review.id,
-                live_interaction_id=review.live_interaction_id,
-                verdict=review.verdict,
-                note=review.note,
-                reviewer=review.reviewer,
-                created_at=review.created_at,
-            )
-            self._session.add(row)
-            await self._session.commit()
-            await self._session.refresh(row)
-            return _live_review_to_domain(row)
-        existing.verdict = review.verdict
-        existing.note = review.note
-        existing.reviewer = review.reviewer
-        existing.created_at = review.created_at
-        await self._session.commit()
-        await self._session.refresh(existing)
-        return _live_review_to_domain(existing)
-
-    async def get_review(self, interaction_id: uuid.UUID) -> LiveReview | None:
-        result = await self._session.execute(
-            select(LiveReviewModel).where(LiveReviewModel.live_interaction_id == interaction_id)
-        )
-        row = result.scalar_one_or_none()
-        return _live_review_to_domain(row) if row is not None else None
 
     async def upsert_score_review(self, review: LiveScoreReview) -> LiveScoreReview:
         result = await self._session.execute(

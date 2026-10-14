@@ -15,8 +15,6 @@ from aiobs_server.application.live_interactions import (
     ScoreLiveInteraction,
     SubmitLiveInteraction,
     SubmitLiveInteractionCommand,
-    UpsertLiveReview,
-    UpsertLiveReviewCommand,
     score_is_failed,
 )
 from aiobs_server.application.metrics_sets import EnsureProjectDefaultMetricsSet
@@ -27,7 +25,6 @@ from aiobs_server.domain.live_interaction import (
     DuplicateExternalIdError,
     LiveInteraction,
     LiveInteractionScore,
-    LiveReview,
     LiveScoreReview,
     filter_goldless_entries,
 )
@@ -69,7 +66,6 @@ class InMemoryLiveRepository:
     def __init__(self) -> None:
         self._items: dict[uuid.UUID, LiveInteraction] = {}
         self._scores: dict[uuid.UUID, list[LiveInteractionScore]] = {}
-        self._reviews: dict[uuid.UUID, LiveReview] = {}
         self._score_reviews: dict[uuid.UUID, LiveScoreReview] = {}
 
     async def add(self, interaction: LiveInteraction) -> LiveInteraction:
@@ -149,13 +145,6 @@ class InMemoryLiveRepository:
                 if score.id == score_id:
                     return score
         return None
-
-    async def upsert_review(self, review: LiveReview) -> LiveReview:
-        self._reviews[review.live_interaction_id] = review
-        return review
-
-    async def get_review(self, interaction_id: uuid.UUID) -> LiveReview | None:
-        return self._reviews.get(interaction_id)
 
     async def upsert_score_review(self, review: LiveScoreReview) -> LiveScoreReview:
         self._score_reviews[review.live_interaction_score_id] = review
@@ -370,16 +359,6 @@ async def test_score_goldless_and_review_promote() -> None:
     assert "groundedness" in kinds
     assert "correctness" not in kinds
     assert all(s.label == "PASS" for s in scores if s.kind == "groundedness")
-
-    review_uc = UpsertLiveReview(live)
-    review = await review_uc.execute(
-        UpsertLiveReviewCommand(
-            interaction_id=scored.id,
-            verdict="agree",
-            note="looks good",
-        )
-    )
-    assert review.verdict == "agree"
 
     experiments = InMemoryExperimentRepository()
     runs = InMemoryEvaluationRunRepository()
@@ -828,7 +807,7 @@ async def test_list_judge_warnings_use_unfiltered_per_kind_window() -> None:
     filtered = await ListLiveInteractions(live).execute(project_id, failed_only=True, limit=50)
     # failed_only page is only failures (would inflate a client-side rate).
     assert filtered.items
-    assert all(any(score_is_failed(s) for s in scores) for _, scores, _, _ in filtered.items)
+    assert all(any(score_is_failed(s) for s in scores) for _, scores, _ in filtered.items)
     assert len(filtered.judge_warnings) == 1
     warning = filtered.judge_warnings[0]
     assert warning.kind == "groundedness"

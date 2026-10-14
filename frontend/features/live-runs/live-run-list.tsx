@@ -56,7 +56,7 @@ function ScoreChips({ row }: { row: LiveInteraction }) {
 
 function reviewSummary(row: LiveInteraction): string | null {
   const reviewed = row.scores.filter((s) => s.review);
-  if (reviewed.length === 0) return row.review ? "Reviewed" : null;
+  if (reviewed.length === 0) return null;
   const agrees = reviewed.filter((s) => s.review?.verdict === "agree").length;
   return agrees === reviewed.length
     ? "Judge confirmed"

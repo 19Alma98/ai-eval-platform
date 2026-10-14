@@ -283,7 +283,6 @@ POST /projects/{project_id}/live-interactions
 GET /projects/{project_id}/live-interactions
 GET /projects/{project_id}/live-interactions/calibration
 GET /live-interactions/{interaction_id}
-POST /live-interactions/{interaction_id}/review
 POST /live-interaction-scores/{score_id}/review
 POST /live-interactions/{interaction_id}/promote
 POST /live-interactions/{interaction_id}/rescore
@@ -294,8 +293,6 @@ POST /live-interactions/{interaction_id}/rescore
 List query: `judge_status`, `search`, `failed_only`, `limit`. Response shape: `{ items, judge_warnings }`. Each score may include nested `review` (per-score human review). `judge_warnings` is computed server-side over the last 50 live scores per kind (unfiltered by list query params); entries use the same `warnings` / `warning_detail` contract as offline runs when `judge_output_invalid` exceeds 20%.
 
 `GET .../calibration` — judge/human agreement by `kind` × judge `model` (also `method`, `prompt_version`). Optional query `since` (ISO datetime; default last 90 days). Rows include `n_reviewed`, `n_agree`, `n_disagree`, `agreement_rate`, `n_explanation_edits`, `explanation_edit_rate`. Excludes score labels `ERROR` / `SKIPPED`.
-
-`POST .../live-interactions/{id}/review` body: `verdict` (`agree`|`disagree`), optional `note`, `reviewer` (legacy interaction-level review; kept for compatibility).
 
 `POST .../live-interaction-scores/{score_id}/review` body: `verdict` (`agree`|`disagree`), optional `corrected_explanation`, `note`, `reviewer`. Confirms or rejects that score’s PASS/FAIL; optional corrected explanation leaves the judge `explanation` unchanged. Rescore deletes score reviews (cascade).
 

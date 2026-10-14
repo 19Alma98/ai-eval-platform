@@ -19,7 +19,6 @@ from aiobs_server.domain.dataset import Dataset, DatasetItem
 from aiobs_server.domain.live_interaction import (
     LiveInteraction,
     LiveInteractionScore,
-    LiveReview,
     LiveScoreReview,
 )
 from aiobs_server.domain.project import Project
@@ -64,7 +63,6 @@ class InMemoryLiveRepository:
     def __init__(self) -> None:
         self._items: dict[uuid.UUID, LiveInteraction] = {}
         self._scores: dict[uuid.UUID, list[LiveInteractionScore]] = {}
-        self._reviews: dict[uuid.UUID, LiveReview] = {}
         self._score_reviews: dict[uuid.UUID, LiveScoreReview] = {}
 
     async def add(self, interaction: LiveInteraction) -> LiveInteraction:
@@ -147,13 +145,6 @@ class InMemoryLiveRepository:
                 if score.id == score_id:
                     return score
         return None
-
-    async def upsert_review(self, review: LiveReview) -> LiveReview:
-        self._reviews[review.live_interaction_id] = review
-        return review
-
-    async def get_review(self, interaction_id: uuid.UUID) -> LiveReview | None:
-        return self._reviews.get(interaction_id)
 
     async def upsert_score_review(self, review: LiveScoreReview) -> LiveScoreReview:
         self._score_reviews[review.live_interaction_score_id] = review
@@ -290,13 +281,6 @@ async def test_submit_rescore_review_promote(client: AsyncClient) -> None:
     assert scored_body["judge_status"] == "scored"
     assert any(s["kind"] == "groundedness" for s in scored_body["scores"])
     assert "metadata" in scored_body["scores"][0]
-
-    review = await client.post(
-        f"/api/v1/live-interactions/{interaction_id}/review",
-        json={"verdict": "disagree", "note": "needs work"},
-    )
-    assert review.status_code == 200
-    assert review.json()["verdict"] == "disagree"
 
     missing_gold = await client.post(
         f"/api/v1/live-interactions/{interaction_id}/promote",

@@ -258,7 +258,6 @@ Fields:
 Related:
 - **LiveInteractionScore** — per gold-less metric (`groundedness`, `answer_relevance`) outcome
 - **LiveScoreReview** — per-score human verdict `agree` | `disagree` with the judge label, optional `corrected_explanation` / note (source for judge calibration)
-- **LiveReview** — legacy interaction-level `agree` | `disagree` + optional note (kept for compatibility)
 
 Promote creates a DatasetItem on a chosen dataset (does not delete the live interaction).
 
@@ -268,7 +267,7 @@ Fields: `id`, `live_interaction_score_id` (unique), `verdict`, `corrected_explan
 
 ## Review
 
-Human judgement attached to a trace/span/evaluation result (generic Phase 5 model; LiveReview covers the Live Run MVP).
+Human judgement attached to a trace/span/evaluation result (generic Phase 5 model; Live Run MVP uses LiveScoreReview).
 
 Fields:
 - id
