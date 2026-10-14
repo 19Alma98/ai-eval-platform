@@ -57,12 +57,6 @@ Branch `feat/production-trace-scores` (2026-10-14): `aiobs.log_score`, `aiobs.lo
   `source_trace_id` on the list path; nested `@aiobs.trace` captures with `record_documents` from
   threads the traced function starts (context not copied — document).
 
-## Tooling
-
-- [ ] **UI packaging tests fail locally** without a packaged UI
-  (`test_sqlite_smoke.py::test_sqlite_ui_index_served`, `test_ui_resolve.py::test_ui_root_detects_packaged_index`).
-  Skip them when the UI is not built.
-
 ## Cleanup
 
 - [ ] **Remove interaction-level `LiveReview`.** Superseded by per-score `LiveScoreReview`; kept

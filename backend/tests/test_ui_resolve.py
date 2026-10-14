@@ -5,8 +5,10 @@ from httpx2 import ASGITransport, AsyncClient
 
 from aiobs_server.main import create_app
 from aiobs_server.ui import resolve_ui_file, ui_root
+from support.packaged_ui import requires_packaged_ui
 
 
+@requires_packaged_ui
 def test_ui_root_detects_packaged_index() -> None:
     root = ui_root()
     assert root is not None

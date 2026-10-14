@@ -11,6 +11,7 @@ from httpx2 import ASGITransport, AsyncClient
 from aiobs_server.config import get_settings
 from aiobs_server.infrastructure.db import bootstrap_schema, dispose_db, init_db
 from aiobs_server.main import create_app
+from support.packaged_ui import requires_packaged_ui
 
 
 @pytest.fixture
@@ -62,6 +63,7 @@ async def test_sqlite_health_and_project_create(sqlite_client: AsyncClient) -> N
     assert any(p["slug"] == "sqlite-demo" for p in listed.json())
 
 
+@requires_packaged_ui
 @pytest.mark.asyncio
 async def test_sqlite_ui_index_served(sqlite_client: AsyncClient) -> None:
     response = await sqlite_client.get("/")
