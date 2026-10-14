@@ -172,9 +172,7 @@ def test_oversized_sample_skips_metrics(
     assert any("sample is" in r.message and "limit 64" in r.message for r in caplog.records)
 
 
-def test_uncopyable_sample_skips_metrics(
-    sent: Recorder, caplog: pytest.LogCaptureFixture
-) -> None:
+def test_uncopyable_sample_skips_metrics(sent: Recorder, caplog: pytest.LogCaptureFixture) -> None:
     class Bad:
         def __deepcopy__(self, memo: dict[int, Any]) -> Any:
             raise RuntimeError("no deepcopy")

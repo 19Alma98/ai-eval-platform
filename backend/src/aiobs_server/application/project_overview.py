@@ -269,9 +269,7 @@ class GetProjectOverview:
     ) -> dict[uuid.UUID, list[TraceScore]]:
         if self._trace_scores is None:
             return {}
-        trace_ids = sorted(
-            {tid for row in rows if (tid := source_trace_id(row.interaction))}
-        )
+        trace_ids = sorted({tid for row in rows if (tid := source_trace_id(row.interaction))})
         if not trace_ids:
             return {}
         by_trace = await self._trace_scores.list_by_trace_ids(project_id, trace_ids)
@@ -307,9 +305,7 @@ class GetProjectOverview:
         live_range = await self._live.list_in_range(project_id, since=since, until=until)
         if live_range.truncated:
             warnings.append("live_truncated")
-        trace_by_interaction = await self._trace_scores_by_interaction(
-            project_id, live_range.items
-        )
+        trace_by_interaction = await self._trace_scores_by_interaction(project_id, live_range.items)
         live = _aggregate_live(
             live_range.items,
             since=since,

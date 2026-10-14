@@ -80,9 +80,7 @@ async def test_failed_only_pages_past_recent_passing_to_find_trace_fail() -> Non
     # 120 rows; only the 3 oldest fail via a joined trace score (no judge scores).
     for i in range(120):
         tid = f"{i:032x}"
-        interaction = await _interaction(
-            live, f"q{i}", tid, created_at=base + timedelta(minutes=i)
-        )
+        interaction = await _interaction(live, f"q{i}", tid, created_at=base + timedelta(minutes=i))
         if i < 3:
             await scores.upsert_many(
                 [TraceScore.create(PROJECT, tid, "cited", value=0.0, label="FAIL")]

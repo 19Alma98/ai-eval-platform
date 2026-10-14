@@ -188,9 +188,7 @@ def resolve_workers() -> int:
     try:
         return parse_workers(int(raw, 10))
     except ValueError:
-        logger.warning(
-            "aiobs: invalid AIOBS_METRICS_WORKERS=%r; using %d", raw, MAX_WORKERS
-        )
+        logger.warning("aiobs: invalid AIOBS_METRICS_WORKERS=%r; using %d", raw, MAX_WORKERS)
         return MAX_WORKERS
 
 
