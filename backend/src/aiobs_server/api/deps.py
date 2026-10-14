@@ -13,7 +13,11 @@ from aiobs_server.application.app_configs import (
     SetAppConfigAlias,
 )
 from aiobs_server.application.client_results import SubmitClientResults
-from aiobs_server.application.compare import CompareExperiments, SummarizeExperiment
+from aiobs_server.application.compare import (
+    CompareExperiments,
+    SummarizeExperiment,
+    SummarizeExperiments,
+)
 from aiobs_server.application.compare_items import CompareExperimentItems
 from aiobs_server.application.datasets import (
     AddDatasetItem,
@@ -70,6 +74,7 @@ from aiobs_server.application.metrics_sets import (
     ResolveMetricsSetForScore,
     VersionMetricsSet,
 )
+from aiobs_server.application.monitoring import GetProductionMonitoring
 from aiobs_server.application.project_overview import GetProjectOverview
 from aiobs_server.application.projects import (
     CreateProject,
@@ -84,7 +89,13 @@ from aiobs_server.application.trace_scores import (
     LogTraceScores,
     SummarizeTraceScores,
 )
-from aiobs_server.application.traces import GetTrace, IngestNormalizedTraces, ResolveProject
+from aiobs_server.application.traces import (
+    GetTrace,
+    IngestNormalizedTraces,
+    ListTraces,
+    ResolveProject,
+    ResolveTraceLiveLinks,
+)
 from aiobs_server.config import Settings, get_settings
 from aiobs_server.evaluation.runner import EvaluationRunner
 from aiobs_server.infrastructure.db import get_session
@@ -736,3 +747,34 @@ def get_promote_live_interaction(
     add_item: AddDatasetItem = Depends(get_add_dataset_item),
 ) -> PromoteLiveInteraction:
     return PromoteLiveInteraction(live, datasets, add_item)
+
+
+def get_resolve_trace_live_links(
+    live: SqlAlchemyLiveInteractionRepository = Depends(get_live_interaction_repository),
+) -> ResolveTraceLiveLinks:
+    return ResolveTraceLiveLinks(live)
+
+
+def get_list_traces(
+    repository: SqlAlchemyTraceRepository = Depends(get_trace_repository),
+    projects: SqlAlchemyProjectRepository = Depends(get_project_repository),
+    trace_scores: SqlAlchemyTraceScoreRepository = Depends(get_trace_score_repository),
+    live_links: ResolveTraceLiveLinks = Depends(get_resolve_trace_live_links),
+) -> ListTraces:
+    return ListTraces(repository, projects, trace_scores, live_links)
+
+
+def get_production_monitoring(
+    projects: SqlAlchemyProjectRepository = Depends(get_project_repository),
+    traces: SqlAlchemyTraceRepository = Depends(get_trace_repository),
+    live: SqlAlchemyLiveInteractionRepository = Depends(get_live_interaction_repository),
+    trace_scores: SqlAlchemyTraceScoreRepository = Depends(get_trace_score_repository),
+) -> GetProductionMonitoring:
+    return GetProductionMonitoring(projects, traces, live, trace_scores)
+
+
+def get_summarize_experiments(
+    experiments: SqlAlchemyExperimentRepository = Depends(get_experiment_repository),
+    summarize: SummarizeExperiment = Depends(get_summarize_experiment),
+) -> SummarizeExperiments:
+    return SummarizeExperiments(experiments, summarize)

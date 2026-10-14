@@ -9,6 +9,7 @@ import pytest
 from httpx2 import ASGITransport, AsyncClient
 
 from aiobs_server.api.deps import (
+    get_live_interaction_repository,
     get_project_repository,
     get_trace_repository,
     get_trace_score_repository,
@@ -17,6 +18,7 @@ from aiobs_server.domain.project import Project
 from aiobs_server.domain.trace import Trace
 from aiobs_server.main import create_app
 from tests.support.repositories import InMemoryTraceScoreRepository
+from tests.test_api_live_interactions import InMemoryLiveRepository
 
 
 class InMemoryProjectRepository:
@@ -61,6 +63,7 @@ class InMemoryTraceRepository:
         project_id: uuid.UUID,
         *,
         status: str | None = None,
+        search: str | None = None,
         start_time: datetime | None = None,
         end_time: datetime | None = None,
         cursor_start_time: datetime | None = None,
@@ -70,6 +73,8 @@ class InMemoryTraceRepository:
         items = [t for (pid, _), t in self._traces.items() if pid == project_id]
         if status is not None:
             items = [t for t in items if t.status == status]
+        if search:
+            items = [t for t in items if search.lower() in f"{t.name} {t.trace_id}".lower()]
         if start_time is not None:
             items = [t for t in items if t.start_time >= start_time]
         if end_time is not None:
@@ -118,6 +123,8 @@ async def client() -> AsyncIterator[AsyncClient]:
     app.dependency_overrides[get_trace_repository] = lambda: traces
     trace_scores = InMemoryTraceScoreRepository()
     app.dependency_overrides[get_trace_score_repository] = lambda: trace_scores
+    live = InMemoryLiveRepository()
+    app.dependency_overrides[get_live_interaction_repository] = lambda: live
 
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as ac:
@@ -186,7 +193,8 @@ async def test_otlp_json_ingest_and_get(client: AsyncClient) -> None:
     assert "input.value" not in detail_body["spans"][0]["attributes"]
 
     listed = await client.get(f"/api/v1/projects/{project_id}/traces")
-    assert listed.status_code == 404
+    assert listed.status_code == 200
+    assert [t["trace_id"] for t in listed.json()["items"]] == ["aa" * 16]
 
 
 @pytest.mark.asyncio
@@ -238,4 +246,4 @@ async def test_rest_create_trace_rejected(client: AsyncClient) -> None:
             ],
         },
     )
-    assert create.status_code == 404
+    assert create.status_code == 405

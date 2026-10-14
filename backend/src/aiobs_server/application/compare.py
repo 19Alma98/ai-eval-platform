@@ -178,6 +178,33 @@ class SummarizeExperiment:
         )
 
 
+MAX_SUMMARIZED_EXPERIMENTS = 100
+
+
+class SummarizeExperiments:
+    """Summaries for many experiments of a project (the N-way comparison table)."""
+
+    def __init__(self, experiments: ExperimentRepository, summarize: SummarizeExperiment) -> None:
+        self._experiments = experiments
+        self._summarize = summarize
+
+    async def execute(
+        self, project_id: uuid.UUID, *, experiment_ids: list[uuid.UUID] | None = None
+    ) -> list[ExperimentSummary]:
+        experiments = await self._experiments.list_by_project(project_id)
+        if experiment_ids:
+            wanted = set(experiment_ids)
+            experiments = [e for e in experiments if e.id in wanted]
+        out: list[ExperimentSummary] = []
+        for experiment in experiments[:MAX_SUMMARIZED_EXPERIMENTS]:
+            try:
+                out.append(await self._summarize.execute(experiment.id))
+            except InvalidCompareSelectionError:
+                # Ambiguous runs: show the experiment without scores rather than fail the table.
+                out.append(ExperimentSummary(experiment_id=experiment.id, evaluators=[]))
+        return out
+
+
 class CompareExperiments:
     def __init__(
         self,

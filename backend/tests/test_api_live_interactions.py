@@ -84,6 +84,16 @@ class InMemoryLiveRepository:
                 return item
         return None
 
+    async def ids_by_external_ids(
+        self, project_id: uuid.UUID, external_ids: list[str]
+    ) -> dict[str, uuid.UUID]:
+        wanted = set(external_ids)
+        return {
+            item.external_id: item.id
+            for item in self._items.values()
+            if item.project_id == project_id and item.external_id in wanted
+        }
+
     async def list_by_judge_statuses(
         self,
         statuses: frozenset[str] | set[str],

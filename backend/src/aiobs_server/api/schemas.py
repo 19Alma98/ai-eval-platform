@@ -151,6 +151,81 @@ class TraceDetailResponse(BaseModel):
     session_id: str | None = None
     spans: list[SpanResponse]
     scores: list[TraceScoreResponse] = Field(default_factory=list)
+    live_interaction_id: uuid.UUID | None = None
+
+
+class TraceSummaryResponse(BaseModel):
+    id: uuid.UUID
+    trace_id: str
+    name: str
+    status: str
+    start_time: datetime
+    end_time: datetime | None
+    duration_ms: float | None
+    span_count: int
+    environment: str | None = None
+    user_id: str | None = None
+    session_id: str | None = None
+    input_preview: str | None = None
+    output_preview: str | None = None
+    scores: list[TraceScoreResponse] = Field(default_factory=list)
+    live_interaction_id: uuid.UUID | None = None
+
+
+class TraceListResponse(BaseModel):
+    items: list[TraceSummaryResponse]
+    next_cursor: str | None = None
+
+
+class LatencyPercentilesResponse(BaseModel):
+    p50_ms: float | None
+    p90_ms: float | None
+    p99_ms: float | None
+
+
+class TrafficBucketResponse(BaseModel):
+    bucket_start: datetime
+    n_traces: int
+    n_errors: int
+    latency: LatencyPercentilesResponse
+    total_tokens: float
+    cost_usd: float
+
+
+class MetricBucketResponse(BaseModel):
+    bucket_start: datetime
+    n: int
+    mean: float | None
+    fail_rate: float | None
+
+
+class MetricMonitorResponse(BaseModel):
+    name: str
+    source: str
+    n: int
+    mean: float | None
+    fail_rate: float | None
+    threshold: float | None
+    histogram_edges: list[float]
+    histogram_counts: list[int]
+    series: list[MetricBucketResponse]
+
+
+class ProductionMonitoringResponse(BaseModel):
+    since: datetime
+    until: datetime
+    bucket_seconds: int
+    n_traces: int
+    n_errors: int
+    latency: LatencyPercentilesResponse
+    prompt_tokens: float
+    completion_tokens: float
+    total_tokens: float
+    cost_usd: float
+    traces_truncated: bool
+    n_needs_review: int
+    traffic: list[TrafficBucketResponse]
+    metrics: list[MetricMonitorResponse]
 
 
 class CreateDatasetRequest(BaseModel):

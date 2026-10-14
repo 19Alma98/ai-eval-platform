@@ -22,10 +22,10 @@ async def test_spa_fallback_does_not_405_missing_api_post() -> None:
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as client:
         missing_get = await client.get(
-            "/api/v1/projects/00000000-0000-0000-0000-000000000001/traces"
+            "/api/v1/projects/00000000-0000-0000-0000-000000000001/no-such-route"
         )
         missing_post = await client.post(
-            "/api/v1/projects/00000000-0000-0000-0000-000000000001/traces",
+            "/api/v1/projects/00000000-0000-0000-0000-000000000001/no-such-route",
             json={},
         )
     assert missing_get.status_code == 404
@@ -76,3 +76,13 @@ def test_resolve_dynamic_next_tree_files(tmp_path: Path) -> None:
         )
         == compare_tree.resolve()
     )
+
+
+def test_resolve_dynamic_trace_path(tmp_path: Path) -> None:
+    root = tmp_path / "ui"
+    target = root / "traces" / "_" / "index.html"
+    target.parent.mkdir(parents=True)
+    target.write_text("<html>trace</html>", encoding="utf-8")
+    (root / "index.html").write_text("<html>home</html>", encoding="utf-8")
+
+    assert resolve_ui_file(root, "traces/" + "ab" * 16) == target.resolve()
