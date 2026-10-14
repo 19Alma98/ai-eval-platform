@@ -1216,7 +1216,7 @@ class SqlAlchemyTraceScoreRepository:
                     "created_at": s.created_at,
                     "updated_at": now,
                 }
-                for s in latest.values()
+                for _, s in sorted(latest.items())  # stable lock order avoids deadlocks
             ]
         )
         stmt = stmt.on_conflict_do_update(

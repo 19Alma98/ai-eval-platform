@@ -332,11 +332,11 @@ Item fields:
 | `explanation` | optional; up to 4000 characters |
 | `source` | `sdk` (default), `human` or `judge` |
 | `author` | optional; up to 200 characters; part of the upsert key (missing = empty) |
-| `metadata` | optional object |
+| `metadata` | optional object; at most 16 KB serialized (compact JSON, UTF-8), else 422 |
 
 The server computes the stored label with the same rule as experiment scores (`item_verdict`): in order: an explicit `ERROR`/`SKIPPED`/`FAIL` label wins; a value below `threshold` is `FAIL`; an explicit `PASS` is `PASS`; no value gives `null`; with a `threshold` and a value not below it the result is `PASS` (even value 0 with threshold 0); with no `threshold`, value 0 is `FAIL` and anything else `PASS`. A thumbs-down (`value: 0`, no threshold) is therefore `FAIL`.
 
-The batch is all-or-nothing: it is rejected with 422 when any item is invalid (bad trace id, empty name, unknown source or label, non-numeric or non-finite value). Duplicate keys in one batch: the last one wins. Unknown project returns 404.
+The batch is all-or-nothing: it is rejected with 422 when any item is invalid (bad trace id, empty name, unknown source or label, non-numeric or non-finite value). Duplicate keys in one batch: the last one wins. A request body over 1 MiB (`TRACE_SCORES_MAX_BODY_BYTES`) is rejected with 413. Unknown project returns 404.
 
 ### `GET /api/v1/projects/{project_id}/trace-scores/summary?since=&until=`
 

@@ -1,15 +1,25 @@
 from __future__ import annotations
 
 import uuid
+from collections.abc import Callable, Coroutine
 from datetime import UTC, datetime, timedelta
+from typing import Any, cast
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
+from fastapi.responses import JSONResponse
+from fastapi.routing import APIRoute
 
-from aiobs_server.api.deps import get_log_trace_scores, get_summarize_trace_scores
+from aiobs_server.api.deps import (
+    get_app_settings,
+    get_log_trace_scores,
+    get_summarize_trace_scores,
+)
 from aiobs_server.api.schemas import (
     LogTraceScoresRequest,
     LogTraceScoresResponse,
+    TraceScoreLabel,
     TraceScoreResponse,
+    TraceScoreSource,
     TraceScoreSummaryResponse,
     TraceScoreSummaryRowResponse,
 )
@@ -21,7 +31,35 @@ from aiobs_server.application.trace_scores import (
 )
 from aiobs_server.domain.trace_score import TraceScore
 
-router = APIRouter(prefix="/api/v1/projects/{project_id}/trace-scores", tags=["trace-scores"])
+
+class BodyLimitedRoute(APIRoute):
+    """Answer 413 before pydantic parses a body over ``trace_scores_max_body_bytes``."""
+
+    def get_route_handler(self) -> Callable[[Request], Coroutine[Any, Any, Response]]:
+        original = super().get_route_handler()
+
+        async def handler(request: Request) -> Response:
+            provider = request.app.dependency_overrides.get(get_app_settings, get_app_settings)
+            limit = provider().trace_scores_max_body_bytes
+            declared = request.headers.get("content-length", "")
+            too_large = declared.isdigit() and int(declared) > limit
+            if not too_large:
+                too_large = len(await request.body()) > limit
+            if too_large:
+                return JSONResponse(
+                    status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+                    content={"detail": "Trace score payload too large"},
+                )
+            return await original(request)
+
+        return handler
+
+
+router = APIRouter(
+    prefix="/api/v1/projects/{project_id}/trace-scores",
+    tags=["trace-scores"],
+    route_class=BodyLimitedRoute,
+)
 
 DEFAULT_SUMMARY_WINDOW = timedelta(hours=24)
 
@@ -32,10 +70,10 @@ def trace_score_response(score: TraceScore) -> TraceScoreResponse:
         trace_id=score.trace_id,
         name=score.name,
         value=score.value,
-        label=score.label,
+        label=cast(TraceScoreLabel | None, score.label),
         explanation=score.explanation,
         threshold=score.threshold,
-        source=score.source,
+        source=cast(TraceScoreSource, score.source),
         author=score.author,
         metadata=dict(score.metadata),
         created_at=score.created_at,

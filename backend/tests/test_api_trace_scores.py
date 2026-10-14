@@ -255,3 +255,26 @@ async def test_live_list_and_detail_include_trace_scores(ctx: Ctx) -> None:
     detail = await ctx.client.get(f"/api/v1/live-interactions/{interaction.id}")
     assert detail.status_code == 200, detail.text
     assert detail.json()["trace_scores"][0]["name"] == "user_feedback"
+
+
+async def test_oversized_metadata_is_422(ctx: Ctx) -> None:
+    pid = await _project(ctx.client)
+    big = {"blob": "x" * 17_000}
+    resp = await _log(
+        ctx.client, pid, [{"trace_id": TID, "name": "m", "value": 1, "metadata": big}]
+    )
+    assert resp.status_code == 422
+    ok = await _log(
+        ctx.client, pid, [{"trace_id": TID, "name": "m", "value": 1, "metadata": {"a": "x" * 1000}}]
+    )
+    assert ok.status_code == 202
+
+
+async def test_oversized_body_is_413(ctx: Ctx) -> None:
+    pid = await _project(ctx.client)
+    scores = [
+        {"trace_id": TID, "name": f"m{i}", "value": 1, "metadata": {"b": "x" * 10_000}}
+        for i in range(120)
+    ]
+    resp = await _log(ctx.client, pid, scores)
+    assert resp.status_code == 413

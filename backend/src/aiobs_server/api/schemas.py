@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import uuid
 from datetime import datetime
 from typing import Any, Literal, Self
@@ -14,7 +15,7 @@ from pydantic import (
     model_validator,
 )
 
-from aiobs_server.domain.trace_score import MAX_TRACE_SCORE_BATCH
+from aiobs_server.domain.trace_score import MAX_TRACE_SCORE_BATCH, MAX_TRACE_SCORE_METADATA_BYTES
 from aiobs_server.regression.policy import META_KEYS
 
 _LLM_JUDGE_KINDS = frozenset(
@@ -86,6 +87,16 @@ class TraceScoreItemRequest(BaseModel):
     def _upper_label(cls, value: Any) -> Any:
         return value.strip().upper() if isinstance(value, str) else value
 
+    @field_validator("metadata")
+    @classmethod
+    def _bounded_metadata(cls, value: dict[str, Any]) -> dict[str, Any]:
+        size = len(json.dumps(value, separators=(",", ":"), ensure_ascii=False).encode("utf-8"))
+        if size > MAX_TRACE_SCORE_METADATA_BYTES:
+            raise ValueError(
+                f"metadata must be at most {MAX_TRACE_SCORE_METADATA_BYTES} bytes serialized"
+            )
+        return value
+
 
 class LogTraceScoresRequest(BaseModel):
     scores: list[TraceScoreItemRequest] = Field(min_length=1, max_length=MAX_TRACE_SCORE_BATCH)
@@ -100,10 +111,10 @@ class TraceScoreResponse(BaseModel):
     trace_id: str
     name: str
     value: float | None
-    label: str | None
+    label: TraceScoreLabel | None
     explanation: str | None
     threshold: float | None
-    source: str
+    source: TraceScoreSource
     author: str | None
     metadata: dict[str, Any]
     created_at: datetime

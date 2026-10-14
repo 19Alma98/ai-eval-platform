@@ -17,9 +17,9 @@ from typing import Any
 TRACE_ID_PATTERN = re.compile(r"[0-9a-f]{32}")
 TRACE_SCORE_SOURCES = frozenset({"sdk", "human", "judge"})
 TRACE_SCORE_LABELS = frozenset({"PASS", "FAIL", "ERROR", "SKIPPED"})
-FEEDBACK_SCORE_NAME = "user_feedback"
 MAX_TRACE_SCORE_BATCH = 500
 MAX_NAME_LENGTH = 200
+MAX_TRACE_SCORE_METADATA_BYTES = 16_384
 
 
 def normalize_trace_id(value: str) -> str:
@@ -134,7 +134,10 @@ def trace_score_is_failed(score: TraceScore) -> bool:
 
 
 def summarize_trace_scores(scores: Iterable[TraceScore]) -> list[TraceScoreSummaryRow]:
-    """Per (name, source): count, mean value, pass rate over PASS/FAIL labels only."""
+    """Per (name, source): count, mean value, pass rate over PASS/FAIL labels only.
+
+    Reference implementation used by the in-memory repository.
+    """
     groups: dict[tuple[str, str], list[TraceScore]] = {}
     for score in scores:
         groups.setdefault((score.name, score.source), []).append(score)
