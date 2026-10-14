@@ -8,100 +8,6 @@ resolution-markers = [
 ]
 
 [[package]]
-name = "aiobs-eval"
-source = { editable = "../sdk" }
-dependencies = [
-    { name = "httpx2" },
-    { name = "opentelemetry-api" },
-    { name = "opentelemetry-exporter-otlp-proto-http" },
-    { name = "opentelemetry-sdk" },
-    { name = "pydantic" },
-]
-
-[package.metadata]
-requires-dist = [
-    { name = "aiobs-eval-server", marker = "extra == 'ui'", editable = "." },
-    { name = "httpx2", specifier = ">=2.13.0" },
-    { name = "mypy", marker = "extra == 'dev'", specifier = ">=1.13.0" },
-    { name = "openinference-instrumentation-anthropic", marker = "extra == 'ai'", specifier = ">=0.1.0" },
-    { name = "openinference-instrumentation-anthropic", marker = "extra == 'anthropic'", specifier = ">=0.1.0" },
-    { name = "openinference-instrumentation-bedrock", marker = "extra == 'ai'", specifier = ">=0.1.0" },
-    { name = "openinference-instrumentation-bedrock", marker = "extra == 'bedrock'", specifier = ">=0.1.0" },
-    { name = "openinference-instrumentation-langchain", marker = "extra == 'ai'", specifier = ">=0.1.0" },
-    { name = "openinference-instrumentation-langchain", marker = "extra == 'langchain'", specifier = ">=0.1.0" },
-    { name = "openinference-instrumentation-llama-index", marker = "extra == 'ai'", specifier = ">=0.1.0" },
-    { name = "openinference-instrumentation-llama-index", marker = "extra == 'llama-index'", specifier = ">=0.1.0" },
-    { name = "openinference-instrumentation-openai", marker = "extra == 'ai'", specifier = ">=0.1.0" },
-    { name = "openinference-instrumentation-openai", marker = "extra == 'openai'", specifier = ">=0.1.0" },
-    { name = "opentelemetry-api", specifier = ">=1.28.0" },
-    { name = "opentelemetry-exporter-otlp-proto-http", specifier = ">=1.28.0" },
-    { name = "opentelemetry-sdk", specifier = ">=1.28.0" },
-    { name = "pydantic", specifier = ">=2.10.0" },
-    { name = "pytest", marker = "extra == 'dev'", specifier = ">=8.3.0" },
-    { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.8.0" },
-]
-provides-extras = ["ai", "anthropic", "bedrock", "dev", "langchain", "llama-index", "openai", "ui"]
-
-[[package]]
-name = "aiobs-eval-server"
-source = { editable = "." }
-dependencies = [
-    { name = "aiobs-eval" },
-    { name = "aiosqlite" },
-    { name = "alembic" },
-    { name = "asyncpg" },
-    { name = "fastapi" },
-    { name = "httpx2" },
-    { name = "jsonschema" },
-    { name = "litellm" },
-    { name = "opentelemetry-proto" },
-    { name = "protobuf" },
-    { name = "pydantic" },
-    { name = "pydantic-settings" },
-    { name = "python-multipart" },
-    { name = "pyyaml" },
-    { name = "rich" },
-    { name = "sqlalchemy", extra = ["asyncio"] },
-    { name = "typer" },
-    { name = "uvicorn", extra = ["standard"] },
-]
-
-[package.optional-dependencies]
-dev = [
-    { name = "mypy" },
-    { name = "pytest" },
-    { name = "pytest-asyncio" },
-    { name = "ruff" },
-]
-
-[package.metadata]
-requires-dist = [
-    { name = "aiobs-eval", editable = "../sdk" },
-    { name = "aiosqlite", specifier = ">=0.20.0" },
-    { name = "alembic", specifier = ">=1.14.0" },
-    { name = "asyncpg", specifier = ">=0.30.0" },
-    { name = "fastapi", specifier = ">=0.115.0" },
-    { name = "httpx2", specifier = ">=2.13.0" },
-    { name = "jsonschema", specifier = ">=4.23.0" },
-    { name = "litellm", specifier = ">=1.55.0" },
-    { name = "mypy", marker = "extra == 'dev'", specifier = ">=1.13.0" },
-    { name = "opentelemetry-proto", specifier = ">=1.28.0" },
-    { name = "protobuf", specifier = ">=5.0.0" },
-    { name = "pydantic", specifier = ">=2.10.0" },
-    { name = "pydantic-settings", specifier = ">=2.6.0" },
-    { name = "pytest", marker = "extra == 'dev'", specifier = ">=8.3.0" },
-    { name = "pytest-asyncio", marker = "extra == 'dev'", specifier = ">=0.24.0" },
-    { name = "python-multipart", specifier = ">=0.0.9" },
-    { name = "pyyaml", specifier = ">=6.0.2" },
-    { name = "rich", specifier = ">=13.9.0" },
-    { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.8.0" },
-    { name = "sqlalchemy", extras = ["asyncio"], specifier = ">=2.0.36" },
-    { name = "typer", specifier = ">=0.15.0" },
-    { name = "uvicorn", extras = ["standard"], specifier = ">=0.32.0" },
-]
-provides-extras = ["dev"]
-
-[[package]]
 name = "aiohappyeyeballs"
 version = "2.7.1"
 source = { registry = "https://pypi.org/simple" }
@@ -1641,6 +1547,100 @@ sdist = { url = "https://files.pythonhosted.org/packages/50/9a/8c75e8c8a5b407a05
 wheels = [
     { url = "https://files.pythonhosted.org/packages/64/a8/bb76c7356de8ad57f59d5ff993d434df0607f07f08bcc9c9a5c275e399c0/openai-2.54.0-py3-none-any.whl", hash = "sha256:89089789197ccdb87f173a03145ed1598d00795220c93e96cf712b1cbf5e5f2b", size = 1660351, upload-time = "2026-08-11T18:46:56.684Z" },
 ]
+
+[[package]]
+name = "opengrade-ai"
+source = { editable = "../sdk" }
+dependencies = [
+    { name = "httpx2" },
+    { name = "opentelemetry-api" },
+    { name = "opentelemetry-exporter-otlp-proto-http" },
+    { name = "opentelemetry-sdk" },
+    { name = "pydantic" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "httpx2", specifier = ">=2.13.0" },
+    { name = "mypy", marker = "extra == 'dev'", specifier = ">=1.13.0" },
+    { name = "opengrade-ai-server", marker = "extra == 'ui'", editable = "." },
+    { name = "openinference-instrumentation-anthropic", marker = "extra == 'ai'", specifier = ">=0.1.0" },
+    { name = "openinference-instrumentation-anthropic", marker = "extra == 'anthropic'", specifier = ">=0.1.0" },
+    { name = "openinference-instrumentation-bedrock", marker = "extra == 'ai'", specifier = ">=0.1.0" },
+    { name = "openinference-instrumentation-bedrock", marker = "extra == 'bedrock'", specifier = ">=0.1.0" },
+    { name = "openinference-instrumentation-langchain", marker = "extra == 'ai'", specifier = ">=0.1.0" },
+    { name = "openinference-instrumentation-langchain", marker = "extra == 'langchain'", specifier = ">=0.1.0" },
+    { name = "openinference-instrumentation-llama-index", marker = "extra == 'ai'", specifier = ">=0.1.0" },
+    { name = "openinference-instrumentation-llama-index", marker = "extra == 'llama-index'", specifier = ">=0.1.0" },
+    { name = "openinference-instrumentation-openai", marker = "extra == 'ai'", specifier = ">=0.1.0" },
+    { name = "openinference-instrumentation-openai", marker = "extra == 'openai'", specifier = ">=0.1.0" },
+    { name = "opentelemetry-api", specifier = ">=1.28.0" },
+    { name = "opentelemetry-exporter-otlp-proto-http", specifier = ">=1.28.0" },
+    { name = "opentelemetry-sdk", specifier = ">=1.28.0" },
+    { name = "pydantic", specifier = ">=2.10.0" },
+    { name = "pytest", marker = "extra == 'dev'", specifier = ">=8.3.0" },
+    { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.8.0" },
+]
+provides-extras = ["ai", "anthropic", "bedrock", "dev", "langchain", "llama-index", "openai", "ui"]
+
+[[package]]
+name = "opengrade-ai-server"
+source = { editable = "." }
+dependencies = [
+    { name = "aiosqlite" },
+    { name = "alembic" },
+    { name = "asyncpg" },
+    { name = "fastapi" },
+    { name = "httpx2" },
+    { name = "jsonschema" },
+    { name = "litellm" },
+    { name = "opengrade-ai" },
+    { name = "opentelemetry-proto" },
+    { name = "protobuf" },
+    { name = "pydantic" },
+    { name = "pydantic-settings" },
+    { name = "python-multipart" },
+    { name = "pyyaml" },
+    { name = "rich" },
+    { name = "sqlalchemy", extra = ["asyncio"] },
+    { name = "typer" },
+    { name = "uvicorn", extra = ["standard"] },
+]
+
+[package.optional-dependencies]
+dev = [
+    { name = "mypy" },
+    { name = "pytest" },
+    { name = "pytest-asyncio" },
+    { name = "ruff" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "aiosqlite", specifier = ">=0.20.0" },
+    { name = "alembic", specifier = ">=1.14.0" },
+    { name = "asyncpg", specifier = ">=0.30.0" },
+    { name = "fastapi", specifier = ">=0.115.0" },
+    { name = "httpx2", specifier = ">=2.13.0" },
+    { name = "jsonschema", specifier = ">=4.23.0" },
+    { name = "litellm", specifier = ">=1.55.0" },
+    { name = "mypy", marker = "extra == 'dev'", specifier = ">=1.13.0" },
+    { name = "opengrade-ai", editable = "../sdk" },
+    { name = "opentelemetry-proto", specifier = ">=1.28.0" },
+    { name = "protobuf", specifier = ">=5.0.0" },
+    { name = "pydantic", specifier = ">=2.10.0" },
+    { name = "pydantic-settings", specifier = ">=2.6.0" },
+    { name = "pytest", marker = "extra == 'dev'", specifier = ">=8.3.0" },
+    { name = "pytest-asyncio", marker = "extra == 'dev'", specifier = ">=0.24.0" },
+    { name = "python-multipart", specifier = ">=0.0.9" },
+    { name = "pyyaml", specifier = ">=6.0.2" },
+    { name = "rich", specifier = ">=13.9.0" },
+    { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.8.0" },
+    { name = "sqlalchemy", extras = ["asyncio"], specifier = ">=2.0.36" },
+    { name = "typer", specifier = ">=0.15.0" },
+    { name = "uvicorn", extras = ["standard"], specifier = ">=0.32.0" },
+]
+provides-extras = ["dev"]
 
 [[package]]
 name = "opentelemetry-api"

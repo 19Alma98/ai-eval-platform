@@ -1,5 +1,5 @@
 [project]
-name = "aiobs-eval-server"
+name = "opengrade-ai-server"
 dynamic = ["version", "dependencies"]
 description = "AI Evaluation & Observability Platform server (FastAPI backend)"
 readme = "README.md"
@@ -14,7 +14,7 @@ dev = [
 ]
 
 [project.scripts]
-aiobs-server = "aiobs_server.cli:app"
+opengrade-server = "opengrade_server.cli:app"
 
 [build-system]
 requires = ["hatchling", "hatch-vcs"]
@@ -49,12 +49,12 @@ dependencies = [
 cache-keys = [{ file = "pyproject.toml" }, { file = "hatch_build.py" }, { git = { commit = true, tags = true } }]
 
 [tool.uv.sources]
-aiobs-eval = { path = "../sdk", editable = true }
+opengrade-ai = { path = "../sdk", editable = true }
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/aiobs_server"]
+packages = ["src/opengrade_server"]
 artifacts = [
-    "src/aiobs_server/_ui/**",
+    "src/opengrade_server/_ui/**",
 ]
 
 [tool.pytest.ini_options]
@@ -73,18 +73,18 @@ filterwarnings = [
 target-version = "py312"
 line-length = 100
 src = ["src", "tests"]
-exclude = ["src/aiobs_server/_ui"]
+exclude = ["src/opengrade_server/_ui"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B"]
 
 [tool.ruff.lint.per-file-ignores]
-"src/aiobs_server/api/**/*.py" = ["B008"]
+"src/opengrade_server/api/**/*.py" = ["B008"]
 
 [tool.mypy]
 python_version = "3.12"
 strict = true
-packages = ["aiobs_server"]
+packages = ["opengrade_server"]
 mypy_path = "src"
 exclude = ["_ui"]
 

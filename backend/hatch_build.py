@@ -1,8 +1,7 @@
-"""Build `project.dependencies`, adding the lockstep `aiobs-eval` requirement.
+"""Build `project.dependencies`, adding the lockstep `opengrade-ai` requirement.
 
-The version comes from the git tag (hatch-vcs). Release builds set
-AIOBS_RELEASE_BUILD=1 so the published wheel requires `aiobs-eval==<same version>`.
-Dev builds leave it unpinned (uv resolves the SDK from ../sdk), keeping uv.lock stable.
+Release builds set OPENGRADE_RELEASE_BUILD=1 so the wheel requires
+`opengrade-ai==<same version>`.
 """
 
 from __future__ import annotations
@@ -12,10 +11,10 @@ from typing import Any
 
 from hatchling.metadata.plugin.interface import MetadataHookInterface
 
-SIBLING = "aiobs-eval"
+SIBLING = "opengrade-ai"
 
 
 class CustomMetadataHook(MetadataHookInterface):
     def update(self, metadata: dict[str, Any]) -> None:
-        pin = f"=={metadata['version']}" if os.environ.get("AIOBS_RELEASE_BUILD") == "1" else ""
+        pin = f"=={metadata['version']}" if os.environ.get("OPENGRADE_RELEASE_BUILD") == "1" else ""
         metadata["dependencies"] = [*self.config.get("dependencies", []), f"{SIBLING}{pin}"]

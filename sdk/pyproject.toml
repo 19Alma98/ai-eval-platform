@@ -1,5 +1,5 @@
 [project]
-name = "aiobs-eval"
+name = "opengrade-ai"
 dynamic = ["version", "optional-dependencies"]
 description = "Python SDK for AI Evaluation & Observability Platform (OTLP + OpenInference)"
 readme = "README.md"
@@ -13,7 +13,7 @@ dependencies = [
 ]
 
 [project.scripts]
-aiobs = "aiobs.cli:main"
+opengrade = "opengrade.cli:main"
 
 [build-system]
 requires = ["hatchling", "hatch-vcs"]
@@ -45,7 +45,7 @@ bedrock = [
     "openinference-instrumentation-bedrock>=0.1.0",
 ]
 ai = [
-    "aiobs-eval[openai,anthropic,langchain,llama-index,bedrock]",
+    "opengrade-ai[openai,anthropic,langchain,llama-index,bedrock]",
 ]
 
 [tool.uv]
@@ -54,10 +54,10 @@ cache-keys = [{ file = "pyproject.toml" }, { file = "hatch_build.py" }, { git = 
 # Monorepo only: resolve [ui] against local server until PyPI publish exists.
 # Not included in the published wheel metadata.
 [tool.uv.sources]
-aiobs-eval-server = { path = "../backend", editable = true }
+opengrade-ai-server = { path = "../backend", editable = true }
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/aiobs"]
+packages = ["src/opengrade"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
@@ -74,7 +74,7 @@ select = ["E", "F", "I", "UP", "B"]
 [tool.mypy]
 python_version = "3.12"
 strict = true
-packages = ["aiobs"]
+packages = ["opengrade"]
 mypy_path = "src"
 
 [[tool.mypy.overrides]]
