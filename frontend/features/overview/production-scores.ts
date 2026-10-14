@@ -19,7 +19,7 @@ export function productionScoreRows(summary: TraceScoreSummary | undefined): Pro
       key: `${r.name}:${r.source}`,
       label: r.source === "human" ? "User feedback" : `User feedback (${r.source})`,
       count: r.count,
-      primary: r.mean == null ? "—" : `${formatPercent(r.mean)} positive`,
+      primary: r.pass_rate == null ? "—" : `${formatPercent(r.pass_rate)} positive`,
       secondary: null,
     })),
     ...metrics.map((r) => ({

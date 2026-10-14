@@ -8,7 +8,7 @@ test("productionScoreRows puts feedback first and formats rates", () => {
     until: "2026-10-14T00:00:00Z",
     rows: [
       { name: "cites_source", source: "sdk", count: 10, mean: 0.7, pass_rate: 0.6 },
-      { name: "user_feedback", source: "human", count: 4, mean: 0.75, pass_rate: 0.75 },
+      { name: "user_feedback", source: "human", count: 4, mean: 0.5, pass_rate: 0.75 },
     ],
   });
   assert.deepEqual(rows, [
@@ -25,4 +25,5 @@ test("productionScoreRows labels non-human feedback with its source", () => {
     rows: [{ name: "user_feedback", source: "sdk", count: 2, mean: 0.5, pass_rate: null }],
   });
   assert.equal(rows[0].label, "User feedback (sdk)");
+  assert.equal(rows[0].primary, "—");
 });
