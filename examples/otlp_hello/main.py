@@ -13,9 +13,9 @@ from opentelemetry.sdk.trace.export import BatchSpanProcessor
 
 
 def main() -> None:
-    endpoint = os.getenv("AIOBS_OTLP_ENDPOINT", "http://localhost:8000/v1/traces")
-    project_id = os.getenv("AIOBS_PROJECT_ID")
-    project_slug = os.getenv("AIOBS_PROJECT_SLUG", "demo")
+    endpoint = os.getenv("OPENGRADE_OTLP_ENDPOINT", "http://localhost:8000/v1/traces")
+    project_id = os.getenv("OPENGRADE_PROJECT_ID")
+    project_slug = os.getenv("OPENGRADE_PROJECT_SLUG", "demo")
 
     headers: dict[str, str] = {}
     if project_id:

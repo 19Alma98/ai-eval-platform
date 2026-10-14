@@ -8,16 +8,16 @@ import pytest
 from httpx2 import AsyncClient
 from sqlalchemy.exc import IntegrityError
 
-from aiobs_server.application.evaluators import CreateEvaluator
-from aiobs_server.application.metrics_sets import (
+from opengrade_server.application.evaluators import CreateEvaluator
+from opengrade_server.application.metrics_sets import (
     EnsureProjectDefaultMetricsSet,
     find_or_create_evaluator_for_entry,
 )
-from aiobs_server.domain.evaluator import Evaluator
-from aiobs_server.domain.metrics_set import MetricsSet, MetricsSetEntry
-from aiobs_server.domain.project import Project
-from aiobs_server.infrastructure.db import get_session_factory
-from aiobs_server.infrastructure.repositories import (
+from opengrade_server.domain.evaluator import Evaluator
+from opengrade_server.domain.metrics_set import MetricsSet, MetricsSetEntry
+from opengrade_server.domain.project import Project
+from opengrade_server.infrastructure.db import get_session_factory
+from opengrade_server.infrastructure.repositories import (
     SqlAlchemyEvaluatorRepository,
     SqlAlchemyMetricsSetRepository,
     SqlAlchemyProjectRepository,

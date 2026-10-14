@@ -4,9 +4,9 @@ import uuid
 from dataclasses import dataclass
 from typing import Any
 
-from aiobs_server.application.projects import ProjectNotFoundError
-from aiobs_server.domain.app_config import AppConfig, AppConfigAlias
-from aiobs_server.domain.repositories import AppConfigRepository, ProjectRepository
+from opengrade_server.application.projects import ProjectNotFoundError
+from opengrade_server.domain.app_config import AppConfig, AppConfigAlias
+from opengrade_server.domain.repositories import AppConfigRepository, ProjectRepository
 
 
 class AppConfigNotFoundError(Exception):

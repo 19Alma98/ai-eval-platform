@@ -3,7 +3,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from typing import Any
 
-from aiobs_server.evaluation.protocol import Evaluator
+from opengrade_server.evaluation.protocol import Evaluator
 
 EvaluatorFactory = Callable[[dict[str, Any]], Evaluator]
 

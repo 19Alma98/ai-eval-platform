@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import uuid
 
-from aiobs_server.domain.experiment_output import ExperimentItemOutput
+from opengrade_server.domain.experiment_output import ExperimentItemOutput
 
 
 def test_create_and_patch_clears_and_preserves() -> None:

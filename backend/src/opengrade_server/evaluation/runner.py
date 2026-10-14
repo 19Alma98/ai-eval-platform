@@ -10,13 +10,13 @@ from datetime import UTC, datetime
 from typing import Any
 from uuid import UUID
 
-from aiobs_server.domain.dataset import DatasetItem
-from aiobs_server.domain.evaluation import EvaluationResultRecord, EvaluationRun
-from aiobs_server.domain.evaluator import Evaluator as EvaluatorEntity
-from aiobs_server.evaluation.judges.warnings import JUDGE_MODEL_UNSUITABLE, unsuitable_model_warning
-from aiobs_server.evaluation.outcomes import item_verdict
-from aiobs_server.evaluation.protocol import Evaluator
-from aiobs_server.evaluation.registry import create_evaluator
+from opengrade_server.domain.dataset import DatasetItem
+from opengrade_server.domain.evaluation import EvaluationResultRecord, EvaluationRun
+from opengrade_server.domain.evaluator import Evaluator as EvaluatorEntity
+from opengrade_server.evaluation.judges.warnings import JUDGE_MODEL_UNSUITABLE, unsuitable_model_warning
+from opengrade_server.evaluation.outcomes import item_verdict
+from opengrade_server.evaluation.protocol import Evaluator
+from opengrade_server.evaluation.registry import create_evaluator
 
 
 def config_hash(config: dict[str, Any]) -> str:
@@ -165,7 +165,7 @@ class EvaluationRunner:
         item: DatasetItem,
         kind: str,
     ) -> EvaluationResultRecord:
-        from aiobs_server.evaluation.protocol import EvaluationSample
+        from opengrade_server.evaluation.protocol import EvaluationSample
 
         sample = EvaluationSample(
             input=item.input,

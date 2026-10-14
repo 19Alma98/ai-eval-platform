@@ -4,7 +4,7 @@ import uuid
 
 import pytest
 
-from aiobs_server.domain.metrics_pack import (
+from opengrade_server.domain.metrics_pack import (
     DEFAULT_RAG_ENTRIES,
     MetricsPack,
     MetricsPackEntry,

@@ -4,11 +4,11 @@ import uuid
 
 import pytest
 
-from aiobs_server.application.experiment_metrics import (
+from opengrade_server.application.experiment_metrics import (
     ExperimentParamsLockedError,
     UpdateExperimentParams,
 )
-from aiobs_server.domain.experiment import Experiment
+from opengrade_server.domain.experiment import Experiment
 from support.repositories import InMemoryEvaluationRunRepository, InMemoryExperimentRepository
 
 

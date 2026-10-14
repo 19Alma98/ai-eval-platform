@@ -8,15 +8,15 @@ from collections.abc import AsyncIterator
 import pytest
 from httpx2 import ASGITransport, AsyncClient
 
-from aiobs_server.config import get_settings
-from aiobs_server.infrastructure.db import bootstrap_schema, dispose_db, init_db
-from aiobs_server.main import create_app
+from opengrade_server.config import get_settings
+from opengrade_server.infrastructure.db import bootstrap_schema, dispose_db, init_db
+from opengrade_server.main import create_app
 from support.packaged_ui import requires_packaged_ui
 
 
 @pytest.fixture
 async def sqlite_client(tmp_path_factory: pytest.TempPathFactory) -> AsyncIterator[AsyncClient]:
-    db_path = tmp_path_factory.mktemp("sqlite") / "aiobs.db"
+    db_path = tmp_path_factory.mktemp("sqlite") / "opengrade.db"
     previous_url = os.environ.get("DATABASE_URL")
     os.environ["DATABASE_URL"] = f"sqlite+aiosqlite:///{db_path}"
     get_settings.cache_clear()

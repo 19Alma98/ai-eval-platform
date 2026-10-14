@@ -12,9 +12,9 @@ from collections import deque
 from collections.abc import Callable
 from typing import Any
 
-from aiobs._http import AiobsAPIError
+from opengrade._http import OpengradeAPIError
 
-logger = logging.getLogger("aiobs")
+logger = logging.getLogger("opengrade")
 
 Post = Callable[[str, list[dict[str, Any]]], object]
 
@@ -28,7 +28,7 @@ _DROP_WARNING_EVERY_S = 60.0
 
 
 def _default_post(project_id: str, scores: list[dict[str, Any]]) -> None:
-    from aiobs._context import get_client  # lazy: _context imports _otel
+    from opengrade._context import get_client  # lazy: _context imports _otel
 
     get_client().trace_scores.log(project_id, scores)
 
@@ -72,7 +72,7 @@ class ScoreSender:
                 ):
                     self._last_drop_warning = now
                     logger.warning(
-                        "aiobs: score queue full (%d); dropping trace scores", self._max_queue
+                        "opengrade: score queue full (%d); dropping trace scores", self._max_queue
                     )
                 return False
             self._queue.append((project_id, score))
@@ -102,10 +102,10 @@ class ScoreSender:
         if self._thread is not None and self._thread.is_alive():
             return True
         try:
-            thread = threading.Thread(target=self._run, name="aiobs-scores", daemon=True)
+            thread = threading.Thread(target=self._run, name="opengrade-scores", daemon=True)
             thread.start()
         except RuntimeError as exc:  # out of threads / interpreter shutting down
-            logger.debug("aiobs: could not start score sender thread: %s", exc)
+            logger.debug("opengrade: could not start score sender thread: %s", exc)
             self._thread = None
             return False
         self._thread = thread
@@ -152,7 +152,7 @@ class ScoreSender:
                 self._post(project_id, scores)
                 return
             except Exception as exc:  # noqa: BLE001 — sending must never crash the thread
-                if isinstance(exc, AiobsAPIError) and exc.status == 413:
+                if isinstance(exc, OpengradeAPIError) and exc.status == 413:
                     if len(scores) > 1:
                         mid = len(scores) // 2
                         self._send_project(project_id, scores[:mid])
@@ -160,7 +160,7 @@ class ScoreSender:
                     else:
                         self._drop(project_id, 1, exc)
                     return
-                if isinstance(exc, AiobsAPIError) and 400 <= exc.status < 500:
+                if isinstance(exc, OpengradeAPIError) and 400 <= exc.status < 500:
                     # The server rejects a whole batch for one bad item: retrying cannot
                     # help, so resend each item once to salvage the valid ones.
                     # Only validation errors (400/422) are per-item; 401/403/404 etc.
@@ -190,8 +190,8 @@ class ScoreSender:
             self._drop(project_id, failed, last_error)
 
     def _drop(self, project_id: str, count: int, exc: Exception) -> None:
-        detail = exc.detail if isinstance(exc, AiobsAPIError) and exc.detail else exc
-        message = "aiobs: dropped %d trace scores for project %s: %s"
+        detail = exc.detail if isinstance(exc, OpengradeAPIError) and exc.detail else exc
+        message = "opengrade: dropped %d trace scores for project %s: %s"
         with self._cond:
             self.dropped += count
             now = time.monotonic()
@@ -223,7 +223,7 @@ def _at_exit() -> None:
     try:
         flush(exit_remaining())
     except Exception:  # noqa: BLE001 — never raise during interpreter shutdown
-        logger.debug("aiobs: score flush at exit failed", exc_info=True)
+        logger.debug("opengrade: score flush at exit failed", exc_info=True)
 
 
 def sender() -> ScoreSender:

@@ -6,7 +6,7 @@ from datetime import datetime
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, status
 from fastapi.responses import JSONResponse
 
-from aiobs_server.api.deps import (
+from opengrade_server.api.deps import (
     get_get_live_interaction,
     get_list_live_interactions,
     get_promote_live_interaction,
@@ -15,8 +15,8 @@ from aiobs_server.api.deps import (
     get_summarize_live_judge_calibration,
     get_upsert_live_score_review,
 )
-from aiobs_server.api.routes.trace_scores import trace_score_response
-from aiobs_server.api.schemas import (
+from opengrade_server.api.routes.trace_scores import trace_score_response
+from opengrade_server.api.schemas import (
     DatasetItemResponse,
     JudgeCalibrationBucketResponse,
     ListLiveInteractionsResponse,
@@ -28,8 +28,8 @@ from aiobs_server.api.schemas import (
     SubmitLiveInteractionRequest,
     UpsertLiveScoreReviewRequest,
 )
-from aiobs_server.application.datasets import DatasetNotFoundError
-from aiobs_server.application.live_interactions import (
+from opengrade_server.application.datasets import DatasetNotFoundError
+from opengrade_server.application.live_interactions import (
     GetLiveInteraction,
     ListLiveInteractions,
     ListLiveInteractionsResult,
@@ -46,19 +46,19 @@ from aiobs_server.application.live_interactions import (
     UpsertLiveScoreReviewCommand,
     schedule_live_score,
 )
-from aiobs_server.application.live_judge_calibration import (
+from opengrade_server.application.live_judge_calibration import (
     JudgeCalibrationBucket,
     SummarizeLiveJudgeCalibration,
 )
-from aiobs_server.application.metrics_sets import MetricsSetNotFoundError
-from aiobs_server.application.projects import ProjectNotFoundError
-from aiobs_server.domain.dataset import DatasetItem
-from aiobs_server.domain.live_interaction import (
+from opengrade_server.application.metrics_sets import MetricsSetNotFoundError
+from opengrade_server.application.projects import ProjectNotFoundError
+from opengrade_server.domain.dataset import DatasetItem
+from opengrade_server.domain.live_interaction import (
     LiveInteraction,
     LiveInteractionScore,
     LiveScoreReview,
 )
-from aiobs_server.domain.trace_score import TraceScore
+from opengrade_server.domain.trace_score import TraceScore
 
 router = APIRouter(tags=["live-interactions"])
 

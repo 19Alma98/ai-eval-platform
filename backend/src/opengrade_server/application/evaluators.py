@@ -4,10 +4,10 @@ import uuid
 from dataclasses import dataclass
 from typing import Any
 
-from aiobs_server.application.projects import ProjectNotFoundError
-from aiobs_server.domain.evaluator import Evaluator
-from aiobs_server.domain.repositories import EvaluatorRepository, ProjectRepository
-from aiobs_server.evaluation.registry import get_evaluator_factory
+from opengrade_server.application.projects import ProjectNotFoundError
+from opengrade_server.domain.evaluator import Evaluator
+from opengrade_server.domain.repositories import EvaluatorRepository, ProjectRepository
+from opengrade_server.evaluation.registry import get_evaluator_factory
 
 
 class EvaluatorNotFoundError(Exception):

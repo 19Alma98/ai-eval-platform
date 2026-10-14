@@ -7,7 +7,7 @@ from typing import Any
 import pytest
 from httpx2 import ASGITransport, AsyncClient
 
-from aiobs_server.api.deps import (
+from opengrade_server.api.deps import (
     get_app_config_repository,
     get_dataset_repository,
     get_evaluator_repository,
@@ -15,9 +15,9 @@ from aiobs_server.api.deps import (
     get_metrics_set_repository,
     get_project_repository,
 )
-from aiobs_server.domain.dataset import Dataset
-from aiobs_server.domain.experiment import Experiment
-from aiobs_server.main import create_app
+from opengrade_server.domain.dataset import Dataset
+from opengrade_server.domain.experiment import Experiment
+from opengrade_server.main import create_app
 from tests.support.repositories import InMemoryEvaluatorRepository, InMemoryMetricsSetRepository
 from tests.test_api_app_configs import InMemoryAppConfigRepository, InMemoryProjectRepository
 

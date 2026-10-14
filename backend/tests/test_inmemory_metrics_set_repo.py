@@ -4,7 +4,7 @@ import uuid
 
 import pytest
 
-from aiobs_server.domain.metrics_set import MetricsSet
+from opengrade_server.domain.metrics_set import MetricsSet
 from tests.support.repositories import InMemoryMetricsSetRepository
 
 

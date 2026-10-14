@@ -5,7 +5,7 @@ import random
 import uuid
 from collections.abc import Sequence
 
-from aiobs_server.regression.policy import percentile_nearest_rank
+from opengrade_server.regression.policy import percentile_nearest_rank
 
 DEFAULT_N_BOOT = 2000
 DEFAULT_ALPHA = 0.05

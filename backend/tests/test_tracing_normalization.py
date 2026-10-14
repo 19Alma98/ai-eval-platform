@@ -4,11 +4,11 @@ import json
 import uuid
 from datetime import UTC, datetime
 
-from aiobs_server.domain.trace import Span, Trace
-from aiobs_server.tracing.ingestion import ingest_otlp_payload
-from aiobs_server.tracing.normalization import normalize_raw_spans
-from aiobs_server.tracing.openinference import resolve_span_kind
-from aiobs_server.tracing.redaction import redact_trace
+from opengrade_server.domain.trace import Span, Trace
+from opengrade_server.tracing.ingestion import ingest_otlp_payload
+from opengrade_server.tracing.normalization import normalize_raw_spans
+from opengrade_server.tracing.openinference import resolve_span_kind
+from opengrade_server.tracing.redaction import redact_trace
 
 
 def test_resolve_span_kind_openinference() -> None:

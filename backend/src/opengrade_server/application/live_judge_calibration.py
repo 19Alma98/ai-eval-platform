@@ -6,9 +6,9 @@ from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
-from aiobs_server.application.projects import ProjectNotFoundError
-from aiobs_server.domain.live_interaction import LiveInteractionScore, LiveScoreReview
-from aiobs_server.domain.repositories import LiveInteractionRepository, ProjectRepository
+from opengrade_server.application.projects import ProjectNotFoundError
+from opengrade_server.domain.live_interaction import LiveInteractionScore, LiveScoreReview
+from opengrade_server.domain.repositories import LiveInteractionRepository, ProjectRepository
 
 _EXCLUDED_LABELS = frozenset({"ERROR", "SKIPPED"})
 _DEFAULT_LOOKBACK = timedelta(days=90)

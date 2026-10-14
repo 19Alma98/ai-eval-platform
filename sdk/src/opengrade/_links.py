@@ -11,8 +11,8 @@ from urllib.parse import quote, urlencode
 
 
 def ui_base_url(api_base_url: str) -> str:
-    """UI host for result links: ``AIOBS_UI_URL``, else the API host (it serves the UI)."""
-    override = os.getenv("AIOBS_UI_URL")
+    """UI host for result links: ``OPENGRADE_UI_URL``, else the API host (it serves the UI)."""
+    override = os.getenv("OPENGRADE_UI_URL")
     if override and override.strip():
         return override.strip().rstrip("/")
     return api_base_url.rstrip("/")

@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import pytest
 
-from aiobs_server.evaluation.deterministic import RecallAtKEvaluator
-from aiobs_server.evaluation.protocol import EvaluationSample
+from opengrade_server.evaluation.deterministic import RecallAtKEvaluator
+from opengrade_server.evaluation.protocol import EvaluationSample
 
 
 @pytest.mark.asyncio

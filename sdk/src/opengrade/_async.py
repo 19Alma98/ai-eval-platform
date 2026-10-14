@@ -15,7 +15,7 @@ def _loop() -> asyncio.AbstractEventLoop:
     with _LOCK:
         if _LOOP is None or _LOOP.is_closed():
             loop = asyncio.new_event_loop()
-            threading.Thread(target=loop.run_forever, name="aiobs-async", daemon=True).start()
+            threading.Thread(target=loop.run_forever, name="opengrade-async", daemon=True).start()
             _LOOP = loop
         return _LOOP
 
@@ -35,7 +35,7 @@ def run_sync[T](awaitable: Awaitable[T], timeout: float | None = None) -> T:
     except RuntimeError:
         running = None
     if running is loop:
-        raise RuntimeError("run_sync() called from the aiobs background loop would deadlock")
+        raise RuntimeError("run_sync() called from the opengrade background loop would deadlock")
     future = asyncio.run_coroutine_threadsafe(_await(awaitable), loop)
     try:
         return future.result(timeout)

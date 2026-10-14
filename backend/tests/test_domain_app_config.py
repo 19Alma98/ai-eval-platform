@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import uuid
 
-from aiobs_server.domain.app_config import AppConfig, compute_content_hash
+from opengrade_server.domain.app_config import AppConfig, compute_content_hash
 
 
 def test_create_rejects_empty_name() -> None:
@@ -51,7 +51,7 @@ def test_to_snapshot_includes_identity_and_sections() -> None:
 
 
 def test_experiment_create_accepts_app_config_id() -> None:
-    from aiobs_server.domain.experiment import Experiment
+    from opengrade_server.domain.experiment import Experiment
 
     project_id = uuid.uuid4()
     dataset_id = uuid.uuid4()

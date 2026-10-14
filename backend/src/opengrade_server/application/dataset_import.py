@@ -6,7 +6,7 @@ import json
 from dataclasses import dataclass
 from typing import Any
 
-from aiobs_server.domain.rag_qa import validate_rag_qa_item
+from opengrade_server.domain.rag_qa import validate_rag_qa_item
 
 _QUESTION_KEYS = ("question", "input")
 _ANSWER_KEYS = ("expected_answer", "expected_output")

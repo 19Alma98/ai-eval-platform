@@ -18,7 +18,7 @@ ACTIVE_RUN: ContextVar[_Recorder | None] = ContextVar("aiobs_active_run", defaul
 
 @dataclass
 class ProductionCapture:
-    """What a ``@aiobs.trace(metrics=...)`` call recorded, for its production metrics.
+    """What a ``@opengrade.trace(metrics=...)`` call recorded, for its production metrics.
 
     ``span`` is the call's own span: only ``set_input`` on that span sets ``input``
     (a nested call rewriting its own input must not change it); documents from nested

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from aiobs._links import experiment_item_url, experiment_url, trace_url, ui_base_url
+from opengrade._links import experiment_item_url, experiment_url, trace_url, ui_base_url
 
 
 def test_links_match_ui_routes() -> None:
@@ -16,5 +16,5 @@ def test_links_match_ui_routes() -> None:
 
 
 def test_ui_url_override(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("AIOBS_UI_URL", "https://evals.example.com/")
+    monkeypatch.setenv("OPENGRADE_UI_URL", "https://evals.example.com/")
     assert ui_base_url("http://api:8000") == "https://evals.example.com"

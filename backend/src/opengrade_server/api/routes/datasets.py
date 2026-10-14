@@ -5,14 +5,14 @@ import uuid
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
 from sqlalchemy.exc import IntegrityError
 
-from aiobs_server.api.deps import (
+from opengrade_server.api.deps import (
     get_add_dataset_item,
     get_create_dataset,
     get_get_dataset,
     get_import_dataset_items,
     get_list_datasets,
 )
-from aiobs_server.api.schemas import (
+from opengrade_server.api.schemas import (
     CreateDatasetItemRequest,
     CreateDatasetRequest,
     DatasetDetailResponse,
@@ -22,7 +22,7 @@ from aiobs_server.api.schemas import (
     ImportDatasetItemsResponse,
     TaskTypeResponse,
 )
-from aiobs_server.application.datasets import (
+from opengrade_server.application.datasets import (
     AddDatasetItem,
     AddDatasetItemCommand,
     CreateDataset,
@@ -35,9 +35,9 @@ from aiobs_server.application.datasets import (
     ImportDatasetTaskTypeError,
     ListDatasets,
 )
-from aiobs_server.application.projects import ProjectNotFoundError
-from aiobs_server.domain.dataset import Dataset, DatasetItem
-from aiobs_server.domain.task_types import TASK_TYPE_CATALOG, normalize_task_type
+from opengrade_server.application.projects import ProjectNotFoundError
+from opengrade_server.domain.dataset import Dataset, DatasetItem
+from opengrade_server.domain.task_types import TASK_TYPE_CATALOG, normalize_task_type
 
 router = APIRouter(tags=["datasets"])
 

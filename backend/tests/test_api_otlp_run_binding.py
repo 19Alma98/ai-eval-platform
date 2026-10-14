@@ -8,7 +8,7 @@ from typing import Any
 import pytest
 from httpx2 import ASGITransport, AsyncClient
 
-from aiobs_server.api.deps import (
+from opengrade_server.api.deps import (
     get_bind_otlp_traces,
     get_dataset_repository,
     get_evaluator_repository,
@@ -20,8 +20,8 @@ from aiobs_server.api.deps import (
     get_trace_repository,
     get_trace_score_repository,
 )
-from aiobs_server.domain.trace import Trace
-from aiobs_server.main import create_app
+from opengrade_server.domain.trace import Trace
+from opengrade_server.main import create_app
 from tests.support.repositories import (
     InMemoryEvaluatorRepository,
     InMemoryMetricsSetRepository,
@@ -41,7 +41,7 @@ from tests.test_api_live_interactions import InMemoryLiveRepository
 async def client() -> AsyncIterator[AsyncClient]:
     import os
 
-    from aiobs_server.config import get_settings
+    from opengrade_server.config import get_settings
 
     os.environ["CONTENT_CAPTURE_ENABLED"] = "true"
     get_settings.cache_clear()
@@ -129,11 +129,11 @@ def _otlp_payload(
                                         "value": {"stringValue": "CHAIN"},
                                     },
                                     {
-                                        "key": "aiobs.experiment_id",
+                                        "key": "opengrade.experiment_id",
                                         "value": {"stringValue": experiment_id},
                                     },
                                     {
-                                        "key": "aiobs.dataset_item_id",
+                                        "key": "opengrade.dataset_item_id",
                                         "value": {"stringValue": dataset_item_id},
                                     },
                                     {
@@ -342,7 +342,7 @@ async def test_otlp_bind_capture_off_keeps_retrieval_context(
 ) -> None:
     import os
 
-    from aiobs_server.config import get_settings
+    from opengrade_server.config import get_settings
 
     os.environ["CONTENT_CAPTURE_ENABLED"] = "false"
     get_settings.cache_clear()
@@ -377,7 +377,7 @@ async def test_otlp_bind_capture_off_preserves_existing_actual_output(
 ) -> None:
     import os
 
-    from aiobs_server.config import get_settings
+    from opengrade_server.config import get_settings
 
     project_id, experiment_id, item_id = await _seed_rag_experiment(client)
     seed = await client.put(

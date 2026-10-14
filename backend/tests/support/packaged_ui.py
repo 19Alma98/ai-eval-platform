@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from aiobs_server.ui import ui_root
+from opengrade_server.ui import ui_root
 
 requires_packaged_ui = pytest.mark.skipif(
     ui_root() is None,

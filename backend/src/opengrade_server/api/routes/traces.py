@@ -7,21 +7,21 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 
-from aiobs_server.api.deps import (
+from opengrade_server.api.deps import (
     get_get_trace,
     get_list_trace_scores,
     get_list_traces,
     get_resolve_trace_live_links,
 )
-from aiobs_server.api.routes.trace_scores import trace_score_response
-from aiobs_server.api.schemas import (
+from opengrade_server.api.routes.trace_scores import trace_score_response
+from opengrade_server.api.schemas import (
     SpanResponse,
     TraceDetailResponse,
     TraceListResponse,
     TraceSummaryResponse,
 )
-from aiobs_server.application.trace_scores import ListTraceScores
-from aiobs_server.application.traces import (
+from opengrade_server.application.trace_scores import ListTraceScores
+from opengrade_server.application.traces import (
     GetTrace,
     InvalidTraceCursorError,
     ListTraces,
@@ -29,9 +29,9 @@ from aiobs_server.application.traces import (
     ResolveTraceLiveLinks,
     TraceNotFoundError,
 )
-from aiobs_server.domain.trace import Trace
-from aiobs_server.domain.trace_score import TraceScore
-from aiobs_server.tracing.live_binding import answer_from_output, question_from_input
+from opengrade_server.domain.trace import Trace
+from opengrade_server.domain.trace_score import TraceScore
+from opengrade_server.tracing.live_binding import answer_from_output, question_from_input
 
 router = APIRouter(prefix="/api/v1/projects/{project_id}/traces", tags=["traces"])
 
@@ -71,7 +71,7 @@ def _to_summary(
         environment=trace.environment,
         user_id=trace.user_id,
         session_id=trace.session_id,
-        # `@aiobs.trace` records {"args", "kwargs"}: show the question, not the envelope.
+        # `@opengrade.trace` records {"args", "kwargs"}: show the question, not the envelope.
         input_preview=_preview(question_from_input(trace.input) if trace.input else None),
         output_preview=_preview(answer_from_output(trace.output) if trace.output else None),
         scores=[trace_score_response(s) for s in scores],

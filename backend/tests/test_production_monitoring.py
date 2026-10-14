@@ -6,22 +6,22 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 
-from aiobs_server.application.live_interactions import ListLiveInteractions
-from aiobs_server.application.monitoring import (
+from opengrade_server.application.live_interactions import ListLiveInteractions
+from opengrade_server.application.monitoring import (
     GetProductionMonitoring,
     histogram,
     percentile,
 )
-from aiobs_server.application.projects import ProjectNotFoundError
-from aiobs_server.domain.live_interaction import (
+from opengrade_server.application.projects import ProjectNotFoundError
+from opengrade_server.domain.live_interaction import (
     LiveInteraction,
     LiveInteractionScore,
     LiveScoreReview,
 )
-from aiobs_server.domain.live_overview import LiveInRangeResult, LiveInteractionInRange
-from aiobs_server.domain.project import Project
-from aiobs_server.domain.trace import Span, Trace
-from aiobs_server.domain.trace_score import TraceScore
+from opengrade_server.domain.live_overview import LiveInRangeResult, LiveInteractionInRange
+from opengrade_server.domain.project import Project
+from opengrade_server.domain.trace import Span, Trace
+from opengrade_server.domain.trace_score import TraceScore
 from tests.support.repositories import InMemoryTraceScoreRepository
 from tests.test_api_live_interactions import InMemoryLiveRepository, InMemoryProjectRepository
 

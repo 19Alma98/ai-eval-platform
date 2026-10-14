@@ -6,10 +6,10 @@ import uuid
 from collections.abc import Mapping
 from typing import Any
 
-from aiobs_server.application.experiments import ExperimentNotFoundError
-from aiobs_server.domain.experiment import Experiment
-from aiobs_server.domain.experiment_metric import validate_experiment_metrics
-from aiobs_server.domain.repositories import (
+from opengrade_server.application.experiments import ExperimentNotFoundError
+from opengrade_server.domain.experiment import Experiment
+from opengrade_server.domain.experiment_metric import validate_experiment_metrics
+from opengrade_server.domain.repositories import (
     EvaluationRunRepository,
     ExperimentMetricRepository,
     ExperimentRepository,

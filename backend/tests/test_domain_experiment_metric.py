@@ -5,8 +5,8 @@ from typing import Any
 
 import pytest
 
-from aiobs_server.domain.experiment import Experiment
-from aiobs_server.domain.experiment_metric import (
+from opengrade_server.domain.experiment import Experiment
+from opengrade_server.domain.experiment_metric import (
     MAX_METRICS_PER_REQUEST,
     validate_experiment_metrics,
 )

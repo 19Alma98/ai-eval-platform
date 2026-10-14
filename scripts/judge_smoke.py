@@ -15,14 +15,14 @@ import argparse
 import asyncio
 import json
 
-from aiobs_server.config import get_settings
-from aiobs_server.evaluation.judges.evaluators import (
+from opengrade_server.config import get_settings
+from opengrade_server.evaluation.judges.evaluators import (
     JUDGE_KINDS,
     JudgeDefaults,
     create_llm_judge,
 )
-from aiobs_server.evaluation.protocol import EvaluationSample
-from aiobs_server.infrastructure.llm import LiteLlmClient
+from opengrade_server.evaluation.protocol import EvaluationSample
+from opengrade_server.infrastructure.llm import LiteLlmClient
 
 SAMPLE = EvaluationSample(
     input="How many days of paid time off do full-time employees get?",

@@ -5,10 +5,10 @@ from __future__ import annotations
 from collections.abc import Callable
 from typing import Any
 
-from aiobs_server.domain.repositories import JudgeClaimCacheRepository
-from aiobs_server.evaluation.judges.cache import InMemoryJudgeClaimCache
-from aiobs_server.evaluation.judges.evaluators import JUDGE_KINDS, JudgeDefaults, create_llm_judge
-from aiobs_server.evaluation.protocol import Evaluator, LlmClient
+from opengrade_server.domain.repositories import JudgeClaimCacheRepository
+from opengrade_server.evaluation.judges.cache import InMemoryJudgeClaimCache
+from opengrade_server.evaluation.judges.evaluators import JUDGE_KINDS, JudgeDefaults, create_llm_judge
+from opengrade_server.evaluation.protocol import Evaluator, LlmClient
 
 
 def make_llm_judge_factory(

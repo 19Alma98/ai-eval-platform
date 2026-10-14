@@ -9,9 +9,9 @@ from typing import Any
 import httpx2
 import pytest
 
-import aiobs
-from aiobs import _context, _otel
-from aiobs._config import resolve_config
+import opengrade
+from opengrade import _context, _otel
+from opengrade._config import resolve_config
 
 
 def _project(pid: str, name: str, slug: str) -> dict[str, Any]:
@@ -21,10 +21,10 @@ def _project(pid: str, name: str, slug: str) -> dict[str, Any]:
 @pytest.fixture(autouse=True)
 def reset_state(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
     for name in (
-        "AIOBS_TRACKING_URI",
-        "AIOBS_OTLP_ENDPOINT",
-        "AIOBS_PROJECT_ID",
-        "AIOBS_PROJECT_SLUG",
+        "OPENGRADE_TRACKING_URI",
+        "OPENGRADE_OTLP_ENDPOINT",
+        "OPENGRADE_PROJECT_ID",
+        "OPENGRADE_PROJECT_SLUG",
     ):
         monkeypatch.delenv(name, raising=False)
     _context._reset_for_tests()
@@ -58,58 +58,58 @@ class FakeServer:
 
     def install(self) -> None:
         transport = httpx2.MockTransport(self.handler)
-        _context._CLIENT = aiobs.Client("http://test", transport=transport)
-        _context._ASYNC_CLIENT = aiobs.AsyncClient("http://test", transport=transport)
+        _context._CLIENT = opengrade.Client("http://test", transport=transport)
+        _context._ASYNC_CLIENT = opengrade.AsyncClient("http://test", transport=transport)
 
 
 def test_tracking_uri_default_and_env(monkeypatch: pytest.MonkeyPatch) -> None:
-    assert aiobs.get_tracking_uri() == "http://localhost:8000"
-    monkeypatch.setenv("AIOBS_TRACKING_URI", "http://env:2/")
-    assert aiobs.get_tracking_uri() == "http://env:2"
-    aiobs.set_tracking_uri("http://explicit:3/")
-    assert aiobs.get_tracking_uri() == "http://explicit:3"
+    assert opengrade.get_tracking_uri() == "http://localhost:8000"
+    monkeypatch.setenv("OPENGRADE_TRACKING_URI", "http://env:2/")
+    assert opengrade.get_tracking_uri() == "http://env:2"
+    opengrade.set_tracking_uri("http://explicit:3/")
+    assert opengrade.get_tracking_uri() == "http://explicit:3"
 
 
 def test_tracking_uri_drives_client_and_otlp(monkeypatch: pytest.MonkeyPatch) -> None:
-    aiobs.set_tracking_uri("http://platform:9000")
-    assert aiobs.Client().base_url == "http://platform:9000"
-    assert aiobs.get_client().base_url == "http://platform:9000"
+    opengrade.set_tracking_uri("http://platform:9000")
+    assert opengrade.Client().base_url == "http://platform:9000"
+    assert opengrade.get_client().base_url == "http://platform:9000"
     cfg = resolve_config(project_slug="demo")
     assert cfg.endpoint == "http://platform:9000/v1/traces"
 
 
 def test_otlp_endpoint_env_still_overrides(monkeypatch: pytest.MonkeyPatch) -> None:
-    aiobs.set_tracking_uri("http://platform:9000")
-    monkeypatch.setenv("AIOBS_OTLP_ENDPOINT", "http://collector:4318/v1/traces")
+    opengrade.set_tracking_uri("http://platform:9000")
+    monkeypatch.setenv("OPENGRADE_OTLP_ENDPOINT", "http://collector:4318/v1/traces")
     assert resolve_config(project_slug="demo").endpoint == "http://collector:4318/v1/traces"
 
 
 def test_get_client_is_shared_and_reset_on_uri_change() -> None:
-    first = aiobs.get_client()
-    assert aiobs.get_client() is first
-    aiobs.set_tracking_uri("http://other:1")
-    second = aiobs.get_client()
+    first = opengrade.get_client()
+    assert opengrade.get_client() is first
+    opengrade.set_tracking_uri("http://other:1")
+    second = opengrade.get_client()
     assert second is not first
     assert second.base_url == "http://other:1"
 
 
 def test_get_async_client_is_shared_and_reset_on_uri_change() -> None:
-    first = aiobs.get_async_client()
-    assert aiobs.get_async_client() is first
-    aiobs.set_tracking_uri("http://other:1")
-    second = aiobs.get_async_client()
+    first = opengrade.get_async_client()
+    assert opengrade.get_async_client() is first
+    opengrade.set_tracking_uri("http://other:1")
+    second = opengrade.get_async_client()
     assert second is not first
     assert second.base_url == "http://other:1"
 
 
 def test_after_fork_hook_resets_shared_client() -> None:
-    parent = aiobs.get_client()
-    parent_async = aiobs.get_async_client()
+    parent = opengrade.get_client()
+    parent_async = opengrade.get_async_client()
     _context._after_fork_in_child()
     assert _context._CLIENT is None
     assert _context._ASYNC_CLIENT is None
-    child = aiobs.get_client()
-    child_async = aiobs.get_async_client()
+    child = opengrade.get_client()
+    child_async = opengrade.get_async_client()
     assert child is not parent
     assert child_async is not parent_async
 
@@ -117,16 +117,16 @@ def test_after_fork_hook_resets_shared_client() -> None:
 def test_set_project_creates_when_missing() -> None:
     server = FakeServer()
     server.install()
-    project = aiobs.set_project("HR Assistant")
+    project = opengrade.set_project("HR Assistant")
     assert server.created == [{"name": "HR Assistant", "slug": "hr-assistant"}]
     assert project.slug == "hr-assistant"
-    assert aiobs.get_project() == project
+    assert opengrade.get_project() == project
 
 
 def test_set_project_reuses_existing_by_slug() -> None:
     server = FakeServer([_project("p-1", "Whatever", "hr-assistant")])
     server.install()
-    project = aiobs.set_project("hr-assistant")
+    project = opengrade.set_project("hr-assistant")
     assert project.id == "p-1"
     assert server.created == []
 
@@ -134,7 +134,7 @@ def test_set_project_reuses_existing_by_slug() -> None:
 def test_set_project_reuses_existing_by_name() -> None:
     server = FakeServer([_project("p-1", "HR Assistant", "custom-slug")])
     server.install()
-    assert aiobs.set_project("HR Assistant").id == "p-1"
+    assert opengrade.set_project("HR Assistant").id == "p-1"
     assert server.created == []
 
 
@@ -142,12 +142,12 @@ def test_set_project_handles_concurrent_create() -> None:
     server = FakeServer()
     server.conflict_once_with = _project("p-race", "hr-assistant", "hr-assistant")
     server.install()
-    assert aiobs.set_project("hr-assistant").id == "p-race"
+    assert opengrade.set_project("hr-assistant").id == "p-race"
 
 
 def test_set_project_rejects_empty() -> None:
     with pytest.raises(ValueError, match="must not be empty"):
-        aiobs.set_project("  ")
+        opengrade.set_project("  ")
 
 
 def test_aset_project_creates_when_missing() -> None:
@@ -155,10 +155,10 @@ def test_aset_project_creates_when_missing() -> None:
     server.install()
 
     async def main() -> None:
-        project = await aiobs.aset_project("HR Assistant")
+        project = await opengrade.aset_project("HR Assistant")
         assert server.created == [{"name": "HR Assistant", "slug": "hr-assistant"}]
         assert project.slug == "hr-assistant"
-        assert aiobs.get_project() == project
+        assert opengrade.get_project() == project
 
     asyncio.run(main())
 
@@ -168,7 +168,7 @@ def test_aset_project_reuses_existing_by_slug() -> None:
     server.install()
 
     async def main() -> None:
-        project = await aiobs.aset_project("hr-assistant")
+        project = await opengrade.aset_project("hr-assistant")
         assert project.id == "p-1"
         assert server.created == []
 
@@ -181,7 +181,7 @@ def test_aset_project_handles_concurrent_create() -> None:
     server.install()
 
     async def main() -> None:
-        assert (await aiobs.aset_project("hr-assistant")).id == "p-race"
+        assert (await opengrade.aset_project("hr-assistant")).id == "p-race"
 
     asyncio.run(main())
 
@@ -189,28 +189,28 @@ def test_aset_project_handles_concurrent_create() -> None:
 def test_aset_project_rejects_empty() -> None:
     async def main() -> None:
         with pytest.raises(ValueError, match="must not be empty"):
-            await aiobs.aset_project("  ")
+            await opengrade.aset_project("  ")
 
     asyncio.run(main())
 
 
 def test_init_uses_active_project(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("AIOBS_PROJECT_SLUG", "from-env")
+    monkeypatch.setenv("OPENGRADE_PROJECT_SLUG", "from-env")
     FakeServer([_project("p-1", "hr", "hr")]).install()
-    aiobs.set_project("hr")
+    opengrade.set_project("hr")
     cfg = resolve_config()
     assert cfg.project_id == "p-1"
     assert cfg.project_slug is None
-    aiobs.init(instrument=False)
+    opengrade.init(instrument=False)
     assert _otel._INITIALIZED is True
 
 
 def test_set_project_after_init_warns(caplog: pytest.LogCaptureFixture) -> None:
     FakeServer([_project("p-1", "a", "a"), _project("p-2", "b", "b")]).install()
-    aiobs.set_project("a")
-    aiobs.init(instrument=False)
-    with caplog.at_level(logging.WARNING, logger="aiobs"):
-        aiobs.set_project("b")
+    opengrade.set_project("a")
+    opengrade.init(instrument=False)
+    with caplog.at_level(logging.WARNING, logger="opengrade"):
+        opengrade.set_project("b")
     assert any("after init()" in r.message for r in caplog.records)
 
 
@@ -223,9 +223,9 @@ def test_resources_default_to_active_project() -> None:
             return httpx2.Response(200, json=[_project("p-1", "hr", "hr")])
         return httpx2.Response(200, json=[])
 
-    _context._CLIENT = aiobs.Client("http://test", transport=httpx2.MockTransport(handler))
-    aiobs.set_project("hr")
-    client = aiobs.get_client()
+    _context._CLIENT = opengrade.Client("http://test", transport=httpx2.MockTransport(handler))
+    opengrade.set_project("hr")
+    client = opengrade.get_client()
     client.datasets.list()
     client.experiments.list()
     client.datasets.list("explicit")
@@ -237,18 +237,18 @@ def test_resources_default_to_active_project() -> None:
 
 
 def test_resources_fall_back_to_env_project_id(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("AIOBS_PROJECT_ID", "env-pid")
+    monkeypatch.setenv("OPENGRADE_PROJECT_ID", "env-pid")
     seen: list[str] = []
 
     def handler(request: httpx2.Request) -> httpx2.Response:
         seen.append(request.url.path)
         return httpx2.Response(200, json=[])
 
-    client = aiobs.Client("http://test", transport=httpx2.MockTransport(handler))
+    client = opengrade.Client("http://test", transport=httpx2.MockTransport(handler))
     client.experiments.list()
     assert seen == ["/api/v1/projects/env-pid/experiments"]
 
 
 def test_resources_without_project_raise() -> None:
     with pytest.raises(ValueError, match="No project"):
-        aiobs.Client("http://test").datasets.list()
+        opengrade.Client("http://test").datasets.list()

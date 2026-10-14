@@ -6,8 +6,8 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Literal
 
-from aiobs_server.domain.evaluation import EvaluationResultRecord, EvaluationRun
-from aiobs_server.regression.bootstrap import comparison_seed, paired_mean_ci
+from opengrade_server.domain.evaluation import EvaluationResultRecord, EvaluationRun
+from opengrade_server.regression.bootstrap import comparison_seed, paired_mean_ci
 
 DELTA_THRESHOLD = 0.01
 MIN_APPLICABLE_ITEMS = 5

@@ -10,8 +10,8 @@ import pytest
 from opentelemetry import trace
 from opentelemetry.sdk.trace import TracerProvider
 
-import aiobs
-from aiobs import _config, _otel, _scores, feedback
+import opengrade
+from opengrade import _config, _otel, _scores, feedback
 
 TID = "ab" * 16
 
@@ -42,7 +42,7 @@ def _tracer() -> Iterator[None]:
 def sent(monkeypatch: pytest.MonkeyPatch) -> Iterator[Recorder]:
     # An earlier test may have called set_project(); only the env var should count here.
     monkeypatch.setattr(_config, "_ACTIVE_PROJECT_ID", None)
-    monkeypatch.setenv("AIOBS_PROJECT_ID", "p1")
+    monkeypatch.setenv("OPENGRADE_PROJECT_ID", "p1")
     recorder = Recorder()
     _scores._reset_for_tests(recorder, interval=60.0)
     feedback._reset_for_tests()
@@ -52,7 +52,7 @@ def sent(monkeypatch: pytest.MonkeyPatch) -> Iterator[Recorder]:
 
 
 def test_log_score_explicit_trace(sent: Recorder) -> None:
-    assert aiobs.log_score(
+    assert opengrade.log_score(
         "quality",
         0.4,
         trace_id=TID.upper(),
@@ -60,7 +60,7 @@ def test_log_score_explicit_trace(sent: Recorder) -> None:
         explanation="x" * 5000,
         metadata={"k": 1},
     )
-    assert aiobs.flush()
+    assert opengrade.flush()
     assert sent.calls[0][0] == "p1"
     (score,) = sent.scores
     assert score == {
@@ -76,16 +76,16 @@ def test_log_score_explicit_trace(sent: Recorder) -> None:
 
 def test_log_score_uses_current_trace(sent: Recorder) -> None:
     with trace.get_tracer("t").start_as_current_span("s"):
-        current = aiobs.current_trace_id()
-        assert aiobs.log_score("cited", True, label="pass")
-    aiobs.flush()
+        current = opengrade.current_trace_id()
+        assert opengrade.log_score("cited", True, label="pass")
+    opengrade.flush()
     assert sent.scores[0]["trace_id"] == current
     assert sent.scores[0]["value"] == 1.0 and sent.scores[0]["label"] == "PASS"
 
 
 def test_log_feedback_maps_to_human_score(sent: Recorder) -> None:
-    assert aiobs.log_feedback(False, trace_id=TID, comment="wrong", user_id="u1")
-    aiobs.flush()
+    assert opengrade.log_feedback(False, trace_id=TID, comment="wrong", user_id="u1")
+    opengrade.flush()
     assert sent.scores == [
         {
             "trace_id": TID,
@@ -115,29 +115,29 @@ def test_log_feedback_maps_to_human_score(sent: Recorder) -> None:
 def test_invalid_calls_warn_and_return_false(
     sent: Recorder, caplog: pytest.LogCaptureFixture, kwargs: dict[str, Any], match: str
 ) -> None:
-    with caplog.at_level(logging.WARNING, logger="aiobs"):
-        assert aiobs.log_score(**kwargs) is False
+    with caplog.at_level(logging.WARNING, logger="opengrade"):
+        assert opengrade.log_score(**kwargs) is False
     assert any(match in r.message for r in caplog.records)
-    aiobs.flush()
+    opengrade.flush()
     assert sent.scores == []
 
 
 def test_no_project_warns(
     sent: Recorder, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
 ) -> None:
-    monkeypatch.delenv("AIOBS_PROJECT_ID")
-    with caplog.at_level(logging.WARNING, logger="aiobs"):
-        assert aiobs.log_score("q", 1.0, trace_id=TID) is False
+    monkeypatch.delenv("OPENGRADE_PROJECT_ID")
+    with caplog.at_level(logging.WARNING, logger="opengrade"):
+        assert opengrade.log_score("q", 1.0, trace_id=TID) is False
     assert any("No project" in r.message for r in caplog.records)
 
 
 def test_score_trace_runs_metric_and_queues_result(sent: Recorder) -> None:
-    @aiobs.metric(threshold=0.5)
-    def short(s: aiobs.Sample) -> aiobs.Score:
-        return aiobs.Score(0.2, explanation="too long", metadata={"chars": len(s.output)})
+    @opengrade.metric(threshold=0.5)
+    def short(s: opengrade.Sample) -> opengrade.Score:
+        return opengrade.Score(0.2, explanation="too long", metadata={"chars": len(s.output)})
 
-    assert aiobs.score_trace(short, aiobs.Sample(input="q", output="abc"), trace_id=TID)
-    aiobs.flush()
+    assert opengrade.score_trace(short, opengrade.Sample(input="q", output="abc"), trace_id=TID)
+    opengrade.flush()
     assert sent.scores == [
         {
             "trace_id": TID,
@@ -152,12 +152,12 @@ def test_score_trace_runs_metric_and_queues_result(sent: Recorder) -> None:
 
 
 def test_score_trace_skips_missing_requirement(sent: Recorder) -> None:
-    @aiobs.metric(requires=("expected",))
-    def exact(s: aiobs.Sample) -> bool:
+    @opengrade.metric(requires=("expected",))
+    def exact(s: opengrade.Sample) -> bool:
         return bool(s.output == s.expected)
 
-    assert aiobs.score_trace(exact, aiobs.Sample(output="a"), trace_id=TID) is False
-    aiobs.flush()
+    assert opengrade.score_trace(exact, opengrade.Sample(output="a"), trace_id=TID) is False
+    opengrade.flush()
     assert sent.scores == []
 
 
@@ -174,14 +174,14 @@ def test_score_trace_skips_missing_requirement(sent: Recorder) -> None:
     ],
 )
 def test_malformed_input_never_raises(sent: Recorder, kwargs: dict[str, Any]) -> None:
-    assert aiobs.log_score(**kwargs) is False
-    aiobs.flush()
+    assert opengrade.log_score(**kwargs) is False
+    opengrade.flush()
     assert sent.scores == []
 
 
 def test_feedback_truncates_author_and_normalizes_values(sent: Recorder) -> None:
-    assert aiobs.log_feedback(True, trace_id=f" {TID.upper()} ", user_id="u" * 300)
-    aiobs.flush()
+    assert opengrade.log_feedback(True, trace_id=f" {TID.upper()} ", user_id="u" * 300)
+    opengrade.flush()
     (score,) = sent.scores
     assert score["trace_id"] == TID and score["value"] == 1.0 and len(score["author"]) == 200
 
@@ -201,24 +201,24 @@ def test_feedback_truncates_author_and_normalizes_values(sent: Recorder) -> None
 )
 def test_unsendable_content_is_rejected(sent: Recorder, kwargs: dict[str, Any]) -> None:
     args: dict[str, Any] = {"name": "q", "value": 1.0, "trace_id": TID, **kwargs}
-    assert aiobs.log_score(**args) is False
-    aiobs.flush()
+    assert opengrade.log_score(**args) is False
+    opengrade.flush()
     assert sent.scores == []
 
 
 def test_feedback_rejects_surrogate_author(sent: Recorder) -> None:
-    assert aiobs.log_feedback(True, trace_id=TID, user_id="u\ud800") is False
+    assert opengrade.log_feedback(True, trace_id=TID, user_id="u\ud800") is False
     assert sent.scores == []
 
 
 def test_queue_metric_score_validates_trace_id(sent: Recorder) -> None:
-    @aiobs.metric()
-    def m(s: aiobs.Sample) -> float:
+    @opengrade.metric()
+    def m(s: opengrade.Sample) -> float:
         return 1.0
 
-    assert feedback.queue_metric_score("p1", "nothex", m, aiobs.Score(1.0)) is False
-    assert feedback.queue_metric_score("p1", TID.upper(), m, aiobs.Score(1.0)) is True
-    aiobs.flush()
+    assert feedback.queue_metric_score("p1", "nothex", m, opengrade.Score(1.0)) is False
+    assert feedback.queue_metric_score("p1", TID.upper(), m, opengrade.Score(1.0)) is True
+    opengrade.flush()
     assert [s["trace_id"] for s in sent.scores] == [TID]
 
 
@@ -228,23 +228,23 @@ class Hostile:
 
 
 def test_hostile_str_in_metadata_never_raises(sent: Recorder) -> None:
-    assert aiobs.log_score("q", 1.0, trace_id=TID, metadata={"k": Hostile()}) is False
-    assert aiobs.log_score("q", 1.0, trace_id=TID, explanation=Hostile()) is False  # type: ignore[arg-type]
-    assert aiobs.log_feedback(True, trace_id=TID, user_id=Hostile()) is False  # type: ignore[arg-type]
-    aiobs.flush()
+    assert opengrade.log_score("q", 1.0, trace_id=TID, metadata={"k": Hostile()}) is False
+    assert opengrade.log_score("q", 1.0, trace_id=TID, explanation=Hostile()) is False  # type: ignore[arg-type]
+    assert opengrade.log_feedback(True, trace_id=TID, user_id=Hostile()) is False  # type: ignore[arg-type]
+    opengrade.flush()
     assert sent.scores == []
 
 
 def test_queue_metric_score_never_raises(sent: Recorder) -> None:
-    unnamed = aiobs.LocalMetric(lambda s: 1.0)
-    assert feedback.queue_metric_score("p1", TID, unnamed, aiobs.Score(1.0)) is False
+    unnamed = opengrade.LocalMetric(lambda s: 1.0)
+    assert feedback.queue_metric_score("p1", TID, unnamed, opengrade.Score(1.0)) is False
 
-    @aiobs.metric()
-    def m(s: aiobs.Sample) -> float:
+    @opengrade.metric()
+    def m(s: opengrade.Sample) -> float:
         return 1.0
 
     assert (
-        feedback.queue_metric_score("p1", TID, m, aiobs.Score(1.0, metadata={"k": Hostile()}))
+        feedback.queue_metric_score("p1", TID, m, opengrade.Score(1.0, metadata={"k": Hostile()}))
         is False
     )
 
@@ -252,11 +252,11 @@ def test_queue_metric_score_never_raises(sent: Recorder) -> None:
 def test_config_warnings_are_rate_limited(
     sent: Recorder, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
 ) -> None:
-    monkeypatch.delenv("AIOBS_PROJECT_ID")
-    with caplog.at_level(logging.DEBUG, logger="aiobs"):
+    monkeypatch.delenv("OPENGRADE_PROJECT_ID")
+    with caplog.at_level(logging.DEBUG, logger="opengrade"):
         for _ in range(3):
-            aiobs.log_score("q", 1.0, trace_id=TID)
-            aiobs.log_score("q", 1.0)
+            opengrade.log_score("q", 1.0, trace_id=TID)
+            opengrade.log_score("q", 1.0)
     warnings = [r for r in caplog.records if r.levelno == logging.WARNING]
     assert len(warnings) == 2  # one per category
     assert len([r for r in caplog.records if r.levelno == logging.DEBUG]) >= 4
@@ -265,18 +265,18 @@ def test_config_warnings_are_rate_limited(
 def test_numeric_types_and_feedback_value(sent: Recorder) -> None:
     from decimal import Decimal
 
-    assert aiobs.log_score("q", Decimal("0.5"), trace_id=TID, threshold=Decimal("0.25"))
-    assert aiobs.log_feedback(1, trace_id=TID, user_id="a")
-    assert aiobs.log_feedback("yes", trace_id=TID, user_id="b") is False  # type: ignore[arg-type]
-    assert aiobs.log_feedback(2, trace_id=TID, user_id="c") is False
-    aiobs.flush()
+    assert opengrade.log_score("q", Decimal("0.5"), trace_id=TID, threshold=Decimal("0.25"))
+    assert opengrade.log_feedback(1, trace_id=TID, user_id="a")
+    assert opengrade.log_feedback("yes", trace_id=TID, user_id="b") is False  # type: ignore[arg-type]
+    assert opengrade.log_feedback(2, trace_id=TID, user_id="c") is False
+    opengrade.flush()
     assert [s["value"] for s in sent.scores] == [0.5, 1.0]
     assert sent.scores[0]["threshold"] == 0.25
 
 
 def test_empty_trace_id_is_invalid_not_current(sent: Recorder) -> None:
     with trace.get_tracer("t").start_as_current_span("s"):
-        assert aiobs.log_score("q", 1.0, trace_id="") is False
+        assert opengrade.log_score("q", 1.0, trace_id="") is False
 
 
 def test_flush_shares_one_timeout_budget(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -297,30 +297,30 @@ def test_flush_shares_one_timeout_budget(monkeypatch: pytest.MonkeyPatch) -> Non
 
 
 def test_score_trace_misuse_never_raises(sent: Recorder, caplog: pytest.LogCaptureFixture) -> None:
-    def plain(s: aiobs.Sample) -> float:
+    def plain(s: opengrade.Sample) -> float:
         return 1.0
 
-    with caplog.at_level(logging.WARNING, logger="aiobs"):
-        assert aiobs.score_trace(plain, aiobs.Sample(), trace_id=TID) is False  # type: ignore[arg-type]
-        assert aiobs.score_trace(None, aiobs.Sample(), trace_id=TID) is False  # type: ignore[arg-type]
+    with caplog.at_level(logging.WARNING, logger="opengrade"):
+        assert opengrade.score_trace(plain, opengrade.Sample(), trace_id=TID) is False  # type: ignore[arg-type]
+        assert opengrade.score_trace(None, opengrade.Sample(), trace_id=TID) is False  # type: ignore[arg-type]
 
-        @aiobs.metric()
-        def ok(s: aiobs.Sample) -> float:
+        @opengrade.metric()
+        def ok(s: opengrade.Sample) -> float:
             return 1.0
 
-        assert aiobs.score_trace(ok, "not a sample", trace_id=TID) is False  # type: ignore[arg-type]
+        assert opengrade.score_trace(ok, "not a sample", trace_id=TID) is False  # type: ignore[arg-type]
     assert len(caplog.records) == 3
-    assert aiobs.flush()
+    assert opengrade.flush()
     assert sent.scores == []
 
 
 def test_score_trace_with_raising_metric_queues_error(sent: Recorder) -> None:
-    @aiobs.metric()
-    def broken(s: aiobs.Sample) -> float:
+    @opengrade.metric()
+    def broken(s: opengrade.Sample) -> float:
         raise RuntimeError("boom")
 
-    assert aiobs.score_trace(broken, aiobs.Sample(output="x"), trace_id=TID) is True
-    assert aiobs.flush()
+    assert opengrade.score_trace(broken, opengrade.Sample(output="x"), trace_id=TID) is True
+    assert opengrade.flush()
     assert len(sent.scores) == 1
     score = sent.scores[0]
     assert score["name"] == "broken"
@@ -331,16 +331,16 @@ def test_score_trace_with_raising_metric_queues_error(sent: Recorder) -> None:
 
 
 def test_score_trace_from_sample(sent: Recorder) -> None:
-    @aiobs.metric()
-    def ok(s: aiobs.Sample) -> float:
+    @opengrade.metric()
+    def ok(s: opengrade.Sample) -> float:
         return 1.0
 
-    assert aiobs.score_trace(ok, aiobs.Sample(output="x", trace_id=TID.upper()))
-    aiobs.flush()
+    assert opengrade.score_trace(ok, opengrade.Sample(output="x", trace_id=TID.upper()))
+    opengrade.flush()
     assert sent.scores[0]["trace_id"] == TID
 
 
 def test_feedback_without_user_id_has_no_author(sent: Recorder) -> None:
-    assert aiobs.log_feedback(True, trace_id=TID)
-    aiobs.flush()
+    assert opengrade.log_feedback(True, trace_id=TID)
+    opengrade.flush()
     assert "author" not in sent.scores[0]

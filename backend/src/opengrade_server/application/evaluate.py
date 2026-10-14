@@ -6,24 +6,24 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any
 
-from aiobs_server.application.evaluators import EvaluatorNotFoundError
-from aiobs_server.application.experiments import ExperimentNotFoundError
-from aiobs_server.application.metrics_sets import (
+from opengrade_server.application.evaluators import EvaluatorNotFoundError
+from opengrade_server.application.experiments import ExperimentNotFoundError
+from opengrade_server.application.metrics_sets import (
     MetricsSetValidationError,
     ResolveMetricsSetForScore,
 )
-from aiobs_server.application.scoring_inputs import INPUTS_FINGERPRINT_KEY, load_scoring_inputs
-from aiobs_server.domain.evaluation import EvaluationResultRecord, EvaluationRun
-from aiobs_server.domain.experiment import Experiment
-from aiobs_server.domain.metrics_set import assert_unique_evaluator_ids
-from aiobs_server.domain.repositories import (
+from opengrade_server.application.scoring_inputs import INPUTS_FINGERPRINT_KEY, load_scoring_inputs
+from opengrade_server.domain.evaluation import EvaluationResultRecord, EvaluationRun
+from opengrade_server.domain.experiment import Experiment
+from opengrade_server.domain.metrics_set import assert_unique_evaluator_ids
+from opengrade_server.domain.repositories import (
     DatasetRepository,
     EvaluationRunRepository,
     EvaluatorRepository,
     ExperimentItemOutputRepository,
     ExperimentRepository,
 )
-from aiobs_server.evaluation.runner import EvaluationRunner
+from opengrade_server.evaluation.runner import EvaluationRunner
 
 logger = logging.getLogger(__name__)
 
@@ -342,10 +342,10 @@ class EvaluationRunNotFoundError(Exception):
 
 async def schedule_evaluate_experiment(command: EvaluateExperimentCommand) -> None:
     """BackgroundTasks entrypoint — opens a dedicated DB session."""
-    from aiobs_server.config import get_settings
-    from aiobs_server.evaluation.runner import EvaluationRunner
-    from aiobs_server.infrastructure.db import try_get_session_factory
-    from aiobs_server.infrastructure.repositories import (
+    from opengrade_server.config import get_settings
+    from opengrade_server.evaluation.runner import EvaluationRunner
+    from opengrade_server.infrastructure.db import try_get_session_factory
+    from opengrade_server.infrastructure.repositories import (
         SqlAlchemyDatasetRepository,
         SqlAlchemyEvaluationRunRepository,
         SqlAlchemyEvaluatorRepository,

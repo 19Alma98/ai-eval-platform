@@ -5,7 +5,7 @@ from typing import Any
 
 import pytest
 
-from aiobs_server.domain.trace_score import (
+from opengrade_server.domain.trace_score import (
     TraceScore,
     normalize_trace_id,
     summarize_trace_scores,

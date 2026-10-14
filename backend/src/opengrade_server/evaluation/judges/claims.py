@@ -4,8 +4,8 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
 
-from aiobs_server.evaluation.judges.parsing import CallOptions, call_structured
-from aiobs_server.evaluation.judges.schemas import (
+from opengrade_server.evaluation.judges.parsing import CallOptions, call_structured
+from opengrade_server.evaluation.judges.schemas import (
     CoverageVerdict,
     CoverageVerifyOut,
     ExtractOut,
@@ -14,7 +14,7 @@ from aiobs_server.evaluation.judges.schemas import (
     SupportVerdict,
     SupportVerifyOut,
 )
-from aiobs_server.evaluation.protocol import LlmClient
+from opengrade_server.evaluation.protocol import LlmClient
 
 
 @dataclass(frozen=True, slots=True)

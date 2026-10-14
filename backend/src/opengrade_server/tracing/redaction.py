@@ -4,8 +4,8 @@ from __future__ import annotations
 
 from typing import Any
 
-from aiobs_server.domain.trace import Span, Trace
-from aiobs_server.tracing.openinference import CONTENT_ATTRIBUTE_KEYS
+from opengrade_server.domain.trace import Span, Trace
+from opengrade_server.tracing.openinference import CONTENT_ATTRIBUTE_KEYS
 
 
 def redact_attributes(

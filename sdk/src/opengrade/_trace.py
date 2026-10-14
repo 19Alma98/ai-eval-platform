@@ -8,12 +8,12 @@ from typing import Any, cast, overload
 from opentelemetry import trace as otel_trace
 from opentelemetry.trace import Span, Status, StatusCode
 
-from aiobs import _live, _production
-from aiobs._config import MAX_CAPTURE_BYTES
-from aiobs._run_context import record_input, record_output
-from aiobs.metrics import LocalMetric
+from opengrade import _live, _production
+from opengrade._config import MAX_CAPTURE_BYTES
+from opengrade._run_context import record_input, record_output
+from opengrade.metrics import LocalMetric
 
-_TRACER_NAME = "aiobs"
+_TRACER_NAME = "opengrade"
 _TRUNCATE_MARKER = "…[truncated]"
 
 
@@ -62,7 +62,7 @@ def _attr_value(value: object) -> bool | int | float | str:
 
 
 def set_attribute(key: str, value: object) -> None:
-    """Set one attribute on the current aiobs span (no-op if none is active)."""
+    """Set one attribute on the current opengrade span (no-op if none is active)."""
     span = _current_span()
     if not span.is_recording():
         return
@@ -70,7 +70,7 @@ def set_attribute(key: str, value: object) -> None:
 
 
 def set_attributes(attrs: dict[str, object] | None = None, **kwargs: object) -> None:
-    """Set multiple attributes on the current aiobs span."""
+    """Set multiple attributes on the current opengrade span."""
     merged: dict[str, object] = {}
     if attrs:
         merged.update(attrs)
@@ -144,11 +144,11 @@ def trace[**P, R](
     the fraction of traces scored, deterministic per trace. Skipped inside experiments.
 
     Metrics run on a background pool (default ``_production.MAX_WORKERS`` threads;
-    set ``init(metrics_workers=...)`` or ``AIOBS_METRICS_WORKERS``). For slow metrics
+    set ``init(metrics_workers=...)`` or ``OPENGRADE_METRICS_WORKERS``). For slow metrics
     such as LLM judges, raise the worker count or lower ``metrics_sample_rate``.
     An async metric is cancelled after ``_production.METRIC_TIMEOUT_S`` (60 s) and
     counted as failed; a sync metric cannot be interrupted. Calls that a metric makes
-    to ``@aiobs.trace`` functions are not traced (and not scored).
+    to ``@opengrade.trace`` functions are not traced (and not scored).
     """
     production = _production.normalize_metrics(metrics)
     rate = _production.parse_sample_rate(metrics_sample_rate)

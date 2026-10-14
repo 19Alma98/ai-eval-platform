@@ -1,4 +1,4 @@
-from aiobs_server.domain.project import Project, slugify
+from opengrade_server.domain.project import Project, slugify
 
 
 def test_slugify_basic() -> None:

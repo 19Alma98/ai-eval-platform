@@ -5,8 +5,8 @@ from urllib.parse import quote
 
 import httpx2
 
-from aiobs._http import _HttpTransport
-from aiobs.models import AppConfigAliasResponse, AppConfigResponse
+from opengrade._http import _HttpTransport
+from opengrade.models import AppConfigAliasResponse, AppConfigResponse
 
 
 class AppConfigClient:

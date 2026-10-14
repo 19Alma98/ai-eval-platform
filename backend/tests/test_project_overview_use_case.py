@@ -6,18 +6,18 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 
-from aiobs_server.application.compare import CompareExperiments
-from aiobs_server.application.live_judge_calibration import SummarizeLiveJudgeCalibration
-from aiobs_server.application.project_overview import GetProjectOverview
-from aiobs_server.application.projects import ProjectNotFoundError
-from aiobs_server.domain.dataset import Dataset
-from aiobs_server.domain.evaluation import EvaluationResultRecord, EvaluationRun
-from aiobs_server.domain.evaluator import Evaluator
-from aiobs_server.domain.experiment import Experiment
-from aiobs_server.domain.live_interaction import LiveInteraction, LiveInteractionScore
-from aiobs_server.domain.live_overview import LiveInRangeResult, LiveInteractionInRange
-from aiobs_server.domain.project import Project
-from aiobs_server.domain.trace_score import TraceScore
+from opengrade_server.application.compare import CompareExperiments
+from opengrade_server.application.live_judge_calibration import SummarizeLiveJudgeCalibration
+from opengrade_server.application.project_overview import GetProjectOverview
+from opengrade_server.application.projects import ProjectNotFoundError
+from opengrade_server.domain.dataset import Dataset
+from opengrade_server.domain.evaluation import EvaluationResultRecord, EvaluationRun
+from opengrade_server.domain.evaluator import Evaluator
+from opengrade_server.domain.experiment import Experiment
+from opengrade_server.domain.live_interaction import LiveInteraction, LiveInteractionScore
+from opengrade_server.domain.live_overview import LiveInRangeResult, LiveInteractionInRange
+from opengrade_server.domain.project import Project
+from opengrade_server.domain.trace_score import TraceScore
 from support.repositories import InMemoryTraceScoreRepository
 
 

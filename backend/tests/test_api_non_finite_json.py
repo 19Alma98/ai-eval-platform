@@ -8,8 +8,8 @@ from httpx2 import ASGITransport, AsyncClient
 from pydantic import BaseModel, ConfigDict
 
 import test_api_evaluation
-from aiobs_server.api.errors import register_exception_handlers
-from aiobs_server.api.json_guard import RejectNonFiniteJsonMiddleware
+from opengrade_server.api.errors import register_exception_handlers
+from opengrade_server.api.json_guard import RejectNonFiniteJsonMiddleware
 
 client = test_api_evaluation.client  # shared in-memory app fixture
 

@@ -13,7 +13,7 @@ Requires:
 
 Usage (from repo root)::
 
-    export AIOBS_TRACKING_URI=http://localhost:8000
+    export OPENGRADE_TRACKING_URI=http://localhost:8000
     cd sdk && uv run python ../scripts/live_run_demo.py
 
     # or, with sdk/.venv activated:
@@ -34,9 +34,9 @@ ROOT = Path(__file__).resolve().parents[1]
 SDK_DIR = ROOT / "sdk"
 sys.path.insert(0, str(SDK_DIR / "src"))
 
-from aiobs import AiobsAPIError, Client  # noqa: E402
-from aiobs._http import resolve_api_base_url  # noqa: E402
-from aiobs.models import ProjectResponse  # noqa: E402
+from opengrade import OpengradeAPIError, Client  # noqa: E402
+from opengrade._http import resolve_api_base_url  # noqa: E402
+from opengrade.models import ProjectResponse  # noqa: E402
 
 KNOWLEDGE_PATH = ROOT / "examples" / "hr_it_assistant" / "knowledge.json"
 
@@ -132,7 +132,7 @@ def summarize(interaction: Any) -> str:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--base-url", default=None, help="API base (or AIOBS_TRACKING_URI)")
+    parser.add_argument("--base-url", default=None, help="API base (or OPENGRADE_TRACKING_URI)")
     parser.add_argument("--project-slug", default="live-demo")
     parser.add_argument("--project-name", default="Live Run Demo")
     parser.add_argument(
@@ -225,7 +225,7 @@ def main() -> int:
 if __name__ == "__main__":
     try:
         raise SystemExit(main())
-    except AiobsAPIError as exc:
+    except OpengradeAPIError as exc:
         print(f"API error: {exc}", file=sys.stderr)
         raise SystemExit(1) from exc
     except ModuleNotFoundError as exc:

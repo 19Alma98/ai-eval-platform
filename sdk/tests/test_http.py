@@ -7,7 +7,7 @@ from typing import Any
 import httpx2
 import pytest
 
-from aiobs._http import AiobsAPIError, _HttpTransport, read_upload, resolve_api_base_url
+from opengrade._http import OpengradeAPIError, _HttpTransport, read_upload, resolve_api_base_url
 
 
 def test_request_json_post_and_get() -> None:
@@ -58,7 +58,7 @@ def test_request_raises_aiobs_api_error() -> None:
         "http://localhost:8000",
         transport=httpx2.MockTransport(handler),
     )
-    with pytest.raises(AiobsAPIError) as exc_info:
+    with pytest.raises(OpengradeAPIError) as exc_info:
         transport.request("GET", "/api/v1/projects/missing")
     assert exc_info.value.status == 404
     assert "missing" in exc_info.value.body
@@ -99,10 +99,10 @@ def test_request_multipart() -> None:
 
 
 def test_resolve_api_base_url(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.delenv("AIOBS_TRACKING_URI", raising=False)
+    monkeypatch.delenv("OPENGRADE_TRACKING_URI", raising=False)
     assert resolve_api_base_url() == "http://localhost:8000"
     assert resolve_api_base_url("http://x/") == "http://x"
-    monkeypatch.setenv("AIOBS_TRACKING_URI", "http://from-env/")
+    monkeypatch.setenv("OPENGRADE_TRACKING_URI", "http://from-env/")
     assert resolve_api_base_url() == "http://from-env"
 
 

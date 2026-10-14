@@ -8,12 +8,12 @@ from typing import Any, TypeVar
 import httpx2
 from pydantic import BaseModel
 
-from aiobs._config import get_tracking_uri
+from opengrade._config import get_tracking_uri
 
 T = TypeVar("T", bound=BaseModel)
 
 
-class AiobsAPIError(RuntimeError):
+class OpengradeAPIError(RuntimeError):
     """Raised when the platform API returns a non-2xx response."""
 
     def __init__(self, status: int, body: str, *, detail: Any = None) -> None:
@@ -224,14 +224,14 @@ class _AsyncHttpTransport:
 def _parse_response(response: httpx2.Response) -> Any:
     if response.status_code >= 400:
         detail = _parse_error_detail(response.text)
-        raise AiobsAPIError(response.status_code, response.text, detail=detail)
+        raise OpengradeAPIError(response.status_code, response.text, detail=detail)
     if not response.content:
         return None
     return response.json()
 
 
 def resolve_api_base_url(base_url: str | None = None) -> str:
-    """Resolve API host from arg, else the tracking URI (see ``aiobs.get_tracking_uri``)."""
+    """Resolve API host from arg, else the tracking URI (see ``opengrade.get_tracking_uri``)."""
     if base_url is not None and base_url.strip():
         return base_url.rstrip("/")
     return get_tracking_uri()

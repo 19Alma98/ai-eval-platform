@@ -9,12 +9,12 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response,
 from fastapi.responses import JSONResponse
 from fastapi.routing import APIRoute
 
-from aiobs_server.api.deps import (
+from opengrade_server.api.deps import (
     get_app_settings,
     get_log_trace_scores,
     get_summarize_trace_scores,
 )
-from aiobs_server.api.schemas import (
+from opengrade_server.api.schemas import (
     LogTraceScoresRequest,
     LogTraceScoresResponse,
     TraceScoreLabel,
@@ -23,13 +23,13 @@ from aiobs_server.api.schemas import (
     TraceScoreSummaryResponse,
     TraceScoreSummaryRowResponse,
 )
-from aiobs_server.application.projects import ProjectNotFoundError
-from aiobs_server.application.trace_scores import (
+from opengrade_server.application.projects import ProjectNotFoundError
+from opengrade_server.application.trace_scores import (
     LogTraceScores,
     SummarizeTraceScores,
     TraceScoreInput,
 )
-from aiobs_server.domain.trace_score import TraceScore
+from opengrade_server.domain.trace_score import TraceScore
 
 
 class BodyLimitedRoute(APIRoute):

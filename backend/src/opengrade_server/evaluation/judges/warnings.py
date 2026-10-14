@@ -3,7 +3,7 @@ from __future__ import annotations
 from collections.abc import Iterable, Mapping
 from typing import Any, Protocol
 
-from aiobs_server.evaluation.judges.errors import JUDGE_OUTPUT_INVALID
+from opengrade_server.evaluation.judges.errors import JUDGE_OUTPUT_INVALID
 
 JUDGE_MODEL_UNSUITABLE = "judge_model_unsuitable"
 UNSUITABLE_RATE = 0.20

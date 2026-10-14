@@ -6,7 +6,7 @@ from unittest.mock import MagicMock, patch
 
 from typer.testing import CliRunner
 
-from aiobs_server.cli import (
+from opengrade_server.cli import (
     EXIT_CONFIG,
     EXIT_GATE_FAILED,
     EXIT_INFRA,
@@ -20,7 +20,7 @@ runner = CliRunner()
 
 
 def test_load_and_split_meta(tmp_path: Path) -> None:
-    path = tmp_path / "aiobs.yaml"
+    path = tmp_path / "opengrade.yaml"
     path.write_text(
         """api_base_url: http://localhost:8000
 project_id: 11111111-1111-1111-1111-111111111111
@@ -37,7 +37,7 @@ quality:
 
 
 def _policy_file(tmp_path: Path) -> Path:
-    path = tmp_path / "aiobs.yaml"
+    path = tmp_path / "opengrade.yaml"
     path.write_text(
         """api_base_url: http://localhost:8000
 project_id: 11111111-1111-1111-1111-111111111111
@@ -60,7 +60,7 @@ def _mock_response(status_code: int, json_body: dict[str, Any] | None = None) ->
 
 def test_check_exit_pass(tmp_path: Path) -> None:
     path = _policy_file(tmp_path)
-    with patch("aiobs_server.cli.httpx2.post") as post:
+    with patch("opengrade_server.cli.httpx2.post") as post:
         post.return_value = _mock_response(
             200,
             {
@@ -81,7 +81,7 @@ def test_check_exit_pass(tmp_path: Path) -> None:
 
 def test_check_exit_gate_failed(tmp_path: Path) -> None:
     path = _policy_file(tmp_path)
-    with patch("aiobs_server.cli.httpx2.post") as post:
+    with patch("opengrade_server.cli.httpx2.post") as post:
         post.return_value = _mock_response(
             200,
             {
@@ -102,7 +102,7 @@ def test_check_exit_gate_failed(tmp_path: Path) -> None:
 
 def test_check_exit_config_on_400(tmp_path: Path) -> None:
     path = _policy_file(tmp_path)
-    with patch("aiobs_server.cli.httpx2.post") as post:
+    with patch("opengrade_server.cli.httpx2.post") as post:
         post.return_value = _mock_response(400)
         result = runner.invoke(app, ["check", "--policy", str(path)])
     assert result.exit_code == EXIT_CONFIG
@@ -112,14 +112,14 @@ def test_check_exit_infra_on_network_error(tmp_path: Path) -> None:
     import httpx2
 
     path = _policy_file(tmp_path)
-    with patch("aiobs_server.cli.httpx2.post") as post:
+    with patch("opengrade_server.cli.httpx2.post") as post:
         post.side_effect = httpx2.ConnectError("down")
         result = runner.invoke(app, ["check", "--policy", str(path)])
     assert result.exit_code == EXIT_INFRA
 
 
 def test_check_exit_config_missing_ids(tmp_path: Path) -> None:
-    path = tmp_path / "aiobs.yaml"
+    path = tmp_path / "opengrade.yaml"
     path.write_text("quality:\n  min: 0.85\n", encoding="utf-8")
     result = runner.invoke(app, ["check", "--policy", str(path)])
     assert result.exit_code == EXIT_CONFIG

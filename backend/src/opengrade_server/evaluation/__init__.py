@@ -2,21 +2,21 @@
 
 from __future__ import annotations
 
-from aiobs_server.domain.repositories import JudgeClaimCacheRepository
-from aiobs_server.evaluation.deterministic import register_deterministic_evaluators
-from aiobs_server.evaluation.judges import JUDGE_KINDS, make_llm_judge_factory
-from aiobs_server.evaluation.protocol import (
+from opengrade_server.domain.repositories import JudgeClaimCacheRepository
+from opengrade_server.evaluation.deterministic import register_deterministic_evaluators
+from opengrade_server.evaluation.judges import JUDGE_KINDS, make_llm_judge_factory
+from opengrade_server.evaluation.protocol import (
     EvaluationResult,
     EvaluationSample,
     Evaluator,
     LlmClient,
 )
-from aiobs_server.evaluation.registry import (
+from opengrade_server.evaluation.registry import (
     create_evaluator,
     list_registered_kinds,
     register_evaluator,
 )
-from aiobs_server.evaluation.runner import EvaluationRunner
+from opengrade_server.evaluation.runner import EvaluationRunner
 
 
 def bootstrap_evaluators(

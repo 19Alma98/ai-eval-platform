@@ -9,7 +9,7 @@ from dataclasses import dataclass, field
 import pytest
 from httpx2 import ASGITransport, AsyncClient
 
-from aiobs_server.api.deps import (
+from opengrade_server.api.deps import (
     get_app_config_repository,
     get_dataset_repository,
     get_evaluate_background_runner,
@@ -21,21 +21,21 @@ from aiobs_server.api.deps import (
     get_project_repository,
     get_trace_repository,
 )
-from aiobs_server.application.evaluate import (
+from opengrade_server.application.evaluate import (
     EvaluateExperiment,
     EvaluateExperimentCommand,
     ExperimentAlreadyRunningError,
 )
-from aiobs_server.application.scoring_recovery import (
+from opengrade_server.application.scoring_recovery import (
     fail_stuck_experiments,
     requeue_unfinished_live_scores,
 )
-from aiobs_server.domain.dataset import DatasetItem
-from aiobs_server.domain.evaluation import EvaluationRun
-from aiobs_server.domain.evaluator import Evaluator
-from aiobs_server.domain.experiment import Experiment
-from aiobs_server.domain.live_interaction import LiveInteraction
-from aiobs_server.main import create_app
+from opengrade_server.domain.dataset import DatasetItem
+from opengrade_server.domain.evaluation import EvaluationRun
+from opengrade_server.domain.evaluator import Evaluator
+from opengrade_server.domain.experiment import Experiment
+from opengrade_server.domain.live_interaction import LiveInteraction
+from opengrade_server.main import create_app
 from support.repositories import InMemoryAppConfigRepository, InMemoryMetricsSetRepository
 from test_api_evaluation import (
     InMemoryDatasetRepository,
@@ -198,7 +198,7 @@ async def test_requeue_unfinished_live_resets_running(monkeypatch: pytest.Monkey
         scheduled.append(interaction_id)
 
     monkeypatch.setattr(
-        "aiobs_server.application.scoring_recovery.schedule_live_score",
+        "opengrade_server.application.scoring_recovery.schedule_live_score",
         fake_schedule,
     )
 
@@ -221,7 +221,7 @@ async def test_requeue_unfinished_live_resets_running(monkeypatch: pytest.Monkey
 async def robustness_client() -> AsyncIterator[tuple[AsyncClient, InMemoryExperimentRepository]]:
     import os
 
-    from aiobs_server.config import get_settings
+    from opengrade_server.config import get_settings
 
     os.environ["CONTENT_CAPTURE_ENABLED"] = "true"
     get_settings.cache_clear()

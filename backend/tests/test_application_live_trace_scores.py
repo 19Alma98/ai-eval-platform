@@ -4,9 +4,9 @@ import uuid
 from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 
-from aiobs_server.application.live_interactions import GetLiveInteraction, ListLiveInteractions
-from aiobs_server.domain.live_interaction import LiveInteraction, LiveInteractionScore
-from aiobs_server.domain.trace_score import TraceScore
+from opengrade_server.application.live_interactions import GetLiveInteraction, ListLiveInteractions
+from opengrade_server.domain.live_interaction import LiveInteraction, LiveInteractionScore
+from opengrade_server.domain.trace_score import TraceScore
 from support.repositories import InMemoryTraceScoreRepository
 from test_api_live_interactions import InMemoryLiveRepository
 

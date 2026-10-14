@@ -4,22 +4,22 @@ import uuid
 from datetime import datetime
 from typing import Protocol
 
-from aiobs_server.domain.app_config import AppConfig, AppConfigAlias
-from aiobs_server.domain.dataset import Dataset, DatasetItem
-from aiobs_server.domain.evaluation import EvaluationResultRecord, EvaluationRun
-from aiobs_server.domain.evaluator import Evaluator
-from aiobs_server.domain.experiment import Experiment
-from aiobs_server.domain.experiment_output import ExperimentItemOutput
-from aiobs_server.domain.live_interaction import (
+from opengrade_server.domain.app_config import AppConfig, AppConfigAlias
+from opengrade_server.domain.dataset import Dataset, DatasetItem
+from opengrade_server.domain.evaluation import EvaluationResultRecord, EvaluationRun
+from opengrade_server.domain.evaluator import Evaluator
+from opengrade_server.domain.experiment import Experiment
+from opengrade_server.domain.experiment_output import ExperimentItemOutput
+from opengrade_server.domain.live_interaction import (
     LiveInteraction,
     LiveInteractionScore,
     LiveScoreReview,
 )
-from aiobs_server.domain.live_overview import LiveInRangeResult
-from aiobs_server.domain.metrics_set import MetricsSet
-from aiobs_server.domain.project import Project
-from aiobs_server.domain.trace import Trace
-from aiobs_server.domain.trace_score import TraceScore, TraceScoreSummaryRow
+from opengrade_server.domain.live_overview import LiveInRangeResult
+from opengrade_server.domain.metrics_set import MetricsSet
+from opengrade_server.domain.project import Project
+from opengrade_server.domain.trace import Trace
+from opengrade_server.domain.trace_score import TraceScore, TraceScoreSummaryRow
 
 
 class ProjectRepository(Protocol):

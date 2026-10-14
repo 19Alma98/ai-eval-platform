@@ -5,8 +5,8 @@ import logging
 import uuid
 from datetime import UTC, datetime
 
-from aiobs_server.application.live_interactions import schedule_live_score
-from aiobs_server.domain.repositories import (
+from opengrade_server.application.live_interactions import schedule_live_score
+from opengrade_server.domain.repositories import (
     EvaluationRunRepository,
     ExperimentRepository,
     LiveInteractionRepository,
@@ -75,8 +75,8 @@ async def requeue_unfinished_live_scores(
 
 async def recover_scoring_after_restart() -> None:
     """Lifespan hook: fail stuck experiments; re-queue unfinished live scores."""
-    from aiobs_server.infrastructure.db import try_get_session_factory
-    from aiobs_server.infrastructure.repositories import (
+    from opengrade_server.infrastructure.db import try_get_session_factory
+    from opengrade_server.infrastructure.repositories import (
         SqlAlchemyEvaluationRunRepository,
         SqlAlchemyExperimentRepository,
         SqlAlchemyLiveInteractionRepository,

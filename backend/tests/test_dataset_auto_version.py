@@ -4,20 +4,20 @@ import uuid
 
 import pytest
 
-from aiobs_server.application.datasets import (
+from opengrade_server.application.datasets import (
     AddDatasetItem,
     AddDatasetItemCommand,
     ImportDatasetItems,
     ImportDatasetItemsCommand,
 )
-from aiobs_server.application.live_interactions import (
+from opengrade_server.application.live_interactions import (
     PromoteLiveInteraction,
     PromoteLiveInteractionCommand,
 )
-from aiobs_server.domain.dataset import Dataset, DatasetItem
-from aiobs_server.domain.evaluation import EvaluationRun
-from aiobs_server.domain.experiment import Experiment
-from aiobs_server.domain.live_interaction import LiveInteraction
+from opengrade_server.domain.dataset import Dataset, DatasetItem
+from opengrade_server.domain.evaluation import EvaluationRun
+from opengrade_server.domain.experiment import Experiment
+from opengrade_server.domain.live_interaction import LiveInteraction
 
 
 class InMemoryDatasetRepository:

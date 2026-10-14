@@ -5,18 +5,18 @@ from collections import defaultdict
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 
-from aiobs_server.application.compare import CompareExperiments
-from aiobs_server.application.live_interactions import live_row_is_failed, source_trace_id
-from aiobs_server.application.live_judge_calibration import SummarizeLiveJudgeCalibration
-from aiobs_server.application.projects import ProjectNotFoundError
-from aiobs_server.domain.live_overview import (
+from opengrade_server.application.compare import CompareExperiments
+from opengrade_server.application.live_interactions import live_row_is_failed, source_trace_id
+from opengrade_server.application.live_judge_calibration import SummarizeLiveJudgeCalibration
+from opengrade_server.application.projects import ProjectNotFoundError
+from opengrade_server.domain.live_overview import (
     LiveAttentionItem,
     LiveInteractionInRange,
     LiveOverviewStats,
     LiveSeriesBucket,
 )
-from aiobs_server.domain.metrics_set import MetricsSet
-from aiobs_server.domain.repositories import (
+from opengrade_server.domain.metrics_set import MetricsSet
+from opengrade_server.domain.repositories import (
     DatasetRepository,
     ExperimentRepository,
     LiveInteractionRepository,
@@ -24,7 +24,7 @@ from aiobs_server.domain.repositories import (
     ProjectRepository,
     TraceScoreRepository,
 )
-from aiobs_server.domain.trace_score import TraceScore
+from opengrade_server.domain.trace_score import TraceScore
 
 __all__ = [
     "CalibrationAlert",

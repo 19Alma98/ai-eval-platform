@@ -9,9 +9,9 @@ from httpx2 import AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.pool import NullPool
 
-from aiobs_server.domain.trace_score import TraceScore
-from aiobs_server.infrastructure.models import ProjectModel
-from aiobs_server.infrastructure.repositories import SqlAlchemyTraceScoreRepository
+from opengrade_server.domain.trace_score import TraceScore
+from opengrade_server.infrastructure.models import ProjectModel
+from opengrade_server.infrastructure.repositories import SqlAlchemyTraceScoreRepository
 from tests.support.postgres import integration_database_url
 
 pytestmark = pytest.mark.integration

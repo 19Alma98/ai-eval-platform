@@ -4,25 +4,25 @@ import uuid
 from dataclasses import dataclass, replace
 from typing import Any
 
-from aiobs_server.application.compare import (
+from opengrade_server.application.compare import (
     CompareExperiments,
     InvalidCompareSelectionError,
 )
-from aiobs_server.application.experiments import ExperimentNotFoundError
-from aiobs_server.application.projects import ProjectNotFoundError
-from aiobs_server.application.scoring_inputs import (
+from opengrade_server.application.experiments import ExperimentNotFoundError
+from opengrade_server.application.projects import ProjectNotFoundError
+from opengrade_server.application.scoring_inputs import (
     CurrentScoringFingerprint,
     current_fingerprint,
 )
-from aiobs_server.domain.evaluation import EvaluationRun
-from aiobs_server.domain.repositories import (
+from opengrade_server.domain.evaluation import EvaluationRun
+from opengrade_server.domain.repositories import (
     EvaluationRunRepository,
     ExperimentMetricRepository,
     ExperimentRepository,
     ProjectRepository,
 )
-from aiobs_server.regression.aggregate import aggregate_results, select_runs
-from aiobs_server.regression.policy import (
+from opengrade_server.regression.aggregate import aggregate_results, select_runs
+from opengrade_server.regression.policy import (
     EvaluatorMetricInput,
     InvalidPolicyError,
     PolicyCheck,

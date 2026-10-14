@@ -4,7 +4,7 @@ import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 
-from aiobs_server.api.deps import (
+from opengrade_server.api.deps import (
     get_create_app_config,
     get_delete_app_config_alias,
     get_get_app_config,
@@ -13,14 +13,14 @@ from aiobs_server.api.deps import (
     get_list_app_configs,
     get_set_app_config_alias,
 )
-from aiobs_server.api.schemas import (
+from opengrade_server.api.schemas import (
     AppConfigAliasResponse,
     AppConfigResponse,
     AppConfigSummaryResponse,
     CreateAppConfigRequest,
     SetAppConfigAliasRequest,
 )
-from aiobs_server.application.app_configs import (
+from opengrade_server.application.app_configs import (
     AppConfigAliasWithSummary,
     CreateAppConfig,
     CreateAppConfigCommand,
@@ -32,7 +32,7 @@ from aiobs_server.application.app_configs import (
     SetAppConfigAlias,
     SetAppConfigAliasCommand,
 )
-from aiobs_server.domain.app_config import AppConfig
+from opengrade_server.domain.app_config import AppConfig
 
 router = APIRouter(tags=["app-configs"])
 

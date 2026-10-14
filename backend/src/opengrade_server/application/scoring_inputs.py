@@ -5,11 +5,11 @@ import json
 import uuid
 from dataclasses import dataclass
 
-from aiobs_server.application.experiment_outputs import merge_dataset_item
-from aiobs_server.domain.dataset import DatasetItem
-from aiobs_server.domain.experiment import Experiment
-from aiobs_server.domain.repositories import DatasetRepository, ExperimentItemOutputRepository
-from aiobs_server.regression.aggregate import INPUTS_FINGERPRINT_KEY
+from opengrade_server.application.experiment_outputs import merge_dataset_item
+from opengrade_server.domain.dataset import DatasetItem
+from opengrade_server.domain.experiment import Experiment
+from opengrade_server.domain.repositories import DatasetRepository, ExperimentItemOutputRepository
+from opengrade_server.regression.aggregate import INPUTS_FINGERPRINT_KEY
 
 __all__ = [
     "INPUTS_FINGERPRINT_KEY",

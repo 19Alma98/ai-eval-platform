@@ -49,8 +49,8 @@ def _root_span(experiment_id: str, item_id: str) -> dict[str, Any]:
             {
                 "openinference.span.kind": "CHAIN",
                 "output.value": "20 days",
-                "aiobs.experiment_id": experiment_id,
-                "aiobs.dataset_item_id": item_id,
+                "opengrade.experiment_id": experiment_id,
+                "opengrade.dataset_item_id": item_id,
             }
         ),
     }

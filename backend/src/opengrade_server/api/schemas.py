@@ -15,8 +15,8 @@ from pydantic import (
     model_validator,
 )
 
-from aiobs_server.domain.trace_score import MAX_TRACE_SCORE_BATCH, MAX_TRACE_SCORE_METADATA_BYTES
-from aiobs_server.regression.policy import META_KEYS
+from opengrade_server.domain.trace_score import MAX_TRACE_SCORE_BATCH, MAX_TRACE_SCORE_METADATA_BYTES
+from opengrade_server.regression.policy import META_KEYS
 
 _LLM_JUDGE_KINDS = frozenset(
     {

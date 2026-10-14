@@ -1,8 +1,8 @@
-"""Production live interactions derived from ``@aiobs.trace`` spans.
+"""Production live interactions derived from ``@opengrade.trace`` spans.
 
-The outermost traced call outside an experiment is marked ``aiobs.live=true``;
+The outermost traced call outside an experiment is marked ``opengrade.live=true``;
 the platform turns that span into a live interaction at OTLP ingestion. Only a
-``sample_rate`` fraction is sent to the judge (``aiobs.live.judge``), decided
+``sample_rate`` fraction is sent to the judge (``opengrade.live.judge``), decided
 from the trace id so every span of a trace agrees.
 """
 
@@ -14,13 +14,13 @@ from contextvars import ContextVar, Token
 
 from opentelemetry.trace import Span
 
-from aiobs._run_context import ACTIVE_RUN
+from opengrade._run_context import ACTIVE_RUN
 
-logger = logging.getLogger("aiobs")
+logger = logging.getLogger("opengrade")
 
-LIVE_ATTR = "aiobs.live"
-LIVE_JUDGE_ATTR = "aiobs.live.judge"
-LIVE_SAMPLE_RATE_ATTR = "aiobs.live.sample_rate"
+LIVE_ATTR = "opengrade.live"
+LIVE_JUDGE_ATTR = "opengrade.live.judge"
+LIVE_SAMPLE_RATE_ATTR = "opengrade.live.sample_rate"
 
 _TRUTHY = frozenset({"1", "true", "yes", "on"})
 _TRACE_ID_LOW_BITS = (1 << 64) - 1
@@ -51,23 +51,23 @@ def _reset_for_tests() -> None:
 
 
 def is_enabled() -> bool:
-    """``init(live=...)`` > ``AIOBS_LIVE`` > off."""
+    """``init(live=...)`` > ``OPENGRADE_LIVE`` > off."""
     if _ENABLED is not None:
         return _ENABLED
-    return os.getenv("AIOBS_LIVE", "").strip().lower() in _TRUTHY
+    return os.getenv("OPENGRADE_LIVE", "").strip().lower() in _TRUTHY
 
 
 def sample_rate() -> float:
-    """``init(live_sample_rate=...)`` > ``AIOBS_LIVE_SAMPLE_RATE`` > 1.0."""
+    """``init(live_sample_rate=...)`` > ``OPENGRADE_LIVE_SAMPLE_RATE`` > 1.0."""
     if _SAMPLE_RATE is not None:
         return _SAMPLE_RATE
-    raw = os.getenv("AIOBS_LIVE_SAMPLE_RATE", "").strip()
+    raw = os.getenv("OPENGRADE_LIVE_SAMPLE_RATE", "").strip()
     if not raw:
         return 1.0
     try:
         return _parse_rate(raw)
     except ValueError:
-        logger.warning("aiobs: invalid AIOBS_LIVE_SAMPLE_RATE=%r; judging every interaction", raw)
+        logger.warning("opengrade: invalid OPENGRADE_LIVE_SAMPLE_RATE=%r; judging every interaction", raw)
         return 1.0
 
 

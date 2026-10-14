@@ -12,24 +12,24 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from aiobs_server.domain.app_config import AppConfig, AppConfigAlias
-from aiobs_server.domain.dataset import Dataset, DatasetItem
-from aiobs_server.domain.evaluation import EvaluationResultRecord, EvaluationRun
-from aiobs_server.domain.evaluator import Evaluator
-from aiobs_server.domain.experiment import Experiment
-from aiobs_server.domain.experiment_output import ExperimentItemOutput
-from aiobs_server.domain.live_interaction import (
+from opengrade_server.domain.app_config import AppConfig, AppConfigAlias
+from opengrade_server.domain.dataset import Dataset, DatasetItem
+from opengrade_server.domain.evaluation import EvaluationResultRecord, EvaluationRun
+from opengrade_server.domain.evaluator import Evaluator
+from opengrade_server.domain.experiment import Experiment
+from opengrade_server.domain.experiment_output import ExperimentItemOutput
+from opengrade_server.domain.live_interaction import (
     DuplicateExternalIdError,
     LiveInteraction,
     LiveInteractionScore,
     LiveScoreReview,
 )
-from aiobs_server.domain.live_overview import LiveInRangeResult, LiveInteractionInRange
-from aiobs_server.domain.metrics_set import MetricsSet, MetricsSetEntry
-from aiobs_server.domain.project import Project
-from aiobs_server.domain.trace import Span, Trace
-from aiobs_server.domain.trace_score import TraceScore, TraceScoreSummaryRow
-from aiobs_server.infrastructure.models import (
+from opengrade_server.domain.live_overview import LiveInRangeResult, LiveInteractionInRange
+from opengrade_server.domain.metrics_set import MetricsSet, MetricsSetEntry
+from opengrade_server.domain.project import Project
+from opengrade_server.domain.trace import Span, Trace
+from opengrade_server.domain.trace_score import TraceScore, TraceScoreSummaryRow
+from opengrade_server.infrastructure.models import (
     AppConfigAliasModel,
     AppConfigModel,
     DatasetItemModel,
@@ -1650,7 +1650,7 @@ class SqlJudgeClaimCache:
     def _factory(self) -> Any | None:
         if self._session_factory is not None:
             return self._session_factory
-        from aiobs_server.infrastructure.db import try_get_session_factory
+        from opengrade_server.infrastructure.db import try_get_session_factory
 
         return try_get_session_factory()
 

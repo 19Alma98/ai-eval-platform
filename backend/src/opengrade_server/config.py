@@ -3,8 +3,8 @@ from functools import lru_cache
 from pydantic import AliasChoices, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-DEFAULT_SQLITE_URL = "sqlite+aiosqlite:///./aiobs.db"
-DEFAULT_JUDGE_PROMPT_SNAPSHOTS = ".aiobs/judge_prompt_snapshots.json"
+DEFAULT_SQLITE_URL = "sqlite+aiosqlite:///./opengrade.db"
+DEFAULT_JUDGE_PROMPT_SNAPSHOTS = ".opengrade/judge_prompt_snapshots.json"
 
 
 class Settings(BaseSettings):
@@ -30,7 +30,7 @@ class Settings(BaseSettings):
     llm_seed: int | None = 42
     judge_prompt_snapshots: str = Field(
         default=DEFAULT_JUDGE_PROMPT_SNAPSHOTS,
-        validation_alias=AliasChoices("AIOBS_JUDGE_PROMPT_SNAPSHOTS", "judge_prompt_snapshots"),
+        validation_alias=AliasChoices("OPENGRADE_JUDGE_PROMPT_SNAPSHOTS", "judge_prompt_snapshots"),
     )
 
 

@@ -7,7 +7,7 @@ from unittest.mock import MagicMock
 import pytest
 from opentelemetry.sdk.trace import TracerProvider
 
-from aiobs.instrumentation import TIER1, activate_instrumentors
+from opengrade.instrumentation import TIER1, activate_instrumentors
 
 
 def test_tier1_keys() -> None:

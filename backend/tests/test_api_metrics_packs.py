@@ -6,10 +6,10 @@ from collections.abc import AsyncIterator
 import pytest
 from httpx2 import ASGITransport, AsyncClient
 
-from aiobs_server.api.deps import get_dataset_repository, get_project_repository
-from aiobs_server.domain.dataset import Dataset
-from aiobs_server.domain.project import Project
-from aiobs_server.main import create_app
+from opengrade_server.api.deps import get_dataset_repository, get_project_repository
+from opengrade_server.domain.dataset import Dataset
+from opengrade_server.domain.project import Project
+from opengrade_server.main import create_app
 from tests.support.repositories import InMemoryExperimentRepository, wire_metrics_pack_repos
 
 

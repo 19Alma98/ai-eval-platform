@@ -7,8 +7,8 @@ from collections import defaultdict
 from datetime import UTC, datetime
 from typing import Any
 
-from aiobs_server.domain.trace import Span, Trace
-from aiobs_server.tracing.openinference import extract_model_provider, resolve_span_kind
+from opengrade_server.domain.trace import Span, Trace
+from opengrade_server.tracing.openinference import extract_model_provider, resolve_span_kind
 
 
 def _pick_trace_name(spans: list[dict[str, Any]]) -> str:
@@ -101,7 +101,7 @@ def normalize_raw_spans(
         # Optional resource-ish fields from first span attributes
         first_attrs = spans_raw[0].get("attributes") or {}
         environment = first_attrs.get("deployment.environment") or first_attrs.get(
-            "aiobs.environment"
+            "opengrade.environment"
         )
         user_id = first_attrs.get("user.id") or first_attrs.get("enduser.id")
         session_id = first_attrs.get("session.id")

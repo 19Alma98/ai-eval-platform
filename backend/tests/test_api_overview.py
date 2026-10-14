@@ -6,10 +6,10 @@ from datetime import UTC, datetime, timedelta
 import pytest
 from httpx2 import AsyncClient
 
-from aiobs_server.application.compare import CompareExperiments
-from aiobs_server.application.live_judge_calibration import SummarizeLiveJudgeCalibration
-from aiobs_server.evaluation import bootstrap_evaluators
-from aiobs_server.evaluation.registry import clear_registry
+from opengrade_server.application.compare import CompareExperiments
+from opengrade_server.application.live_judge_calibration import SummarizeLiveJudgeCalibration
+from opengrade_server.evaluation import bootstrap_evaluators
+from opengrade_server.evaluation.registry import clear_registry
 from support.fake_llm import ScriptedJudgeLlm
 
 pytestmark = pytest.mark.integration

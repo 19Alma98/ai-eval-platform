@@ -4,9 +4,9 @@ import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, status
 
-from aiobs_server.api.deps import get_create_evaluator, get_list_evaluators
-from aiobs_server.api.schemas import CreateEvaluatorRequest, EvaluatorResponse
-from aiobs_server.application.evaluators import (
+from opengrade_server.api.deps import get_create_evaluator, get_list_evaluators
+from opengrade_server.api.schemas import CreateEvaluatorRequest, EvaluatorResponse
+from opengrade_server.application.evaluators import (
     CreateEvaluator,
     CreateEvaluatorCommand,
     ListEvaluators,

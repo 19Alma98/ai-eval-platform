@@ -7,9 +7,9 @@ from typing import Any
 import httpx2
 import pytest
 
-import aiobs
-from aiobs import AiobsAPIError, AsyncClient
-from aiobs._http import _AsyncHttpTransport
+import opengrade
+from opengrade import OpengradeAPIError, AsyncClient
+from opengrade._http import _AsyncHttpTransport
 
 
 @pytest.fixture
@@ -120,9 +120,9 @@ def mock_transport(captured_requests: list[httpx2.Request]) -> httpx2.MockTransp
 
 
 def test_public_exports() -> None:
-    assert "AsyncClient" in aiobs.__all__
-    assert "get_async_client" in aiobs.__all__
-    assert "aset_project" in aiobs.__all__
+    assert "AsyncClient" in opengrade.__all__
+    assert "get_async_client" in opengrade.__all__
+    assert "aset_project" in opengrade.__all__
 
 
 def test_async_transport_request_and_error() -> None:
@@ -146,7 +146,7 @@ def test_async_transport_request_and_error() -> None:
             "http://localhost:8000",
             transport=httpx2.MockTransport(err_handler),
         )
-        with pytest.raises(AiobsAPIError) as exc_info:
+        with pytest.raises(OpengradeAPIError) as exc_info:
             await transport.request("GET", "/api/v1/projects/missing")
         assert exc_info.value.status == 404
         assert exc_info.value.detail == "missing"
@@ -257,7 +257,7 @@ def test_trace_scores_log(
 def test_api_error_from_async_client(mock_transport: httpx2.MockTransport) -> None:
     async def main() -> None:
         async with AsyncClient("http://localhost:8000", transport=mock_transport) as client:
-            with pytest.raises(AiobsAPIError) as exc_info:
+            with pytest.raises(OpengradeAPIError) as exc_info:
                 await client.projects.get("missing")
             assert exc_info.value.status == 404
 

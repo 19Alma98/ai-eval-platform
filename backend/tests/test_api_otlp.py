@@ -8,15 +8,15 @@ from datetime import UTC, datetime
 import pytest
 from httpx2 import ASGITransport, AsyncClient
 
-from aiobs_server.api.deps import (
+from opengrade_server.api.deps import (
     get_live_interaction_repository,
     get_project_repository,
     get_trace_repository,
     get_trace_score_repository,
 )
-from aiobs_server.domain.project import Project
-from aiobs_server.domain.trace import Trace
-from aiobs_server.main import create_app
+from opengrade_server.domain.project import Project
+from opengrade_server.domain.trace import Trace
+from opengrade_server.main import create_app
 from tests.support.repositories import InMemoryTraceScoreRepository
 from tests.test_api_live_interactions import InMemoryLiveRepository
 
@@ -110,7 +110,7 @@ class InMemoryTraceRepository:
 async def client() -> AsyncIterator[AsyncClient]:
     import os
 
-    from aiobs_server.config import get_settings
+    from opengrade_server.config import get_settings
 
     # Assert redaction path; ignore local .env CONTENT_CAPTURE_ENABLED=true.
     os.environ["CONTENT_CAPTURE_ENABLED"] = "false"

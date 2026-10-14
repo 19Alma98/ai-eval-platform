@@ -8,8 +8,8 @@ from typing import Any
 
 from pydantic import BaseModel, ValidationError
 
-from aiobs_server.evaluation.judges.errors import JudgeOutputError
-from aiobs_server.evaluation.protocol import LlmClient
+from opengrade_server.evaluation.judges.errors import JudgeOutputError
+from opengrade_server.evaluation.protocol import LlmClient
 
 _FENCE_RE = re.compile(r"```(?:json)?\s*(.*?)```", re.DOTALL | re.IGNORECASE)
 

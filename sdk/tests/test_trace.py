@@ -10,10 +10,10 @@ from opentelemetry.sdk.trace.export import SimpleSpanProcessor
 from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
 from opentelemetry.trace import StatusCode
 
-import aiobs
-from aiobs import _otel
-from aiobs._config import MAX_CAPTURE_BYTES
-from aiobs._trace import truncate_value
+import opengrade
+from opengrade import _otel
+from opengrade._config import MAX_CAPTURE_BYTES
+from opengrade._trace import truncate_value
 
 _shared_exporter: InMemorySpanExporter | None = None
 
@@ -49,7 +49,7 @@ def test_truncate_value_adds_marker() -> None:
 
 
 def test_trace_sets_kind_input_output(spans: InMemorySpanExporter) -> None:
-    @aiobs.trace
+    @opengrade.trace
     def greet(name: str) -> str:
         return f"hi {name}"
 
@@ -65,7 +65,7 @@ def test_trace_sets_kind_input_output(spans: InMemorySpanExporter) -> None:
 
 
 def test_trace_with_explicit_name(spans: InMemorySpanExporter) -> None:
-    @aiobs.trace(name="faq", kind="CHAIN", capture_input=False, capture_output=False)
+    @opengrade.trace(name="faq", kind="CHAIN", capture_input=False, capture_output=False)
     def answer(q: str) -> str:
         return "ok"
 
@@ -78,7 +78,7 @@ def test_trace_with_explicit_name(spans: InMemorySpanExporter) -> None:
 
 
 def test_trace_reraises_and_records_exception(spans: InMemorySpanExporter) -> None:
-    @aiobs.trace
+    @opengrade.trace
     def boom() -> None:
         raise RuntimeError("nope")
 
@@ -89,7 +89,7 @@ def test_trace_reraises_and_records_exception(spans: InMemorySpanExporter) -> No
 
 
 def test_trace_async(spans: InMemorySpanExporter) -> None:
-    @aiobs.trace_async(name="async-faq")
+    @opengrade.trace_async(name="async-faq")
     async def ask(q: str) -> str:
         return "pong"
 
@@ -102,13 +102,13 @@ def test_trace_async(spans: InMemorySpanExporter) -> None:
 def test_span_helpers_set_io_attrs_and_trace_id(spans: InMemorySpanExporter) -> None:
     seen: dict[str, str | None] = {}
 
-    @aiobs.trace(name="helpers", capture_input=False, capture_output=False)
+    @opengrade.trace(name="helpers", capture_input=False, capture_output=False)
     def run(q: str) -> str:
-        aiobs.set_input(q)
-        aiobs.set_attribute("rag.mode", "good")
-        aiobs.set_attributes({"retrieval.document_count": 2})
-        aiobs.set_output("done")
-        seen["trace_id"] = aiobs.current_trace_id()
+        opengrade.set_input(q)
+        opengrade.set_attribute("rag.mode", "good")
+        opengrade.set_attributes({"retrieval.document_count": 2})
+        opengrade.set_output("done")
+        seen["trace_id"] = opengrade.current_trace_id()
         return "ignored"
 
     assert run("ping") == "ignored"
@@ -122,9 +122,9 @@ def test_span_helpers_set_io_attrs_and_trace_id(spans: InMemorySpanExporter) -> 
 
 
 def test_set_error_marks_span(spans: InMemorySpanExporter) -> None:
-    @aiobs.trace(name="err", capture_input=False, capture_output=False)
+    @opengrade.trace(name="err", capture_input=False, capture_output=False)
     def run() -> None:
-        aiobs.set_error("no documents")
+        opengrade.set_error("no documents")
 
     run()
     span = spans.get_finished_spans()[0]

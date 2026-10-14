@@ -8,7 +8,7 @@ from typing import Any
 import pytest
 from httpx2 import ASGITransport, AsyncClient
 
-from aiobs_server.api.deps import (
+from opengrade_server.api.deps import (
     get_dataset_repository,
     get_evaluation_run_repository,
     get_evaluator_repository,
@@ -19,14 +19,14 @@ from aiobs_server.api.deps import (
     get_project_repository,
     get_trace_repository,
 )
-from aiobs_server.domain.dataset import Dataset, DatasetItem
-from aiobs_server.domain.evaluation import EvaluationResultRecord, EvaluationRun
-from aiobs_server.domain.evaluator import Evaluator
-from aiobs_server.domain.experiment import Experiment
-from aiobs_server.domain.experiment_output import ExperimentItemOutput
-from aiobs_server.domain.project import Project
-from aiobs_server.domain.trace import Trace
-from aiobs_server.main import create_app
+from opengrade_server.domain.dataset import Dataset, DatasetItem
+from opengrade_server.domain.evaluation import EvaluationResultRecord, EvaluationRun
+from opengrade_server.domain.evaluator import Evaluator
+from opengrade_server.domain.experiment import Experiment
+from opengrade_server.domain.experiment_output import ExperimentItemOutput
+from opengrade_server.domain.project import Project
+from opengrade_server.domain.trace import Trace
+from opengrade_server.main import create_app
 from tests.support.repositories import (
     InMemoryExperimentMetricRepository,
     InMemoryMetricsSetRepository,
@@ -211,7 +211,7 @@ class InMemoryExperimentItemOutputRepository:
 async def release_env() -> AsyncIterator[tuple[AsyncClient, InMemoryEvaluationRunRepository]]:
     import os
 
-    from aiobs_server.config import get_settings
+    from opengrade_server.config import get_settings
 
     os.environ["CONTENT_CAPTURE_ENABLED"] = "true"
     get_settings.cache_clear()

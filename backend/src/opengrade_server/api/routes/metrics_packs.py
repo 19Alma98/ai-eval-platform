@@ -4,17 +4,17 @@ import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, status
 
-from aiobs_server.api.deps import (
+from opengrade_server.api.deps import (
     get_ensure_metrics_pack,
     get_get_metrics_pack,
     get_replace_metrics_pack,
 )
-from aiobs_server.api.schemas import (
+from opengrade_server.api.schemas import (
     MetricsPackEntryResponse,
     MetricsPackResponse,
     ReplaceMetricsPackRequest,
 )
-from aiobs_server.application.metrics_packs import (
+from opengrade_server.application.metrics_packs import (
     EnsureMetricsPack,
     GetMetricsPack,
     MetricsPackEntryPatch,
@@ -22,9 +22,9 @@ from aiobs_server.application.metrics_packs import (
     MetricsPackValidationError,
     ReplaceMetricsPack,
 )
-from aiobs_server.application.metrics_sets import MetricsSetReferencedError
-from aiobs_server.application.projects import ProjectNotFoundError
-from aiobs_server.domain.metrics_pack import MetricsPack
+from opengrade_server.application.metrics_sets import MetricsSetReferencedError
+from opengrade_server.application.projects import ProjectNotFoundError
+from opengrade_server.domain.metrics_pack import MetricsPack
 
 router = APIRouter(tags=["metrics-packs"])
 

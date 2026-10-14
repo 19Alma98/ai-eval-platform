@@ -4,7 +4,7 @@ import uuid
 from dataclasses import dataclass, replace
 from typing import Any
 
-from aiobs_server.application.metrics_sets import (
+from opengrade_server.application.metrics_sets import (
     EnsureProjectDefaultMetricsSet,
     MetricsSetEntryInput,
     MetricsSetProtectedError,
@@ -12,9 +12,9 @@ from aiobs_server.application.metrics_sets import (
     PatchMetricsSet,
     PatchMetricsSetCommand,
 )
-from aiobs_server.domain.metrics_pack import MetricsPack, MetricsPackEntry
-from aiobs_server.domain.metrics_set import MetricsSet
-from aiobs_server.domain.repositories import MetricsSetRepository
+from opengrade_server.domain.metrics_pack import MetricsPack, MetricsPackEntry
+from opengrade_server.domain.metrics_set import MetricsSet
+from opengrade_server.domain.repositories import MetricsSetRepository
 
 
 class MetricsPackNotFoundError(Exception):

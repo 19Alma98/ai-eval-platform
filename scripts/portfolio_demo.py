@@ -13,13 +13,13 @@ from typing import Any
 ROOT = Path(__file__).resolve().parents[1]
 SDK_DIR = ROOT / "sdk"
 APP_DIR = ROOT / "examples" / "hr_it_assistant"
-POLICY_PATH = APP_DIR / "aiobs.yaml"
+POLICY_PATH = APP_DIR / "opengrade.yaml"
 BACKEND_DIR = ROOT / "backend"
 
 sys.path.insert(0, str(SDK_DIR / "src"))
 
-from aiobs import Client  # noqa: E402
-from aiobs.models import ProjectResponse  # noqa: E402
+from opengrade import Client  # noqa: E402
+from opengrade.models import ProjectResponse  # noqa: E402
 
 
 def ensure_project(client: Client, slug: str, name: str) -> ProjectResponse:
@@ -46,7 +46,7 @@ def run_experiment(
     project_slug: str,
     baseline: str | None = None,
 ) -> dict[str, Any]:
-    """Run hr_it_assistant ``--eval``: one aiobs.evaluate experiment over the gold rows.
+    """Run hr_it_assistant ``--eval``: one opengrade.evaluate experiment over the gold rows.
 
     The SDK creates (or reuses) the gold dataset, binds every trace to its item,
     uploads outputs and scores with the project metrics pack.
@@ -70,8 +70,8 @@ def run_experiment(
     if baseline:
         cmd += ["--baseline", baseline]
     env = os.environ.copy()
-    env["AIOBS_TRACKING_URI"] = base
-    env["AIOBS_PROJECT_SLUG"] = project_slug
+    env["OPENGRADE_TRACKING_URI"] = base
+    env["OPENGRADE_PROJECT_SLUG"] = project_slug
     env["OLLAMA_HOST"] = os.getenv("OLLAMA_HOST", "http://localhost:11434")
     print(f"running hr_it_assistant --eval model={model} name={name}")
     proc = subprocess.run(
@@ -128,7 +128,7 @@ def run_aiobs_check(policy: Path, base: str) -> int:
     cmd = [
         "uv",
         "run",
-        "aiobs",
+        "opengrade",
         "check",
         "--policy",
         str(policy),
@@ -142,9 +142,9 @@ def run_aiobs_check(policy: Path, base: str) -> int:
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--base-url", default=os.getenv("AIOBS_TRACKING_URI", "http://localhost:8000"))
+    parser.add_argument("--base-url", default=os.getenv("OPENGRADE_TRACKING_URI", "http://localhost:8000"))
     parser.add_argument("--project-slug", default="hr-it-assistant")
-    parser.add_argument("--skip-check", action="store_true", help="Skip aiobs check subprocess")
+    parser.add_argument("--skip-check", action="store_true", help="Skip opengrade check subprocess")
     args = parser.parse_args(argv)
 
     base = args.base_url.rstrip("/")
@@ -192,7 +192,7 @@ def main(argv: list[str] | None = None) -> int:
     print(f"API project id: {project_id}")
 
     if args.skip_check:
-        print("skipping aiobs check")
+        print("skipping opengrade check")
         return 0
 
     code = run_aiobs_check(policy, base)
@@ -202,7 +202,7 @@ def main(argv: list[str] | None = None) -> int:
     if code == 1:
         print("gate failed (regression or quality threshold)")
         return 0
-    print(f"aiobs check failed with unexpected exit {code}", file=sys.stderr)
+    print(f"opengrade check failed with unexpected exit {code}", file=sys.stderr)
     return code
 
 

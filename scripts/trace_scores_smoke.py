@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Manual smoke: @aiobs.trace(metrics=...) + log_feedback → summary + Live.
+"""Manual smoke: @opengrade.trace(metrics=...) + log_feedback → summary + Live.
 
 Prereqs: docker compose up (API :8000, web :3000), CONTENT_CAPTURE_ENABLED=true.
 """
@@ -11,7 +11,7 @@ import sys
 import time
 import urllib.request
 
-import aiobs
+import opengrade
 
 BASE = "http://localhost:8000"
 UI = "http://localhost:3000"
@@ -24,27 +24,27 @@ def _get(path: str) -> dict:
 
 
 def main() -> int:
-    aiobs.set_tracking_uri(BASE)
-    aiobs.set_project(SLUG)
-    aiobs.init(live=True, live_sample_rate=1.0)
+    opengrade.set_tracking_uri(BASE)
+    opengrade.set_project(SLUG)
+    opengrade.init(live=True, live_sample_rate=1.0)
 
-    @aiobs.metric(threshold=0.5, requires=("documents",))
-    def cites_source(s: aiobs.Sample) -> float:
+    @opengrade.metric(threshold=0.5, requires=("documents",))
+    def cites_source(s: opengrade.Sample) -> float:
         return float(any(d["id"] in (s.output or "") for d in s.documents))
 
-    @aiobs.trace(name="smoke_answer", metrics=[cites_source], metrics_sample_rate=1.0)
+    @opengrade.trace(name="smoke_answer", metrics=[cites_source], metrics_sample_rate=1.0)
     def answer(question: str) -> str:
         docs = [{"id": "pto", "text": "Full-time staff get 20 PTO days per year."}]
-        aiobs.set_retrieval_documents(docs)
+        opengrade.set_retrieval_documents(docs)
         return "Staff get 20 PTO days (see pto)."
 
     captured: dict[str, str] = {}
 
-    @aiobs.trace(name="smoke_handle", live=True)
+    @opengrade.trace(name="smoke_handle", live=True)
     def handle(question: str) -> str:
         text = answer(question)
-        captured["trace_id"] = aiobs.current_trace_id() or ""
-        aiobs.log_score("answer_chars", float(len(text)), threshold=1.0)
+        captured["trace_id"] = opengrade.current_trace_id() or ""
+        opengrade.log_score("answer_chars", float(len(text)), threshold=1.0)
         return text
 
     result = handle("How many PTO days do we get?")
@@ -53,17 +53,17 @@ def main() -> int:
     print(f"output: {result!r}")
     print(f"trace_id: {trace_id}")
 
-    ok = aiobs.log_feedback(
+    ok = opengrade.log_feedback(
         True,
         trace_id=trace_id,
         user_id="smoke-user",
         comment="manual smoke thumbs-up",
     )
     print(f"log_feedback queued: {ok}")
-    flushed = aiobs.flush(timeout_millis=15_000)
+    flushed = opengrade.flush(timeout_millis=15_000)
     print(f"flush ok: {flushed}")
 
-    project = aiobs.get_project()
+    project = opengrade.get_project()
     assert project is not None
     project_id = project.id
     print(f"project_id: {project_id}")

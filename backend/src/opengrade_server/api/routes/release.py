@@ -4,13 +4,13 @@ import uuid
 
 from fastapi import APIRouter, Depends
 
-from aiobs_server.api.deps import get_release_check
-from aiobs_server.api.schemas import (
+from opengrade_server.api.deps import get_release_check
+from opengrade_server.api.schemas import (
     ReleaseCheckItemResponse,
     ReleaseCheckRequest,
     ReleaseCheckResponse,
 )
-from aiobs_server.application.release_check import (
+from opengrade_server.application.release_check import (
     ReleaseCheck,
     ReleaseCheckCommand,
 )

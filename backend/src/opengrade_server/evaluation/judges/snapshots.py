@@ -7,19 +7,19 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from aiobs_server.evaluation.judges import prompts
+from opengrade_server.evaluation.judges import prompts
 
 logger = logging.getLogger(__name__)
 
-DEFAULT_SNAPSHOTS_PATH = ".aiobs/judge_prompt_snapshots.json"
+DEFAULT_SNAPSHOTS_PATH = ".opengrade/judge_prompt_snapshots.json"
 
 
 def snapshots_path() -> Path:
-    raw = os.environ.get("AIOBS_JUDGE_PROMPT_SNAPSHOTS")
+    raw = os.environ.get("OPENGRADE_JUDGE_PROMPT_SNAPSHOTS")
     if raw:
         return Path(raw)
     try:
-        from aiobs_server.config import get_settings
+        from opengrade_server.config import get_settings
 
         return Path(get_settings().judge_prompt_snapshots)
     except Exception:  # noqa: BLE001 — settings may be unavailable in unit tests

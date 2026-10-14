@@ -15,19 +15,19 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import Any
 
-from aiobs_server.application.experiments import ExperimentNotFoundError
-from aiobs_server.application.scoring_inputs import INPUTS_FINGERPRINT_KEY, load_scoring_inputs
-from aiobs_server.domain.evaluation import EvaluationResultRecord, EvaluationRun
-from aiobs_server.domain.evaluator import CLIENT_EVALUATOR_KIND, Evaluator
-from aiobs_server.domain.repositories import (
+from opengrade_server.application.experiments import ExperimentNotFoundError
+from opengrade_server.application.scoring_inputs import INPUTS_FINGERPRINT_KEY, load_scoring_inputs
+from opengrade_server.domain.evaluation import EvaluationResultRecord, EvaluationRun
+from opengrade_server.domain.evaluator import CLIENT_EVALUATOR_KIND, Evaluator
+from opengrade_server.domain.repositories import (
     DatasetRepository,
     EvaluationRunRepository,
     EvaluatorRepository,
     ExperimentItemOutputRepository,
     ExperimentRepository,
 )
-from aiobs_server.evaluation.outcomes import item_verdict
-from aiobs_server.evaluation.runner import config_hash, run_status_from_results
+from opengrade_server.evaluation.outcomes import item_verdict
+from opengrade_server.evaluation.runner import config_hash, run_status_from_results
 
 CLIENT_EVALUATOR_TYPE = "custom"
 _LABELS = frozenset({"PASS", "FAIL", "ERROR", "SKIPPED"})

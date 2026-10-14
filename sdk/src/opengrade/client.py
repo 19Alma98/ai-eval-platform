@@ -9,9 +9,9 @@ from urllib.parse import urlencode
 
 import httpx2
 
-from aiobs._config import resolve_project_id
-from aiobs._http import _HttpTransport, read_upload, resolve_api_base_url
-from aiobs.models import (
+from opengrade._config import resolve_project_id
+from opengrade._http import _HttpTransport, read_upload, resolve_api_base_url
+from opengrade.models import (
     DatasetDetailResponse,
     DatasetItemResponse,
     DatasetResponse,
@@ -32,7 +32,7 @@ from aiobs.models import (
     TraceScoresAccepted,
     UpsertExperimentOutputsResponse,
 )
-from aiobs.registry import AppConfigClient
+from opengrade.registry import AppConfigClient
 
 _TERMINAL_EXPERIMENT_STATUSES = frozenset({"completed", "failed", "cancelled"})
 

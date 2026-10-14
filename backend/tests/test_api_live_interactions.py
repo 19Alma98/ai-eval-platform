@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import uuid
 from collections.abc import AsyncIterator
 from datetime import datetime
@@ -7,7 +8,7 @@ from datetime import datetime
 import pytest
 from httpx2 import ASGITransport, AsyncClient
 
-from aiobs_server.api.deps import (
+from opengrade_server.api.deps import (
     get_dataset_repository,
     get_evaluator_repository,
     get_live_interaction_repository,
@@ -15,16 +16,18 @@ from aiobs_server.api.deps import (
     get_project_repository,
     get_trace_score_repository,
 )
-from aiobs_server.domain.dataset import Dataset, DatasetItem
-from aiobs_server.domain.live_interaction import (
+from opengrade_server.domain.dataset import Dataset, DatasetItem
+from opengrade_server.domain.live_interaction import (
     LiveInteraction,
     LiveInteractionScore,
     LiveScoreReview,
 )
-from aiobs_server.domain.project import Project
-from aiobs_server.evaluation import bootstrap_evaluators
-from aiobs_server.evaluation.registry import clear_registry
-from aiobs_server.main import create_app
+from opengrade_server.domain.project import Project
+from opengrade_server.config import get_settings
+from opengrade_server.evaluation import bootstrap_evaluators
+from opengrade_server.evaluation.registry import clear_registry
+from opengrade_server.infrastructure.db import bootstrap_schema, dispose_db, init_db
+from opengrade_server.main import create_app
 from support.fake_llm import ScriptedJudgeLlm
 from support.repositories import (
     InMemoryEvaluatorRepository,
@@ -216,7 +219,15 @@ class InMemoryDatasetRepository:
 
 
 @pytest.fixture
-async def client() -> AsyncIterator[AsyncClient]:
+async def client(tmp_path_factory: pytest.TempPathFactory) -> AsyncIterator[AsyncClient]:
+    db_path = tmp_path_factory.mktemp("sqlite") / "opengrade.db"
+    previous_url = os.environ.get("DATABASE_URL")
+    os.environ["DATABASE_URL"] = f"sqlite+aiosqlite:///{db_path}"
+    get_settings.cache_clear()
+    await dispose_db()
+    init_db(get_settings())
+    await bootstrap_schema()
+
     projects = InMemoryProjectRepository()
     live = InMemoryLiveRepository()
     metrics = InMemoryMetricsSetRepository()
@@ -242,6 +253,12 @@ async def client() -> AsyncIterator[AsyncClient]:
 
     app.dependency_overrides.clear()
     clear_registry()
+    await dispose_db()
+    if previous_url is None:
+        os.environ.pop("DATABASE_URL", None)
+    else:
+        os.environ["DATABASE_URL"] = previous_url
+    get_settings.cache_clear()
 
 
 @pytest.mark.asyncio

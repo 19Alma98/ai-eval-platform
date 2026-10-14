@@ -3,8 +3,8 @@ from pathlib import Path
 import pytest
 from httpx2 import ASGITransport, AsyncClient
 
-from aiobs_server.main import create_app
-from aiobs_server.ui import resolve_ui_file, ui_root
+from opengrade_server.main import create_app
+from opengrade_server.ui import resolve_ui_file, ui_root
 from support.packaged_ui import requires_packaged_ui
 
 

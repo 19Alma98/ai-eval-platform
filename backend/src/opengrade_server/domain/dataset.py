@@ -5,7 +5,7 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import Any
 
-from aiobs_server.domain.task_types import normalize_task_type
+from opengrade_server.domain.task_types import normalize_task_type
 
 
 @dataclass(frozen=True, slots=True)

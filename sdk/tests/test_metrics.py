@@ -7,7 +7,7 @@ from typing import Any
 
 import pytest
 
-from aiobs.metrics import LocalMetric, Sample, Score, coerce_score, evaluate_metric, metric
+from opengrade.metrics import LocalMetric, Sample, Score, coerce_score, evaluate_metric, metric
 
 
 def test_sample_defaults_are_empty() -> None:

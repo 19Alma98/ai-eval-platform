@@ -24,16 +24,16 @@ import httpx2
 from opentelemetry import trace as otel_trace
 from opentelemetry.trace import Status, StatusCode
 
-from aiobs import _config, _otel
-from aiobs._context import get_client, set_project
-from aiobs._eval_run import bind_evaluation
-from aiobs._http import AiobsAPIError
-from aiobs._links import experiment_item_url, experiment_url, trace_url, ui_base_url
-from aiobs._run_context import ACTIVE_RUN
-from aiobs._trace import current_trace_id, truncate_value
-from aiobs.client import Client
-from aiobs.metrics import LocalMetric, Sample, Score, evaluate_metric
-from aiobs.models import (
+from opengrade import _config, _otel
+from opengrade._context import get_client, set_project
+from opengrade._eval_run import bind_evaluation
+from opengrade._http import OpengradeAPIError
+from opengrade._links import experiment_item_url, experiment_url, trace_url, ui_base_url
+from opengrade._run_context import ACTIVE_RUN
+from opengrade._trace import current_trace_id, truncate_value
+from opengrade.client import Client
+from opengrade.metrics import LocalMetric, Sample, Score, evaluate_metric
+from opengrade.models import (
     DatasetItemResponse,
     DatasetResponse,
     EvaluateResponse,
@@ -44,18 +44,18 @@ from aiobs.models import (
     MetricComparisonResponse,
 )
 
-logger = logging.getLogger("aiobs")
+logger = logging.getLogger("opengrade")
 
-# The experiment whose ``with`` block or item run is active, for aiobs.log_params/log_metrics.
+# The experiment whose ``with`` block or item run is active, for opengrade.log_params/log_metrics.
 ACTIVE_EXPERIMENT: ContextVar[Experiment | None] = ContextVar(
-    "aiobs_active_experiment", default=None
+    "opengrade_active_experiment", default=None
 )
 
 
 Metric = str | Mapping[str, Any] | LocalMetric | Callable[..., Any]
 """A server metric kind (``"groundedness"``), an entry dict
 (``{"kind": "hit_at_k", "threshold": 0.9, "config": {"k": 3}}``), a ``LocalMetric``
-(``@aiobs.metric``) or a bare callable ``fn(sample)`` / ``fn(item, output)`` scored
+(``@opengrade.metric``) or a bare callable ``fn(sample)`` / ``fn(item, output)`` scored
 locally."""
 
 TASK_FAILED_EXPLANATION = "task raised before producing an output"
@@ -158,7 +158,7 @@ class ItemRun:
     ) -> None:
         """Record the item's output (and optionally retrieved documents / extra context).
 
-        An explicit ``log(output)`` wins over values captured from ``aiobs.set_output``.
+        An explicit ``log(output)`` wins over values captured from ``opengrade.set_output``.
         """
         if output is not _MISSING:
             self.output = output
@@ -240,7 +240,7 @@ class ExperimentResult:
 
     @property
     def experiment_metrics(self) -> dict[str, float]:
-        """Experiment-level scalars: ``log_metrics`` values plus the SDK's ``aiobs.*`` ones."""
+        """Experiment-level scalars: ``log_metrics`` values plus the SDK's ``opengrade.*`` ones."""
         if self.server_summary is None:
             return {}
         return dict(self.server_summary.experiment_metrics)
@@ -318,10 +318,10 @@ _MAX_ERROR_LINKS = 5
 
 
 def announce(result: ExperimentResult) -> None:
-    """Print where to see the results; ``AIOBS_QUIET=1`` silences it."""
-    if os.getenv("AIOBS_QUIET", "").strip().lower() in {"1", "true", "yes"}:
+    """Print where to see the results; ``OPENGRADE_QUIET=1`` silences it."""
+    if os.getenv("OPENGRADE_QUIET", "").strip().lower() in {"1", "true", "yes"}:
         return
-    print(f"aiobs: experiment {result.experiment.name} → {result.url}", file=sys.stderr)
+    print(f"opengrade: experiment {result.experiment.name} → {result.url}", file=sys.stderr)
 
 
 def _fmt(value: float | None) -> str:
@@ -400,7 +400,7 @@ class Experiment:
         """Merge ``params`` into the stored model config and return the merged config.
 
         Allowed until the experiment is scored, and not for experiments created from an
-        app config: the server answers 409 (``AiobsAPIError``) in both cases.
+        app config: the server answers 409 (``OpengradeAPIError``) in both cases.
         """
         if not params:
             raise ValueError("log_params needs at least one param")
@@ -449,7 +449,7 @@ class Experiment:
             except Exception as exc:
                 if raise_on_error:
                     raise
-                logger.warning("aiobs: task failed on item %s: %s", item.id, exc)
+                logger.warning("opengrade: task failed on item %s: %s", item.id, exc)
 
         if max_concurrency == 1:
             for item in self._items:
@@ -471,7 +471,7 @@ class Experiment:
             self._context_token = None
         if exc_type is not None:
             _otel.flush()
-            logger.warning("aiobs experiment %s aborted; skipping scoring", self.id)
+            logger.warning("opengrade experiment %s aborted; skipping scoring", self.id)
             return
         if self.result is None:
             self.finish()
@@ -480,18 +480,18 @@ class Experiment:
     def run(self, item: DatasetItemResponse | str) -> Iterator[ItemRun]:
         """Run one item: opens a root span bound to (experiment, item) and records output.
 
-        Inside the block call ``run.log(output)`` or ``aiobs.set_output(...)``;
-        ``aiobs.set_retrieval_documents`` is captured too.
+        Inside the block call ``run.log(output)`` or ``opengrade.set_output(...)``;
+        ``opengrade.set_retrieval_documents`` is captured too.
         """
         resolved = self._resolve_item(item)
         record = ItemRun(item=resolved)
-        tracer = otel_trace.get_tracer("aiobs")
+        tracer = otel_trace.get_tracer("opengrade")
         token = ACTIVE_RUN.set(record)
         experiment_token = ACTIVE_EXPERIMENT.set(self)
         started = time.perf_counter()
         try:
             with tracer.start_as_current_span(
-                f"aiobs.eval {self.name}", record_exception=False, set_status_on_exception=False
+                f"opengrade.eval {self.name}", record_exception=False, set_status_on_exception=False
             ) as span:
                 span.set_attribute("openinference.span.kind", "CHAIN")
                 bind_evaluation(experiment_id=self.id, dataset_item_id=resolved.id)
@@ -531,7 +531,7 @@ class Experiment:
                 result = evaluate_metric(metric, sample, item=record.item)
             except Exception as exc:  # a broken metric must not sink the run
                 logger.warning(
-                    "aiobs local metric %s failed on item %s: %s", name, record.item.id, exc
+                    "opengrade local metric %s failed on item %s: %s", name, record.item.id, exc
                 )
                 record.scores[name] = None
                 record.metric_errors[name] = f"{type(exc).__name__}: {exc}"
@@ -576,9 +576,9 @@ class Experiment:
             payload.append(entry)
         try:
             self._client.experiments.submit_client_results(self.id, payload)
-        except AiobsAPIError as exc:
+        except OpengradeAPIError as exc:
             logger.warning(
-                "aiobs: could not submit local metrics for experiment %s: %s", self.id, exc
+                "opengrade: could not submit local metrics for experiment %s: %s", self.id, exc
             )
             return False
         return True
@@ -586,8 +586,8 @@ class Experiment:
     def _log_auto_metrics(self, records: list[ItemRun]) -> None:
         try:
             self.log_metrics(_auto_metrics(records))
-        except (AiobsAPIError, httpx2.HTTPError) as exc:
-            logger.warning("aiobs: could not log run metrics for experiment %s: %s", self.id, exc)
+        except (OpengradeAPIError, httpx2.HTTPError) as exc:
+            logger.warning("opengrade: could not log run metrics for experiment %s: %s", self.id, exc)
 
     def runs(self) -> list[ItemRun]:
         with self._lock:
@@ -632,14 +632,14 @@ class Experiment:
         elif self._metrics_logged:
             try:
                 server_summary = self._client.experiments.summary(self.id)
-            except (AiobsAPIError, httpx2.HTTPError) as exc:
-                logger.warning("aiobs: could not fetch summary for experiment %s: %s", self.id, exc)
+            except (OpengradeAPIError, httpx2.HTTPError) as exc:
+                logger.warning("opengrade: could not fetch summary for experiment %s: %s", self.id, exc)
         # Compare needs evaluator runs on both sides; experiment metrics ride along.
         if scored and self.baseline_id is not None:
             try:
                 comparison = self._client.experiments.compare(self.id, self.baseline_id)
-            except AiobsAPIError as exc:
-                logger.warning("aiobs: compare with baseline %s failed: %s", self.baseline_id, exc)
+            except OpengradeAPIError as exc:
+                logger.warning("opengrade: compare with baseline %s failed: %s", self.baseline_id, exc)
 
         project_id = self.experiment.project_id or None
         for record in records:
@@ -683,7 +683,7 @@ class Experiment:
                 return stored
             if time.monotonic() >= deadline:
                 logger.warning(
-                    "aiobs: %d/%d traces not bound to experiment %s after %.0fs; "
+                    "opengrade: %d/%d traces not bound to experiment %s after %.0fs; "
                     "writing outputs without their trace context",
                     len(pending),
                     len(traced),
@@ -717,12 +717,12 @@ def _auto_metrics(records: list[ItemRun]) -> dict[str, float]:
     """Run-level numbers logged on every finish: error share and nearest-rank percentiles of
     task wall-clock latency over items that did not fail."""
     metrics: dict[str, float] = {
-        "aiobs.error_rate": sum(r.error is not None for r in records) / len(records)
+        "opengrade.error_rate": sum(r.error is not None for r in records) / len(records)
     }
     latencies = [r.latency_ms for r in records if r.error is None and r.latency_ms is not None]
     if latencies:
-        metrics["aiobs.latency_p50_ms"] = _nearest_rank(latencies, 50.0)
-        metrics["aiobs.latency_p95_ms"] = _nearest_rank(latencies, 95.0)
+        metrics["opengrade.latency_p50_ms"] = _nearest_rank(latencies, 50.0)
+        metrics["opengrade.latency_p95_ms"] = _nearest_rank(latencies, 95.0)
     return metrics
 
 
@@ -885,9 +885,9 @@ def _inline_dataset_id(
         name=name,
         items=bodies,
         task_type=task_type,
-        description="Created by aiobs.evaluate() from in-memory rows",
+        description="Created by opengrade.evaluate() from in-memory rows",
     )
-    logger.info("aiobs created dataset %s (%d items)", name, len(bodies))
+    logger.info("opengrade created dataset %s (%d items)", name, len(bodies))
     return created.id
 
 
@@ -988,9 +988,9 @@ def _resolve_metrics_set(client: Client, project_id: str, requested: list[dict[s
             project_id,
             name=name,
             entries=entries,
-            description="Created by aiobs.evaluate()",
+            description="Created by opengrade.evaluate()",
         )
-    except AiobsAPIError as exc:
+    except OpengradeAPIError as exc:
         if exc.status != 409:
             raise
         # Created concurrently by another process — use theirs.
@@ -1035,7 +1035,7 @@ def _active_experiment() -> Experiment:
     exp = ACTIVE_EXPERIMENT.get()
     if exp is None:
         raise RuntimeError(
-            "no active experiment: call inside `with aiobs.start_experiment(...)` "
+            "no active experiment: call inside `with opengrade.start_experiment(...)` "
             "or inside an item run (exp.run, run_task or an evaluate() task)"
         )
     return exp
@@ -1115,7 +1115,7 @@ def start_experiment(
         local_metrics=local_metrics,
         baseline_id=baseline_id,
     )
-    logger.info("aiobs experiment %s started: %s", experiment.name, exp.url)
+    logger.info("opengrade experiment %s started: %s", experiment.name, exp.url)
     return exp
 
 
@@ -1141,7 +1141,7 @@ def evaluate(
 
     ``task(item)`` gets a ``DatasetItemResponse`` (``item.input``,
     ``item.expected_output``, ``item.metadata``) and returns the output. Calls to
-    ``aiobs.set_retrieval_documents`` inside it feed retrieval metrics. A task that
+    ``opengrade.set_retrieval_documents`` inside it feed retrieval metrics. A task that
     raises is recorded as an item error (unless ``raise_on_error``).
     """
     if max_concurrency < 1:
@@ -1161,7 +1161,7 @@ def evaluate(
     )
     exp.run_task(task, max_concurrency=max_concurrency, raise_on_error=raise_on_error)
     result = exp.finish(timeout=timeout)
-    logger.info("aiobs experiment %s finished: %s", result.experiment.name, result.url)
+    logger.info("opengrade experiment %s finished: %s", result.experiment.name, result.url)
     return result
 
 

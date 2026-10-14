@@ -4,10 +4,10 @@ from __future__ import annotations
 
 import uuid
 
-from aiobs_server.domain.trace import Trace
-from aiobs_server.tracing.normalization import normalize_raw_spans
-from aiobs_server.tracing.otel import decode_otlp_to_raw_spans
-from aiobs_server.tracing.redaction import redact_trace
+from opengrade_server.domain.trace import Trace
+from opengrade_server.tracing.normalization import normalize_raw_spans
+from opengrade_server.tracing.otel import decode_otlp_to_raw_spans
+from opengrade_server.tracing.redaction import redact_trace
 
 
 def ingest_otlp_payload(

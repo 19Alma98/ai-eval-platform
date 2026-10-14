@@ -10,16 +10,16 @@ from typing import Any
 import pytest
 from httpx2 import ASGITransport, AsyncClient
 
-from aiobs_server.api.deps import (
+from opengrade_server.api.deps import (
     get_live_interaction_repository,
     get_project_repository,
     get_trace_repository,
     get_trace_score_repository,
 )
-from aiobs_server.domain.live_interaction import LiveInteraction
-from aiobs_server.domain.trace import Trace
-from aiobs_server.domain.trace_score import MAX_TRACE_SCORE_BATCH
-from aiobs_server.main import create_app
+from opengrade_server.domain.live_interaction import LiveInteraction
+from opengrade_server.domain.trace import Trace
+from opengrade_server.domain.trace_score import MAX_TRACE_SCORE_BATCH
+from opengrade_server.main import create_app
 from support.repositories import InMemoryTraceScoreRepository
 from test_api_evaluation import InMemoryTraceRepository
 from test_api_live_interactions import InMemoryLiveRepository, InMemoryProjectRepository

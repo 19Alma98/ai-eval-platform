@@ -14,9 +14,9 @@ from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import SimpleSpanProcessor
 from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
 
-import aiobs
-from aiobs import _config, _otel, _production, _scores
-from aiobs._run_context import ACTIVE_RUN
+import opengrade
+from opengrade import _config, _otel, _production, _scores
+from opengrade._run_context import ACTIVE_RUN
 
 _exporter = InMemorySpanExporter()
 
@@ -48,7 +48,7 @@ def _tracer() -> Iterator[None]:
 @pytest.fixture
 def sent(monkeypatch: pytest.MonkeyPatch) -> Iterator[Recorder]:
     monkeypatch.setattr(_config, "_ACTIVE_PROJECT_ID", None)
-    monkeypatch.setenv("AIOBS_PROJECT_ID", "p1")
+    monkeypatch.setenv("OPENGRADE_PROJECT_ID", "p1")
     _exporter.clear()
     _production._reset_for_tests()
     recorder = Recorder()
@@ -64,26 +64,26 @@ def _span_trace_id(name: str) -> str:
 
 
 def test_traced_call_runs_metrics_with_captured_input_and_documents(sent: Recorder) -> None:
-    seen: list[aiobs.Sample] = []
+    seen: list[opengrade.Sample] = []
 
-    @aiobs.metric(threshold=0.5, requires=("documents",))
-    def cites(s: aiobs.Sample) -> float:
+    @opengrade.metric(threshold=0.5, requires=("documents",))
+    def cites(s: opengrade.Sample) -> float:
         seen.append(s)
         return 1.0
 
-    @aiobs.trace(name="retrieve")
+    @opengrade.trace(name="retrieve")
     def retrieve(q: str) -> list[dict[str, Any]]:
         docs = [{"id": "d1", "text": "doc"}]
-        aiobs.set_retrieval_documents(docs)
+        opengrade.set_retrieval_documents(docs)
         return docs
 
-    @aiobs.trace(name="answer", metrics=[cites])
+    @opengrade.trace(name="answer", metrics=[cites])
     def answer(q: str) -> str:
         retrieve(q)
         return f"answer to {q}"
 
     assert answer("hi") == "answer to hi"
-    assert aiobs.flush()
+    assert opengrade.flush()
 
     (sample,) = seen
     assert sample.input == "hi" and sample.output == "answer to hi"
@@ -104,18 +104,18 @@ def test_traced_call_runs_metrics_with_captured_input_and_documents(sent: Record
 def test_set_input_overrides_call_arguments(sent: Recorder) -> None:
     seen: list[Any] = []
 
-    @aiobs.metric
-    def record(s: aiobs.Sample) -> float:
+    @opengrade.metric
+    def record(s: opengrade.Sample) -> float:
         seen.append(s.input)
         return 1.0
 
-    @aiobs.trace(name="handler", metrics=[record])
+    @opengrade.trace(name="handler", metrics=[record])
     def handler(request: dict[str, Any], user: str) -> str:
-        aiobs.set_input(request["question"])
+        opengrade.set_input(request["question"])
         return "ok"
 
     handler({"question": "q?"}, "u1")
-    aiobs.flush()
+    opengrade.flush()
     assert seen == ["q?"]
 
 
@@ -124,8 +124,8 @@ def test_metric_sees_snapshot_not_later_mutations(sent: Recorder) -> None:
     release = threading.Event()
     seen: list[tuple[Any, Any, list[dict[str, Any]]]] = []
 
-    @aiobs.metric
-    def record(s: aiobs.Sample) -> float:
+    @opengrade.metric
+    def record(s: opengrade.Sample) -> float:
         assert release.wait(timeout=2.0)
         seen.append((s.input, s.output, s.documents))
         return 1.0
@@ -133,9 +133,9 @@ def test_metric_sees_snapshot_not_later_mutations(sent: Recorder) -> None:
     docs = [{"id": "d1", "meta": {"n": 1}}]
     request = {"q": "hi"}
 
-    @aiobs.trace(name="handler", metrics=[record])
+    @opengrade.trace(name="handler", metrics=[record])
     def handler(req: dict[str, Any]) -> dict[str, Any]:
-        aiobs.set_retrieval_documents(docs)
+        opengrade.set_retrieval_documents(docs)
         return {"text": "ok"}
 
     out = handler(request)
@@ -143,7 +143,7 @@ def test_metric_sees_snapshot_not_later_mutations(sent: Recorder) -> None:
     docs[0]["meta"]["n"] = 99
     out["text"] = "mutated-output"
     release.set()
-    assert aiobs.flush()
+    assert opengrade.flush()
 
     (sample_input, sample_output, sample_docs) = seen[0]
     assert sample_input == {"q": "hi"}
@@ -156,17 +156,17 @@ def test_oversized_sample_skips_metrics(
 ) -> None:
     monkeypatch.setattr(_production, "MAX_METRIC_SAMPLE_BYTES", 64)
 
-    @aiobs.metric
-    def record(s: aiobs.Sample) -> float:
+    @opengrade.metric
+    def record(s: opengrade.Sample) -> float:
         return 1.0
 
-    @aiobs.trace(name="big", metrics=[record])
+    @opengrade.trace(name="big", metrics=[record])
     def big(q: str) -> str:
         return "x" * 200
 
-    with caplog.at_level(logging.WARNING, logger="aiobs"):
+    with caplog.at_level(logging.WARNING, logger="opengrade"):
         assert big("q") == "x" * 200
-        assert aiobs.flush()
+        assert opengrade.flush()
 
     assert sent.scores == []
     assert any("sample is" in r.message and "limit 64" in r.message for r in caplog.records)
@@ -180,17 +180,17 @@ def test_uncopyable_sample_skips_metrics(sent: Recorder, caplog: pytest.LogCaptu
         def __str__(self) -> str:
             raise RuntimeError("no str")
 
-    @aiobs.metric
-    def record(s: aiobs.Sample) -> float:
+    @opengrade.metric
+    def record(s: opengrade.Sample) -> float:
         return 1.0
 
-    @aiobs.trace(name="bad", metrics=[record])
+    @opengrade.trace(name="bad", metrics=[record])
     def bad(_q: str) -> Bad:
         return Bad()
 
-    with caplog.at_level(logging.WARNING, logger="aiobs"):
+    with caplog.at_level(logging.WARNING, logger="opengrade"):
         assert isinstance(bad("q"), Bad)
-        assert aiobs.flush()
+        assert opengrade.flush()
 
     assert sent.scores == []
     assert any("could not snapshot" in r.message for r in caplog.records)
@@ -199,55 +199,55 @@ def test_uncopyable_sample_skips_metrics(sent: Recorder, caplog: pytest.LogCaptu
 def test_input_falls_back_to_args_and_kwargs(sent: Recorder) -> None:
     seen: list[Any] = []
 
-    @aiobs.metric
-    def record(s: aiobs.Sample) -> float:
+    @opengrade.metric
+    def record(s: opengrade.Sample) -> float:
         seen.append(s.input)
         return 1.0
 
-    @aiobs.trace(name="two_args", metrics=[record])
+    @opengrade.trace(name="two_args", metrics=[record])
     def two_args(a: str, b: str) -> str:
         return "ok"
 
-    @aiobs.trace(name="one_kwarg", metrics=[record])
+    @opengrade.trace(name="one_kwarg", metrics=[record])
     def one_kwarg(*, question: str) -> str:
         return "ok"
 
     two_args("x", b="y")
     one_kwarg(question="q")
-    aiobs.flush()
+    opengrade.flush()
     # Two calls run on a 2-thread pool: order is not guaranteed.
     assert sorted(seen, key=repr) == sorted([{"args": ["x"], "kwargs": {"b": "y"}}, "q"], key=repr)
 
 
 def test_async_traced_call_runs_metrics(sent: Recorder) -> None:
-    @aiobs.metric
-    def length(s: aiobs.Sample) -> float:
+    @opengrade.metric
+    def length(s: opengrade.Sample) -> float:
         return float(len(s.output))
 
-    @aiobs.trace_async(name="async_answer", metrics=[length])
+    @opengrade.trace_async(name="async_answer", metrics=[length])
     async def async_answer(q: str) -> str:
         await asyncio.sleep(0)
         return "abcd"
 
     assert asyncio.run(async_answer("q")) == "abcd"
-    aiobs.flush()
+    opengrade.flush()
     assert [s["value"] for s in sent.scores] == [4.0]
 
 
 def test_zero_sample_rate_skips(sent: Recorder) -> None:
-    @aiobs.trace(
-        name="never", metrics=[aiobs.metric(lambda s: 1.0, name="m")], metrics_sample_rate=0.0
+    @opengrade.trace(
+        name="never", metrics=[opengrade.metric(lambda s: 1.0, name="m")], metrics_sample_rate=0.0
     )
     def never(q: str) -> str:
         return "ok"
 
     never("q")
-    aiobs.flush()
+    opengrade.flush()
     assert sent.scores == []
 
 
 def test_skipped_inside_experiment_run(sent: Recorder) -> None:
-    @aiobs.trace(name="in_run", metrics=[aiobs.metric(lambda s: 1.0, name="m")])
+    @opengrade.trace(name="in_run", metrics=[opengrade.metric(lambda s: 1.0, name="m")])
     def in_run(q: str) -> str:
         return "ok"
 
@@ -256,40 +256,40 @@ def test_skipped_inside_experiment_run(sent: Recorder) -> None:
         in_run("q")
     finally:
         ACTIVE_RUN.reset(token)
-    aiobs.flush()
+    opengrade.flush()
     assert sent.scores == []
 
 
 def test_raising_function_is_not_scored(sent: Recorder) -> None:
-    @aiobs.trace(name="boom", metrics=[aiobs.metric(lambda s: 1.0, name="m")])
+    @opengrade.trace(name="boom", metrics=[opengrade.metric(lambda s: 1.0, name="m")])
     def boom(q: str) -> str:
         raise RuntimeError("boom")
 
     with pytest.raises(RuntimeError):
         boom("q")
-    aiobs.flush()
+    opengrade.flush()
     assert sent.scores == []
 
 
 def test_broken_metric_and_missing_requirement_store_error_and_success(sent: Recorder) -> None:
-    @aiobs.metric
-    def broken(s: aiobs.Sample) -> float:
+    @opengrade.metric
+    def broken(s: opengrade.Sample) -> float:
         raise ValueError("bad metric")
 
-    @aiobs.metric(requires=("expected",))
-    def needs_gold(s: aiobs.Sample) -> float:
+    @opengrade.metric(requires=("expected",))
+    def needs_gold(s: opengrade.Sample) -> float:
         return 1.0
 
-    @aiobs.metric
-    def fine(s: aiobs.Sample) -> float:
+    @opengrade.metric
+    def fine(s: opengrade.Sample) -> float:
         return 0.5
 
-    @aiobs.trace(name="mixed", metrics=[broken, needs_gold, fine])
+    @opengrade.trace(name="mixed", metrics=[broken, needs_gold, fine])
     def mixed(q: str) -> str:
         return "ok"
 
     assert mixed("q") == "ok"
-    aiobs.flush()
+    opengrade.flush()
     by_name = {s["name"]: s for s in sent.scores}
     assert set(by_name) == {"broken", "fine"}
     assert by_name["broken"]["label"] == "ERROR"
@@ -301,27 +301,27 @@ def test_broken_metric_and_missing_requirement_store_error_and_success(sent: Rec
 
 def test_invalid_metric_configuration_fails_at_decoration() -> None:
     with pytest.raises(ValueError, match="name"):
-        aiobs.trace(metrics=[lambda s: 1.0])
+        opengrade.trace(metrics=[lambda s: 1.0])
     with pytest.raises(ValueError, match="duplicate"):
-        aiobs.trace(
-            metrics=[aiobs.metric(lambda s: 1.0, name="m"), aiobs.metric(lambda s: 0.0, name="m")]
+        opengrade.trace(
+            metrics=[opengrade.metric(lambda s: 1.0, name="m"), opengrade.metric(lambda s: 0.0, name="m")]
         )
     with pytest.raises(ValueError, match="sample_rate"):
-        aiobs.trace(metrics=[aiobs.metric(lambda s: 1.0, name="m")], metrics_sample_rate=1.5)
+        opengrade.trace(metrics=[opengrade.metric(lambda s: 1.0, name="m")], metrics_sample_rate=1.5)
     with pytest.raises(ValueError, match="sample_rate"):
-        aiobs.trace_async(
-            metrics=[aiobs.metric(lambda s: 1.0, name="m")], metrics_sample_rate=float("nan")
+        opengrade.trace_async(
+            metrics=[opengrade.metric(lambda s: 1.0, name="m")], metrics_sample_rate=float("nan")
         )
 
 
 @pytest.mark.parametrize("bad", [True, False, "0.5", None])
 def test_sample_rate_must_be_a_real_number(bad: Any) -> None:
     with pytest.raises(ValueError, match=r"metrics_sample_rate must be a number within \[0, 1\]"):
-        aiobs.trace(metrics=[aiobs.metric(lambda s: 1.0, name="m")], metrics_sample_rate=bad)
+        opengrade.trace(metrics=[opengrade.metric(lambda s: 1.0, name="m")], metrics_sample_rate=bad)
 
 
 def test_sync_trace_with_metrics_rejects_coroutine_and_generator_functions() -> None:
-    decorate = aiobs.trace(metrics=[aiobs.metric(lambda s: 1.0, name="m")])
+    decorate = opengrade.trace(metrics=[opengrade.metric(lambda s: 1.0, name="m")])
 
     async def coro() -> str:
         return "x"
@@ -338,7 +338,7 @@ def test_sync_trace_with_metrics_rejects_coroutine_and_generator_functions() -> 
 
 
 def test_trace_async_with_metrics_rejects_non_coroutine_functions() -> None:
-    decorate = aiobs.trace_async(metrics=[aiobs.metric(lambda s: 1.0, name="m")])
+    decorate = opengrade.trace_async(metrics=[opengrade.metric(lambda s: 1.0, name="m")])
 
     def plain() -> str:
         return "x"
@@ -352,7 +352,7 @@ def test_trace_async_with_metrics_rejects_non_coroutine_functions() -> None:
 
 
 def test_trace_async_with_metrics_accepts_partial_and_marked_callables() -> None:
-    decorate = aiobs.trace_async(metrics=[aiobs.metric(lambda s: 1.0, name="m")])
+    decorate = opengrade.trace_async(metrics=[opengrade.metric(lambda s: 1.0, name="m")])
 
     async def coro(prefix: str, q: str) -> str:
         return f"{prefix}{q}"
@@ -368,7 +368,7 @@ def test_trace_async_with_metrics_accepts_partial_and_marked_callables() -> None
 
 
 def test_sync_trace_with_metrics_rejects_partial_of_coroutine() -> None:
-    decorate = aiobs.trace(metrics=[aiobs.metric(lambda s: 1.0, name="m")])
+    decorate = opengrade.trace(metrics=[opengrade.metric(lambda s: 1.0, name="m")])
 
     async def coro(prefix: str, q: str) -> str:
         return f"{prefix}{q}"
@@ -381,7 +381,7 @@ def test_without_metrics_decorators_accept_any_callable() -> None:
     def gen() -> Iterator[str]:
         yield "x"
 
-    aiobs.trace(name="g")(gen)  # unchanged behaviour when metrics are not used
+    opengrade.trace(name="g")(gen)  # unchanged behaviour when metrics are not used
 
 
 # --- isolation from traced code -----------------------------------------------------
@@ -393,37 +393,37 @@ def test_metric_calling_traced_code_creates_no_spans_or_scores(sent: Recorder) -
     inner_calls: list[str] = []
     suppressed: list[Any] = []
 
-    @aiobs.metric
-    def inner_metric(s: aiobs.Sample) -> float:
+    @opengrade.metric
+    def inner_metric(s: opengrade.Sample) -> float:
         inner_calls.append("inner")
         return 1.0
 
-    @aiobs.trace(name="judge_helper", metrics=[inner_metric], live=True)
+    @opengrade.trace(name="judge_helper", metrics=[inner_metric], live=True)
     def judge_helper(text: str) -> str:
         return text.upper()
 
-    @aiobs.trace_async(name="async_judge_helper", metrics=[inner_metric], live=True)
+    @opengrade.trace_async(name="async_judge_helper", metrics=[inner_metric], live=True)
     async def async_judge_helper(text: str) -> str:
         return text.lower()
 
-    @aiobs.metric
-    def judge(s: aiobs.Sample) -> float:
+    @opengrade.metric
+    def judge(s: opengrade.Sample) -> float:
         suppressed.append(otel_context.get_value(_production._SUPPRESS_KEY))
         assert judge_helper(str(s.output)) == "OK"
         return 1.0
 
-    @aiobs.metric
-    async def async_judge(s: aiobs.Sample) -> float:
+    @opengrade.metric
+    async def async_judge(s: opengrade.Sample) -> float:
         suppressed.append(otel_context.get_value(_production._SUPPRESS_KEY))
         assert await async_judge_helper(str(s.output)) == "ok"
         return 0.5
 
-    @aiobs.trace(name="outer", metrics=[judge, async_judge])
+    @opengrade.trace(name="outer", metrics=[judge, async_judge])
     def outer(q: str) -> str:
         return "ok"
 
     outer("q")
-    assert aiobs.flush()
+    assert opengrade.flush()
     assert [s.name for s in _exporter.get_finished_spans()] == ["outer"]
     assert sorted(s["name"] for s in sent.scores) == ["async_judge", "judge"]
     assert inner_calls == []
@@ -431,25 +431,25 @@ def test_metric_calling_traced_code_creates_no_spans_or_scores(sent: Recorder) -
 
 
 def test_nested_set_input_does_not_overwrite_outer_input(sent: Recorder) -> None:
-    seen: list[aiobs.Sample] = []
+    seen: list[opengrade.Sample] = []
 
-    @aiobs.metric
-    def record(s: aiobs.Sample) -> float:
+    @opengrade.metric
+    def record(s: opengrade.Sample) -> float:
         seen.append(s)
         return 1.0
 
-    @aiobs.trace(name="rewrite")
+    @opengrade.trace(name="rewrite")
     def rewrite(q: str) -> str:
-        aiobs.set_input("rewritten")
-        aiobs.set_retrieval_documents([{"id": "d1"}])
+        opengrade.set_input("rewritten")
+        opengrade.set_retrieval_documents([{"id": "d1"}])
         return q
 
-    @aiobs.trace(name="outer_input", metrics=[record])
+    @opengrade.trace(name="outer_input", metrics=[record])
     def outer_input(q: str) -> str:
         return rewrite(q)
 
     outer_input("original")
-    assert aiobs.flush()
+    assert opengrade.flush()
     (sample,) = seen
     assert sample.input == "original"
     assert sample.documents == [{"id": "d1"}]  # documents still bubble up
@@ -457,18 +457,18 @@ def test_nested_set_input_does_not_overwrite_outer_input(sent: Recorder) -> None
 
 def test_set_retrieval_documents_from_worker_thread_is_not_captured(sent: Recorder) -> None:
     """ContextVars are not copied into threads the traced function starts."""
-    seen: list[aiobs.Sample] = []
+    seen: list[opengrade.Sample] = []
     done = threading.Event()
 
-    @aiobs.metric
-    def record(s: aiobs.Sample) -> float:
+    @opengrade.metric
+    def record(s: opengrade.Sample) -> float:
         seen.append(s)
         return 1.0
 
-    @aiobs.trace(name="threaded_docs", metrics=[record])
+    @opengrade.trace(name="threaded_docs", metrics=[record])
     def threaded_docs(q: str) -> str:
         def worker() -> None:
-            aiobs.set_retrieval_documents([{"id": "from-thread"}])
+            opengrade.set_retrieval_documents([{"id": "from-thread"}])
             done.set()
 
         threading.Thread(target=worker).start()
@@ -476,7 +476,7 @@ def test_set_retrieval_documents_from_worker_thread_is_not_captured(sent: Record
         return q
 
     threaded_docs("q")
-    assert aiobs.flush()
+    assert opengrade.flush()
     (sample,) = seen
     assert sample.documents == []
 
@@ -484,18 +484,18 @@ def test_set_retrieval_documents_from_worker_thread_is_not_captured(sent: Record
 def test_async_metric_runs_on_worker(sent: Recorder) -> None:
     threads: list[str] = []
 
-    @aiobs.metric
-    async def async_len(s: aiobs.Sample) -> float:
+    @opengrade.metric
+    async def async_len(s: opengrade.Sample) -> float:
         await asyncio.sleep(0)
         threads.append(threading.current_thread().name)
         return float(len(s.output))
 
-    @aiobs.trace(name="with_async_metric", metrics=[async_len])
+    @opengrade.trace(name="with_async_metric", metrics=[async_len])
     def with_async_metric(q: str) -> str:
         return "abc"
 
     with_async_metric("q")
-    assert aiobs.flush()
+    assert opengrade.flush()
     assert [s["value"] for s in sent.scores] == [3.0]
     assert threads and threads[0] != threading.current_thread().name
 
@@ -506,23 +506,23 @@ def test_hung_async_metric_times_out_as_failure(
     monkeypatch.setattr(_production, "METRIC_TIMEOUT_S", 0.05)
     never = threading.Event()
 
-    @aiobs.metric
-    async def hung(s: aiobs.Sample) -> float:
+    @opengrade.metric
+    async def hung(s: opengrade.Sample) -> float:
         await asyncio.get_running_loop().run_in_executor(None, never.wait, 5)
         return 1.0
 
-    @aiobs.metric
-    def after(s: aiobs.Sample) -> float:
+    @opengrade.metric
+    def after(s: opengrade.Sample) -> float:
         return 1.0
 
-    @aiobs.trace(name="hangs", metrics=[hung, after])
+    @opengrade.trace(name="hangs", metrics=[hung, after])
     def hangs(q: str) -> str:
         return q
 
-    caplog.set_level(logging.DEBUG, logger="aiobs")
+    caplog.set_level(logging.DEBUG, logger="opengrade")
     hangs("a")
     hangs("b")
-    assert aiobs.flush()
+    assert opengrade.flush()
     never.set()
     assert len(_warnings(caplog, "production metric 'hung' timed out")) == 1
     assert sorted((s["name"], s.get("label"), s.get("value")) for s in sent.scores) == sorted(
@@ -551,18 +551,18 @@ def test_fractional_sample_rate_is_deterministic_per_trace(
         def generate_trace_id(self) -> int:
             return next(ids)
 
-    tracer = trace.get_tracer("aiobs")  # the provider caches it: the one @aiobs.trace uses
+    tracer = trace.get_tracer("opengrade")  # the provider caches it: the one @opengrade.trace uses
     monkeypatch.setattr(tracer, "id_generator", Ids())
 
-    @aiobs.trace(
-        name="sampled", metrics=[aiobs.metric(lambda s: 1.0, name="m")], metrics_sample_rate=0.5
+    @opengrade.trace(
+        name="sampled", metrics=[opengrade.metric(lambda s: 1.0, name="m")], metrics_sample_rate=0.5
     )
     def sampled(q: str) -> str:
         return q
 
     for i in range(4):
         sampled(str(i))
-    assert aiobs.flush()
+    assert opengrade.flush()
     assert sorted(s["trace_id"] for s in sent.scores) == [
         format((1 << 64) | 1, "032x"),
         format((2 << 64) | 2, "032x"),
@@ -629,17 +629,17 @@ def test_full_queue_drops_with_one_warning_and_never_blocks(
     started = threading.Event()
     release = threading.Event()
 
-    @aiobs.metric
-    def slow(s: aiobs.Sample) -> float:
+    @opengrade.metric
+    def slow(s: opengrade.Sample) -> float:
         started.set()
         assert release.wait(10)
         return 1.0
 
-    @aiobs.trace(name="busy", metrics=[slow])
+    @opengrade.trace(name="busy", metrics=[slow])
     def busy(q: str) -> str:
         return q
 
-    caplog.set_level(logging.DEBUG, logger="aiobs")
+    caplog.set_level(logging.DEBUG, logger="opengrade")
     assert busy("1") == "1"  # taken by the only worker, which then blocks
     assert started.wait(10)
     assert busy("2") == "2"  # fills the queue
@@ -649,23 +649,23 @@ def test_full_queue_drops_with_one_warning_and_never_blocks(
     assert _production.dropped() == 2
 
     release.set()
-    assert aiobs.flush()
+    assert opengrade.flush()
     assert len(sent.scores) == 2
 
 
 def test_metric_failures_are_rate_limited(sent: Recorder, caplog: pytest.LogCaptureFixture) -> None:
-    @aiobs.metric
-    def broken(s: aiobs.Sample) -> float:
+    @opengrade.metric
+    def broken(s: opengrade.Sample) -> float:
         raise ValueError("bad metric")
 
-    @aiobs.trace(name="often", metrics=[broken])
+    @opengrade.trace(name="often", metrics=[broken])
     def often(q: str) -> str:
         return q
 
-    caplog.set_level(logging.DEBUG, logger="aiobs")
+    caplog.set_level(logging.DEBUG, logger="opengrade")
     for i in range(3):
         often(str(i))
-    assert aiobs.flush()
+    assert opengrade.flush()
     assert len(_warnings(caplog, "production metric 'broken' failed")) == 1
     assert len(sent.scores) == 3
     assert all(s["label"] == "ERROR" and s["name"] == "broken" for s in sent.scores)
@@ -677,7 +677,7 @@ def test_unexpected_worker_error_is_logged_and_worker_survives(
     real = _production.missing_requirement
     calls = {"n": 0}
 
-    def flaky(sample: aiobs.Sample, requires: Any) -> str | None:
+    def flaky(sample: opengrade.Sample, requires: Any) -> str | None:
         calls["n"] += 1
         if calls["n"] == 1:
             raise RuntimeError("internal bug")
@@ -686,14 +686,14 @@ def test_unexpected_worker_error_is_logged_and_worker_survives(
     monkeypatch.setattr(_production, "missing_requirement", flaky)
     _production._reset_for_tests(workers=1)
 
-    @aiobs.trace(name="job", metrics=[aiobs.metric(lambda s: 1.0, name="m")])
+    @opengrade.trace(name="job", metrics=[opengrade.metric(lambda s: 1.0, name="m")])
     def job(q: str) -> str:
         return q
 
-    caplog.set_level(logging.DEBUG, logger="aiobs")
+    caplog.set_level(logging.DEBUG, logger="opengrade")
     job("a")
     job("b")
-    assert aiobs.flush()
+    assert opengrade.flush()
     assert len(_warnings(caplog, "internal bug")) == 1
     assert [s["name"] for s in sent.scores] == ["m"]
 
@@ -706,46 +706,46 @@ def test_scheduling_failure_never_reaches_the_caller(
 
     monkeypatch.setattr(_production, "_submit", explode)
 
-    @aiobs.trace(name="safe", metrics=[aiobs.metric(lambda s: 1.0, name="m")])
+    @opengrade.trace(name="safe", metrics=[opengrade.metric(lambda s: 1.0, name="m")])
     def safe(q: str) -> str:
         return q
 
     assert safe("x") == "x"
-    assert aiobs.flush()
+    assert opengrade.flush()
     assert sent.scores == []
 
 
 def test_missing_project_warns_once_and_skips(
     sent: Recorder, caplog: pytest.LogCaptureFixture, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    monkeypatch.delenv("AIOBS_PROJECT_ID")
+    monkeypatch.delenv("OPENGRADE_PROJECT_ID")
 
-    @aiobs.trace(name="noproj", metrics=[aiobs.metric(lambda s: 1.0, name="m")])
+    @opengrade.trace(name="noproj", metrics=[opengrade.metric(lambda s: 1.0, name="m")])
     def noproj(q: str) -> str:
         return q
 
-    caplog.set_level(logging.DEBUG, logger="aiobs")
+    caplog.set_level(logging.DEBUG, logger="opengrade")
     assert noproj("a") == "a"
     assert noproj("b") == "b"
-    assert aiobs.flush()
+    assert opengrade.flush()
     assert len(_warnings(caplog, "production metrics skipped")) == 1
     assert sent.scores == []
 
 
 def test_after_fork_in_child_resets_pool(sent: Recorder) -> None:
-    @aiobs.trace(name="pre_fork", metrics=[aiobs.metric(lambda s: 1.0, name="m")])
+    @opengrade.trace(name="pre_fork", metrics=[opengrade.metric(lambda s: 1.0, name="m")])
     def pre_fork(q: str) -> str:
         return q
 
     pre_fork("a")
-    assert aiobs.flush()
+    assert opengrade.flush()
     assert _production._POOL is not None
     old_lock = _production._LOCK
     _production._after_fork_in_child()
     assert _production._POOL is None
     assert _production._LOCK is not old_lock
     pre_fork("b")  # a fresh pool is built lazily
-    assert aiobs.flush()
+    assert opengrade.flush()
     assert len(sent.scores) == 2
 
 
@@ -834,10 +834,10 @@ def test_flush_budget_is_never_negative(monkeypatch: pytest.MonkeyPatch) -> None
 
 
 def test_init_metrics_workers_sets_pool_size(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.delenv("AIOBS_METRICS_WORKERS", raising=False)
+    monkeypatch.delenv("OPENGRADE_METRICS_WORKERS", raising=False)
     _production._reset_for_tests()
     try:
-        aiobs.init(project_slug="demo", instrument=False, metrics_workers=4, force=True)
+        opengrade.init(project_slug="demo", instrument=False, metrics_workers=4, force=True)
         pool = _production._pool()
         assert pool._workers == 4
         assert _production._POOL_SIZE == (4, _production.MAX_QUEUE)
@@ -847,10 +847,10 @@ def test_init_metrics_workers_sets_pool_size(monkeypatch: pytest.MonkeyPatch) ->
 
 
 def test_env_metrics_workers_sets_pool_size(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("AIOBS_METRICS_WORKERS", "8")
+    monkeypatch.setenv("OPENGRADE_METRICS_WORKERS", "8")
     _production._reset_for_tests()
     try:
-        aiobs.init(project_slug="demo", instrument=False, force=True)
+        opengrade.init(project_slug="demo", instrument=False, force=True)
         assert _production._pool()._workers == 8
     finally:
         _otel._reset_for_tests()
@@ -858,10 +858,10 @@ def test_env_metrics_workers_sets_pool_size(monkeypatch: pytest.MonkeyPatch) -> 
 
 
 def test_init_metrics_workers_wins_over_env(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("AIOBS_METRICS_WORKERS", "8")
+    monkeypatch.setenv("OPENGRADE_METRICS_WORKERS", "8")
     _production._reset_for_tests()
     try:
-        aiobs.init(project_slug="demo", instrument=False, metrics_workers=3, force=True)
+        opengrade.init(project_slug="demo", instrument=False, metrics_workers=3, force=True)
         assert _production._pool()._workers == 3
     finally:
         _otel._reset_for_tests()
@@ -871,13 +871,13 @@ def test_init_metrics_workers_wins_over_env(monkeypatch: pytest.MonkeyPatch) -> 
 def test_invalid_env_metrics_workers_falls_back(
     monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
 ) -> None:
-    monkeypatch.setenv("AIOBS_METRICS_WORKERS", "nope")
+    monkeypatch.setenv("OPENGRADE_METRICS_WORKERS", "nope")
     _production._reset_for_tests()
     try:
-        with caplog.at_level(logging.WARNING, logger="aiobs"):
-            aiobs.init(project_slug="demo", instrument=False, force=True)
+        with caplog.at_level(logging.WARNING, logger="opengrade"):
+            opengrade.init(project_slug="demo", instrument=False, force=True)
         assert _production._pool()._workers == _production.MAX_WORKERS
-        assert any("AIOBS_METRICS_WORKERS" in r.message for r in caplog.records)
+        assert any("OPENGRADE_METRICS_WORKERS" in r.message for r in caplog.records)
     finally:
         _otel._reset_for_tests()
         _production._reset_for_tests()
@@ -886,11 +886,11 @@ def test_invalid_env_metrics_workers_falls_back(
 def test_invalid_init_metrics_workers_ignored(
     monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
 ) -> None:
-    monkeypatch.delenv("AIOBS_METRICS_WORKERS", raising=False)
+    monkeypatch.delenv("OPENGRADE_METRICS_WORKERS", raising=False)
     _production._reset_for_tests()
     try:
-        with caplog.at_level(logging.WARNING, logger="aiobs"):
-            aiobs.init(project_slug="demo", instrument=False, metrics_workers=0, force=True)
+        with caplog.at_level(logging.WARNING, logger="opengrade"):
+            opengrade.init(project_slug="demo", instrument=False, metrics_workers=0, force=True)
         assert _otel._INITIALIZED is True
         assert _production._pool()._workers == _production.MAX_WORKERS
         assert any("metrics_workers ignored" in r.message for r in caplog.records)
@@ -900,13 +900,13 @@ def test_invalid_init_metrics_workers_ignored(
 
 
 def test_force_reinit_rebuilds_pool_with_new_workers(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.delenv("AIOBS_METRICS_WORKERS", raising=False)
+    monkeypatch.delenv("OPENGRADE_METRICS_WORKERS", raising=False)
     _production._reset_for_tests()
     try:
-        aiobs.init(project_slug="demo", instrument=False, metrics_workers=2, force=True)
+        opengrade.init(project_slug="demo", instrument=False, metrics_workers=2, force=True)
         first = _production._pool()
         assert first._workers == 2
-        aiobs.init(project_slug="demo", instrument=False, metrics_workers=5, force=True)
+        opengrade.init(project_slug="demo", instrument=False, metrics_workers=5, force=True)
         second = _production._pool()
         assert second is not first
         assert second._workers == 5

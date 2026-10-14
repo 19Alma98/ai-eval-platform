@@ -6,9 +6,9 @@ from urllib.parse import urlencode
 
 import httpx2
 
-from aiobs._config import resolve_project_id
-from aiobs._http import _AsyncHttpTransport, resolve_api_base_url
-from aiobs.models import (
+from opengrade._config import resolve_project_id
+from opengrade._http import _AsyncHttpTransport, resolve_api_base_url
+from opengrade.models import (
     DatasetItemResponse,
     HealthResponse,
     ListLiveInteractionsResponse,

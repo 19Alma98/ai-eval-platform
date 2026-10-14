@@ -8,27 +8,27 @@ from opentelemetry.proto.collector.trace.v1.trace_service_pb2 import (
     ExportTraceServiceResponse,
 )
 
-from aiobs_server.api.deps import (
+from opengrade_server.api.deps import (
     get_app_settings,
     get_bind_otlp_traces,
     get_create_live_from_traces,
     get_ingest_traces,
     get_resolve_project,
 )
-from aiobs_server.application.live_interactions import schedule_live_score
-from aiobs_server.application.traces import (
+from opengrade_server.application.live_interactions import schedule_live_score
+from opengrade_server.application.traces import (
     IngestNormalizedTraces,
     ProjectMissingError,
     ResolveProject,
 )
-from aiobs_server.config import Settings
-from aiobs_server.tracing.ingestion import ingest_otlp_payload
-from aiobs_server.tracing.live_binding import (
+from opengrade_server.config import Settings
+from opengrade_server.tracing.ingestion import ingest_otlp_payload
+from opengrade_server.tracing.live_binding import (
     CreateLiveInteractionsFromTraces,
     traces_for_live_binding,
 )
-from aiobs_server.tracing.otel import OtlpDecodeError
-from aiobs_server.tracing.run_binding import (
+from opengrade_server.tracing.otel import OtlpDecodeError
+from opengrade_server.tracing.run_binding import (
     BindOtlpTracesToExperimentOutputs,
     traces_for_output_binding,
 )

@@ -9,8 +9,8 @@ from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import SimpleSpanProcessor
 from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
 
-import aiobs
-from aiobs import _otel
+import opengrade
+from opengrade import _otel
 
 _shared_exporter: InMemorySpanExporter | None = None
 
@@ -41,14 +41,14 @@ def spans() -> InMemorySpanExporter:
 def test_bind_evaluation_sets_experiment_and_dataset_item_ids(
     spans: InMemorySpanExporter,
 ) -> None:
-    @aiobs.trace(name="eval-bind", capture_input=False, capture_output=False)
+    @opengrade.trace(name="eval-bind", capture_input=False, capture_output=False)
     def run() -> None:
-        aiobs.bind_evaluation(experiment_id="exp-abc", dataset_item_id="item-xyz")
+        opengrade.bind_evaluation(experiment_id="exp-abc", dataset_item_id="item-xyz")
 
     run()
     attrs = dict(spans.get_finished_spans()[0].attributes or {})
-    assert attrs["aiobs.experiment_id"] == "exp-abc"
-    assert attrs["aiobs.dataset_item_id"] == "item-xyz"
+    assert attrs["opengrade.experiment_id"] == "exp-abc"
+    assert attrs["opengrade.dataset_item_id"] == "item-xyz"
 
 
 def test_set_retrieval_documents_sets_count_and_payload(
@@ -56,9 +56,9 @@ def test_set_retrieval_documents_sets_count_and_payload(
 ) -> None:
     documents = [{"id": "doc-1", "title": "A"}, {"id": "doc-2", "text": "body"}]
 
-    @aiobs.trace(name="retrieval", capture_input=False, capture_output=False)
+    @opengrade.trace(name="retrieval", capture_input=False, capture_output=False)
     def run() -> None:
-        aiobs.set_retrieval_documents(documents)
+        opengrade.set_retrieval_documents(documents)
 
     run()
     attrs = dict(spans.get_finished_spans()[0].attributes or {})
@@ -80,11 +80,11 @@ def test_set_retrieval_documents_sets_count_and_payload(
 )
 def test_set_retrieval_documents_requires_document_id(documents: list[dict[str, object]]) -> None:
     with pytest.raises(ValueError, match="id"):
-        aiobs.set_retrieval_documents(documents)
+        opengrade.set_retrieval_documents(documents)
 
 
 def test_eval_bind_helpers_exported_in_public_api() -> None:
-    assert "bind_evaluation" in aiobs.__all__
-    assert "set_retrieval_documents" in aiobs.__all__
-    assert callable(aiobs.bind_evaluation)
-    assert callable(aiobs.set_retrieval_documents)
+    assert "bind_evaluation" in opengrade.__all__
+    assert "set_retrieval_documents" in opengrade.__all__
+    assert callable(opengrade.bind_evaluation)
+    assert callable(opengrade.set_retrieval_documents)

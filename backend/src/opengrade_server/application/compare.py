@@ -5,19 +5,19 @@ from collections.abc import Mapping
 from dataclasses import dataclass, field
 from typing import Any
 
-from aiobs_server.application.experiments import ExperimentNotFoundError
-from aiobs_server.application.scoring_inputs import (
+from opengrade_server.application.experiments import ExperimentNotFoundError
+from opengrade_server.application.scoring_inputs import (
     CurrentScoringFingerprint,
     current_fingerprint,
 )
-from aiobs_server.domain.evaluation import EvaluationRun
-from aiobs_server.domain.repositories import (
+from opengrade_server.domain.evaluation import EvaluationRun
+from opengrade_server.domain.repositories import (
     EvaluationRunRepository,
     EvaluatorRepository,
     ExperimentMetricRepository,
     ExperimentRepository,
 )
-from aiobs_server.regression.aggregate import (
+from opengrade_server.regression.aggregate import (
     Aggregates,
     MetricComparison,
     aggregate_results,

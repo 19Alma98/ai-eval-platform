@@ -5,7 +5,7 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Response, status
 
-from aiobs_server.api.deps import (
+from opengrade_server.api.deps import (
     get_create_metrics_set,
     get_delete_metrics_set,
     get_delete_metrics_set_entry,
@@ -14,7 +14,7 @@ from aiobs_server.api.deps import (
     get_patch_metrics_set,
     get_version_metrics_set,
 )
-from aiobs_server.api.schemas import (
+from opengrade_server.api.schemas import (
     CreateMetricsSetRequest,
     MetricsSetEntryResponse,
     MetricsSetResponse,
@@ -22,7 +22,7 @@ from aiobs_server.api.schemas import (
     PatchMetricsSetRequest,
     VersionMetricsSetRequest,
 )
-from aiobs_server.application.metrics_sets import (
+from opengrade_server.application.metrics_sets import (
     CreateMetricsSet,
     CreateMetricsSetCommand,
     DeleteMetricsSet,
@@ -41,8 +41,8 @@ from aiobs_server.application.metrics_sets import (
     VersionMetricsSet,
     VersionMetricsSetCommand,
 )
-from aiobs_server.application.projects import ProjectNotFoundError
-from aiobs_server.domain.metrics_set import MetricsSet, MetricsSetEntry
+from opengrade_server.application.projects import ProjectNotFoundError
+from opengrade_server.domain.metrics_set import MetricsSet, MetricsSetEntry
 
 router = APIRouter(tags=["metrics-sets"])
 

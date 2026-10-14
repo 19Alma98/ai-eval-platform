@@ -7,10 +7,10 @@ from uuid import UUID
 import pytest
 from httpx2 import AsyncClient
 
-from aiobs_server.domain.live_interaction import LiveInteraction
-from aiobs_server.domain.project import Project
-from aiobs_server.infrastructure.db import get_session_factory
-from aiobs_server.infrastructure.repositories import (
+from opengrade_server.domain.live_interaction import LiveInteraction
+from opengrade_server.domain.project import Project
+from opengrade_server.infrastructure.db import get_session_factory
+from opengrade_server.infrastructure.repositories import (
     SqlAlchemyLiveInteractionRepository,
     SqlAlchemyProjectRepository,
 )

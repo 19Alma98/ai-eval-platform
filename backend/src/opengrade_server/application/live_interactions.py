@@ -6,20 +6,20 @@ from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime
 from typing import Any
 
-from aiobs_server.application.datasets import (
+from opengrade_server.application.datasets import (
     AddDatasetItem,
     AddDatasetItemCommand,
     DatasetNotFoundError,
 )
-from aiobs_server.application.evaluators import CreateEvaluator
-from aiobs_server.application.metrics_sets import (
+from opengrade_server.application.evaluators import CreateEvaluator
+from opengrade_server.application.metrics_sets import (
     EnsureProjectDefaultMetricsSet,
     MetricsSetNotFoundError,
     find_or_create_evaluator_for_entry,
 )
-from aiobs_server.application.projects import ProjectNotFoundError
-from aiobs_server.domain.dataset import DatasetItem
-from aiobs_server.domain.live_interaction import (
+from opengrade_server.application.projects import ProjectNotFoundError
+from opengrade_server.domain.dataset import DatasetItem
+from opengrade_server.domain.live_interaction import (
     GOLDLESS_METRIC_KINDS,
     DuplicateExternalIdError,
     LiveInteraction,
@@ -27,8 +27,8 @@ from aiobs_server.domain.live_interaction import (
     LiveScoreReview,
     filter_goldless_entries,
 )
-from aiobs_server.domain.metrics_set import MetricsSet, MetricsSetEntry
-from aiobs_server.domain.repositories import (
+from opengrade_server.domain.metrics_set import MetricsSet, MetricsSetEntry
+from opengrade_server.domain.repositories import (
     DatasetRepository,
     EvaluatorRepository,
     LiveInteractionRepository,
@@ -36,13 +36,13 @@ from aiobs_server.domain.repositories import (
     ProjectRepository,
     TraceScoreRepository,
 )
-from aiobs_server.domain.retrieval import normalize_documents
-from aiobs_server.domain.trace_score import TraceScore, trace_score_is_failed
-from aiobs_server.evaluation.judges.errors import JUDGE_OUTPUT_INVALID
-from aiobs_server.evaluation.judges.warnings import JUDGE_MODEL_UNSUITABLE, unsuitable_model_warning
-from aiobs_server.evaluation.outcomes import item_verdict
-from aiobs_server.evaluation.protocol import EvaluationSample
-from aiobs_server.evaluation.registry import create_evaluator
+from opengrade_server.domain.retrieval import normalize_documents
+from opengrade_server.domain.trace_score import TraceScore, trace_score_is_failed
+from opengrade_server.evaluation.judges.errors import JUDGE_OUTPUT_INVALID
+from opengrade_server.evaluation.judges.warnings import JUDGE_MODEL_UNSUITABLE, unsuitable_model_warning
+from opengrade_server.evaluation.outcomes import item_verdict
+from opengrade_server.evaluation.protocol import EvaluationSample
+from opengrade_server.evaluation.registry import create_evaluator
 
 logger = logging.getLogger(__name__)
 
@@ -607,10 +607,10 @@ class PromoteLiveInteraction:
 
 async def schedule_live_score(interaction_id: uuid.UUID) -> None:
     """BackgroundTasks entrypoint — opens a dedicated DB session."""
-    from aiobs_server.application.evaluators import CreateEvaluator
-    from aiobs_server.application.metrics_sets import EnsureProjectDefaultMetricsSet
-    from aiobs_server.infrastructure.db import try_get_session_factory
-    from aiobs_server.infrastructure.repositories import (
+    from opengrade_server.application.evaluators import CreateEvaluator
+    from opengrade_server.application.metrics_sets import EnsureProjectDefaultMetricsSet
+    from opengrade_server.infrastructure.db import try_get_session_factory
+    from opengrade_server.infrastructure.repositories import (
         SqlAlchemyEvaluatorRepository,
         SqlAlchemyLiveInteractionRepository,
         SqlAlchemyMetricsSetRepository,

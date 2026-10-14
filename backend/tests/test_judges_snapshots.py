@@ -3,8 +3,8 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from aiobs_server.evaluation.judges import prompts
-from aiobs_server.evaluation.judges.snapshots import upsert_prompt_snapshot
+from opengrade_server.evaluation.judges import prompts
+from opengrade_server.evaluation.judges.snapshots import upsert_prompt_snapshot
 
 
 def test_upsert_prompt_snapshot_writes_bundle(tmp_path: Path) -> None:
@@ -39,7 +39,7 @@ def test_upsert_failure_does_not_raise(tmp_path: Path, monkeypatch) -> None:
         raise OSError("disk full")
 
     monkeypatch.setattr(
-        "aiobs_server.evaluation.judges.snapshots._write_entry",
+        "opengrade_server.evaluation.judges.snapshots._write_entry",
         boom,
     )
     upsert_prompt_snapshot("groundedness", "claims", path=path)  # must not raise

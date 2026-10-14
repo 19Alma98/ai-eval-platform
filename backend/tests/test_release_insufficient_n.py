@@ -6,12 +6,12 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from aiobs_server.application.compare import ExperimentComparison
-from aiobs_server.application.release_check import ReleaseCheck, ReleaseCheckCommand
-from aiobs_server.domain.evaluation import EvaluationRun
-from aiobs_server.domain.experiment import Experiment
-from aiobs_server.domain.project import Project
-from aiobs_server.regression.aggregate import MetricComparison
+from opengrade_server.application.compare import ExperimentComparison
+from opengrade_server.application.release_check import ReleaseCheck, ReleaseCheckCommand
+from opengrade_server.domain.evaluation import EvaluationRun
+from opengrade_server.domain.experiment import Experiment
+from opengrade_server.domain.project import Project
+from opengrade_server.regression.aggregate import MetricComparison
 
 
 class _Projects:

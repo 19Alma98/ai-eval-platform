@@ -1,15 +1,15 @@
 from __future__ import annotations
 
-from aiobs._run_context import record_documents
-from aiobs._trace import set_attributes
+from opengrade._run_context import record_documents
+from opengrade._trace import set_attributes
 
 
 def bind_evaluation(*, experiment_id: str, dataset_item_id: str) -> None:
     """Bind the current span to an experiment dataset item."""
     set_attributes(
         {
-            "aiobs.experiment_id": experiment_id,
-            "aiobs.dataset_item_id": dataset_item_id,
+            "opengrade.experiment_id": experiment_id,
+            "opengrade.dataset_item_id": dataset_item_id,
         }
     )
 

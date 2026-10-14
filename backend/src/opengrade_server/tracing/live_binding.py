@@ -1,7 +1,7 @@
 """Derive production live interactions from OTLP traces marked by the SDK.
 
-``@aiobs.trace`` marks the outermost span of a production call with
-``aiobs.live=true`` and ``aiobs.live.judge`` (the SDK-side sampling decision).
+``@opengrade.trace`` marks the outermost span of a production call with
+``opengrade.live=true`` and ``opengrade.live.judge`` (the SDK-side sampling decision).
 Ingestion turns that span into a ``LiveInteraction`` keyed by trace id, so
 repeated or split OTLP batches never create duplicates.
 """
@@ -15,20 +15,20 @@ import uuid
 from dataclasses import dataclass
 from typing import Any
 
-from aiobs_server.application.live_interactions import (
+from opengrade_server.application.live_interactions import (
     SubmitLiveInteraction,
     SubmitLiveInteractionCommand,
 )
-from aiobs_server.domain.retrieval import normalize_documents
-from aiobs_server.domain.trace import Span, Trace
-from aiobs_server.evaluation.trace_context import build_eval_context_from_trace
-from aiobs_server.tracing.run_binding import extract_run_binding
+from opengrade_server.domain.retrieval import normalize_documents
+from opengrade_server.domain.trace import Span, Trace
+from opengrade_server.evaluation.trace_context import build_eval_context_from_trace
+from opengrade_server.tracing.run_binding import extract_run_binding
 
 logger = logging.getLogger(__name__)
 
-LIVE_ATTR = "aiobs.live"
-LIVE_JUDGE_ATTR = "aiobs.live.judge"
-LIVE_SAMPLE_RATE_ATTR = "aiobs.live.sample_rate"
+LIVE_ATTR = "opengrade.live"
+LIVE_JUDGE_ATTR = "opengrade.live.judge"
+LIVE_SAMPLE_RATE_ATTR = "opengrade.live.sample_rate"
 EXTERNAL_ID_PREFIX = "trace:"
 
 # kwargs names that most likely carry the user question / the answer.
@@ -47,7 +47,7 @@ def _truthy(value: Any) -> bool:
 
 
 def find_live_span(trace: Trace) -> Span | None:
-    """Outermost span marked ``aiobs.live`` (the SDK marks only one per call)."""
+    """Outermost span marked ``opengrade.live`` (the SDK marks only one per call)."""
     marked = [s for s in trace.spans if _truthy((s.attributes or {}).get(LIVE_ATTR, False))]
     if not marked:
         return None
@@ -83,8 +83,8 @@ def _pick_key(mapping: dict[str, Any], keys: tuple[str, ...]) -> str | None:
 def question_from_input(raw: Any) -> str | None:
     """Question text from ``input.value``.
 
-    ``@aiobs.trace`` records ``{"args": [...], "kwargs": {...}}``: take a
-    question-like kwarg, else the only string argument. ``aiobs.set_input()``
+    ``@opengrade.trace`` records ``{"args": [...], "kwargs": {...}}``: take a
+    question-like kwarg, else the only string argument. ``opengrade.set_input()``
     with plain text always wins as-is.
     """
     parsed = _loads(raw)
@@ -124,7 +124,7 @@ def _documents(trace: Trace, span: Span) -> list[dict[str, Any]]:
     docs = build_eval_context_from_trace(trace).get("documents")
     if docs:
         return list(docs)
-    # aiobs.set_retrieval_documents() called directly inside the live span.
+    # opengrade.set_retrieval_documents() called directly inside the live span.
     return normalize_documents(_loads((span.attributes or {}).get("retrieval.documents")))
 
 

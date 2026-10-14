@@ -4,14 +4,14 @@ import uuid
 from dataclasses import dataclass
 from typing import Any
 
-from aiobs_server.domain.experiment_output import ExperimentItemOutput
-from aiobs_server.domain.repositories import (
+from opengrade_server.domain.experiment_output import ExperimentItemOutput
+from opengrade_server.domain.repositories import (
     DatasetRepository,
     ExperimentItemOutputRepository,
     ExperimentRepository,
 )
-from aiobs_server.domain.trace import Trace
-from aiobs_server.evaluation.trace_context import build_eval_context_from_trace
+from opengrade_server.domain.trace import Trace
+from opengrade_server.evaluation.trace_context import build_eval_context_from_trace
 
 
 def _parse_uuid(value: Any) -> uuid.UUID | None:
@@ -24,8 +24,8 @@ def _parse_uuid(value: Any) -> uuid.UUID | None:
 
 
 def _binding_from_attributes(attributes: dict[str, Any]) -> tuple[uuid.UUID, uuid.UUID] | None:
-    experiment_id = _parse_uuid(attributes.get("aiobs.experiment_id"))
-    dataset_item_id = _parse_uuid(attributes.get("aiobs.dataset_item_id"))
+    experiment_id = _parse_uuid(attributes.get("opengrade.experiment_id"))
+    dataset_item_id = _parse_uuid(attributes.get("opengrade.dataset_item_id"))
     if experiment_id is None or dataset_item_id is None:
         return None
     return experiment_id, dataset_item_id

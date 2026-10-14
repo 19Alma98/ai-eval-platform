@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from aiobs_server.evaluation.judges import prompts
+from opengrade_server.evaluation.judges import prompts
 from support.fake_llm import claim_count, step_of
 
 _VERSION_RE = re.compile(r"^[a-z_]+\.[a-z]+\.[0-9a-f]{12}$")

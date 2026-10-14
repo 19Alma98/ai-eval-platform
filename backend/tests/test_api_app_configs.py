@@ -7,9 +7,9 @@ from typing import Any
 import pytest
 from httpx2 import ASGITransport, AsyncClient
 
-from aiobs_server.api.deps import get_app_config_repository, get_project_repository
-from aiobs_server.domain.app_config import AppConfig, AppConfigAlias
-from aiobs_server.main import create_app
+from opengrade_server.api.deps import get_app_config_repository, get_project_repository
+from opengrade_server.domain.app_config import AppConfig, AppConfigAlias
+from opengrade_server.main import create_app
 
 
 class InMemoryProjectRepository:

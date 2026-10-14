@@ -5,8 +5,8 @@ from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 
-from aiobs_server.api.deps import get_project_overview as get_project_overview_use_case
-from aiobs_server.api.schemas import (
+from opengrade_server.api.deps import get_project_overview as get_project_overview_use_case
+from opengrade_server.api.schemas import (
     CalibrationAlertResponse,
     LiveAttentionItemResponse,
     LiveOverviewResponse,
@@ -19,8 +19,8 @@ from aiobs_server.api.schemas import (
     OverviewRegressionResponse,
     ProjectOverviewResponse,
 )
-from aiobs_server.application.project_overview import GetProjectOverview, ProjectOverviewResult
-from aiobs_server.application.projects import ProjectNotFoundError
+from opengrade_server.application.project_overview import GetProjectOverview, ProjectOverviewResult
+from opengrade_server.application.projects import ProjectNotFoundError
 
 router = APIRouter(prefix="/api/v1/projects", tags=["overview"])
 

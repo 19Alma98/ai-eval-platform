@@ -6,9 +6,9 @@ from typing import Any
 import httpx2
 import pytest
 
-import aiobs
-from aiobs import AiobsAPIError, Client
-from aiobs.client import Client as ClientDirect
+import opengrade
+from opengrade import OpengradeAPIError, Client
+from opengrade.client import Client as ClientDirect
 
 
 @pytest.fixture
@@ -194,11 +194,11 @@ def mock_transport(captured_requests: list[httpx2.Request]) -> httpx2.MockTransp
 
 
 def test_public_exports() -> None:
-    assert "Client" in aiobs.__all__
-    assert "AsyncClient" in aiobs.__all__
-    assert "AiobsAPIError" in aiobs.__all__
+    assert "Client" in opengrade.__all__
+    assert "AsyncClient" in opengrade.__all__
+    assert "OpengradeAPIError" in opengrade.__all__
     assert Client is ClientDirect
-    assert issubclass(AiobsAPIError, RuntimeError)
+    assert issubclass(OpengradeAPIError, RuntimeError)
 
 
 def test_health_and_projects(

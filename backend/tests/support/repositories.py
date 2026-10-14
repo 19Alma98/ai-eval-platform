@@ -4,19 +4,19 @@ import uuid
 from dataclasses import replace
 from datetime import datetime
 
-from aiobs_server.api.deps import (
+from opengrade_server.api.deps import (
     get_app_config_repository,
     get_evaluation_run_repository,
     get_evaluator_repository,
     get_experiment_repository,
     get_metrics_set_repository,
 )
-from aiobs_server.domain.app_config import AppConfig, AppConfigAlias
-from aiobs_server.domain.evaluation import EvaluationResultRecord, EvaluationRun
-from aiobs_server.domain.evaluator import Evaluator
-from aiobs_server.domain.experiment import Experiment
-from aiobs_server.domain.metrics_set import MetricsSet
-from aiobs_server.domain.trace_score import (
+from opengrade_server.domain.app_config import AppConfig, AppConfigAlias
+from opengrade_server.domain.evaluation import EvaluationResultRecord, EvaluationRun
+from opengrade_server.domain.evaluator import Evaluator
+from opengrade_server.domain.experiment import Experiment
+from opengrade_server.domain.metrics_set import MetricsSet
+from opengrade_server.domain.trace_score import (
     TraceScore,
     TraceScoreSummaryRow,
     summarize_trace_scores,

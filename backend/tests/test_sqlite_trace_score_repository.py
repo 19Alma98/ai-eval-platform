@@ -7,9 +7,9 @@ from datetime import UTC, datetime, timedelta
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
-from aiobs_server.domain.trace_score import TraceScore
-from aiobs_server.infrastructure.models import Base
-from aiobs_server.infrastructure.repositories import SqlAlchemyTraceScoreRepository
+from opengrade_server.domain.trace_score import TraceScore
+from opengrade_server.infrastructure.models import Base
+from opengrade_server.infrastructure.repositories import SqlAlchemyTraceScoreRepository
 
 A = "aa" * 16
 B = "bb" * 16

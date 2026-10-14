@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import pytest
 
-from aiobs_server.evaluation.judges.cache import InMemoryJudgeClaimCache, claim_cache_key
-from aiobs_server.infrastructure.repositories import SqlJudgeClaimCache
+from opengrade_server.evaluation.judges.cache import InMemoryJudgeClaimCache, claim_cache_key
+from opengrade_server.infrastructure.repositories import SqlJudgeClaimCache
 
 
 def test_key_is_stable_and_sensitive_to_inputs() -> None:

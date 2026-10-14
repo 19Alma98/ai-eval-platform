@@ -4,7 +4,7 @@ import uuid
 from dataclasses import dataclass
 from datetime import datetime
 
-from aiobs_server.domain.live_interaction import LiveInteraction, LiveInteractionScore
+from opengrade_server.domain.live_interaction import LiveInteraction, LiveInteractionScore
 
 
 @dataclass(frozen=True, slots=True)

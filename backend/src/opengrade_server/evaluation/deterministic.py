@@ -4,9 +4,9 @@ import json
 import re
 from typing import Any
 
-from aiobs_server.evaluation.outcomes import fail_min, pass_, skip
-from aiobs_server.evaluation.protocol import EvaluationResult, EvaluationSample
-from aiobs_server.evaluation.registry import register_evaluator
+from opengrade_server.evaluation.outcomes import fail_min, pass_, skip
+from opengrade_server.evaluation.protocol import EvaluationResult, EvaluationSample
+from opengrade_server.evaluation.registry import register_evaluator
 
 
 def _stringify(value: Any) -> str:

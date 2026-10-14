@@ -1,8 +1,8 @@
 from __future__ import annotations
 
-from aiobs_server.evaluation.judges.parsing import CallOptions, call_structured
-from aiobs_server.evaluation.judges.schemas import RubricOut
-from aiobs_server.evaluation.protocol import LlmClient
+from opengrade_server.evaluation.judges.parsing import CallOptions, call_structured
+from opengrade_server.evaluation.judges.schemas import RubricOut
+from opengrade_server.evaluation.protocol import LlmClient
 
 
 def level_to_score(level: int) -> float:

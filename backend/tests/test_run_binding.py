@@ -3,8 +3,8 @@ from __future__ import annotations
 import uuid
 from datetime import UTC, datetime
 
-from aiobs_server.domain.trace import Span, Trace
-from aiobs_server.tracing.run_binding import (
+from opengrade_server.domain.trace import Span, Trace
+from opengrade_server.tracing.run_binding import (
     build_output_from_trace,
     extract_run_binding,
     traces_for_output_binding,
@@ -26,8 +26,8 @@ def test_extract_run_binding_from_chain_span() -> None:
         end_time=end,
         status="ok",
         attributes={
-            "aiobs.experiment_id": str(exp_id),
-            "aiobs.dataset_item_id": str(item_id),
+            "opengrade.experiment_id": str(exp_id),
+            "opengrade.dataset_item_id": str(item_id),
         },
     )
     trace = Trace(
@@ -93,8 +93,8 @@ def _chain_trace(*, trace_id: str, with_spans: bool) -> Trace:
         end_time=end,
         status="ok",
         attributes={
-            "aiobs.experiment_id": str(exp_id),
-            "aiobs.dataset_item_id": str(item_id),
+            "opengrade.experiment_id": str(exp_id),
+            "opengrade.dataset_item_id": str(item_id),
         },
     )
     return Trace(

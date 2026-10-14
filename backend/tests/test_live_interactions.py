@@ -6,9 +6,9 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 
-from aiobs_server.application.datasets import AddDatasetItem
-from aiobs_server.application.evaluators import CreateEvaluator
-from aiobs_server.application.live_interactions import (
+from opengrade_server.application.datasets import AddDatasetItem
+from opengrade_server.application.evaluators import CreateEvaluator
+from opengrade_server.application.live_interactions import (
     ListLiveInteractions,
     PromoteLiveInteraction,
     PromoteLiveInteractionCommand,
@@ -17,10 +17,10 @@ from aiobs_server.application.live_interactions import (
     SubmitLiveInteractionCommand,
     score_is_failed,
 )
-from aiobs_server.application.metrics_sets import EnsureProjectDefaultMetricsSet
-from aiobs_server.domain.dataset import Dataset, DatasetItem
-from aiobs_server.domain.evaluator import Evaluator
-from aiobs_server.domain.live_interaction import (
+from opengrade_server.application.metrics_sets import EnsureProjectDefaultMetricsSet
+from opengrade_server.domain.dataset import Dataset, DatasetItem
+from opengrade_server.domain.evaluator import Evaluator
+from opengrade_server.domain.live_interaction import (
     GOLDLESS_METRIC_KINDS,
     DuplicateExternalIdError,
     LiveInteraction,
@@ -28,10 +28,10 @@ from aiobs_server.domain.live_interaction import (
     LiveScoreReview,
     filter_goldless_entries,
 )
-from aiobs_server.domain.metrics_set import MetricsSet, MetricsSetEntry
-from aiobs_server.domain.project import Project
-from aiobs_server.evaluation import bootstrap_evaluators
-from aiobs_server.evaluation.registry import clear_registry
+from opengrade_server.domain.metrics_set import MetricsSet, MetricsSetEntry
+from opengrade_server.domain.project import Project
+from opengrade_server.evaluation import bootstrap_evaluators
+from opengrade_server.evaluation.registry import clear_registry
 from support.fake_llm import ScriptedJudgeLlm
 from tests.support.repositories import (
     InMemoryEvaluationRunRepository,
@@ -764,8 +764,8 @@ async def test_failed_only_stops_at_limit() -> None:
 
 @pytest.mark.asyncio
 async def test_list_judge_warnings_use_unfiltered_per_kind_window() -> None:
-    from aiobs_server.evaluation.judges.errors import JUDGE_OUTPUT_INVALID
-    from aiobs_server.evaluation.judges.warnings import JUDGE_MODEL_UNSUITABLE
+    from opengrade_server.evaluation.judges.errors import JUDGE_OUTPUT_INVALID
+    from opengrade_server.evaluation.judges.warnings import JUDGE_MODEL_UNSUITABLE
 
     live = InMemoryLiveRepository()
     project_id = uuid.uuid4()

@@ -10,26 +10,26 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from sqlalchemy.exc import IntegrityError
 
-from aiobs_server.application.app_configs import AppConfigAliasNotFoundError, AppConfigNotFoundError
-from aiobs_server.application.compare import InvalidCompareSelectionError
-from aiobs_server.application.compare_items import AmbiguousEvaluatorError, DatasetMismatchError
-from aiobs_server.application.datasets import DatasetConflictError, DatasetNotFoundError
-from aiobs_server.application.evaluate import EmptyEvaluatorListError, EvaluationRunNotFoundError
-from aiobs_server.application.evaluators import (
+from opengrade_server.application.app_configs import AppConfigAliasNotFoundError, AppConfigNotFoundError
+from opengrade_server.application.compare import InvalidCompareSelectionError
+from opengrade_server.application.compare_items import AmbiguousEvaluatorError, DatasetMismatchError
+from opengrade_server.application.datasets import DatasetConflictError, DatasetNotFoundError
+from opengrade_server.application.evaluate import EmptyEvaluatorListError, EvaluationRunNotFoundError
+from opengrade_server.application.evaluators import (
     EvaluatorConflictError,
     EvaluatorNotFoundError,
     UnknownEvaluatorKindError,
 )
-from aiobs_server.application.experiments import ExperimentNotFoundError
-from aiobs_server.application.live_interactions import (
+from opengrade_server.application.experiments import ExperimentNotFoundError
+from opengrade_server.application.live_interactions import (
     LiveInteractionNotFoundError,
     LiveScoreNotFoundError,
 )
-from aiobs_server.application.metrics_packs import (
+from opengrade_server.application.metrics_packs import (
     MetricsPackNotFoundError,
     MetricsPackValidationError,
 )
-from aiobs_server.application.metrics_sets import (
+from opengrade_server.application.metrics_sets import (
     MetricsSetConflictError,
     MetricsSetEntryNotFoundError,
     MetricsSetNotFoundError,
@@ -37,10 +37,10 @@ from aiobs_server.application.metrics_sets import (
     MetricsSetReferencedError,
     MetricsSetValidationError,
 )
-from aiobs_server.application.projects import ProjectNotFoundError, ProjectSlugConflictError
-from aiobs_server.application.release_check import MissingBaselineError
-from aiobs_server.application.traces import ProjectMissingError, TraceNotFoundError
-from aiobs_server.regression.policy import InvalidPolicyError
+from opengrade_server.application.projects import ProjectNotFoundError, ProjectSlugConflictError
+from opengrade_server.application.release_check import MissingBaselineError
+from opengrade_server.application.traces import ProjectMissingError, TraceNotFoundError
+from opengrade_server.regression.policy import InvalidPolicyError
 
 ExceptionHandler = Callable[[Request, Exception], Awaitable[JSONResponse]]
 

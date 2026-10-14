@@ -1,16 +1,16 @@
-"""aiobs — OTLP + OpenInference tracing and platform control-plane client."""
+"""opengrade — OTLP + OpenInference tracing and platform control-plane client."""
 
 from __future__ import annotations
 
 from importlib.metadata import PackageNotFoundError
 from importlib.metadata import version as _version
 
-from aiobs._config import get_tracking_uri, set_tracking_uri
-from aiobs._context import aset_project, get_async_client, get_client, get_project, set_project
-from aiobs._eval_run import bind_evaluation, set_retrieval_documents
-from aiobs._http import AiobsAPIError
-from aiobs._otel import flush, init
-from aiobs._trace import (
+from opengrade._config import get_tracking_uri, set_tracking_uri
+from opengrade._context import aset_project, get_async_client, get_client, get_project, set_project
+from opengrade._eval_run import bind_evaluation, set_retrieval_documents
+from opengrade._http import OpengradeAPIError
+from opengrade._otel import flush, init
+from opengrade._trace import (
     current_trace_id,
     set_attribute,
     set_attributes,
@@ -20,9 +20,9 @@ from aiobs._trace import (
     trace,
     trace_async,
 )
-from aiobs.async_client import AsyncClient
-from aiobs.client import Client
-from aiobs.experiment import (
+from opengrade.async_client import AsyncClient
+from opengrade.client import Client
+from opengrade.experiment import (
     DatasetColumnError,
     Experiment,
     ExperimentResult,
@@ -33,13 +33,13 @@ from aiobs.experiment import (
     log_params,
     start_experiment,
 )
-from aiobs.feedback import log_feedback, log_score, score_trace
-from aiobs.metrics import Sample, Score, metric
-from aiobs.registry import AppConfigClient
+from opengrade.feedback import log_feedback, log_score, score_trace
+from opengrade.metrics import Sample, Score, metric
+from opengrade.registry import AppConfigClient
 
 __all__ = [
     "__version__",
-    "AiobsAPIError",
+    "OpengradeAPIError",
     "AppConfigClient",
     "AsyncClient",
     "Client",
@@ -80,6 +80,6 @@ __all__ = [
 ]
 
 try:
-    __version__ = _version("aiobs-eval")
+    __version__ = _version("opengrade-ai")
 except PackageNotFoundError:  # running from a source tree without install
     __version__ = "0.0.0"

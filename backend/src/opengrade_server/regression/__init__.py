@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from aiobs_server.regression.aggregate import (
+from opengrade_server.regression.aggregate import (
     DELTA_THRESHOLD,
     MIN_APPLICABLE_ITEMS,
     Aggregates,
@@ -12,8 +12,8 @@ from aiobs_server.regression.aggregate import (
     select_latest_runs,
     select_runs,
 )
-from aiobs_server.regression.bootstrap import comparison_seed, paired_mean_ci
-from aiobs_server.regression.policy import (
+from opengrade_server.regression.bootstrap import comparison_seed, paired_mean_ci
+from opengrade_server.regression.policy import (
     EvaluatorMetricInput,
     InvalidPolicyError,
     PolicyCheck,

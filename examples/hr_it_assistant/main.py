@@ -1,4 +1,4 @@
-"""Acme People Ops Assistant — FAQ RAG demo via aiobs SDK + Ollama."""
+"""Acme People Ops Assistant — FAQ RAG demo via opengrade SDK + Ollama."""
 
 from __future__ import annotations
 
@@ -13,7 +13,7 @@ from typing import Any
 from kb import expected_for_question, gold_rows_for_api, iter_gold, load_knowledge, retrieve
 from openai import OpenAI
 
-import aiobs
+import opengrade
 
 logger = logging.getLogger(__name__)
 
@@ -30,7 +30,7 @@ def question_from_item_input(raw: Any) -> str:
 
 
 def gold_dataset_rows() -> list[dict[str, Any]]:
-    """Gold rows from knowledge.json, shaped for ``aiobs.evaluate(dataset=...)``.
+    """Gold rows from knowledge.json, shaped for ``opengrade.evaluate(dataset=...)``.
 
     Extra keys land in item metadata (``expected_doc_ids`` for retrieval metrics,
     ``must_contain`` for the phrase check). Same rows → same dataset on every run.
@@ -65,7 +65,7 @@ def system_prompt_from_params(params: dict[str, Any]) -> str | None:
 
 
 def resolve_system_prompt(params: dict[str, Any] | None = None) -> str:
-    env_prompt = os.getenv("AIOBS_SYSTEM_PROMPT")
+    env_prompt = os.getenv("OPENGRADE_SYSTEM_PROMPT")
     if isinstance(env_prompt, str) and env_prompt.strip():
         return env_prompt.strip()
     from_params = system_prompt_from_params(params or {})
@@ -74,7 +74,7 @@ def resolve_system_prompt(params: dict[str, Any] | None = None) -> str:
     return DEFAULT_SYSTEM_PROMPT
 
 
-@aiobs.trace(
+@opengrade.trace(
     name="people-ops-retrieve",
     kind="RETRIEVER",
     capture_input=False,
@@ -83,9 +83,9 @@ def resolve_system_prompt(params: dict[str, Any] | None = None) -> str:
 def retrieve_traced(
     question: str, docs: list[dict[str, Any]], *, top_k: int = 2
 ) -> list[dict[str, Any]]:
-    aiobs.set_input(question)
+    opengrade.set_input(question)
     hits = retrieve(docs, question, top_k=top_k)
-    aiobs.set_retrieval_documents(
+    opengrade.set_retrieval_documents(
         [
             {
                 "id": d["id"],
@@ -96,7 +96,7 @@ def retrieve_traced(
         ]
     )
     if not hits:
-        aiobs.set_error("no documents")
+        opengrade.set_error("no documents")
     return hits
 
 
@@ -113,7 +113,7 @@ def call_ollama(
     return (response.choices[0].message.content or "").strip()
 
 
-@aiobs.trace(
+@opengrade.trace(
     name="people-ops-rag", kind="CHAIN", capture_input=False, capture_output=False
 )
 def answer_question(
@@ -124,9 +124,9 @@ def answer_question(
     model: str,
     system_prompt: str,
 ) -> dict[str, Any]:
-    aiobs.set_input(question)
-    aiobs.set_attribute("llm.model", model)
-    aiobs.set_attribute("llm.system_prompt_chars", len(system_prompt))
+    opengrade.set_input(question)
+    opengrade.set_attribute("llm.model", model)
+    opengrade.set_attribute("llm.system_prompt_chars", len(system_prompt))
 
     hits = retrieve_traced(question, docs, top_k=2)
     if hits:
@@ -142,18 +142,18 @@ def answer_question(
     answer = call_ollama(
         client, model=model, user_prompt=user_prompt, system_prompt=system_prompt
     )
-    aiobs.set_output(answer)
+    opengrade.set_output(answer)
     return {
         "question": question,
         "answer": answer,
         "model": model,
         "doc_ids": [d["id"] for d in hits],
-        "trace_id": aiobs.current_trace_id() or "",
+        "trace_id": opengrade.current_trace_id() or "",
     }
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description="Acme People Ops Assistant → aiobs")
+    parser = argparse.ArgumentParser(description="Acme People Ops Assistant → opengrade")
     parser.add_argument("question", nargs="?", help="User question")
     parser.add_argument(
         "--model",
@@ -173,7 +173,7 @@ def main(argv: list[str] | None = None) -> int:
     )
     parser.add_argument(
         "--dataset",
-        default=os.getenv("AIOBS_DATASET"),
+        default=os.getenv("OPENGRADE_DATASET"),
         help="Dataset name or id for --eval (default: gold rows from knowledge.json)",
     )
     parser.add_argument("--name", help="Experiment name for --eval")
@@ -189,12 +189,12 @@ def main(argv: list[str] | None = None) -> int:
     if not (args.eval or args.all or args.question):
         parser.error("provide a question, --all, or --eval")
 
-    project_id = os.getenv("AIOBS_PROJECT_ID") or aiobs.set_project(
-        os.getenv("AIOBS_PROJECT_SLUG", "hr-it-assistant")
+    project_id = os.getenv("OPENGRADE_PROJECT_ID") or opengrade.set_project(
+        os.getenv("OPENGRADE_PROJECT_SLUG", "hr-it-assistant")
     ).id
-    aiobs.init(
+    opengrade.init(
         project_id=project_id,
-        service_name=os.getenv("AIOBS_SERVICE_NAME", "hr-it-assistant"),
+        service_name=os.getenv("OPENGRADE_SERVICE_NAME", "hr-it-assistant"),
         instrument=["openai"],
     )
 
@@ -228,14 +228,14 @@ def main(argv: list[str] | None = None) -> int:
                 print(f"A: {result['answer']}")
                 print()
     finally:
-        aiobs.flush()
+        opengrade.flush()
     return 0
 
 
 def run_eval(
     args: argparse.Namespace, *, docs: list[dict[str, Any]], client: OpenAI
 ) -> int:
-    with aiobs.start_experiment(
+    with opengrade.start_experiment(
         args.name or f"hr-it-assistant-{time.strftime('%Y%m%d-%H%M%S')}",
         dataset=args.dataset or gold_dataset_rows(),
         params={"model": args.model},

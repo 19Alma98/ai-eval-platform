@@ -1,6 +1,6 @@
 from datetime import UTC, datetime, timedelta
 
-from aiobs_server.application.project_overview import bucket_size_for_range
+from opengrade_server.application.project_overview import bucket_size_for_range
 
 
 def test_bucket_size_short_range_is_5_minutes():

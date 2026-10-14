@@ -4,7 +4,7 @@ from typing import Any
 
 import litellm
 
-from aiobs_server.config import Settings
+from opengrade_server.config import Settings
 
 
 class LiteLlmClient:

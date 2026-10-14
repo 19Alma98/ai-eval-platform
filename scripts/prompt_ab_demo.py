@@ -15,13 +15,13 @@ from typing import Any
 ROOT = Path(__file__).resolve().parents[1]
 SDK_DIR = ROOT / "sdk"
 APP_DIR = ROOT / "examples" / "hr_it_assistant"
-POLICY_PATH = APP_DIR / "aiobs.prompt-ab.yaml"
+POLICY_PATH = APP_DIR / "opengrade.prompt-ab.yaml"
 BACKEND_DIR = ROOT / "backend"
 
 sys.path.insert(0, str(SDK_DIR / "src"))
 
-from aiobs import Client  # noqa: E402
-from aiobs.models import AppConfigResponse, ProjectResponse  # noqa: E402
+from opengrade import Client  # noqa: E402
+from opengrade.models import AppConfigResponse, ProjectResponse  # noqa: E402
 
 CONFIG_FAMILY = "people-ops-rag"
 
@@ -112,9 +112,9 @@ def run_experiment(
     if baseline:
         cmd += ["--baseline", baseline]
     env = os.environ.copy()
-    env.pop("AIOBS_SYSTEM_PROMPT", None)  # would override the App Config prompt
-    env["AIOBS_TRACKING_URI"] = base
-    env["AIOBS_PROJECT_SLUG"] = project_slug
+    env.pop("OPENGRADE_SYSTEM_PROMPT", None)  # would override the App Config prompt
+    env["OPENGRADE_TRACKING_URI"] = base
+    env["OPENGRADE_PROJECT_SLUG"] = project_slug
     env["OLLAMA_HOST"] = os.getenv("OLLAMA_HOST", "http://localhost:11434")
     print(f"running hr_it_assistant --eval model={model} name={name}")
     proc = subprocess.run(
@@ -171,7 +171,7 @@ def run_aiobs_check(policy: Path, base: str) -> int:
     cmd = [
         "uv",
         "run",
-        "aiobs",
+        "opengrade",
         "check",
         "--policy",
         str(policy),
@@ -185,9 +185,9 @@ def run_aiobs_check(policy: Path, base: str) -> int:
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--base-url", default=os.getenv("AIOBS_TRACKING_URI", "http://localhost:8000"))
+    parser.add_argument("--base-url", default=os.getenv("OPENGRADE_TRACKING_URI", "http://localhost:8000"))
     parser.add_argument("--project-slug", default="hr-it-assistant")
-    parser.add_argument("--skip-check", action="store_true", help="Skip aiobs check subprocess")
+    parser.add_argument("--skip-check", action="store_true", help="Skip opengrade check subprocess")
     args = parser.parse_args(argv)
 
     base = args.base_url.rstrip("/")
@@ -255,7 +255,7 @@ def main(argv: list[str] | None = None) -> int:
     print(f"App config family: {CONFIG_FAMILY}")
 
     if args.skip_check:
-        print("skipping aiobs check")
+        print("skipping opengrade check")
         return 0
 
     code = run_aiobs_check(policy, base)
@@ -265,7 +265,7 @@ def main(argv: list[str] | None = None) -> int:
     if code == 1:
         print("gate failed (regression or quality threshold)")
         return 0
-    print(f"aiobs check failed with unexpected exit {code}", file=sys.stderr)
+    print(f"opengrade check failed with unexpected exit {code}", file=sys.stderr)
     return code
 
 

@@ -1,19 +1,19 @@
 from fastapi import APIRouter
 
-from aiobs_server.api.routes.app_configs import router as app_configs_router
-from aiobs_server.api.routes.datasets import router as datasets_router
-from aiobs_server.api.routes.evaluators import router as evaluators_router
-from aiobs_server.api.routes.experiments import router as experiments_router
-from aiobs_server.api.routes.live_interactions import router as live_interactions_router
-from aiobs_server.api.routes.metrics_packs import router as metrics_packs_router
-from aiobs_server.api.routes.metrics_sets import router as metrics_sets_router
-from aiobs_server.api.routes.monitoring import router as monitoring_router
-from aiobs_server.api.routes.otlp import router as otlp_router
-from aiobs_server.api.routes.overview import router as overview_router
-from aiobs_server.api.routes.projects import router as projects_router
-from aiobs_server.api.routes.release import router as release_router
-from aiobs_server.api.routes.trace_scores import router as trace_scores_router
-from aiobs_server.api.routes.traces import router as traces_router
+from opengrade_server.api.routes.app_configs import router as app_configs_router
+from opengrade_server.api.routes.datasets import router as datasets_router
+from opengrade_server.api.routes.evaluators import router as evaluators_router
+from opengrade_server.api.routes.experiments import router as experiments_router
+from opengrade_server.api.routes.live_interactions import router as live_interactions_router
+from opengrade_server.api.routes.metrics_packs import router as metrics_packs_router
+from opengrade_server.api.routes.metrics_sets import router as metrics_sets_router
+from opengrade_server.api.routes.monitoring import router as monitoring_router
+from opengrade_server.api.routes.otlp import router as otlp_router
+from opengrade_server.api.routes.overview import router as overview_router
+from opengrade_server.api.routes.projects import router as projects_router
+from opengrade_server.api.routes.release import router as release_router
+from opengrade_server.api.routes.trace_scores import router as trace_scores_router
+from opengrade_server.api.routes.traces import router as traces_router
 
 api_router = APIRouter()
 api_router.include_router(projects_router)

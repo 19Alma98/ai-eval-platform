@@ -11,7 +11,7 @@ from sqlalchemy.ext.asyncio import (
 )
 from sqlalchemy.pool import StaticPool
 
-from aiobs_server.config import DEFAULT_SQLITE_URL, Settings, get_settings
+from opengrade_server.config import DEFAULT_SQLITE_URL, Settings, get_settings
 
 _engine: AsyncEngine | None = None
 _session_factory: async_sessionmaker[AsyncSession] | None = None
@@ -84,7 +84,7 @@ async def bootstrap_schema() -> None:
         raise RuntimeError("Database not initialized")
     if _engine.dialect.name != "sqlite":
         return
-    from aiobs_server.infrastructure.models import Base
+    from opengrade_server.infrastructure.models import Base
 
     async with _engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)

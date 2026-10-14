@@ -6,7 +6,7 @@ from dataclasses import dataclass
 DEFAULT_TRACKING_URI = "http://localhost:8000"
 OTLP_TRACES_PATH = "/v1/traces"
 DEFAULT_ENDPOINT = DEFAULT_TRACKING_URI + OTLP_TRACES_PATH
-DEFAULT_SERVICE_NAME = "aiobs-app"
+DEFAULT_SERVICE_NAME = "opengrade-app"
 MAX_CAPTURE_BYTES = 32 * 1024
 
 _TRACKING_URI: str | None = None
@@ -26,7 +26,7 @@ def set_tracking_uri(uri: str) -> None:
     global _TRACKING_URI
     if normalized != _TRACKING_URI:
         _TRACKING_URI = normalized
-        from aiobs._context import _reset_client
+        from opengrade._context import _reset_client
 
         _reset_client()
 
@@ -34,30 +34,30 @@ def set_tracking_uri(uri: str) -> None:
 def get_tracking_uri() -> str:
     """Resolve the platform URI.
 
-    Order: ``set_tracking_uri()`` > ``AIOBS_TRACKING_URI`` > ``http://localhost:8000``.
+    Order: ``set_tracking_uri()`` > ``OPENGRADE_TRACKING_URI`` > ``http://localhost:8000``.
     """
     if _TRACKING_URI is not None:
         return _TRACKING_URI
-    value = os.getenv("AIOBS_TRACKING_URI")
+    value = os.getenv("OPENGRADE_TRACKING_URI")
     if value and value.strip():
         return _normalize_uri(value)
     return DEFAULT_TRACKING_URI
 
 
 def otlp_endpoint() -> str:
-    """OTLP traces URL: ``AIOBS_OTLP_ENDPOINT`` override, else ``<tracking_uri>/v1/traces``."""
-    override = os.getenv("AIOBS_OTLP_ENDPOINT")
+    """OTLP traces URL: ``OPENGRADE_OTLP_ENDPOINT`` override, else ``<tracking_uri>/v1/traces``."""
+    override = os.getenv("OPENGRADE_OTLP_ENDPOINT")
     if override and override.strip():
         return override.strip()
     return get_tracking_uri() + OTLP_TRACES_PATH
 
 
 def resolve_project_id(project_id: str | None = None) -> str:
-    """Project id for control-plane calls: argument > ``set_project()`` > ``AIOBS_PROJECT_ID``."""
-    resolved = project_id or _ACTIVE_PROJECT_ID or os.getenv("AIOBS_PROJECT_ID")
+    """Project id for control-plane calls: argument > ``set_project()`` > ``OPENGRADE_PROJECT_ID``."""
+    resolved = project_id or _ACTIVE_PROJECT_ID or os.getenv("OPENGRADE_PROJECT_ID")
     if not resolved:
         raise ValueError(
-            "No project: pass project_id, call aiobs.set_project(), or set AIOBS_PROJECT_ID"
+            "No project: pass project_id, call opengrade.set_project(), or set OPENGRADE_PROJECT_ID"
         )
     return resolved
 
@@ -97,8 +97,8 @@ def resolve_config(
             # set_project() wins over env: it is the explicit in-process choice.
             pid = _ACTIVE_PROJECT_ID
         else:
-            pid = os.getenv("AIOBS_PROJECT_ID")
-            pslug = os.getenv("AIOBS_PROJECT_SLUG")
+            pid = os.getenv("OPENGRADE_PROJECT_ID")
+            pslug = os.getenv("OPENGRADE_PROJECT_SLUG")
     # Treat empty strings as unset
     pid = pid or None
     pslug = pslug or None
@@ -106,12 +106,12 @@ def resolve_config(
     if (pid is None) == (pslug is None):
         raise ValueError(
             "Provide exactly one of project_id / project_slug "
-            "(arguments, aiobs.set_project(), or AIOBS_PROJECT_ID / AIOBS_PROJECT_SLUG)"
+            "(arguments, opengrade.set_project(), or OPENGRADE_PROJECT_ID / OPENGRADE_PROJECT_SLUG)"
         )
 
     return ResolvedConfig(
         endpoint=endpoint or otlp_endpoint(),
-        service_name=service_name or os.getenv("AIOBS_SERVICE_NAME") or DEFAULT_SERVICE_NAME,
+        service_name=service_name or os.getenv("OPENGRADE_SERVICE_NAME") or DEFAULT_SERVICE_NAME,
         project_id=pid,
         project_slug=pslug,
     )

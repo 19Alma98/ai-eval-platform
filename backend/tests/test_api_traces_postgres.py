@@ -192,11 +192,11 @@ async def test_otlp_first_insert_binds_outputs_for_each_trace(client: AsyncClien
                                             "value": {"stringValue": "CHAIN"},
                                         },
                                         {
-                                            "key": "aiobs.experiment_id",
+                                            "key": "opengrade.experiment_id",
                                             "value": {"stringValue": experiment_id},
                                         },
                                         {
-                                            "key": "aiobs.dataset_item_id",
+                                            "key": "opengrade.dataset_item_id",
                                             "value": {"stringValue": item_id},
                                         },
                                         {

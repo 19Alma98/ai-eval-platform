@@ -8,15 +8,15 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any
 
-from aiobs_server.application.projects import ProjectNotFoundError
-from aiobs_server.domain.repositories import ProjectRepository, TraceScoreRepository
-from aiobs_server.domain.trace_score import (
+from opengrade_server.application.projects import ProjectNotFoundError
+from opengrade_server.domain.repositories import ProjectRepository, TraceScoreRepository
+from opengrade_server.domain.trace_score import (
     MAX_TRACE_SCORE_BATCH,
     TraceScore,
     TraceScoreSummaryRow,
     normalize_trace_id,
 )
-from aiobs_server.evaluation.outcomes import item_verdict
+from opengrade_server.evaluation.outcomes import item_verdict
 
 
 @dataclass(frozen=True, slots=True)

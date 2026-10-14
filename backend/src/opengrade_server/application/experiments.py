@@ -4,13 +4,13 @@ import uuid
 from dataclasses import dataclass
 from typing import Any
 
-from aiobs_server.application.app_configs import AppConfigNotFoundError
-from aiobs_server.application.datasets import DatasetNotFoundError
-from aiobs_server.application.metrics_sets import MetricsSetNotFoundError
-from aiobs_server.application.projects import ProjectNotFoundError
-from aiobs_server.domain.app_config import AppConfig
-from aiobs_server.domain.experiment import Experiment
-from aiobs_server.domain.repositories import (
+from opengrade_server.application.app_configs import AppConfigNotFoundError
+from opengrade_server.application.datasets import DatasetNotFoundError
+from opengrade_server.application.metrics_sets import MetricsSetNotFoundError
+from opengrade_server.application.projects import ProjectNotFoundError
+from opengrade_server.domain.app_config import AppConfig
+from opengrade_server.domain.experiment import Experiment
+from opengrade_server.domain.repositories import (
     AppConfigRepository,
     DatasetRepository,
     ExperimentRepository,

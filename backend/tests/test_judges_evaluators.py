@@ -4,12 +4,12 @@ from typing import Any
 
 import pytest
 
-from aiobs_server.evaluation import bootstrap_evaluators
-from aiobs_server.evaluation.judges import prompts
-from aiobs_server.evaluation.judges.cache import InMemoryJudgeClaimCache
-from aiobs_server.evaluation.judges.evaluators import JudgeDefaults, create_llm_judge
-from aiobs_server.evaluation.protocol import EvaluationSample
-from aiobs_server.evaluation.registry import clear_registry, create_evaluator
+from opengrade_server.evaluation import bootstrap_evaluators
+from opengrade_server.evaluation.judges import prompts
+from opengrade_server.evaluation.judges.cache import InMemoryJudgeClaimCache
+from opengrade_server.evaluation.judges.evaluators import JudgeDefaults, create_llm_judge
+from opengrade_server.evaluation.protocol import EvaluationSample
+from opengrade_server.evaluation.registry import clear_registry, create_evaluator
 from support.fake_llm import ScriptedJudgeLlm
 
 _DEFAULTS = JudgeDefaults(model="judge-default")

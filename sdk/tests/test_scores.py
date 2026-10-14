@@ -8,10 +8,10 @@ from typing import Any
 import httpx2
 import pytest
 
-from aiobs import Client
-from aiobs import _scores as scores_module
-from aiobs._http import AiobsAPIError
-from aiobs._scores import ScoreSender
+from opengrade import Client
+from opengrade import _scores as scores_module
+from opengrade._http import OpengradeAPIError
+from opengrade._scores import ScoreSender
 
 TID = "ab" * 16
 
@@ -72,7 +72,7 @@ def test_flush_with_nothing_queued_returns_immediately() -> None:
 def test_full_queue_drops_with_one_warning(caplog: pytest.LogCaptureFixture) -> None:
     post = Recorder()
     sender = ScoreSender(post, max_queue=2, batch_size=100, interval=60.0)
-    with caplog.at_level(logging.WARNING, logger="aiobs"):
+    with caplog.at_level(logging.WARNING, logger="opengrade"):
         results = [sender.enqueue("p1", _score(i)) for i in range(5)]
     assert results == [True, True, False, False, False]
     assert sender.dropped == 3
@@ -93,24 +93,24 @@ def test_drops_after_second_failure(caplog: pytest.LogCaptureFixture) -> None:
     post = Recorder(fail_times=5)
     sender = ScoreSender(post, interval=60.0, retry_backoff=0)
     sender.enqueue("p1", _score(0))
-    with caplog.at_level(logging.WARNING, logger="aiobs"):
+    with caplog.at_level(logging.WARNING, logger="opengrade"):
         assert sender.flush(5.0)
     assert len(post.calls) == 2
     assert any("dropped 1 trace scores" in r.message for r in caplog.records)
 
 
 def test_client_error_is_sent_once_and_dropped(caplog: pytest.LogCaptureFixture) -> None:
-    post = Recorder(fail_times=5, error=AiobsAPIError(422, "invalid score"))
+    post = Recorder(fail_times=5, error=OpengradeAPIError(422, "invalid score"))
     sender = ScoreSender(post, interval=60.0, retry_backoff=0)
     sender.enqueue("p1", _score(0))
-    with caplog.at_level(logging.WARNING, logger="aiobs"):
+    with caplog.at_level(logging.WARNING, logger="opengrade"):
         assert sender.flush(5.0)
     assert len(post.calls) == 1
     assert any("dropped 1 trace scores" in r.message for r in caplog.records)
 
 
 def test_server_error_is_retried() -> None:
-    post = Recorder(fail_times=1, error=AiobsAPIError(503, "unavailable"))
+    post = Recorder(fail_times=1, error=OpengradeAPIError(503, "unavailable"))
     sender = ScoreSender(post, interval=60.0, retry_backoff=0)
     sender.enqueue("p1", _score(0))
     assert sender.flush(5.0)
@@ -120,7 +120,7 @@ def test_server_error_is_retried() -> None:
 def test_server_error_retries_after_backoff(monkeypatch: pytest.MonkeyPatch) -> None:
     slept: list[float] = []
     monkeypatch.setattr(scores_module.time, "sleep", slept.append)
-    post = Recorder(fail_times=1, error=AiobsAPIError(503, "unavailable"))
+    post = Recorder(fail_times=1, error=OpengradeAPIError(503, "unavailable"))
     sender = ScoreSender(post, interval=60.0, retry_backoff=1.5)
     sender.enqueue("p1", _score(0))
     assert sender.flush(5.0)
@@ -131,7 +131,7 @@ def test_server_error_retries_after_backoff(monkeypatch: pytest.MonkeyPatch) -> 
 def test_client_error_does_not_backoff(monkeypatch: pytest.MonkeyPatch) -> None:
     slept: list[float] = []
     monkeypatch.setattr(scores_module.time, "sleep", slept.append)
-    post = Recorder(fail_times=5, error=AiobsAPIError(422, "invalid score"))
+    post = Recorder(fail_times=5, error=OpengradeAPIError(422, "invalid score"))
     sender = ScoreSender(post, interval=60.0, retry_backoff=1.5)
     sender.enqueue("p1", _score(0))
     assert sender.flush(5.0)
@@ -179,13 +179,13 @@ def test_client_error_in_batch_resends_items_individually(
 
     def post(project_id: str, scores: list[dict[str, Any]]) -> None:
         if any(s["name"] == "bad" for s in scores):
-            raise AiobsAPIError(422, "bad score", detail="name invalid")
+            raise OpengradeAPIError(422, "bad score", detail="name invalid")
         delivered.extend(s["name"] for s in scores)
 
     sender = ScoreSender(post, batch_size=100, interval=60.0)
     for name in ("a", "bad", "b"):
         sender.enqueue("p1", {"trace_id": TID, "name": name, "value": 1.0})
-    with caplog.at_level(logging.WARNING, logger="aiobs"):
+    with caplog.at_level(logging.WARNING, logger="opengrade"):
         assert sender.flush(5.0)
     assert delivered == ["a", "b"]
     assert sender.dropped == 1
@@ -197,7 +197,7 @@ def test_client_error_in_batch_resends_items_individually(
 def test_send_failure_warnings_are_rate_limited(caplog: pytest.LogCaptureFixture) -> None:
     post = Recorder(fail_times=100)
     sender = ScoreSender(post, interval=60.0, retry_backoff=0)
-    with caplog.at_level(logging.DEBUG, logger="aiobs"):
+    with caplog.at_level(logging.DEBUG, logger="opengrade"):
         for i in range(3):
             sender.enqueue("p1", _score(i))
             assert sender.flush(5.0)
@@ -208,7 +208,7 @@ def test_send_failure_warnings_are_rate_limited(caplog: pytest.LogCaptureFixture
 
 
 def test_non_validation_client_error_drops_whole_batch_without_resend() -> None:
-    post = Recorder(fail_times=100, error=AiobsAPIError(404, "unknown project"))
+    post = Recorder(fail_times=100, error=OpengradeAPIError(404, "unknown project"))
     sender = ScoreSender(post, batch_size=100, interval=60.0)
     for i in range(3):
         sender.enqueue("p1", _score(i))
@@ -223,7 +223,7 @@ def test_batches_stay_under_server_body_limit() -> None:
     def post(project_id: str, scores: list[dict[str, Any]]) -> None:
         body = json.dumps({"scores": scores}, separators=(",", ":"))
         if len(body.encode()) > 1024 * 1024:
-            raise AiobsAPIError(413, "too large")
+            raise OpengradeAPIError(413, "too large")
         delivered.extend(scores)
 
     sender = ScoreSender(post, batch_size=100, interval=60.0)
@@ -239,7 +239,7 @@ def test_413_splits_batch_and_drops_single_oversized_item() -> None:
 
     def post(project_id: str, scores: list[dict[str, Any]]) -> None:
         if len(scores) > 1 or scores[0]["name"] == "m3":
-            raise AiobsAPIError(413, "too large")
+            raise OpengradeAPIError(413, "too large")
         delivered.extend(s["name"] for s in scores)
 
     sender = ScoreSender(post, batch_size=5, interval=60.0)

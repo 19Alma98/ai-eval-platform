@@ -9,9 +9,9 @@ from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import SimpleSpanProcessor
 from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
 
-import aiobs
-from aiobs import _live, _otel
-from aiobs._run_context import ACTIVE_RUN
+import opengrade
+from opengrade import _live, _otel
+from opengrade._run_context import ACTIVE_RUN
 
 _shared_exporter: InMemorySpanExporter | None = None
 
@@ -28,8 +28,8 @@ def _reset_otel() -> Iterator[None]:
 
 @pytest.fixture(autouse=True)
 def _reset_live(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
-    monkeypatch.delenv("AIOBS_LIVE", raising=False)
-    monkeypatch.delenv("AIOBS_LIVE_SAMPLE_RATE", raising=False)
+    monkeypatch.delenv("OPENGRADE_LIVE", raising=False)
+    monkeypatch.delenv("OPENGRADE_LIVE_SAMPLE_RATE", raising=False)
     _live._reset_for_tests()
     yield
     _live._reset_for_tests()
@@ -53,7 +53,7 @@ def _by_name(exporter: InMemorySpanExporter) -> dict[str, dict[str, object]]:
 
 
 def test_live_off_by_default(spans: InMemorySpanExporter) -> None:
-    @aiobs.trace(name="answer")
+    @opengrade.trace(name="answer")
     def answer(q: str) -> str:
         return "a"
 
@@ -64,11 +64,11 @@ def test_live_off_by_default(spans: InMemorySpanExporter) -> None:
 def test_live_marks_only_outermost_span(spans: InMemorySpanExporter) -> None:
     _live.configure(enabled=True, sample_rate=1.0)
 
-    @aiobs.trace(name="retrieve")
+    @opengrade.trace(name="retrieve")
     def retrieve(q: str) -> str:
         return "ctx"
 
-    @aiobs.trace(name="answer")
+    @opengrade.trace(name="answer")
     def answer(q: str) -> str:
         return retrieve(q) + "!"
 
@@ -83,7 +83,7 @@ def test_live_marks_only_outermost_span(spans: InMemorySpanExporter) -> None:
 def test_live_sample_rate_zero_records_without_judge(spans: InMemorySpanExporter) -> None:
     _live.configure(enabled=True, sample_rate=0.0)
 
-    @aiobs.trace(name="answer")
+    @opengrade.trace(name="answer")
     def answer(q: str) -> str:
         return "a"
 
@@ -94,10 +94,10 @@ def test_live_sample_rate_zero_records_without_judge(spans: InMemorySpanExporter
 
 
 def test_live_env_vars(spans: InMemorySpanExporter, monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("AIOBS_LIVE", "1")
-    monkeypatch.setenv("AIOBS_LIVE_SAMPLE_RATE", "0")
+    monkeypatch.setenv("OPENGRADE_LIVE", "1")
+    monkeypatch.setenv("OPENGRADE_LIVE_SAMPLE_RATE", "0")
 
-    @aiobs.trace(name="answer")
+    @opengrade.trace(name="answer")
     def answer(q: str) -> str:
         return "a"
 
@@ -108,7 +108,7 @@ def test_live_env_vars(spans: InMemorySpanExporter, monkeypatch: pytest.MonkeyPa
 
 
 def test_decorator_live_flag_overrides_global(spans: InMemorySpanExporter) -> None:
-    @aiobs.trace(name="forced", live=True)
+    @opengrade.trace(name="forced", live=True)
     def forced() -> str:
         return "a"
 
@@ -118,7 +118,7 @@ def test_decorator_live_flag_overrides_global(spans: InMemorySpanExporter) -> No
     _live.configure(enabled=True)
     spans.clear()
 
-    @aiobs.trace(name="excluded", live=False)
+    @opengrade.trace(name="excluded", live=False)
     def excluded() -> str:
         return "a"
 
@@ -134,7 +134,7 @@ def test_live_skipped_inside_experiment_run(spans: InMemorySpanExporter) -> None
 
         def _capture_documents(self, documents: list[dict[str, object]]) -> None: ...
 
-    @aiobs.trace(name="answer")
+    @opengrade.trace(name="answer")
     def answer() -> str:
         return "a"
 
@@ -149,11 +149,11 @@ def test_live_skipped_inside_experiment_run(spans: InMemorySpanExporter) -> None
 def test_live_context_released_after_error(spans: InMemorySpanExporter) -> None:
     _live.configure(enabled=True)
 
-    @aiobs.trace(name="boom")
+    @opengrade.trace(name="boom")
     def boom() -> None:
         raise RuntimeError("x")
 
-    @aiobs.trace(name="after")
+    @opengrade.trace(name="after")
     def after() -> str:
         return "a"
 
@@ -168,11 +168,11 @@ def test_live_context_released_after_error(spans: InMemorySpanExporter) -> None:
 def test_live_async(spans: InMemorySpanExporter) -> None:
     _live.configure(enabled=True)
 
-    @aiobs.trace_async(name="inner")
+    @opengrade.trace_async(name="inner")
     async def inner() -> str:
         return "x"
 
-    @aiobs.trace_async(name="outer")
+    @opengrade.trace_async(name="outer")
     async def outer() -> str:
         return await inner()
 
@@ -197,7 +197,7 @@ def test_configure_rejects_out_of_range_rate() -> None:
 
 
 def test_init_with_bad_rate_disables_live_without_raising() -> None:
-    aiobs.init(project_id="p", live=True, live_sample_rate=2.0, instrument=False, force=True)
+    opengrade.init(project_id="p", live=True, live_sample_rate=2.0, instrument=False, force=True)
     try:
         assert _live.is_enabled() is False
     finally:

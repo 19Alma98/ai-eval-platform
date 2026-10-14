@@ -5,7 +5,7 @@ import uuid
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, status
 from fastapi.responses import JSONResponse
 
-from aiobs_server.api.deps import (
+from opengrade_server.api.deps import (
     EvaluateBackgroundRunner,
     get_compare_experiment_items,
     get_compare_experiments,
@@ -25,10 +25,10 @@ from aiobs_server.api.deps import (
     get_update_experiment_params,
     get_upsert_experiment_outputs,
 )
-from aiobs_server.api.deps import (
+from opengrade_server.api.deps import (
     get_evaluation_run as get_evaluation_run_use_case,
 )
-from aiobs_server.api.schemas import (
+from opengrade_server.api.schemas import (
     CompareRunRefResponse,
     CreateExperimentRequest,
     EvaluatePackRequest,
@@ -53,8 +53,8 @@ from aiobs_server.api.schemas import (
     UpsertExperimentOutputsRequest,
     UpsertExperimentOutputsResponse,
 )
-from aiobs_server.application.app_configs import AppConfigNotFoundError
-from aiobs_server.application.client_results import (
+from opengrade_server.application.app_configs import AppConfigNotFoundError
+from opengrade_server.application.client_results import (
     ClientMetric,
     ClientMetricNameConflictError,
     ClientResultItem,
@@ -62,7 +62,7 @@ from aiobs_server.application.client_results import (
     SubmitClientResults,
     SubmitClientResultsCommand,
 )
-from aiobs_server.application.compare import (
+from opengrade_server.application.compare import (
     CompareExperiments,
     CompareRunRef,
     ExperimentComparison,
@@ -71,7 +71,7 @@ from aiobs_server.application.compare import (
     SummarizeExperiment,
     SummarizeExperiments,
 )
-from aiobs_server.application.compare_items import (
+from opengrade_server.application.compare_items import (
     AmbiguousEvaluatorError,
     CompareExperimentItems,
     DatasetMismatchError,
@@ -79,8 +79,8 @@ from aiobs_server.application.compare_items import (
     ItemComparisonRow,
     ItemSide,
 )
-from aiobs_server.application.datasets import DatasetNotFoundError
-from aiobs_server.application.evaluate import (
+from opengrade_server.application.datasets import DatasetNotFoundError
+from opengrade_server.application.evaluate import (
     ClientEvaluatorNotRunnableError,
     EmptyEvaluatorListError,
     EvaluateExperimentCommand,
@@ -92,32 +92,32 @@ from aiobs_server.application.evaluate import (
     ScoreExperimentFromPackCommand,
     StartEvaluateExperiment,
 )
-from aiobs_server.application.evaluators import EvaluatorNotFoundError
-from aiobs_server.application.experiment_metrics import (
+from opengrade_server.application.evaluators import EvaluatorNotFoundError
+from opengrade_server.application.experiment_metrics import (
     ExperimentParamsLockedError,
     GetExperimentMetrics,
     LogExperimentMetrics,
     UpdateExperimentParams,
 )
-from aiobs_server.application.experiment_outputs import (
+from opengrade_server.application.experiment_outputs import (
     ExperimentItemNotInDatasetError,
     ListExperimentOutputs,
     UpsertExperimentOutputs,
     UpsertOutputItem,
 )
-from aiobs_server.application.experiments import (
+from opengrade_server.application.experiments import (
     CreateExperiment,
     CreateExperimentCommand,
     ExperimentNotFoundError,
     GetExperiment,
     ListExperiments,
 )
-from aiobs_server.application.metrics_sets import MetricsSetNotFoundError, MetricsSetValidationError
-from aiobs_server.application.projects import ProjectNotFoundError
-from aiobs_server.domain.evaluation import EvaluationResultRecord, EvaluationRun
-from aiobs_server.domain.experiment import Experiment
-from aiobs_server.domain.experiment_output import UNSET, ExperimentItemOutput
-from aiobs_server.regression.aggregate import MetricComparison
+from opengrade_server.application.metrics_sets import MetricsSetNotFoundError, MetricsSetValidationError
+from opengrade_server.application.projects import ProjectNotFoundError
+from opengrade_server.domain.evaluation import EvaluationResultRecord, EvaluationRun
+from opengrade_server.domain.experiment import Experiment
+from opengrade_server.domain.experiment_output import UNSET, ExperimentItemOutput
+from opengrade_server.regression.aggregate import MetricComparison
 
 router = APIRouter(tags=["experiments"])
 

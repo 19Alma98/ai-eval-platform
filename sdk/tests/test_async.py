@@ -4,7 +4,7 @@ import asyncio
 
 import pytest
 
-from aiobs._async import run_sync
+from opengrade._async import run_sync
 
 
 async def _value(x: int) -> int:

@@ -23,15 +23,15 @@ ROOT = Path(__file__).resolve().parents[1]
 APP_DIR = ROOT / "examples" / "hr_it_assistant"
 sys.path.insert(0, str(APP_DIR))
 
-from aiobs_server.config import get_settings  # noqa: E402
-from aiobs_server.evaluation import bootstrap_evaluators, create_evaluator  # noqa: E402
-from aiobs_server.evaluation.judges.evaluators import (  # noqa: E402
+from opengrade_server.config import get_settings  # noqa: E402
+from opengrade_server.evaluation import bootstrap_evaluators, create_evaluator  # noqa: E402
+from opengrade_server.evaluation.judges.evaluators import (  # noqa: E402
     JUDGE_KINDS,
     JudgeDefaults,
     create_llm_judge,
 )
-from aiobs_server.evaluation.protocol import EvaluationSample  # noqa: E402
-from aiobs_server.infrastructure.llm import LiteLlmClient  # noqa: E402
+from opengrade_server.evaluation.protocol import EvaluationSample  # noqa: E402
+from opengrade_server.infrastructure.llm import LiteLlmClient  # noqa: E402
 from judge_sanity_lib import (  # noqa: E402
     METRIC_KINDS,
     VARIANTS,

@@ -5,8 +5,8 @@ from dataclasses import dataclass, field
 
 import pytest
 
-from aiobs_server.application.evaluate import EvaluateExperiment, EvaluateExperimentCommand
-from aiobs_server.application.experiment_outputs import (
+from opengrade_server.application.evaluate import EvaluateExperiment, EvaluateExperimentCommand
+from opengrade_server.application.experiment_outputs import (
     ExperimentItemNotInDatasetError,
     ListExperimentOutputs,
     UpsertExperimentOutputs,
@@ -14,14 +14,14 @@ from aiobs_server.application.experiment_outputs import (
     merge_dataset_item,
     resolve_item_fields,
 )
-from aiobs_server.application.experiments import ExperimentNotFoundError
-from aiobs_server.domain.dataset import DatasetItem
-from aiobs_server.domain.evaluator import Evaluator
-from aiobs_server.domain.experiment import Experiment
-from aiobs_server.domain.experiment_output import ExperimentItemOutput
-from aiobs_server.evaluation.deterministic import register_deterministic_evaluators
-from aiobs_server.evaluation.registry import clear_registry
-from aiobs_server.evaluation.runner import EvaluationRunner
+from opengrade_server.application.experiments import ExperimentNotFoundError
+from opengrade_server.domain.dataset import DatasetItem
+from opengrade_server.domain.evaluator import Evaluator
+from opengrade_server.domain.experiment import Experiment
+from opengrade_server.domain.experiment_output import ExperimentItemOutput
+from opengrade_server.evaluation.deterministic import register_deterministic_evaluators
+from opengrade_server.evaluation.registry import clear_registry
+from opengrade_server.evaluation.runner import EvaluationRunner
 
 
 def test_resolve_prefers_experiment_then_legacy() -> None:

@@ -67,19 +67,19 @@ async def test_put_metrics_upserts_and_get_returns_all(client: AsyncClient) -> N
     ctx = await _setup(client)
     exp_id = await _experiment(client, ctx, "cand")
 
-    first = await _put_metrics(client, exp_id, {"cost_usd": 1.5, "aiobs.error_rate": 0})
+    first = await _put_metrics(client, exp_id, {"cost_usd": 1.5, "opengrade.error_rate": 0})
     assert first.status_code == 200, first.text
     assert first.json() == {
         "experiment_id": exp_id,
-        "metrics": {"aiobs.error_rate": 0.0, "cost_usd": 1.5},
+        "metrics": {"opengrade.error_rate": 0.0, "cost_usd": 1.5},
     }
 
     second = await _put_metrics(client, exp_id, {"cost_usd": 2})
-    assert second.json()["metrics"] == {"aiobs.error_rate": 0.0, "cost_usd": 2.0}
+    assert second.json()["metrics"] == {"opengrade.error_rate": 0.0, "cost_usd": 2.0}
 
     got = await client.get(f"/api/v1/experiments/{exp_id}/metrics")
     assert got.status_code == 200, got.text
-    assert got.json()["metrics"] == {"aiobs.error_rate": 0.0, "cost_usd": 2.0}
+    assert got.json()["metrics"] == {"opengrade.error_rate": 0.0, "cost_usd": 2.0}
 
 
 @pytest.mark.parametrize(

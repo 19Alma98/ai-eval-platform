@@ -6,14 +6,14 @@ import uuid
 from dataclasses import dataclass, field
 from datetime import datetime
 
-from aiobs_server.domain.repositories import (
+from opengrade_server.domain.repositories import (
     LiveInteractionRepository,
     ProjectRepository,
     TraceRepository,
     TraceScoreRepository,
 )
-from aiobs_server.domain.trace import Trace
-from aiobs_server.domain.trace_score import TraceScore, normalize_trace_id
+from opengrade_server.domain.trace import Trace
+from opengrade_server.domain.trace_score import TraceScore, normalize_trace_id
 
 # Same prefix live_binding uses for trace-derived live interactions.
 LIVE_EXTERNAL_ID_PREFIX = "trace:"

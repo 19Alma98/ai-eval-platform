@@ -4,21 +4,21 @@ import uuid
 from dataclasses import dataclass
 from typing import Any
 
-from aiobs_server.application.compare import InvalidCompareSelectionError
-from aiobs_server.application.experiment_outputs import resolve_item_fields
-from aiobs_server.application.experiments import ExperimentNotFoundError
-from aiobs_server.application.scoring_inputs import (
+from opengrade_server.application.compare import InvalidCompareSelectionError
+from opengrade_server.application.experiment_outputs import resolve_item_fields
+from opengrade_server.application.experiments import ExperimentNotFoundError
+from opengrade_server.application.scoring_inputs import (
     CurrentScoringFingerprint,
     current_fingerprint,
 )
-from aiobs_server.domain.evaluation import EvaluationResultRecord
-from aiobs_server.domain.repositories import (
+from opengrade_server.domain.evaluation import EvaluationResultRecord
+from opengrade_server.domain.repositories import (
     DatasetRepository,
     EvaluationRunRepository,
     ExperimentItemOutputRepository,
     ExperimentRepository,
 )
-from aiobs_server.regression.aggregate import (
+from opengrade_server.regression.aggregate import (
     MetricStatus,
     classify_delta,
     runs_config_mismatch,

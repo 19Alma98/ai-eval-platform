@@ -17,10 +17,10 @@ from collections.abc import Callable, Mapping
 from decimal import Decimal
 from typing import Any
 
-from aiobs import _config, _scores, _trace
-from aiobs.metrics import LocalMetric, Sample, Score, evaluate_metric, missing_requirement
+from opengrade import _config, _scores, _trace
+from opengrade.metrics import LocalMetric, Sample, Score, evaluate_metric, missing_requirement
 
-logger = logging.getLogger("aiobs")
+logger = logging.getLogger("opengrade")
 
 FEEDBACK_NAME = "user_feedback"
 _LABELS = frozenset({"PASS", "FAIL", "ERROR", "SKIPPED"})
@@ -143,7 +143,7 @@ def _warn_config(category: str, what: str, message: str) -> None:
         loud = last is None or now - last >= _WARN_EVERY_S
         if loud:
             _config_warned[category] = now
-    logger.log(logging.WARNING if loud else logging.DEBUG, "aiobs: %s ignored: %s", what, message)
+    logger.log(logging.WARNING if loud else logging.DEBUG, "opengrade: %s ignored: %s", what, message)
 
 
 def _describe(exc: BaseException) -> str:
@@ -169,9 +169,9 @@ def _guarded(what: str, action: Callable[[], bool]) -> bool:
     except _ConfigError as exc:
         _warn_config(exc.category, what, str(exc))
     except (TypeError, ValueError) as exc:
-        logger.warning("aiobs: %s ignored: %s", what, _describe(exc))
+        logger.warning("opengrade: %s ignored: %s", what, _describe(exc))
     except Exception as exc:  # noqa: BLE001 — scoring must never break the caller
-        logger.warning("aiobs: %s ignored: %s", what, _describe(exc))
+        logger.warning("opengrade: %s ignored: %s", what, _describe(exc))
     return False
 
 
@@ -292,17 +292,17 @@ def score_trace(metric: LocalMetric, sample: Sample, *, trace_id: str | None = N
 
     def action() -> bool:
         if not isinstance(metric, LocalMetric) or not metric.name:
-            raise ValueError("the metric needs a name (use @aiobs.metric)")
+            raise ValueError("the metric needs a name (use @opengrade.metric)")
         if not isinstance(sample, Sample):
-            raise ValueError(f"sample must be an aiobs.Sample, got {type(sample).__name__}")
+            raise ValueError(f"sample must be an opengrade.Sample, got {type(sample).__name__}")
         missing = missing_requirement(sample, metric.requires)
         if missing is not None:
-            logger.debug("aiobs: metric %s skipped: missing %s", metric.name, missing)
+            logger.debug("opengrade: metric %s skipped: missing %s", metric.name, missing)
             return False
         try:
             result = evaluate_metric(metric, sample)
         except Exception as exc:  # noqa: BLE001 — a broken metric must not break the caller
-            logger.warning("aiobs: metric %s failed: %s", metric.name, _describe(exc))
+            logger.warning("opengrade: metric %s failed: %s", metric.name, _describe(exc))
             result = error_score(exc)
         return _queue(
             f"score_trace({_name_for_log(metric.name)})",

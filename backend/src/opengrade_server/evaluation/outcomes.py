@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from aiobs_server.evaluation.protocol import EvaluationResult
+from opengrade_server.evaluation.protocol import EvaluationResult
 
 
 def skip(explanation: str, *, metadata: dict[str, Any] | None = None) -> EvaluationResult:

@@ -4,11 +4,11 @@ import uuid
 
 import pytest
 
-from aiobs_server.domain.dataset import DatasetItem
-from aiobs_server.domain.evaluation import EvaluationResultRecord, EvaluationRun
-from aiobs_server.domain.evaluator import Evaluator
-from aiobs_server.evaluation.judges.warnings import JUDGE_MODEL_UNSUITABLE, unsuitable_model_warning
-from aiobs_server.evaluation.runner import EvaluationRunner
+from opengrade_server.domain.dataset import DatasetItem
+from opengrade_server.domain.evaluation import EvaluationResultRecord, EvaluationRun
+from opengrade_server.domain.evaluator import Evaluator
+from opengrade_server.evaluation.judges.warnings import JUDGE_MODEL_UNSUITABLE, unsuitable_model_warning
+from opengrade_server.evaluation.runner import EvaluationRunner
 from support.fake_llm import ScriptedJudgeLlm
 
 
@@ -56,8 +56,8 @@ def test_skipped_missing_output_and_provider_errors_are_excluded() -> None:
 
 @pytest.mark.asyncio
 async def test_runner_records_prompt_version_and_warning() -> None:
-    from aiobs_server.evaluation.judges import prompts
-    from aiobs_server.evaluation.judges.evaluators import JudgeDefaults, create_llm_judge
+    from opengrade_server.evaluation.judges import prompts
+    from opengrade_server.evaluation.judges.evaluators import JudgeDefaults, create_llm_judge
 
     llm = ScriptedJudgeLlm({"rubric_answer_relevance": ["bad", "bad"]})
     entity = Evaluator.create(
@@ -81,7 +81,7 @@ async def test_runner_records_prompt_version_and_warning() -> None:
 @pytest.mark.asyncio
 async def test_runner_without_prompt_version_or_warning() -> None:
     entity = Evaluator.create(uuid.uuid4(), "exact", "deterministic", {"kind": "exact_match"})
-    from aiobs_server.evaluation.deterministic import ExactMatchEvaluator
+    from opengrade_server.evaluation.deterministic import ExactMatchEvaluator
 
     runner = EvaluationRunner(resolve_evaluator=lambda e: ExactMatchEvaluator({}))
     item = DatasetItem.create(uuid.uuid4(), input="q", expected_output="a", actual_output="a")

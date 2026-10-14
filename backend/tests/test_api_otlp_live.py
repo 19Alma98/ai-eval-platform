@@ -10,18 +10,18 @@ from typing import Any
 import pytest
 from httpx2 import ASGITransport, AsyncClient
 
-from aiobs_server.api.deps import (
+from opengrade_server.api.deps import (
     get_live_interaction_repository,
     get_metrics_set_repository,
     get_project_repository,
     get_trace_repository,
     get_trace_score_repository,
 )
-from aiobs_server.config import get_settings
-from aiobs_server.domain.project import Project
-from aiobs_server.domain.trace import Span, Trace
-from aiobs_server.main import create_app
-from aiobs_server.tracing.live_binding import (
+from opengrade_server.config import get_settings
+from opengrade_server.domain.project import Project
+from opengrade_server.domain.trace import Span, Trace
+from opengrade_server.main import create_app
+from opengrade_server.tracing.live_binding import (
     answer_from_output,
     find_live_span,
     live_command_from_trace,
@@ -55,9 +55,9 @@ def _payload(
         _attr("openinference.span.kind", "CHAIN"),
         _attr("input.value", json.dumps({"args": ["Can I work remotely?"], "kwargs": {}})),
         _attr("output.value", "Yes, remote work is allowed."),
-        _attr("aiobs.live", True),
-        _attr("aiobs.live.judge", judge),
-        _attr("aiobs.live.sample_rate", 0.5),
+        _attr("opengrade.live", True),
+        _attr("opengrade.live.judge", judge),
+        _attr("opengrade.live.sample_rate", 0.5),
         *(extra_root_attrs or []),
     ]
     return {
@@ -179,8 +179,8 @@ async def test_experiment_bound_trace_is_not_live(env: tuple[AsyncClient, _Env, 
     client, state, project_id = env
     payload = _payload(
         extra_root_attrs=[
-            _attr("aiobs.experiment_id", "00000000-0000-0000-0000-000000000001"),
-            _attr("aiobs.dataset_item_id", "00000000-0000-0000-0000-000000000002"),
+            _attr("opengrade.experiment_id", "00000000-0000-0000-0000-000000000001"),
+            _attr("opengrade.dataset_item_id", "00000000-0000-0000-0000-000000000002"),
         ]
     )
     await _post(client, project_id, payload)
@@ -249,8 +249,8 @@ def test_answer_from_output_variants() -> None:
 
 
 def test_find_live_span_picks_outermost() -> None:
-    outer = _span("outer", None, {"aiobs.live": True})
-    inner = _span("inner", "outer", {"aiobs.live": True})
+    outer = _span("outer", None, {"opengrade.live": True})
+    inner = _span("inner", "outer", {"opengrade.live": True})
     plain = _span("plain", None, {})
     assert find_live_span(_trace(inner, outer, plain)) is outer
     assert find_live_span(_trace(plain)) is None
@@ -262,8 +262,8 @@ def test_live_command_uses_documents_set_on_live_span() -> None:
         "root",
         None,
         {
-            "aiobs.live": True,
-            "aiobs.live.judge": False,
+            "opengrade.live": True,
+            "opengrade.live.judge": False,
             "input.value": "q",
             "output.value": "a",
             "retrieval.documents": docs,

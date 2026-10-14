@@ -6,7 +6,7 @@ from typing import Any
 import httpx2
 import pytest
 
-from aiobs.registry import AppConfigClient
+from opengrade.registry import AppConfigClient
 
 
 @pytest.fixture

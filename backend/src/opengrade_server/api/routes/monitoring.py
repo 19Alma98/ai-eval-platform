@@ -5,20 +5,20 @@ from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 
-from aiobs_server.api.deps import get_production_monitoring
-from aiobs_server.api.schemas import (
+from opengrade_server.api.deps import get_production_monitoring
+from opengrade_server.api.schemas import (
     LatencyPercentilesResponse,
     MetricBucketResponse,
     MetricMonitorResponse,
     ProductionMonitoringResponse,
     TrafficBucketResponse,
 )
-from aiobs_server.application.monitoring import (
+from opengrade_server.application.monitoring import (
     GetProductionMonitoring,
     LatencyPercentiles,
     ProductionMonitoring,
 )
-from aiobs_server.application.projects import ProjectNotFoundError
+from opengrade_server.application.projects import ProjectNotFoundError
 
 router = APIRouter(prefix="/api/v1/projects", tags=["monitoring"])
 

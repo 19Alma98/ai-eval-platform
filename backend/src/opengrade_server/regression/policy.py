@@ -6,8 +6,8 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any, Literal
 
-from aiobs_server.domain.evaluation import EvaluationResultRecord
-from aiobs_server.domain.experiment_metric import METRIC_KEY_PATTERN
+from opengrade_server.domain.evaluation import EvaluationResultRecord
+from opengrade_server.domain.experiment_metric import METRIC_KEY_PATTERN
 
 CheckStatus = Literal["passed", "failed", "unavailable"]
 OverallStatus = Literal["passed", "failed"]

@@ -7,8 +7,8 @@ from pathlib import Path
 
 import pytest
 
-from aiobs_server.config import get_settings
-from aiobs_server.infrastructure.db import dispose_db
+from opengrade_server.config import get_settings
+from opengrade_server.infrastructure.db import dispose_db
 
 pytest_plugins = ["support.postgres"]
 
@@ -19,7 +19,7 @@ def _judge_prompt_snapshots_tmpdir(
 ) -> Iterator[None]:
     """Keep local prompt-audit writes out of the repo during tests."""
     path = tmp_path / "judge_prompt_snapshots.json"
-    monkeypatch.setenv("AIOBS_JUDGE_PROMPT_SNAPSHOTS", str(path))
+    monkeypatch.setenv("OPENGRADE_JUDGE_PROMPT_SNAPSHOTS", str(path))
     get_settings.cache_clear()
     yield
     get_settings.cache_clear()

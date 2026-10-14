@@ -4,7 +4,7 @@ import types
 
 import pytest
 
-from aiobs import cli
+from opengrade import cli
 
 
 def test_main_without_server_prints_install_hint(
@@ -16,7 +16,7 @@ def test_main_without_server_prints_install_hint(
         cli.main()
 
     assert exc.value.code == 1
-    assert 'pip install "aiobs-eval[ui]"' in capsys.readouterr().err
+    assert 'pip install "opengrade-ai[ui]"' in capsys.readouterr().err
 
 
 def test_main_with_server_delegates_to_server_app(monkeypatch: pytest.MonkeyPatch) -> None:

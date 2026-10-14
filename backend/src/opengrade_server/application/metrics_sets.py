@@ -5,22 +5,22 @@ from dataclasses import dataclass, replace
 from datetime import UTC, datetime
 from typing import Any
 
-from aiobs_server.application.evaluators import (
+from opengrade_server.application.evaluators import (
     CreateEvaluator,
     CreateEvaluatorCommand,
     EvaluatorConflictError,
 )
-from aiobs_server.application.projects import ProjectNotFoundError
-from aiobs_server.domain.evaluator import Evaluator
-from aiobs_server.domain.experiment import Experiment
-from aiobs_server.domain.metrics_set import (
+from opengrade_server.application.projects import ProjectNotFoundError
+from opengrade_server.domain.evaluator import Evaluator
+from opengrade_server.domain.experiment import Experiment
+from opengrade_server.domain.metrics_set import (
     _UNSET,
     DEFAULT_RAG_SET_ENTRIES,
     MetricsSet,
     MetricsSetEntry,
     assert_unique_evaluator_ids,
 )
-from aiobs_server.domain.repositories import (
+from opengrade_server.domain.repositories import (
     EvaluatorRepository,
     ExperimentRepository,
     MetricsSetRepository,

@@ -4,14 +4,14 @@ import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, status
 
-from aiobs_server.api.deps import (
+from opengrade_server.api.deps import (
     get_create_project,
     get_delete_project,
     get_get_project,
     get_list_projects,
 )
-from aiobs_server.api.schemas import CreateProjectRequest, ProjectResponse
-from aiobs_server.application.projects import (
+from opengrade_server.api.schemas import CreateProjectRequest, ProjectResponse
+from opengrade_server.application.projects import (
     CreateProject,
     CreateProjectCommand,
     DeleteProject,

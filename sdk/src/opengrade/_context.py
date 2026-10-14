@@ -8,13 +8,13 @@ import os
 import re
 import threading
 
-from aiobs import _config
-from aiobs._http import AiobsAPIError
-from aiobs.async_client import AsyncClient
-from aiobs.client import Client
-from aiobs.models import ProjectResponse
+from opengrade import _config
+from opengrade._http import OpengradeAPIError
+from opengrade.async_client import AsyncClient
+from opengrade.client import Client
+from opengrade.models import ProjectResponse
 
-logger = logging.getLogger("aiobs")
+logger = logging.getLogger("opengrade")
 
 _SLUG_RE = re.compile(r"[^a-z0-9]+")
 
@@ -56,7 +56,7 @@ def _aclose_async_client_best_effort(client: AsyncClient) -> None:
         asyncio.run(client.aclose())
         return
     logger.warning(
-        "aiobs: dropping shared AsyncClient without aclose() "
+        "opengrade: dropping shared AsyncClient without aclose() "
         "(event loop is running; await get_async_client().aclose() before set_tracking_uri)"
     )
 
@@ -97,12 +97,12 @@ async def _afind_project(client: AsyncClient, name: str, slug: str) -> ProjectRe
 
 def _activate_project(project: ProjectResponse, cleaned: str) -> ProjectResponse:
     global _ACTIVE_PROJECT
-    from aiobs import _otel
+    from opengrade import _otel
 
     if _otel._INITIALIZED and _config._ACTIVE_PROJECT_ID != project.id:
         logger.warning(
-            "aiobs.set_project(%r) after init(): traces keep going to the previous "
-            "project until aiobs.init(force=True)",
+            "opengrade.set_project(%r) after init(): traces keep going to the previous "
+            "project until opengrade.init(force=True)",
             cleaned,
         )
     _ACTIVE_PROJECT = project
@@ -114,7 +114,7 @@ def set_project(name: str) -> ProjectResponse:
     """Make ``name`` the active project, creating it if missing.
 
     Matches an existing project by slug (``slugify(name)``) or exact name.
-    ``aiobs.init()`` called afterwards exports traces to this project.
+    ``opengrade.init()`` called afterwards exports traces to this project.
     """
     cleaned = name.strip()
     if not cleaned:
@@ -126,8 +126,8 @@ def set_project(name: str) -> ProjectResponse:
     if project is None:
         try:
             project = client.projects.create(name=cleaned, slug=slug)
-            logger.info("aiobs created project %r (slug=%s)", cleaned, slug)
-        except AiobsAPIError as exc:
+            logger.info("opengrade created project %r (slug=%s)", cleaned, slug)
+        except OpengradeAPIError as exc:
             if exc.status != 409:
                 raise
             # Created concurrently by another process — use theirs.
@@ -150,8 +150,8 @@ async def aset_project(name: str) -> ProjectResponse:
     if project is None:
         try:
             project = await client.projects.create(name=cleaned, slug=slug)
-            logger.info("aiobs created project %r (slug=%s)", cleaned, slug)
-        except AiobsAPIError as exc:
+            logger.info("opengrade created project %r (slug=%s)", cleaned, slug)
+        except OpengradeAPIError as exc:
             if exc.status != 409:
                 raise
             project = await _afind_project(client, cleaned, slug)

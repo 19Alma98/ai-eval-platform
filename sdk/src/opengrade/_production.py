@@ -1,4 +1,4 @@
-"""Production metrics on ``@aiobs.trace(metrics=...)``.
+"""Production metrics on ``@opengrade.trace(metrics=...)``.
 
 Each traced call records its input/documents in a contextvar; after the function
 returns, a sampled call's metrics run on a small pool of daemon threads (never on the
@@ -10,7 +10,7 @@ full the call is not scored (rate-limited warning), and a failing metric or work
 error is logged (rate-limited) instead of being lost.
 
 Metrics run isolated from tracing: OTel instrumentation is suppressed and
-``@aiobs.trace`` functions they call run untraced, so a metric (e.g. an LLM judge
+``@opengrade.trace`` functions they call run untraced, so a metric (e.g. an LLM judge
 built on traced helpers) never creates spans, live interactions or more metrics.
 """
 
@@ -34,11 +34,11 @@ from typing import Any
 from opentelemetry import context as otel_context
 from opentelemetry.trace import Span
 
-from aiobs import _config, _live, _scores, feedback
-from aiobs._run_context import ACTIVE_RUN, PRODUCTION_CAPTURE, ProductionCapture
-from aiobs.metrics import LocalMetric, Sample, evaluate_metric, metric, missing_requirement
+from opengrade import _config, _live, _scores, feedback
+from opengrade._run_context import ACTIVE_RUN, PRODUCTION_CAPTURE, ProductionCapture
+from opengrade.metrics import LocalMetric, Sample, evaluate_metric, metric, missing_requirement
 
-logger = logging.getLogger("aiobs")
+logger = logging.getLogger("opengrade")
 
 MAX_WORKERS = 2
 MAX_QUEUE = 1000
@@ -56,7 +56,7 @@ _SUPPRESS_KEY: str = getattr(
 )
 _SUPPRESS_KEY_PLAIN = "suppress_instrumentation"
 
-# True while a production metric runs: ``@aiobs.trace`` then just calls the function.
+# True while a production metric runs: ``@opengrade.trace`` then just calls the function.
 _IN_METRIC: ContextVar[bool] = ContextVar("aiobs_in_metric", default=False)
 
 
@@ -106,7 +106,7 @@ class _MetricPool:
                 return True
         _warn(
             "queue_full",
-            "aiobs: production metrics queue full (%d); skipping metrics for this call",
+            "opengrade: production metrics queue full (%d); skipping metrics for this call",
             self._jobs.maxsize,
         )
         return False
@@ -115,10 +115,10 @@ class _MetricPool:
         self._threads = [t for t in self._threads if t.is_alive()]
         while len(self._threads) < self._workers:
             try:
-                thread = threading.Thread(target=self._work, name="aiobs-metrics", daemon=True)
+                thread = threading.Thread(target=self._work, name="opengrade-metrics", daemon=True)
                 thread.start()
             except RuntimeError as exc:  # out of threads / interpreter shutting down
-                logger.debug("aiobs: could not start a metrics thread: %s", exc)
+                logger.debug("opengrade: could not start a metrics thread: %s", exc)
                 break
             self._threads.append(thread)
         return bool(self._threads)
@@ -131,7 +131,7 @@ class _MetricPool:
             try:
                 job()
             except Exception as exc:  # noqa: BLE001 — a worker must survive any job
-                _warn("worker", "aiobs: production metrics failed: %s", feedback._describe(exc))
+                _warn("worker", "opengrade: production metrics failed: %s", feedback._describe(exc))
             finally:
                 with self._cond:
                     self._pending -= 1
@@ -179,16 +179,16 @@ def parse_workers(value: object) -> int:
 
 
 def resolve_workers() -> int:
-    """``init(metrics_workers=...)`` > ``AIOBS_METRICS_WORKERS`` > ``MAX_WORKERS``."""
+    """``init(metrics_workers=...)`` > ``OPENGRADE_METRICS_WORKERS`` > ``MAX_WORKERS``."""
     if _WORKERS is not None:
         return _WORKERS
-    raw = os.getenv("AIOBS_METRICS_WORKERS", "").strip()
+    raw = os.getenv("OPENGRADE_METRICS_WORKERS", "").strip()
     if not raw:
         return MAX_WORKERS
     try:
         return parse_workers(int(raw, 10))
     except ValueError:
-        logger.warning("aiobs: invalid AIOBS_METRICS_WORKERS=%r; using %d", raw, MAX_WORKERS)
+        logger.warning("opengrade: invalid OPENGRADE_METRICS_WORKERS=%r; using %d", raw, MAX_WORKERS)
         return MAX_WORKERS
 
 
@@ -229,7 +229,7 @@ def normalize_metrics(
             raise TypeError(f"unsupported metric {item!r}")
         if not spec.name:
             raise ValueError(
-                "production metrics need a name: use a named function or @aiobs.metric(name=...)"
+                "production metrics need a name: use a named function or @opengrade.metric(name=...)"
             )
         out.append(spec)
     names = [m.name for m in out]
@@ -260,8 +260,8 @@ def check_function(fn: Callable[..., Any], *, is_async: bool) -> None:
     if is_async:
         if not _is_coroutine_function(fn):
             raise TypeError(
-                "@aiobs.trace_async(metrics=...) needs a coroutine function (async def); "
-                f"got {fn!r}: use @aiobs.trace for regular functions, or "
+                "@opengrade.trace_async(metrics=...) needs a coroutine function (async def); "
+                f"got {fn!r}: use @opengrade.trace for regular functions, or "
                 "inspect.markcoroutinefunction for other async wrappers"
             )
     elif (
@@ -270,8 +270,8 @@ def check_function(fn: Callable[..., Any], *, is_async: bool) -> None:
         or inspect.isasyncgenfunction(fn)
     ):
         raise TypeError(
-            "@aiobs.trace(metrics=...) needs a regular function returning its result; "
-            f"got {fn!r}: use @aiobs.trace_async for coroutine functions"
+            "@opengrade.trace(metrics=...) needs a regular function returning its result; "
+            f"got {fn!r}: use @opengrade.trace_async for coroutine functions"
         )
 
 
@@ -342,7 +342,7 @@ def after_call(
         try:
             project_id = _config.resolve_project_id()
         except ValueError as exc:
-            _warn("project", "aiobs: production metrics skipped: %s", exc)
+            _warn("project", "opengrade: production metrics skipped: %s", exc)
             return
         try:
             sample = Sample(
@@ -355,21 +355,21 @@ def after_call(
         except Exception as exc:
             _warn(
                 "snapshot",
-                "aiobs: production metrics skipped: could not snapshot call data: %s",
+                "opengrade: production metrics skipped: could not snapshot call data: %s",
                 feedback._describe(exc),
             )
             return
         if size > MAX_METRIC_SAMPLE_BYTES:
             _warn(
                 "sample_size",
-                "aiobs: production metrics skipped: sample is %d bytes (limit %d)",
+                "opengrade: production metrics skipped: sample is %d bytes (limit %d)",
                 size,
                 MAX_METRIC_SAMPLE_BYTES,
             )
             return
         _submit(metrics, sample, project_id)
     except Exception as exc:  # noqa: BLE001 — scoring must never break the traced call
-        _warn("schedule", "aiobs: production metrics skipped: %s", feedback._describe(exc))
+        _warn("schedule", "opengrade: production metrics skipped: %s", feedback._describe(exc))
 
 
 def _pool() -> _MetricPool:
@@ -405,14 +405,14 @@ def _run_metrics(metrics: tuple[LocalMetric, ...], sample: Sample, project_id: s
     for spec in metrics:
         missing = missing_requirement(sample, spec.requires)
         if missing is not None:
-            logger.debug("aiobs: metric %s skipped in production: missing %s", spec.name, missing)
+            logger.debug("opengrade: metric %s skipped in production: missing %s", spec.name, missing)
             continue
         try:
             result = evaluate_metric(spec, sample, timeout=METRIC_TIMEOUT_S)
         except TimeoutError as exc:
             _warn(
                 f"metric:{spec.name}",
-                "aiobs: production metric %r timed out on trace %s (async limit %ss): %s",
+                "opengrade: production metric %r timed out on trace %s (async limit %ss): %s",
                 spec.name,
                 trace_id,
                 METRIC_TIMEOUT_S,
@@ -423,7 +423,7 @@ def _run_metrics(metrics: tuple[LocalMetric, ...], sample: Sample, project_id: s
         except Exception as exc:  # noqa: BLE001 — one broken metric must not stop the others
             _warn(
                 f"metric:{spec.name}",
-                "aiobs: production metric %r failed on trace %s: %s",
+                "opengrade: production metric %r failed on trace %s: %s",
                 spec.name,
                 trace_id,
                 feedback._describe(exc),
@@ -451,7 +451,7 @@ def _at_exit() -> None:
         drain(_scores.exit_remaining())
         _scores.flush(_scores.exit_remaining())
     except Exception:  # noqa: BLE001 — never raise during interpreter shutdown
-        logger.debug("aiobs: production metrics drain at exit failed", exc_info=True)
+        logger.debug("opengrade: production metrics drain at exit failed", exc_info=True)
 
 
 def _reset_for_tests(*, workers: int = MAX_WORKERS, max_queue: int = MAX_QUEUE) -> None:

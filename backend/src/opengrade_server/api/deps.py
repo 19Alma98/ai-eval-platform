@@ -3,7 +3,7 @@ from collections.abc import AsyncGenerator, Awaitable, Callable
 from fastapi import Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from aiobs_server.application.app_configs import (
+from opengrade_server.application.app_configs import (
     CreateAppConfig,
     DeleteAppConfigAlias,
     GetAppConfig,
@@ -12,21 +12,21 @@ from aiobs_server.application.app_configs import (
     ListAppConfigVersions,
     SetAppConfigAlias,
 )
-from aiobs_server.application.client_results import SubmitClientResults
-from aiobs_server.application.compare import (
+from opengrade_server.application.client_results import SubmitClientResults
+from opengrade_server.application.compare import (
     CompareExperiments,
     SummarizeExperiment,
     SummarizeExperiments,
 )
-from aiobs_server.application.compare_items import CompareExperimentItems
-from aiobs_server.application.datasets import (
+from opengrade_server.application.compare_items import CompareExperimentItems
+from opengrade_server.application.datasets import (
     AddDatasetItem,
     CreateDataset,
     GetDataset,
     ImportDatasetItems,
     ListDatasets,
 )
-from aiobs_server.application.evaluate import (
+from opengrade_server.application.evaluate import (
     EvaluateExperiment,
     EvaluateExperimentCommand,
     GetEvaluationRun,
@@ -34,22 +34,22 @@ from aiobs_server.application.evaluate import (
     ScoreExperimentFromPack,
     StartEvaluateExperiment,
 )
-from aiobs_server.application.evaluators import CreateEvaluator, ListEvaluators
-from aiobs_server.application.experiment_metrics import (
+from opengrade_server.application.evaluators import CreateEvaluator, ListEvaluators
+from opengrade_server.application.experiment_metrics import (
     GetExperimentMetrics,
     LogExperimentMetrics,
     UpdateExperimentParams,
 )
-from aiobs_server.application.experiment_outputs import (
+from opengrade_server.application.experiment_outputs import (
     ListExperimentOutputs,
     UpsertExperimentOutputs,
 )
-from aiobs_server.application.experiments import (
+from opengrade_server.application.experiments import (
     CreateExperiment,
     GetExperiment,
     ListExperiments,
 )
-from aiobs_server.application.live_interactions import (
+from opengrade_server.application.live_interactions import (
     GetLiveInteraction,
     ListLiveInteractions,
     PromoteLiveInteraction,
@@ -57,13 +57,13 @@ from aiobs_server.application.live_interactions import (
     SubmitLiveInteraction,
     UpsertLiveScoreReview,
 )
-from aiobs_server.application.live_judge_calibration import SummarizeLiveJudgeCalibration
-from aiobs_server.application.metrics_packs import (
+from opengrade_server.application.live_judge_calibration import SummarizeLiveJudgeCalibration
+from opengrade_server.application.metrics_packs import (
     EnsureMetricsPack,
     GetMetricsPack,
     ReplaceMetricsPack,
 )
-from aiobs_server.application.metrics_sets import (
+from opengrade_server.application.metrics_sets import (
     CreateMetricsSet,
     DeleteMetricsSet,
     DeleteMetricsSetEntry,
@@ -74,32 +74,32 @@ from aiobs_server.application.metrics_sets import (
     ResolveMetricsSetForScore,
     VersionMetricsSet,
 )
-from aiobs_server.application.monitoring import GetProductionMonitoring
-from aiobs_server.application.project_overview import GetProjectOverview
-from aiobs_server.application.projects import (
+from opengrade_server.application.monitoring import GetProductionMonitoring
+from opengrade_server.application.project_overview import GetProjectOverview
+from opengrade_server.application.projects import (
     CreateProject,
     DeleteProject,
     GetProject,
     ListProjects,
 )
-from aiobs_server.application.release_check import ReleaseCheck
-from aiobs_server.application.scoring_inputs import CurrentScoringFingerprint
-from aiobs_server.application.trace_scores import (
+from opengrade_server.application.release_check import ReleaseCheck
+from opengrade_server.application.scoring_inputs import CurrentScoringFingerprint
+from opengrade_server.application.trace_scores import (
     ListTraceScores,
     LogTraceScores,
     SummarizeTraceScores,
 )
-from aiobs_server.application.traces import (
+from opengrade_server.application.traces import (
     GetTrace,
     IngestNormalizedTraces,
     ListTraces,
     ResolveProject,
     ResolveTraceLiveLinks,
 )
-from aiobs_server.config import Settings, get_settings
-from aiobs_server.evaluation.runner import EvaluationRunner
-from aiobs_server.infrastructure.db import get_session
-from aiobs_server.infrastructure.repositories import (
+from opengrade_server.config import Settings, get_settings
+from opengrade_server.evaluation.runner import EvaluationRunner
+from opengrade_server.infrastructure.db import get_session
+from opengrade_server.infrastructure.repositories import (
     SqlAlchemyAppConfigRepository,
     SqlAlchemyDatasetRepository,
     SqlAlchemyEvaluationRunRepository,
@@ -113,8 +113,8 @@ from aiobs_server.infrastructure.repositories import (
     SqlAlchemyTraceRepository,
     SqlAlchemyTraceScoreRepository,
 )
-from aiobs_server.tracing.live_binding import CreateLiveInteractionsFromTraces
-from aiobs_server.tracing.run_binding import BindOtlpTracesToExperimentOutputs
+from opengrade_server.tracing.live_binding import CreateLiveInteractionsFromTraces
+from opengrade_server.tracing.run_binding import BindOtlpTracesToExperimentOutputs
 
 
 async def get_db_session() -> AsyncGenerator[AsyncSession, None]:

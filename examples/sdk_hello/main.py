@@ -6,11 +6,11 @@ import os
 
 from openai import OpenAI
 
-import aiobs
+import opengrade
 
-aiobs.set_tracking_uri(os.getenv("AIOBS_TRACKING_URI", "http://localhost:8000"))
-aiobs.set_project(os.getenv("AIOBS_PROJECT_SLUG", "demo"))
-aiobs.init(service_name="sdk-hello", instrument="auto")
+opengrade.set_tracking_uri(os.getenv("OPENGRADE_TRACKING_URI", "http://localhost:8000"))
+opengrade.set_project(os.getenv("OPENGRADE_PROJECT_SLUG", "demo"))
+opengrade.init(service_name="sdk-hello", instrument="auto")
 
 client = OpenAI(
     base_url=os.getenv("OLLAMA_HOST", "http://localhost:11434") + "/v1",
@@ -19,7 +19,7 @@ client = OpenAI(
 MODEL = os.getenv("OLLAMA_MODEL", "gemma4:e2b")
 
 
-@aiobs.trace
+@opengrade.trace
 def ask(q: str) -> str:
     r = client.chat.completions.create(
         model=MODEL,
@@ -30,7 +30,7 @@ def ask(q: str) -> str:
 
 def main() -> None:
     print(ask("ping"))
-    aiobs.flush()
+    opengrade.flush()
 
 
 if __name__ == "__main__":

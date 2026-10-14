@@ -5,15 +5,15 @@ from datetime import UTC, datetime
 
 import pytest
 
-from aiobs_server.application.compare import (
+from opengrade_server.application.compare import (
     CompareExperiments,
     InvalidCompareSelectionError,
     SummarizeExperiment,
 )
-from aiobs_server.application.compare_items import CompareExperimentItems
-from aiobs_server.domain.evaluation import EvaluationResultRecord, EvaluationRun
-from aiobs_server.domain.evaluator import Evaluator
-from aiobs_server.domain.experiment import Experiment
+from opengrade_server.application.compare_items import CompareExperimentItems
+from opengrade_server.domain.evaluation import EvaluationResultRecord, EvaluationRun
+from opengrade_server.domain.evaluator import Evaluator
+from opengrade_server.domain.experiment import Experiment
 
 
 class _FakeExperiments:

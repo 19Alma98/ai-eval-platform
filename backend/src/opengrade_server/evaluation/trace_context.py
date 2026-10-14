@@ -4,8 +4,8 @@ import json
 from datetime import UTC, datetime
 from typing import Any
 
-from aiobs_server.domain.retrieval import flattened_documents, normalize_documents
-from aiobs_server.domain.trace import Span, Trace
+from opengrade_server.domain.retrieval import flattened_documents, normalize_documents
+from opengrade_server.domain.trace import Span, Trace
 
 
 def _attr_number(attributes: dict[str, Any], *keys: str) -> float | None:

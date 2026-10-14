@@ -4,7 +4,7 @@ from typing import Any
 
 import pytest
 
-from aiobs_server.regression.policy import (
+from opengrade_server.regression.policy import (
     ExperimentMetricRule,
     InvalidPolicyError,
     evaluate_policy,

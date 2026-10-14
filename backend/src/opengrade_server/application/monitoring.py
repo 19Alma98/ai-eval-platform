@@ -8,19 +8,19 @@ from collections import defaultdict
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 
-from aiobs_server.application.live_interactions import score_is_failed
-from aiobs_server.application.project_overview import bucket_size_for_range
-from aiobs_server.application.projects import ProjectNotFoundError
-from aiobs_server.domain.live_overview import LiveInteractionInRange
-from aiobs_server.domain.repositories import (
+from opengrade_server.application.live_interactions import score_is_failed
+from opengrade_server.application.project_overview import bucket_size_for_range
+from opengrade_server.application.projects import ProjectNotFoundError
+from opengrade_server.domain.live_overview import LiveInteractionInRange
+from opengrade_server.domain.repositories import (
     LiveInteractionRepository,
     ProjectRepository,
     TraceRepository,
     TraceScoreRepository,
 )
-from aiobs_server.domain.trace import Trace
-from aiobs_server.domain.trace_score import trace_score_is_failed
-from aiobs_server.evaluation.trace_context import build_eval_context_from_trace
+from opengrade_server.domain.trace import Trace
+from opengrade_server.domain.trace_score import trace_score_is_failed
+from opengrade_server.evaluation.trace_context import build_eval_context_from_trace
 
 TRACE_LIMIT = 5000
 HISTOGRAM_BINS = 10

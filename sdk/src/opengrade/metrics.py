@@ -10,7 +10,7 @@ from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass, field
 from typing import Any, overload
 
-from aiobs._async import run_sync
+from opengrade._async import run_sync
 
 LABELS = frozenset({"PASS", "FAIL", "ERROR", "SKIPPED"})
 REQUIREMENTS = frozenset({"output", "expected", "documents", "context"})
@@ -109,7 +109,7 @@ class LocalMetric:
     ``fn(sample)`` gets a ``Sample``; ``fn(item, output)`` (two required positional
     parameters) gets the dataset item and the output. ``fn`` may be ``async``.
     ``threshold`` sets PASS/FAIL (default: 0 fails, anything else passes). Bump
-    ``config`` (or ``version`` in ``@aiobs.metric``) when the code changes: compare
+    ``config`` (or ``version`` in ``@opengrade.metric``) when the code changes: compare
     then reports a config mismatch instead of a misleading delta. ``requires`` lists
     ``Sample`` fields that must be non-empty; when one is missing the result is SKIPPED.
     """
@@ -168,7 +168,7 @@ def metric(
 ) -> LocalMetric | Callable[[Callable[..., Any]], LocalMetric]:
     """Turn a function into a ``LocalMetric``.
 
-    ``@aiobs.metric`` or ``@aiobs.metric(threshold=0.5, version=2, requires=("documents",))``.
+    ``@opengrade.metric`` or ``@opengrade.metric(threshold=0.5, version=2, requires=("documents",))``.
     ``version`` is stored as ``config["version"]``.
     """
 

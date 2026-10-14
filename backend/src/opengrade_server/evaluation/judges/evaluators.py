@@ -4,10 +4,10 @@ import math
 from dataclasses import dataclass
 from typing import Any
 
-from aiobs_server.domain.repositories import JudgeClaimCacheRepository
-from aiobs_server.evaluation.judges import prompts
-from aiobs_server.evaluation.judges.cache import claim_cache_key
-from aiobs_server.evaluation.judges.claims import (
+from opengrade_server.domain.repositories import JudgeClaimCacheRepository
+from opengrade_server.evaluation.judges import prompts
+from opengrade_server.evaluation.judges.cache import claim_cache_key
+from opengrade_server.evaluation.judges.claims import (
     ExtractedClaims,
     average_precision,
     coverage_claim_records,
@@ -21,16 +21,16 @@ from aiobs_server.evaluation.judges.claims import (
     verify_relevance,
     verify_support,
 )
-from aiobs_server.evaluation.judges.errors import (
+from opengrade_server.evaluation.judges.errors import (
     JUDGE_OUTPUT_INVALID,
     JudgeOutputError,
     classify_llm_error,
 )
-from aiobs_server.evaluation.judges.parsing import CallOptions
-from aiobs_server.evaluation.judges.rubric import level_to_score, rubric_judge
-from aiobs_server.evaluation.judges.snapshots import upsert_prompt_snapshot
-from aiobs_server.evaluation.outcomes import error, fail_min, skip
-from aiobs_server.evaluation.protocol import EvaluationResult, EvaluationSample, LlmClient
+from opengrade_server.evaluation.judges.parsing import CallOptions
+from opengrade_server.evaluation.judges.rubric import level_to_score, rubric_judge
+from opengrade_server.evaluation.judges.snapshots import upsert_prompt_snapshot
+from opengrade_server.evaluation.outcomes import error, fail_min, skip
+from opengrade_server.evaluation.protocol import EvaluationResult, EvaluationSample, LlmClient
 
 JUDGE_KINDS = (
     "answer_relevance",

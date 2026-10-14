@@ -3,8 +3,8 @@ from __future__ import annotations
 import uuid
 from dataclasses import dataclass
 
-from aiobs_server.domain.project import Project
-from aiobs_server.domain.repositories import ProjectRepository
+from opengrade_server.domain.project import Project
+from opengrade_server.domain.repositories import ProjectRepository
 
 
 class ProjectNotFoundError(Exception):

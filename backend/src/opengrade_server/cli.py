@@ -1,4 +1,4 @@
-"""Console entry point: ``aiobs ui`` and ``aiobs check``."""
+"""Console entry point: ``opengrade ui`` and ``opengrade check``."""
 
 from __future__ import annotations
 
@@ -15,8 +15,8 @@ import yaml
 from rich.console import Console
 from rich.table import Table
 
-from aiobs_server.config import DEFAULT_SQLITE_URL, get_settings
-from aiobs_server.ui import ui_root
+from opengrade_server.config import DEFAULT_SQLITE_URL, get_settings
+from opengrade_server.ui import ui_root
 
 EXIT_PASS = 0
 EXIT_GATE_FAILED = 1
@@ -85,7 +85,7 @@ def ui(
         str | None,
         typer.Option(
             "--backend-store-uri",
-            help="SQLAlchemy async DB URL (default: local SQLite ./aiobs.db)",
+            help="SQLAlchemy async DB URL (default: local SQLite ./opengrade.db)",
         ),
     ] = None,
     reload: Annotated[bool, typer.Option("--reload", help="Auto-reload (dev)")] = False,
@@ -116,7 +116,7 @@ def ui(
         webbrowser.open(url)
 
     uvicorn.run(
-        "aiobs_server.main:app",
+        "opengrade_server.main:app",
         host=host,
         port=port,
         reload=reload,
