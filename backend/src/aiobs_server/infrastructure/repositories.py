@@ -5,7 +5,7 @@ import uuid
 from datetime import UTC, datetime
 from typing import Any
 
-from sqlalchemy import case, func, select
+from sqlalchemy import case, delete, func, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.exc import IntegrityError
@@ -142,6 +142,15 @@ class SqlAlchemyProjectRepository:
         row = await self._session.get(ProjectModel, project_id)
         if row is None:
             return False
+        await self._session.execute(
+            delete(ExperimentModel).where(ExperimentModel.project_id == project_id)
+        )
+        await self._session.execute(
+            delete(MetricsSetModel).where(MetricsSetModel.project_id == project_id)
+        )
+        await self._session.execute(
+            delete(AppConfigAliasModel).where(AppConfigAliasModel.project_id == project_id)
+        )
         await self._session.delete(row)
         await self._session.commit()
         return True
