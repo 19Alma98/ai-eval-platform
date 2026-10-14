@@ -193,3 +193,36 @@ def test_non_validation_client_error_drops_whole_batch_without_resend() -> None:
     assert sender.flush(5.0)
     assert len(post.calls) == 1
     assert sender.dropped == 3
+
+
+def test_batches_stay_under_server_body_limit() -> None:
+    delivered: list[dict[str, Any]] = []
+
+    def post(project_id: str, scores: list[dict[str, Any]]) -> None:
+        body = json.dumps({"scores": scores}, separators=(",", ":"))
+        if len(body.encode()) > 1024 * 1024:
+            raise AiobsAPIError(413, "too large")
+        delivered.extend(scores)
+
+    sender = ScoreSender(post, batch_size=100, interval=60.0)
+    for i in range(100):
+        sender.enqueue("p1", {**_score(i), "metadata": {"blob": "x" * 12_000}})
+    assert sender.flush(5.0)
+    assert len(delivered) == 100
+    assert sender.dropped == 0
+
+
+def test_413_splits_batch_and_drops_single_oversized_item() -> None:
+    delivered: list[str] = []
+
+    def post(project_id: str, scores: list[dict[str, Any]]) -> None:
+        if len(scores) > 1 or scores[0]["name"] == "m3":
+            raise AiobsAPIError(413, "too large")
+        delivered.extend(s["name"] for s in scores)
+
+    sender = ScoreSender(post, batch_size=5, interval=60.0)
+    for i in range(5):
+        sender.enqueue("p1", _score(i))
+    assert sender.flush(5.0)
+    assert sorted(delivered) == ["m0", "m1", "m2", "m4"]
+    assert sender.dropped == 1

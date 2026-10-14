@@ -4,13 +4,16 @@ Scores go into a bounded in-memory queue drained by one daemon thread, in batche
 every ``interval`` seconds or ``batch_size`` items. A POST that failed on the network
 or with a 5xx is retried once, then dropped with a warning. A 400/422 rejects the
 whole batch for one bad item, so its scores are re-sent one by one (once) and only the
-failing ones dropped; any other 4xx (auth, unknown project) drops the batch at once.
+failing ones dropped; a 413 (body over the server limit) is split in half and resent
+recursively, a single item still too large is dropped; any other 4xx (auth, unknown
+project) drops the batch at once.
 ``flush()`` waits (bounded) until the queue is empty.
 """
 
 from __future__ import annotations
 
 import atexit
+import json
 import logging
 import os
 import threading
@@ -27,6 +30,7 @@ Post = Callable[[str, list[dict[str, Any]]], object]
 
 MAX_QUEUE = 10_000
 BATCH_SIZE = 100
+BATCH_MAX_BYTES = 512 * 1024  # half the server's 1 MiB body limit
 FLUSH_INTERVAL_S = 2.0
 EXIT_FLUSH_TIMEOUT_S = 5.0
 _DROP_WARNING_EVERY_S = 60.0
@@ -36,6 +40,10 @@ def _default_post(project_id: str, scores: list[dict[str, Any]]) -> None:
     from aiobs._context import get_client  # lazy: _context imports _otel
 
     get_client().trace_scores.log(project_id, scores)
+
+
+def _size(score: dict[str, Any]) -> int:
+    return len(json.dumps(score, separators=(",", ":"), ensure_ascii=False).encode("utf-8"))
 
 
 class ScoreSender:
@@ -119,8 +127,15 @@ class ScoreSender:
                     self._flush_requested = False
                     self._cond.notify_all()
                     continue
-                count = min(self._batch_size, len(self._queue))
-                batch = [self._queue.popleft() for _ in range(count)]
+                batch: list[tuple[str, dict[str, Any]]] = []
+                budget = 0
+                while self._queue and len(batch) < self._batch_size:
+                    size = _size(self._queue[0][1])
+                    if batch and budget + size > BATCH_MAX_BYTES:
+                        break
+                    budget += size
+                    batch.append(self._queue.popleft())
+                count = len(batch)
                 self._in_flight = count
                 if not self._queue:
                     self._flush_requested = False
@@ -144,6 +159,14 @@ class ScoreSender:
                 self._post(project_id, scores)
                 return
             except Exception as exc:  # noqa: BLE001 — sending must never crash the thread
+                if isinstance(exc, AiobsAPIError) and exc.status == 413:
+                    if len(scores) > 1:
+                        mid = len(scores) // 2
+                        self._send_project(project_id, scores[:mid])
+                        self._send_project(project_id, scores[mid:])
+                    else:
+                        self._drop(project_id, 1, exc)
+                    return
                 if isinstance(exc, AiobsAPIError) and 400 <= exc.status < 500:
                     # The server rejects a whole batch for one bad item: retrying cannot
                     # help, so resend each item once to salvage the valid ones.
