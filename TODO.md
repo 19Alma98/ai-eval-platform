@@ -112,3 +112,45 @@ Do not block feature work on these. When optimizing, do N+1 batching first, then
   Do not replace with a fixed recent window — older failures must still surface.
   Trace scores now add one `list_by_trace_ids` query per *scanned* page; the denormalized verdict
   must also account for trace-score FAILs (they can arrive after the interaction).
+
+
+
+Altro:
+
+- serve un AsyncClient, perché molte app RAG sono async;
+- oggetti Dataset da pandas, HuggingFace, CSV, iterabili;
+- annotare sessioni e utenti (session_id, user_id) per raggruppare le conversazioni.
+
+UI
+
+Manca una pagina Traces, che in Langfuse è il cuore. Le API delle trace esistono, ma nella navigazione non c'è una lista con vista ad albero o timeline degli span. Per un RAG serve una vista dedicata: query → chunk recuperati con punteggio → prompt → risposta → claim del judge evidenziati sui chunk.
+
+Confronto tra esperimenti alla MLflow. I grafici (recharts) ci sono solo in Overview e Live. Mancano:
+- confronto di N esperimenti in tabella, con metriche come colonne e ordinamento;
+- andamento delle metriche tra versioni;
+diff tra item affiancati, con le domande che peggiorano o migliorano;
+- filtri per parametro (modello, prompt).
+
+Monitoraggio della produzione:
+- serie temporali per metrica, con percentili di latenza, costi e token;
+- distribuzione dei punteggi e soglie di allarme;
+- coda di annotazione per revisione umana (il modello delle review esiste già) e promozione nel dataset in un clic.
+
+Due modalità di build della UI. La UI viene costruita in due modi: export statico servito da FastAPI per aiobs ui, e Next standalone con un servizio web per Compose. Sono due percorsi da testare e possono divergere. Consiglio un'unica immagine con API e UI statica, la stessa servita da aiobs ui.
+
+Collegamenti diretti. Ogni oggetto (trace, esperimento, item) deve avere un URL stabile, che l'SDK stampa a fine esecuzione.
+
+
+Container e produzione
+
+- Il punteggio viene calcolato con le BackgroundTasks di FastAPI, nello stesso processo dell'API: non scala e non è affidabile sotto carico. Serve un comando aiobs worker separato con una coda (tabella Postgres con SKIP LOCKED oppure Redis).
+- Ingestione OTLP ad alto volume: scrittura in batch e conservazione dei dati con TTL.
+- Immagine ufficiale su GHCR o Docker Hub, chart Helm, migrazioni come job separato.
+- Telemetria anonima disattivabile, se volete misurare l'adozione.
+
+
+Ordine consigliato
+- Nome su PyPI, autenticazione, CLI nell'SDK, Python 3.10+.
+- Pagina Traces con vista RAG, e confronto di N esperimenti.
+- Metriche custom (@metric, log_score, feedback) e live automatico da @trace con campionamento.
+- Worker separato, immagine unica e Helm.
