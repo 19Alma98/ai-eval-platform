@@ -1,7 +1,8 @@
-"""Process-wide defaults: shared ``Client`` and active project (``set_project``)."""
+"""Process-wide defaults: shared ``Client`` / ``AsyncClient`` and active project."""
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import os
 import re
@@ -9,6 +10,7 @@ import threading
 
 from aiobs import _config
 from aiobs._http import AiobsAPIError
+from aiobs.async_client import AsyncClient
 from aiobs.client import Client
 from aiobs.models import ProjectResponse
 
@@ -18,6 +20,7 @@ _SLUG_RE = re.compile(r"[^a-z0-9]+")
 
 _LOCK = threading.Lock()
 _CLIENT: Client | None = None
+_ASYNC_CLIENT: AsyncClient | None = None
 _ACTIVE_PROJECT: ProjectResponse | None = None
 
 
@@ -36,12 +39,38 @@ def get_client() -> Client:
         return _CLIENT
 
 
+def get_async_client() -> AsyncClient:
+    """Return the shared ``AsyncClient`` bound to the current tracking URI."""
+    global _ASYNC_CLIENT
+    with _LOCK:
+        if _ASYNC_CLIENT is None:
+            _ASYNC_CLIENT = AsyncClient(_config.get_tracking_uri())
+        return _ASYNC_CLIENT
+
+
+def _aclose_async_client_best_effort(client: AsyncClient) -> None:
+    """Close an async client from sync code when no event loop is running."""
+    try:
+        asyncio.get_running_loop()
+    except RuntimeError:
+        asyncio.run(client.aclose())
+        return
+    logger.warning(
+        "aiobs: dropping shared AsyncClient without aclose() "
+        "(event loop is running; await get_async_client().aclose() before set_tracking_uri)"
+    )
+
+
 def _reset_client() -> None:
-    global _CLIENT
+    global _CLIENT, _ASYNC_CLIENT
     with _LOCK:
         if _CLIENT is not None:
             _CLIENT.close()
         _CLIENT = None
+        async_client = _ASYNC_CLIENT
+        _ASYNC_CLIENT = None
+    if async_client is not None:
+        _aclose_async_client_best_effort(async_client)
 
 
 def _find_project(client: Client, name: str, slug: str) -> ProjectResponse | None:
@@ -55,13 +84,38 @@ def _find_project(client: Client, name: str, slug: str) -> ProjectResponse | Non
     return None
 
 
+async def _afind_project(client: AsyncClient, name: str, slug: str) -> ProjectResponse | None:
+    projects = await client.projects.list()
+    for project in projects:
+        if project.slug == slug:
+            return project
+    for project in projects:
+        if project.name == name:
+            return project
+    return None
+
+
+def _activate_project(project: ProjectResponse, cleaned: str) -> ProjectResponse:
+    global _ACTIVE_PROJECT
+    from aiobs import _otel
+
+    if _otel._INITIALIZED and _config._ACTIVE_PROJECT_ID != project.id:
+        logger.warning(
+            "aiobs.set_project(%r) after init(): traces keep going to the previous "
+            "project until aiobs.init(force=True)",
+            cleaned,
+        )
+    _ACTIVE_PROJECT = project
+    _config._set_active_project(project_id=project.id, project_slug=project.slug)
+    return project
+
+
 def set_project(name: str) -> ProjectResponse:
     """Make ``name`` the active project, creating it if missing.
 
     Matches an existing project by slug (``slugify(name)``) or exact name.
     ``aiobs.init()`` called afterwards exports traces to this project.
     """
-    global _ACTIVE_PROJECT
     cleaned = name.strip()
     if not cleaned:
         raise ValueError("project name must not be empty")
@@ -81,17 +135,30 @@ def set_project(name: str) -> ProjectResponse:
             if project is None:
                 raise
 
-    from aiobs import _otel
+    return _activate_project(project, cleaned)
 
-    if _otel._INITIALIZED and _config._ACTIVE_PROJECT_ID != project.id:
-        logger.warning(
-            "aiobs.set_project(%r) after init(): traces keep going to the previous "
-            "project until aiobs.init(force=True)",
-            cleaned,
-        )
-    _ACTIVE_PROJECT = project
-    _config._set_active_project(project_id=project.id, project_slug=project.slug)
-    return project
+
+async def aset_project(name: str) -> ProjectResponse:
+    """Async variant of ``set_project`` using the shared ``AsyncClient``."""
+    cleaned = name.strip()
+    if not cleaned:
+        raise ValueError("project name must not be empty")
+    slug = _slugify(cleaned)
+    client = get_async_client()
+
+    project = await _afind_project(client, cleaned, slug)
+    if project is None:
+        try:
+            project = await client.projects.create(name=cleaned, slug=slug)
+            logger.info("aiobs created project %r (slug=%s)", cleaned, slug)
+        except AiobsAPIError as exc:
+            if exc.status != 409:
+                raise
+            project = await _afind_project(client, cleaned, slug)
+            if project is None:
+                raise
+
+    return _activate_project(project, cleaned)
 
 
 def get_project() -> ProjectResponse | None:
@@ -109,8 +176,9 @@ def _reset_for_tests() -> None:
 def _after_fork_in_child() -> None:
     """The child inherits the parent's httpx client (sockets/locks); drop it so
     the child lazily builds a fresh one. Do not close — that would affect the parent."""
-    global _CLIENT, _LOCK
+    global _CLIENT, _ASYNC_CLIENT, _LOCK
     _CLIENT = None
+    _ASYNC_CLIENT = None
     _LOCK = threading.Lock()
 
 

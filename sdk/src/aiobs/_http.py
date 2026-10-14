@@ -147,12 +147,87 @@ class _HttpTransport:
             self._client.close()
 
     def _parse(self, response: httpx2.Response) -> Any:
-        if response.status_code >= 400:
-            detail = _parse_error_detail(response.text)
-            raise AiobsAPIError(response.status_code, response.text, detail=detail)
-        if not response.content:
-            return None
-        return response.json()
+        return _parse_response(response)
+
+
+class _AsyncHttpTransport:
+    def __init__(
+        self,
+        base_url: str,
+        *,
+        timeout: float = 30.0,
+        transport: httpx2.AsyncBaseTransport | None = None,
+        client: httpx2.AsyncClient | None = None,
+    ) -> None:
+        self._base_url = base_url.rstrip("/")
+        self._timeout = timeout
+        self._owns_client = client is None
+        if client is not None:
+            self._client = client
+            return
+        kwargs: dict[str, Any] = {
+            "base_url": self._base_url,
+            "timeout": timeout,
+            "headers": {"Accept": "application/json"},
+        }
+        if transport is not None:
+            kwargs["transport"] = transport
+        self._client = httpx2.AsyncClient(**kwargs)
+
+    async def request(
+        self,
+        method: str,
+        path: str,
+        *,
+        body: dict[str, Any] | None = None,
+        query: dict[str, str] | None = None,
+    ) -> Any:
+        response = await self._client.request(
+            method,
+            path,
+            json=body,
+            params=query,
+        )
+        return _parse_response(response)
+
+    async def request_model(
+        self,
+        method: str,
+        path: str,
+        *,
+        response_model: type[T],
+        body: dict[str, Any] | None = None,
+        query: dict[str, str] | None = None,
+    ) -> T:
+        data = await self.request(method, path, body=body, query=query)
+        return response_model.model_validate(data)
+
+    async def request_model_list(
+        self,
+        method: str,
+        path: str,
+        *,
+        response_model: type[T],
+        body: dict[str, Any] | None = None,
+        query: dict[str, str] | None = None,
+    ) -> list[T]:
+        data = await self.request(method, path, body=body, query=query)
+        if not isinstance(data, list):
+            raise TypeError(f"expected list response, got {type(data).__name__}")
+        return [response_model.model_validate(item) for item in data]
+
+    async def aclose(self) -> None:
+        if self._owns_client:
+            await self._client.aclose()
+
+
+def _parse_response(response: httpx2.Response) -> Any:
+    if response.status_code >= 400:
+        detail = _parse_error_detail(response.text)
+        raise AiobsAPIError(response.status_code, response.text, detail=detail)
+    if not response.content:
+        return None
+    return response.json()
 
 
 def resolve_api_base_url(base_url: str | None = None) -> str:

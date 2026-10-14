@@ -66,8 +66,10 @@ Runnable example: [`examples/sdk_hello/`](../examples/sdk_hello/README.md) (Olla
 |---|---|
 | `aiobs.set_tracking_uri(uri)` | Platform URL for both `Client` and OTLP (`<uri>/v1/traces`) |
 | `aiobs.set_project(name)` | Get-or-create project by slug/name; becomes the default for `init()` |
+| `aiobs.aset_project(name)` | Async variant of `set_project` (uses shared `AsyncClient`) |
 | `aiobs.get_client()` | Shared `Client` bound to the tracking URI (no per-call `Client()`) |
-| `aiobs.get_project()` | Project set via `set_project`, or `None` |
+| `aiobs.get_async_client()` | Shared `AsyncClient` for async app code |
+| `aiobs.get_project()` | Project set via `set_project` / `aset_project`, or `None` |
 | `aiobs.init(...)` | OTLP exporter, project headers, optional `instrument="auto"` \| list \| `False` |
 | `@aiobs.trace` / `@aiobs.trace_async` | Parent CHAIN span; optional input/output capture (32 KiB cap) |
 | `aiobs.set_input` / `set_output` | Override OpenInference I/O on the current span (no OTEL import) |
@@ -80,6 +82,7 @@ Runnable example: [`examples/sdk_hello/`](../examples/sdk_hello/README.md) (Olla
 | `aiobs.evaluate(...)` | Run a task over a dataset, score, compare with a baseline → `ExperimentResult` |
 | `aiobs.start_experiment(...)` | Context manager for a manual item loop (`exp.items()`, `exp.run(item)`) |
 | `aiobs.Client(...)` | Control-plane REST client (projects, datasets, experiments, …) |
+| `aiobs.AsyncClient(...)` | Async control-plane client (projects, live_runs, trace_scores, health) |
 
 App code should use these helpers instead of importing OpenTelemetry directly.
 
@@ -236,6 +239,33 @@ with Client("http://localhost:8000") as client:
 Control-plane methods return **Pydantic** models (see `aiobs.models`); use attributes or `.model_dump()` for a dict. Prefer `with Client(...)` / `client.close()` so the shared `httpx2` connection pool is released.
 
 Namespaces: `projects`, `datasets` (`create`, `create_with_items`, `add_item`, `get`, `list`, `import_items`), `experiments` (`create`, `get`, `list_outputs`, `upsert_outputs`, `evaluate_pack`, `summary`, `compare`), `metrics_packs` (`ensure`, `get`), `metrics_sets` (`list`, `get`, `create`), `live_runs` (`submit`, `list`, `get`, `promote`, `rescore`), `app_configs` (same methods as `AppConfigClient`). Non-2xx responses raise `AiobsAPIError` (with parsed FastAPI `detail` when present).
+
+### Async control plane (`AsyncClient`)
+
+For FastAPI / async RAG apps, use `AsyncClient` so control-plane calls do not block the event loop. Prefer `aiobs.get_async_client()` and `await aiobs.aset_project(...)`. MVP surface: `health`, `projects`, `live_runs` (full), `trace_scores`. Datasets, experiments, metrics packs/sets, and app configs remain on the sync `Client`.
+
+```python
+import aiobs
+
+
+# FastAPI lifespan
+async def lifespan(app):
+    aiobs.set_tracking_uri("http://localhost:8000")
+    await aiobs.aset_project("my-rag")
+    aiobs.init(instrument=False)
+    yield
+    await aiobs.get_async_client().aclose()
+
+
+@aiobs.trace_async(name="answer")
+async def answer(q: str) -> str:
+    text = "..."
+    client = aiobs.get_async_client()
+    await client.live_runs.submit(question=q, answer=text, documents=[])
+    return text
+```
+
+Or manage the client yourself: `async with AsyncClient(...) as client: ...`. Changing `set_tracking_uri` resets both shared clients; if an event loop is already running, `aclose` the async client before changing the URI (otherwise the shared async client is dropped with a warning).
 
 ### Live runs from tracing (production)
 

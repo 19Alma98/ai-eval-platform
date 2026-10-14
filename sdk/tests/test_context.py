@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 from collections.abc import Iterator
@@ -56,7 +57,9 @@ class FakeServer:
         return httpx2.Response(404, json={"detail": "not found"})
 
     def install(self) -> None:
-        _context._CLIENT = aiobs.Client("http://test", transport=httpx2.MockTransport(self.handler))
+        transport = httpx2.MockTransport(self.handler)
+        _context._CLIENT = aiobs.Client("http://test", transport=transport)
+        _context._ASYNC_CLIENT = aiobs.AsyncClient("http://test", transport=transport)
 
 
 def test_tracking_uri_default_and_env(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -90,12 +93,25 @@ def test_get_client_is_shared_and_reset_on_uri_change() -> None:
     assert second.base_url == "http://other:1"
 
 
+def test_get_async_client_is_shared_and_reset_on_uri_change() -> None:
+    first = aiobs.get_async_client()
+    assert aiobs.get_async_client() is first
+    aiobs.set_tracking_uri("http://other:1")
+    second = aiobs.get_async_client()
+    assert second is not first
+    assert second.base_url == "http://other:1"
+
+
 def test_after_fork_hook_resets_shared_client() -> None:
     parent = aiobs.get_client()
+    parent_async = aiobs.get_async_client()
     _context._after_fork_in_child()
     assert _context._CLIENT is None
+    assert _context._ASYNC_CLIENT is None
     child = aiobs.get_client()
+    child_async = aiobs.get_async_client()
     assert child is not parent
+    assert child_async is not parent_async
 
 
 def test_set_project_creates_when_missing() -> None:
@@ -132,6 +148,50 @@ def test_set_project_handles_concurrent_create() -> None:
 def test_set_project_rejects_empty() -> None:
     with pytest.raises(ValueError, match="must not be empty"):
         aiobs.set_project("  ")
+
+
+def test_aset_project_creates_when_missing() -> None:
+    server = FakeServer()
+    server.install()
+
+    async def main() -> None:
+        project = await aiobs.aset_project("HR Assistant")
+        assert server.created == [{"name": "HR Assistant", "slug": "hr-assistant"}]
+        assert project.slug == "hr-assistant"
+        assert aiobs.get_project() == project
+
+    asyncio.run(main())
+
+
+def test_aset_project_reuses_existing_by_slug() -> None:
+    server = FakeServer([_project("p-1", "Whatever", "hr-assistant")])
+    server.install()
+
+    async def main() -> None:
+        project = await aiobs.aset_project("hr-assistant")
+        assert project.id == "p-1"
+        assert server.created == []
+
+    asyncio.run(main())
+
+
+def test_aset_project_handles_concurrent_create() -> None:
+    server = FakeServer()
+    server.conflict_once_with = _project("p-race", "hr-assistant", "hr-assistant")
+    server.install()
+
+    async def main() -> None:
+        assert (await aiobs.aset_project("hr-assistant")).id == "p-race"
+
+    asyncio.run(main())
+
+
+def test_aset_project_rejects_empty() -> None:
+    async def main() -> None:
+        with pytest.raises(ValueError, match="must not be empty"):
+            await aiobs.aset_project("  ")
+
+    asyncio.run(main())
 
 
 def test_init_uses_active_project(monkeypatch: pytest.MonkeyPatch) -> None:

@@ -195,6 +195,7 @@ def mock_transport(captured_requests: list[httpx2.Request]) -> httpx2.MockTransp
 
 def test_public_exports() -> None:
     assert "Client" in aiobs.__all__
+    assert "AsyncClient" in aiobs.__all__
     assert "AiobsAPIError" in aiobs.__all__
     assert Client is ClientDirect
     assert issubclass(AiobsAPIError, RuntimeError)

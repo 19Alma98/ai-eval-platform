@@ -57,7 +57,6 @@ Do not block feature work on these. When optimizing, do N+1 batching first, then
 
 Altro:
 
-- serve un AsyncClient, perché molte app RAG sono async;
 - oggetti Dataset da pandas, HuggingFace, CSV, iterabili;
 - annotare sessioni e utenti (session_id, user_id) per raggruppare le conversazioni.
 
@@ -86,9 +85,7 @@ Container e produzione
 - Il punteggio viene calcolato con le BackgroundTasks di FastAPI, nello stesso processo dell'API: non scala e non è affidabile sotto carico. Serve un comando aiobs worker separato con una coda (tabella Postgres con SKIP LOCKED oppure Redis).
 - Ingestione OTLP ad alto volume: scrittura in batch e conservazione dei dati con TTL.
 - Immagine ufficiale su GHCR o Docker Hub, chart Helm, migrazioni come job separato.
-- Telemetria anonima disattivabile, se volete misurare l'adozione.
 
 
 
 - Nome su PyPI, autenticazione, CLI nell'SDK, Python 3.10+.
-- Worker separato, immagine unica e Helm.

@@ -6,7 +6,7 @@ from importlib.metadata import PackageNotFoundError
 from importlib.metadata import version as _version
 
 from aiobs._config import get_tracking_uri, set_tracking_uri
-from aiobs._context import get_client, get_project, set_project
+from aiobs._context import aset_project, get_async_client, get_client, get_project, set_project
 from aiobs._eval_run import bind_evaluation, set_retrieval_documents
 from aiobs._http import AiobsAPIError
 from aiobs._otel import flush, init
@@ -20,6 +20,7 @@ from aiobs._trace import (
     trace,
     trace_async,
 )
+from aiobs.async_client import AsyncClient
 from aiobs.client import Client
 from aiobs.experiment import (
     Experiment,
@@ -39,6 +40,7 @@ __all__ = [
     "__version__",
     "AiobsAPIError",
     "AppConfigClient",
+    "AsyncClient",
     "Client",
     "Experiment",
     "ExperimentResult",
@@ -46,10 +48,12 @@ __all__ = [
     "LocalMetric",
     "Sample",
     "Score",
+    "aset_project",
     "bind_evaluation",
     "current_trace_id",
     "evaluate",
     "flush",
+    "get_async_client",
     "get_client",
     "get_project",
     "get_tracking_uri",
