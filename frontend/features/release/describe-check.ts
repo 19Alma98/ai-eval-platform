@@ -97,7 +97,7 @@ function num(value: string): number | null {
   return Number.isFinite(parsed) ? parsed : null;
 }
 
-/** Form state → API policy object (same shape as the CI `aiobs.yaml`). */
+/** Form state → API policy object (same shape as the CI `opengrade.yaml`). */
 export function policyFromQualityBar(bar: QualityBar): Record<string, unknown> {
   const policy: Record<string, unknown> = {};
   for (const rule of bar.rules) {

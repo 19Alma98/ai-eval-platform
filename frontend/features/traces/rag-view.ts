@@ -80,7 +80,7 @@ function pickKey(record: Record<string, unknown>, keys: string[]): string | null
   return null;
 }
 
-/** Mirrors the backend's question extraction from `@aiobs.trace` input. */
+/** Mirrors the backend's question extraction from `@opengrade.trace` input. */
 export function questionFromInput(raw: unknown): string | null {
   const parsed = parseJson(raw);
   if (typeof parsed === "string") return nonEmpty(parsed);

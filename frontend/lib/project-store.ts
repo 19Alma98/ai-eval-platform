@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 
-const STORAGE_KEY = "aiobs.projectId";
+const STORAGE_KEY = "opengrade.projectId";
 
 function readStoredProjectId(): string | null {
   if (typeof window === "undefined") return null;

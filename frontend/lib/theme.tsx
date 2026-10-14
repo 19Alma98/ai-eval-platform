@@ -10,7 +10,7 @@ import {
   type ReactNode,
 } from "react";
 
-const STORAGE_KEY = "aiobs.theme";
+const STORAGE_KEY = "opengrade.theme";
 
 export type Theme = "light" | "dark";
 

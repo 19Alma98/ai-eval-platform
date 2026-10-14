@@ -2,7 +2,7 @@ import { withProjectQuery } from "./project-href";
 
 /**
  * Stable deep links for every object the UI shows. The SDK prints the same paths
- * (see `aiobs._links`), so keep both in sync.
+ * (see `opengrade._links`), so keep both in sync.
  */
 export function traceHref(projectId: string | null, traceId: string): string {
   return withProjectQuery(`/traces/${encodeURIComponent(traceId)}`, projectId);

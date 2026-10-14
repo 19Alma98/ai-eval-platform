@@ -34,7 +34,7 @@ import { withProjectQuery } from "@/lib/project-href";
 import { metricLabel } from "@/lib/metrics-catalog";
 
 const QUEUE_SIZE = 10;
-const DATASET_KEY = "aiobs.queue.datasetId";
+const DATASET_KEY = "opengrade.queue.datasetId";
 
 export function annotationQueueQueryKey(projectId: string) {
   return ["annotation-queue", projectId] as const;

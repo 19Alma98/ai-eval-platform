@@ -2,8 +2,8 @@ import { PHASE_DEVELOPMENT_SERVER } from "next/constants";
 import type { NextConfig } from "next";
 
 /**
- * One build: a static export that FastAPI serves (packaged into aiobs_server/_ui,
- * used by both `aiobs ui` and the Docker image). `next dev` proxies the API instead.
+ * One build: a static export that FastAPI serves (packaged into opengrade_server/_ui,
+ * used by both `opengrade ui` and the Docker image). `next dev` proxies the API instead.
  */
 export default function nextConfig(phase: string): NextConfig {
   if (phase === PHASE_DEVELOPMENT_SERVER) {

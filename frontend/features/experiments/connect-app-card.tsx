@@ -5,30 +5,30 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 
 function snippet(experimentId: string, datasetId: string, projectSlug: string | null): string {
-  const init = projectSlug
-    ? `aiobs.init(project_slug="${projectSlug}")`
-    : "aiobs.init()  # set AIOBS_PROJECT_SLUG";
-  return `import aiobs
-from aiobs import Client
+  const initLine = projectSlug
+    ? `opengrade.init(project_slug="${projectSlug}")`
+    : "opengrade.init()  # set OPENGRADE_PROJECT_SLUG";
+  return `import opengrade
+from opengrade import Client
 
-${init}
+${initLine}
 
-@aiobs.trace
+@opengrade.trace
 def answer(item):
-    aiobs.bind_evaluation(
+    opengrade.bind_evaluation(
         experiment_id="${experimentId}",
         dataset_item_id=item.id,
     )
     docs = retrieve(item.input)            # your retriever
-    aiobs.set_retrieval_documents(docs)    # [{"id", "title", "text"}]
+    opengrade.set_retrieval_documents(docs)    # [{"id", "title", "text"}]
     reply = generate(item.input, docs)     # your LLM call
-    aiobs.set_output(reply)
+    opengrade.set_output(reply)
     return reply
 
 with Client() as client:
     for item in client.datasets.get("${datasetId}").items:
         answer(item)
-aiobs.flush()`;
+opengrade.flush()`;
 }
 
 /**
@@ -74,7 +74,7 @@ export function ConnectAppCard({
             <span className="flex size-5 shrink-0 items-center justify-center rounded-full bg-primary text-xs font-semibold text-primary-foreground">
               1
             </span>
-            Install the SDK: <code className="rounded bg-surface-2 px-1">pip install aiobs-eval</code>
+            Install the SDK: <code className="rounded bg-surface-2 px-1">pip install opengrade-ai</code>
           </li>
           <li className="flex gap-2">
             <span className="flex size-5 shrink-0 items-center justify-center rounded-full bg-primary text-xs font-semibold text-primary-foreground">

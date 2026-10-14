@@ -168,7 +168,7 @@ export function ReleaseCheckForm({
   async function copyYaml() {
     try {
       await navigator.clipboard.writeText(yamlMode ? yamlDraft : generatedYaml);
-      toast.success("Rules copied — paste them into aiobs.yaml for CI");
+      toast.success("Rules copied — paste them into opengrade.yaml for CI");
     } catch {
       toast.error("Could not copy");
     }

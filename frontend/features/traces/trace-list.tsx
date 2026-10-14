@@ -242,7 +242,7 @@ export function TraceList({ projectId }: { projectId: string }) {
         ) : (
           <EmptyState
             title="No traces yet"
-            description="Decorate your app's entry point with @aiobs.trace and export spans to /v1/traces. Each call shows up here."
+            description="Decorate your app's entry point with @opengrade.trace and export spans to /v1/traces. Each call shows up here."
           />
         )
       ) : (

@@ -38,8 +38,8 @@ export function ProductionScoresCard({
         </div>
       ) : rows.length === 0 ? (
         <p className="text-sm text-muted-foreground">
-          No scores in this range. Send them with <code>aiobs.log_score</code>,{" "}
-          <code>aiobs.log_feedback</code> or <code>@aiobs.trace(metrics=[...])</code>.
+          No scores in this range. Send them with <code>opengrade.log_score</code>,{" "}
+          <code>opengrade.log_feedback</code> or <code>@opengrade.trace(metrics=[...])</code>.
         </p>
       ) : (
         <ul className="flex flex-col divide-y divide-border">
