@@ -23,6 +23,7 @@ from aiobs._trace import (
 from aiobs.async_client import AsyncClient
 from aiobs.client import Client
 from aiobs.experiment import (
+    DatasetColumnError,
     Experiment,
     ExperimentResult,
     ItemRun,
@@ -42,6 +43,7 @@ __all__ = [
     "AppConfigClient",
     "AsyncClient",
     "Client",
+    "DatasetColumnError",
     "Experiment",
     "ExperimentResult",
     "ItemRun",

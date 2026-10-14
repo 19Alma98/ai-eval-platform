@@ -108,7 +108,7 @@ def short(item, output) -> bool:  # local metric: float | bool | None
 
 
 result = aiobs.evaluate(
-    dataset="gold-v1",  # name (latest version), id, list of dicts, DataFrame
+    dataset="gold-v1",  # name/id, path, list/iterable of dicts, pandas/Polars DataFrame
     task=answer_question,
     metrics=["groundedness", "hit_at_k", short],
     name="gemma-prompt-v2",
@@ -132,9 +132,9 @@ print(exp.result.summary())
 How it behaves:
 
 - **Metrics**: a string is a server metric kind (`hit_at_k`, `recall_at_k`, `mrr`, `must_contain`, `groundedness`, `correctness`, `answer_relevance`, `context_precision`, `context_recall`, `latency`). A dict sets threshold/config, for example `{"kind": "hit_at_k", "config": {"k": 3}}`. The SDK finds or creates a metrics set that holds exactly those kinds, using the project's defaults for anything you leave out. `metrics=None` uses the project default set. A Python metric runs locally (see *Custom metrics* below), and its scores are submitted to the platform (`POST /experiments/{id}/client-results`). From there they are aggregated, shown in the UI and compared with the baseline like server metrics.
-- **Datasets**: a list of dicts or a DataFrame needs an `input` column. `expected_output`, `context` and `metadata` map to item fields, and any other column goes into `metadata` (so `expected_doc_ids` and `must_contain` work). The dataset name is a hash of the rows, so re-running on the same rows reuses the same dataset.
+- **Datasets**: pass a registered name/id, a path to CSV/JSON/JSONL, a list or iterable of dicts, a pandas DataFrame, or a Polars DataFrame. Rows need an `input` column (or `question`). `expected_output` (or `expected_answer`), `context` and `metadata` map to item fields; any other column goes into `metadata` (so `expected_doc_ids` and `must_contain` work). A missing `input`/`question` raises `aiobs.DatasetColumnError` (CSV headers are checked up front). Inline rows are hashed into a dataset name, so re-running on the same rows reuses the same dataset. Generators are materialised before upload (no lazy streaming).
 - **Outputs** are uploaded with `PUT /experiments/{id}/outputs`, so this works without `aiobs.init()`. With tracing on, `finish()` waits for the OTLP traces to be bound (up to 30s) and merges their context in. Your explicit output always wins.
-- **Errors**: when a task raises, `evaluate` records it on the item (`result.errors`, `metadata.error`) and moves on. Pass `raise_on_error=True` to stop instead. When the `with` block raises, nothing is scored.
+- **Errors**: when a task raises, `evaluate` records it on the item (`result.errors`, `metadata.error`) and moves on. Pass `raise_on_error=True` to stop instead. When the `with` block raises, nothing is scored. Bad dataset columns raise `DatasetColumnError` before the run starts.
 - **Link**: `result.url` points to the experiment page on the tracking URI. Set `AIOBS_UI_URL` when the UI is served elsewhere (for example `http://localhost:3000` in the docker dev setup).
 
 ### Custom metrics

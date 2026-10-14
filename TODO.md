@@ -57,7 +57,6 @@ Do not block feature work on these. When optimizing, do N+1 batching first, then
 
 Altro:
 
-- oggetti Dataset da pandas, HuggingFace, CSV, iterabili;
 - annotare sessioni e utenti (session_id, user_id) per raggruppare le conversazioni.
 
 UI

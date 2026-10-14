@@ -398,9 +398,83 @@ def test_dataframe_input(server: FakeServer) -> None:
     assert len(result.items) == 2
 
 
+def test_polars_dataframe_input(server: FakeServer) -> None:
+    pl = pytest.importorskip("polars")
+    df = pl.DataFrame({"input": ["q1", "q2"], "expected_output": ["a1", None]})
+    result = aiobs.evaluate(dataset=df, task=_task, metrics=["hit_at_k"])
+    (ds_id,) = server.items
+    assert [i["input"] for i in server.items[ds_id]] == ["q1", "q2"]
+    assert len(result.items) == 2
+
+
+def test_question_alias_accepted(server: FakeServer) -> None:
+    result = aiobs.evaluate(
+        dataset=[{"question": "q1", "expected_answer": "a1"}],
+        task=_task,
+        metrics=["hit_at_k"],
+    )
+    (ds_id,) = server.items
+    item = server.items[ds_id][0]
+    assert item["input"] == "q1"
+    assert item["expected_output"] == "a1"
+    assert "question" not in item.get("metadata", {})
+    assert len(result.items) == 1
+
+
 def test_row_without_input_is_rejected(server: FakeServer) -> None:
-    with pytest.raises(ValueError, match="'input'"):
-        aiobs.evaluate(dataset=[{"question": "q"}], task=_task)
+    with pytest.raises(aiobs.DatasetColumnError, match="missing column") as exc_info:
+        aiobs.evaluate(dataset=[{"expected_output": "a"}], task=_task)
+    assert exc_info.value.missing == ["input (or question)"]
+    assert "expected_output" in exc_info.value.found
+    assert "Required: 'input'" in str(exc_info.value)
+
+
+def test_csv_path_input(server: FakeServer, tmp_path: Any) -> None:
+    path = tmp_path / "gold.csv"
+    path.write_text("question,expected_answer\nq1,a1\nq2,a2\n", encoding="utf-8")
+    result = aiobs.evaluate(dataset=str(path), task=_task, metrics=["hit_at_k"])
+    (ds_id,) = server.items
+    assert [i["input"] for i in server.items[ds_id]] == ["q1", "q2"]
+    assert [i["expected_output"] for i in server.items[ds_id]] == ["a1", "a2"]
+    assert len(result.items) == 2
+
+
+def test_csv_missing_input_column_raises(server: FakeServer, tmp_path: Any) -> None:
+    path = tmp_path / "bad.csv"
+    path.write_text("expected_answer,expected_doc_ids\na1,pto\n", encoding="utf-8")
+    with pytest.raises(aiobs.DatasetColumnError, match=re.escape(str(path))) as exc_info:
+        aiobs.evaluate(dataset=path, task=_task)
+    assert exc_info.value.missing == ["input (or question)"]
+    assert exc_info.value.found == ["expected_answer", "expected_doc_ids"]
+    assert "Optional: 'expected_output'" in str(exc_info.value)
+
+
+def test_jsonl_path_input(server: FakeServer, tmp_path: Any) -> None:
+    path = tmp_path / "gold.jsonl"
+    path.write_text(
+        '{"input": "q1", "expected_output": "a1"}\n{"question": "q2", "expected_answer": "a2"}\n',
+        encoding="utf-8",
+    )
+    result = aiobs.evaluate(dataset=path, task=_task, metrics=["hit_at_k"])
+    (ds_id,) = server.items
+    assert [i["input"] for i in server.items[ds_id]] == ["q1", "q2"]
+    assert len(result.items) == 2
+
+
+def test_iterable_materialized(server: FakeServer) -> None:
+    def rows():
+        yield {"input": "q1", "expected_output": "a1"}
+        yield {"input": "q2", "expected_output": "a2"}
+
+    result = aiobs.evaluate(dataset=rows(), task=_task, metrics=["hit_at_k"])
+    assert len(result.items) == 2
+    # Same generator content reused via content-addressed inline dataset.
+    same_rows = [
+        {"input": "q1", "expected_output": "a1"},
+        {"input": "q2", "expected_output": "a2"},
+    ]
+    aiobs.evaluate(dataset=same_rows, task=_task, metrics=["hit_at_k"])
+    assert len(server.datasets) == 1
 
 
 def test_traced_run_waits_for_binding_then_explicit_output_wins(
