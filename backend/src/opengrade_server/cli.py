@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import socket
 import webbrowser
 from pathlib import Path
 from typing import Annotated, Any
@@ -15,7 +16,7 @@ import yaml
 from rich.console import Console
 from rich.table import Table
 
-from opengrade_server.config import DEFAULT_SQLITE_URL, get_settings
+from opengrade_server.config import DEFAULT_SQLITE_URL, Settings, get_settings
 from opengrade_server.ui import ui_root
 
 EXIT_PASS = 0
@@ -33,6 +34,11 @@ META_KEYS = frozenset(
     }
 )
 
+PACKAGED_UI_HINT = (
+    "Build it with `python scripts/package_ui.py` "
+    "(or `./scripts/package-ui.sh`), or install a release wheel that includes the UI."
+)
+
 app = typer.Typer(add_completion=False, no_args_is_help=True)
 console = Console()
 
@@ -40,6 +46,73 @@ console = Console()
 @app.callback()
 def _root() -> None:
     """AI Evaluation & Observability Platform CLI."""
+
+
+class PortInUseError(Exception):
+    def __init__(self, host: str, port: int) -> None:
+        self.host = host
+        self.port = port
+        super().__init__(f"port {port} on {host} is already in use")
+
+
+def assert_port_available(host: str, port: int, *, timeout: float = 0.3) -> None:
+    """Fail if something already accepts connections on host:port.
+
+    A connect probe catches the case where another process (e.g. Docker) listens
+    on 0.0.0.0 while we would bind 127.0.0.1 — browsers to localhost hit the
+    other server even if a second bind might succeed.
+    """
+    try:
+        with socket.create_connection((host, port), timeout=timeout):
+            pass
+    except OSError:
+        return
+    raise PortInUseError(host, port)
+
+
+def ui_config_warnings(settings: Settings) -> list[str]:
+    """Return non-fatal startup warnings for common local misconfigurations."""
+    warnings: list[str] = []
+    api_base = settings.llm_api_base or ""
+    if "host.docker.internal" in api_base:
+        warnings.append(
+            "LLM_API_BASE uses host.docker.internal (for containers). "
+            "On the host, use http://localhost:11434 (or your local API URL)."
+        )
+    needs_key = not settings.llm_api_key and (
+        settings.llm_model.startswith("gemini/")
+        or (not api_base and not settings.llm_model.startswith("ollama/"))
+    )
+    if needs_key:
+        warnings.append(
+            f"Judge model is {settings.llm_model} but LLM_API_KEY is unset. "
+            "Set LLM_API_KEY, or point LLM_MODEL / LLM_API_BASE at a local provider "
+            "(e.g. ollama/… + http://localhost:11434)."
+        )
+    return warnings
+
+
+def print_ui_startup_banner(uri: str, settings: Settings) -> None:
+    if uri.startswith("sqlite"):
+        console.print(f"Using SQLite backend store: [cyan]{uri}[/cyan]")
+    else:
+        console.print(f"Using backend store: [cyan]{uri}[/cyan]")
+
+    env_path = Path.cwd() / ".env"
+    if env_path.is_file():
+        console.print(f"Loaded .env from [cyan]{env_path}[/cyan]")
+
+    key_status = "set" if settings.llm_api_key else "unset"
+    api_base = settings.llm_api_base or "(none)"
+    console.print(
+        f"LLM judge: model=[cyan]{settings.llm_model}[/cyan] "
+        f"api_key=[cyan]{key_status}[/cyan] "
+        f"api_base=[cyan]{api_base}[/cyan]"
+    )
+    console.print(f"Content capture: [cyan]{settings.content_capture_enabled}[/cyan]")
+
+    for message in ui_config_warnings(settings):
+        console.print(f"[yellow]Warning:[/yellow] {message}")
 
 
 def load_policy_file(path: Path) -> dict[str, Any]:
@@ -99,16 +172,20 @@ def ui(
     get_settings.cache_clear()
 
     if ui_root() is None:
-        console.print(
-            "[red]Packaged UI not found.[/red] Build it with "
-            "`./scripts/package-ui.sh` (or install a release wheel that includes the UI)."
-        )
+        console.print(f"[red]Packaged UI not found.[/red] {PACKAGED_UI_HINT}")
         raise typer.Exit(EXIT_CONFIG)
 
-    if uri.startswith("sqlite"):
-        console.print(f"Using SQLite backend store: [cyan]{uri}[/cyan]")
-    else:
-        console.print(f"Using backend store: [cyan]{uri}[/cyan]")
+    try:
+        assert_port_available(host, port)
+    except PortInUseError:
+        console.print(
+            f"[red]Port {port} on {host} is already in use.[/red] "
+            "Stop the other process or pass --port."
+        )
+        raise typer.Exit(EXIT_CONFIG) from None
+
+    settings = get_settings()
+    print_ui_startup_banner(uri, settings)
 
     url = f"http://{host}:{port}"
     console.print(f"AI Eval UI: [green]{url}[/green]  (API + OTLP on the same origin)")

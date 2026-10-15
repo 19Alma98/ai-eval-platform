@@ -1,36 +1,36 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# OpenGrade UI
 
-## Getting Started
+Next.js (App Router) frontend for the AI Evaluation & Observability Platform. Production builds are a static export served by `opengrade ui` / the server wheel from `backend/src/opengrade_server/_ui`.
 
-First, run the development server:
+**Requires Node.js >= 22.**
+
+## Local development
 
 ```bash
+npm ci
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Open [http://localhost:3000](http://localhost:3000). The Next dev server proxies `/api` (and related paths) to `API_ORIGIN` (default in config: the local platform API, typically `http://127.0.0.1:8000`). Start the API separately (`opengrade ui` or Compose) so the UI can talk to it.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+Useful scripts: `npm run lint`, `npm run typecheck`, `npm run test`.
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## Package into the server (clone / release)
 
-## Learn More
+From the repo root (cross-platform; needs npm in `PATH`):
 
-To learn more about Next.js, take a look at the following resources:
+```bash
+python scripts/package_ui.py
+# equivalent on Unix CI: ./scripts/package-ui.sh
+```
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+This runs `npm ci` + `npm run build` and copies `frontend/out/` into `backend/src/opengrade_server/_ui/`. Then from `backend/`:
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+```bash
+uv sync --all-extras
+uv run opengrade ui
+```
 
-## Deploy on Vercel
+PyPI installs of `opengrade-ai[ui]` already include the packaged UI — no Node build required for end users.
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+See the [repository root README](../README.md) and [backend/README.md](../backend/README.md) for quickstart and Docker Compose.

@@ -17,7 +17,9 @@ Implementation:
 opengrade ui [--host 127.0.0.1] [--port 8000] [--backend-store-uri URI] [--open/--no-open]
 ```
 
-Defaults to SQLite at `sqlite+aiosqlite:///./opengrade.db`. Override with `--backend-store-uri` or `DATABASE_URL` for Postgres. Requires a packaged UI (`./scripts/package-ui.sh` or a release wheel).
+Defaults to SQLite at `sqlite+aiosqlite:///./opengrade.db`. Override with `--backend-store-uri` or `DATABASE_URL` for Postgres. Requires a packaged UI (`python scripts/package_ui.py`, `./scripts/package-ui.sh`, or a release wheel; Node.js >= 22 to build from a clone).
+
+Loads `.env` from the process working directory when present (Pydantic Settings) and prints judge model / API key presence / `LLM_API_BASE` / content-capture at startup. Exits with code `2` if the bind port already accepts connections (e.g. Docker on `:8000`) — stop the other process or pass `--port`.
 
 ### Release gate
 

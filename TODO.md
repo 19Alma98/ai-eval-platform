@@ -90,17 +90,18 @@ Priority: **P0** blocks a public release, **P1** fix before promoting it, **P2**
 
 ### Packaging / getting started — P1
 
-- [ ] From a fresh clone `opengrade ui` needs `./scripts/package-ui.sh` (bash + `npm ci` + Next build)
+- [x] From a fresh clone `opengrade ui` needs `./scripts/package-ui.sh` (bash + `npm ci` + Next build)
   first — hard on Windows. Provide a cross-platform path (Python/npm script) or document clearly.
-- [ ] `frontend/README.md` is still create-next-app boilerplate.
-- [ ] `opengrade ui` run from `backend/` silently loads `backend/.env` (content capture on,
+  → `python scripts/package_ui.py`; bash wrapper delegates.
+- [x] `frontend/README.md` is still create-next-app boilerplate.
+- [x] `opengrade ui` run from `backend/` silently loads `backend/.env` (content capture on,
   `LLM_API_BASE=host.docker.internal` unresolvable on host). Default judge `gemini/gemini-3.8-flash`
-  needs a key, nothing tells the user.
-- [ ] Documented `cd backend && uv sync` strips dev extras from an existing venv; document
+  needs a key, nothing tells the user. → startup banner + warnings.
+- [x] Documented `cd backend && uv sync` strips dev extras from an existing venv; document
   `uv sync --all-extras` for contributors.
-- [ ] **`opengrade ui` starts silently when port 8000 is taken** (Windows: Docker on `0.0.0.0:8000`,
+- [x] **`opengrade ui` starts silently when port 8000 is taken** (Windows: Docker on `0.0.0.0:8000`,
   ui binds `127.0.0.1:8000`; `localhost` clients hit the other server and wrote data into it).
-  Fix: detect busy port and fail or pick another (`cli.py`). (confirmed)
+  Fix: detect busy port and fail (`cli.py` connect probe). (confirmed)
 
 ### Backend — P0
 

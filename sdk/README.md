@@ -27,7 +27,8 @@ Develop from this monorepo:
 ```bash
 cd sdk && uv sync
 uv sync --extra openai   # add OpenAI instrumentor
-# UI packaging (server wheel): ./scripts/package-ui.sh then cd backend && uv sync
+# UI packaging (server wheel): python scripts/package_ui.py
+# then: cd backend && uv sync --all-extras && uv run opengrade ui
 ```
 
 ## Quickstart

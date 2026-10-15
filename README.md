@@ -12,10 +12,12 @@ Open-source, self-hosted platform for AI quality engineering: turn production tr
 Zero external infra — SQLite file + packaged UI in one process:
 
 ```bash
-# from a built/release install, or after ./scripts/package-ui.sh + pip install -e backend
+# from a built/release install, or after: python scripts/package_ui.py && pip install -e backend
 pip install 'opengrade-ai[ui]'   # SDK + opengrade-ai-server (includes UI)
 opengrade ui                       # http://127.0.0.1:8000  → creates ./opengrade.db
 ```
+
+From a fresh clone (Node.js >= 22 required for the UI build): `python scripts/package_ui.py`, then install/sync the backend and run `opengrade ui`. The CLI fails if port 8000 is already in use (e.g. Docker); pass `--port` or stop the other process. It loads `.env` from the current working directory when present and prints judge / content-capture settings at startup.
 
 Optional Postgres (production / Compose):
 
@@ -44,7 +46,7 @@ Dataset-first RAG loop: gold test set → metrics pack → `opengrade.evaluate` 
 1. `docker compose up --build`
 2. Pull two chat models, e.g. `ollama pull gemma4:e2b` and `ollama pull tinyllama`
 3. Sync SDK: `cd sdk && uv sync --extra openai && cd ..`
-4. Sync server/CLI: `cd backend && uv sync && cd ..`
+4. Sync server/CLI: `cd backend && uv sync --all-extras && cd ..`
 5. Run: `python scripts/portfolio_demo.py`
 
 In the UI: **Test set → Metriche → Runs**. Release policy uses pack names: `hit_at_k`, `groundedness`, `correctness`, `latency`.
@@ -109,7 +111,7 @@ curl "http://localhost:8000/api/v1/projects/<project-uuid>/traces/<otel-trace-id
 After evaluating an experiment, check a YAML policy:
 
 ```bash
-cd backend && uv sync
+cd backend && uv sync --all-extras
 uv run opengrade check --policy ../examples/opengrade.yaml \
   --base-url http://localhost:8000 \
   --project-id <project-uuid> \
@@ -126,11 +128,13 @@ Packages: **`opengrade-ai`** (SDK) and **`opengrade-ai-server`** (API + UI). Pub
 
 ```bash
 cd backend
-cp .env.example .env   # edit as needed
-uv sync --all-extras
+cp .env.example .env   # edit as needed (Compose-oriented values; see warnings from opengrade ui)
+uv sync --all-extras   # plain `uv sync` strips extras from an existing venv
 uv run alembic upgrade head
 uv run uvicorn opengrade_server.main:app --reload --host 0.0.0.0 --port 8000
 ```
+
+For the packaged UI from a clone: from repo root run `python scripts/package_ui.py` (or `./scripts/package-ui.sh`), then `uv run opengrade ui` from `backend/`.
 
 Requires PostgreSQL. With Compose, Postgres is published on host port **5434** (`DATABASE_URL=postgresql+asyncpg://opengrade:opengrade@localhost:5434/opengrade`).
 

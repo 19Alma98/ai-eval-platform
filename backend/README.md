@@ -8,13 +8,17 @@ Server package for the AI Evaluation & Observability Platform.
 
 ## Local UI
 
+Requires Node.js >= 22 to build the UI from a clone. Contributors should use `uv sync --all-extras` (plain `uv sync` strips extras from an existing venv).
+
 ```bash
 # from repo root — build the Next static export into the package
-./scripts/package-ui.sh
-cd backend && uv sync
+python scripts/package_ui.py   # or ./scripts/package-ui.sh
+cd backend && uv sync --all-extras
 uv run opengrade ui
 # → http://127.0.0.1:8000  (SQLite ./opengrade.db by default)
 ```
+
+`opengrade ui` loads `.env` from the current working directory when present, prints LLM / content-capture settings, and exits if the bind port already has a listener (use `--port` or stop the other process).
 
 Postgres:
 
