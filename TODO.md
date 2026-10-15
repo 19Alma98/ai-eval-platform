@@ -1,6 +1,288 @@
 # TODO
 
-Open items from the RAG evaluation reviews (2026-10-08, 2026-10-11). Fixed items are in git history.
+Open items from the RAG evaluation reviews (2026-10-08, 2026-10-11) and the PyPI-readiness
+review (2026-10-15). Fixed items are in git history.
+
+## PyPI-readiness review (2026-10-15)
+
+Source: parallel SDK / backend / frontend bug hunts + exploratory UI QA. "Confirmed" = reproduced
+with a script (repros were in the session scratchpad); "code" = high-confidence code reading.
+Priority: **P0** blocks a public release, **P1** fix before promoting it, **P2** polish / gaps.
+
+### SDK — P0 (an observability SDK must never break the host app)
+
+- [ ] **`init()` hijacks the global OTel TracerProvider** (`_otel.py:130-148,209-211,239`). If the app
+  already has OTel (Datadog, Honeycomb…), opengrade's provider is not installed but `_INITIALIZED=True`,
+  so `@trace` spans go to the host backend. `init(force=True)` shuts down the host's provider.
+  Fix: attach via `add_span_processor` to an existing SDK provider; never shut down a provider we
+  didn't create. (confirmed)
+- [ ] **`@trace` always uses a sync wrapper** (`_trace.py:156-187`). On `async def` the span ends
+  immediately with `output="<coroutine object>"` and `iscoroutinefunction(wrapper)` is False (breaks
+  FastAPI); on generators the span closes before the first token; `@trace_async` on an async generator
+  raises `TypeError` in the user's code. Fix: one decorator dispatching on function kind, span open
+  until the result is fully consumed. (confirmed)
+- [ ] **OTLP batches have no size cap / compression** (`_otel.py:236-238`). Server limit 4 MiB → 413,
+  whole batch dropped, then 30 s cooldown drops following spans unsent. Fix: gzip, smaller
+  `max_export_batch_size` / span size cap, split batch on 413 instead of cooldown. (confirmed)
+- [ ] **Transport errors escape raw** (`_http.py:68-74`, `_context.py:139`). `httpx2.ConnectError` is
+  not an `OpengradeAPIError`; `set_project("demo")` crashes app startup when the platform is down and
+  can block 2×30 s on a black-holed host; `experiment.py:579,646` only catch `OpengradeAPIError`.
+  Fix: `OpengradeError` → `APIError` / `ConnectionError` hierarchy, retries with backoff, lazy /
+  non-raising project resolution. (confirmed)
+- [ ] **Shared `AsyncClient` bound to the first event loop** (`_context.py:42-49`). Second
+  `asyncio.run()` (Celery, scripts, tests) → `RuntimeError: Event loop is closed`; `set_tracking_uri()`
+  raises the same from `_reset_client`. Fix: one client per loop (WeakKeyDictionary), swallow close
+  errors. (confirmed)
+- [ ] **`resolve_project_id` ignores `init(project_id=…/project_slug=…)` and `OPENGRADE_PROJECT_SLUG`**
+  (`_config.py:52-62`). README production setup `init(project_slug="acme", live=True)` drops every
+  `log_score` / `log_feedback` / `trace(metrics=…)` with "No project". Setting both
+  `OPENGRADE_PROJECT_ID` and `OPENGRADE_PROJECT_SLUG` disables tracing (`_config.py:106`). Fix: `init()`
+  records the active project (lazy slug→id), id wins over slug. (confirmed)
+- [ ] **Inline dataset partially created then reused** (`experiment.py:885-897`, `client.py:147-168`).
+  Dataset (named by content hash) is created before items, items uploaded one POST each, no rollback.
+  Network blip at row 3/5 → later `evaluate()` silently runs on 2/5 rows; failure on row 1 → "dataset
+  has no items" forever. Fix: atomic bulk create, or verify stored item count/hash before reuse. (confirmed)
+- [ ] **`finish()` crashes after all task work** (`experiment.py:115-119,578,614-615`). Outputs
+  uploaded 100/request with no byte cap (100×54 KB → 413); `_jsonable` lets NaN through →
+  `ValueError: Out of range float values`; client-results sent unchunked → 413 → "local only".
+  Experiment left unfinished. Fix: chunk by bytes, NaN/inf → null, each upload step fails on its own.
+  (confirmed)
+
+### SDK — P1
+
+- [ ] **Capture serialises full args/return even when not recording** (`_trace.py:45-47,169,182`).
+  2M-int list arg adds ~360 ms/call even without `init()` / with `OPENGRADE_DISABLED`. Fix: skip when
+  `not span.is_recording()`, serializer that stops at 32 KiB. (confirmed)
+- [ ] **`@trace(metrics=…)` on methods deep-copies `self`** (`_production.py:295-311,351`) on the
+  request thread (~315 ms for a RAG class with an in-memory index) and `Sample.input` becomes
+  `{"args":[self,"hi"],…}`. Fix: drop bound `self` via signature, snapshot only needed fields off-thread.
+  (confirmed)
+- [ ] **`evaluate(client=c, project="name")` uses the global client** for project lookup and mutates
+  the global active project (`experiment.py:773-778,1087`). Fix: pass `client` through. (confirmed)
+- [ ] **`async def` task never awaited in `evaluate`** (`experiment.py:443-448`): output stored as
+  `"<coroutine object …>"`, only a RuntimeWarning. Fix: await coroutine results via `run_sync` or add
+  `aevaluate`. (confirmed)
+- [ ] **CSV loading** (`experiment.py:819-829,866-869`): documented `metadata` column sent as string →
+  422 `dict_type`; empty cells sent as `""` instead of None → `rag_qa` dataset with a missing expected
+  answer rejected (422). Fix: parse `metadata`/`context` as JSON, empty cell → None. (confirmed)
+- [ ] **`init(force=True)` never uninstruments** (`instrumentation.py:81`, `_otel.py:209`):
+  OpenInference instrumentors are singletons, keep exporting to the shut-down provider → spans lost.
+  Fix: `uninstrument()` before re-instrumenting. (code)
+- [ ] **No fork handler** (`_async.py:9-20`): forked child (gunicorn, multiprocessing) inherits
+  `_LOOP` without its thread → async local metrics hang forever in experiments, 60 s timeout in
+  production. Fix: `os.register_at_fork(after_in_child=…)` resets `_LOOP` and lock. (code)
+- [ ] **`init("auto")` imports langchain / llama_index / boto3 just to detect them**
+  (`instrumentation.py:49-54`): seconds of startup + import side effects. Fix: `importlib.util.find_spec`.
+  (code)
+
+### SDK — P2
+
+- [ ] Exceptions recorded twice on the span (`_trace.py:174-176`). Fix: `record_exception=False`. (confirmed)
+- [ ] `OPENGRADE_DISABLED` only affects `init()`; `log_score`, `log_feedback`, score sender still send
+  HTTP (`feedback.py:180-195`, `_production.py`). Fix: check `is_disabled()` in `_queue` / `after_call`. (code)
+- [ ] `import opengrade` takes ~0.87 s (protobuf, OTLP exporter, pydantic, httpx2 eager) → serverless
+  cold starts. Fix: lazy imports. (confirmed)
+- [ ] Ints outside int64 passed as attributes → OTel logs a traceback per span and drops the attribute
+  (`_trace.py:54-61`). Fix: stringify. (confirmed)
+- [ ] Windows console prints `→` literally; result links point to `localhost:8000` even when the UI
+  runs elsewhere; summary prints "−0.083 unchanged" without saying the drop is not significant.
+- [ ] OTLP exporter and control-plane client use different HTTP stacks (requests vs httpx2) → proxy/TLS
+  settings can differ. Document or align.
+
+### Packaging / release — P0
+
+- [ ] No `LICENSE` file; no license / authors / project URLs / classifiers in either `pyproject.toml`.
+- [ ] No `py.typed` in the SDK wheel → typed API looks untyped to users.
+- [ ] `dev` extra (pytest, ruff, mypy) published to PyPI. Fix: move to `[dependency-groups]`.
+- [ ] `[ui]` / server pin only applied when `OPENGRADE_RELEASE_BUILD=1`. Fix: fail release builds
+  that don't set it (or pin unconditionally in CI).
+- [ ] **Migrations not shipped / not run outside Docker** (`infrastructure/db.py:85`,
+  `pyproject.toml` packages only `src/opengrade_server`). `opengrade ui --backend-store-uri
+  postgresql+asyncpg://…` on an empty DB → 500 on every write. Fix: package Alembic inside
+  `opengrade_server`, run `upgrade head` programmatically on startup under an advisory lock. (confirmed)
+- [ ] **Docker image not published** (`publish.yml` only does PyPI). Publish to GHCR/Docker Hub on tag,
+  non-root user, documented env vars.
+- [ ] Decide `requires-python>=3.12` (PEP 695 generics) vs supporting 3.10/3.11 — still a large share
+  of production AI apps. (Keep in sync with "Python version bump" below.)
+
+### Packaging / getting started — P1
+
+- [ ] From a fresh clone `opengrade ui` needs `./scripts/package-ui.sh` (bash + `npm ci` + Next build)
+  first — hard on Windows. Provide a cross-platform path (Python/npm script) or document clearly.
+- [ ] `frontend/README.md` is still create-next-app boilerplate.
+- [ ] `opengrade ui` run from `backend/` silently loads `backend/.env` (content capture on,
+  `LLM_API_BASE=host.docker.internal` unresolvable on host). Default judge `gemini/gemini-3.8-flash`
+  needs a key, nothing tells the user.
+- [ ] Documented `cd backend && uv sync` strips dev extras from an existing venv; document
+  `uv sync --all-extras` for contributors.
+- [ ] **`opengrade ui` starts silently when port 8000 is taken** (Windows: Docker on `0.0.0.0:8000`,
+  ui binds `127.0.0.1:8000`; `localhost` clients hit the other server and wrote data into it).
+  Fix: detect busy port and fail or pick another (`cli.py`). (confirmed)
+
+### Backend — P0
+
+- [ ] **Trace upsert not atomic** (`repositories.py:163-285`, `errors.py:77`). Concurrent first
+  batches for a new trace collide on `uq_traces_project_trace_id` → 409 (6 posts: 5×409 SQLite,
+  4×409 Postgres); OTLP exporters don't retry 409 → spans lost. Fix: `INSERT … ON CONFLICT DO
+  NOTHING` then reload/merge, or retry on IntegrityError. (confirmed both DBs)
+- [ ] **NaN/Inf protobuf double attributes** (`tracing/otel.py:44`) → Postgres JSONB insert fails →
+  whole batch 500 (SQLite silently null). Fix: non-finite → string/None in `_attr_value_proto`.
+  (confirmed pg)
+- [ ] **NUL bytes** (`\x00` in OTLP span name/attrs, `\u0000` in JSON API, e.g. dataset name) → 500 on
+  Postgres. Fix: strip/replace at OTLP decode, reject (422) in the JSON guard middleware. (confirmed pg)
+- [ ] **Experiment stuck in `running`** (`application/evaluate.py:98-115`): `load_scoring_inputs` and
+  evaluator lookup run outside the try/except after Start marked it running; any exception → every
+  retry 409 until restart. Fix: move inside `try`. Same pattern in `live_interactions.py:398-408`:
+  `replace_scores` on a failed session → PendingRollbackError, interaction stays `running`; fix with
+  `session.rollback()` first. (confirmed / code)
+- [ ] **Concurrent `POST /evaluate` all start** (`evaluate.py:213-251,283-297`): read-then-write
+  guard → 3 calls = 3 scorings, 3 runs, 3× LLM cost. Fix: atomic `UPDATE … SET status='running' WHERE
+  id=:id AND status<>'running'`, rowcount 0 → 409. (confirmed both)
+- [ ] **Live scoring not claimed** (`routes/live_interactions.py:203`, `live_interactions.py:274`,
+  `repositories.py:1471`): resubmit with same `external_id` while pending, rescore, or startup requeue
+  schedules another scoring → 3 submits = 6 judge calls, 2–3 scores per kind, inflated monitoring.
+  Fix: atomic `pending→running` claim, skip if no row updated. (confirmed both)
+- [ ] **`select_latest_runs` ignores run status** (`regression/aggregate.py:57-63`): PENDING/RUNNING or
+  interrupted ERROR run with 0 results becomes "latest" → summary `mean_score: None`, release gate
+  `unavailable`, exit 1, good previous run hidden. Fix: latest terminal run with results. (confirmed both)
+
+### Backend — P1
+
+- [ ] **Run binding overwrites client context** (`tracing/run_binding.py:118-122`): documents set via
+  `PUT /outputs` replaced by `{"latency_ms":…}` when the trace arrives → groundedness/retrieval lose
+  documents. Fix: merge, keep existing `documents` if trace has no retrieval spans. (confirmed both)
+- [ ] **Child-only batches rename the trace** (`repositories.py:175,192-195`, `normalization.py:15-16,51-52`):
+  later LLM-only batch changes trace name and input/output to the LLM prompt. Fix: update only when
+  the batch contains the root (or a CHAIN) span. (confirmed both)
+- [ ] **Groundedness SKIPPED on live traffic when retrieval is in a nested function**
+  (`tracing/live_binding.py` `_documents()`, `evaluation/trace_context.py` `_RETRIEVAL_KINDS`): docs on
+  a child CHAIN span (`retrieval.documents`) are ignored; UI says "No documents were retrieved" while
+  SDK metrics saw them. Fix: collect `retrieval.documents` from any descendant span. (confirmed via UI)
+- [ ] **Production/monitoring counts offline experiment traces** (`application/monitoring.py`):
+  66 traces instead of 30, wrong error rate and p99. Fix: exclude traces bound to experiments
+  (`opengrade.eval …`). (confirmed via UI)
+- [ ] **No gzip on `/v1/traces`** (`routes/otlp.py:53`, `otel.py:182`): OTel Collector otlphttp gzips by
+  default → 400. Fix: decompress gzip/deflate, cap decompressed size. (confirmed)
+- [ ] **Monitoring naive vs aware datetime** (`routes/monitoring.py:84`): `since=…Z&until=…` (no tz) →
+  TypeError → 500. Fix: treat naive as UTC (like `trace_scores.py:123`). (confirmed)
+- [ ] **IntegrityError → 409 with `str(exc)`** (`errors.py:77,93`) leaks SQL + bound params (possibly
+  content). Fix: generic message, log details. (confirmed)
+- [ ] **Production alarms fire on tiny samples** (4 answers, 1 fail = 25% > 20%). Add a minimum n.
+- [ ] **Overview "Needs attention" ignores SDK metric / feedback alarms** that `/monitoring` shows.
+
+### Backend — P2
+
+- [ ] SQLite schema via `create_all` never alters existing tables → future column breaks existing
+  `./opengrade.db`. `alembic check` drift: migrations create `ix_experiments_app_config_id`, model
+  doesn't declare it (SQLite lacks the index). Fix: Alembic for SQLite too (batch mode). (confirmed drift)
+- [ ] Protobuf OTLP bodies and multipart imports read fully into memory before any size check
+  (`routes/otlp.py:53`, `routes/datasets.py:195`). Fix: check Content-Length, stream with a cap. (code)
+- [ ] `asyncio.create_task` in `scoring_recovery.py:71` not referenced → may be GC'd mid-requeue.
+  Fix: module-level task set. (code)
+- [ ] Validation: overview accepts `until < since` (200); list endpoints (live-interactions,
+  experiments, evaluators, datasets, app-configs) return `200 []` for unknown project instead of 404.
+- [ ] Promote from queue requires `expected_doc_ids` (422) and the card has no field for it — exactly
+  the no-retrieval failures that most need to become test cases.
+
+### Server / container production-readiness — P1
+
+- [ ] Multi-replica unsafe: startup recovery on one replica fails/requeues other replicas' running
+  work. Needs leases or leader election (ties into "Pluggable job queue").
+- [ ] `docker-entrypoint.sh` runs `alembic upgrade head` on every replica with no advisory lock.
+- [ ] Single uvicorn worker; no `--proxy-headers`/`--forwarded-allow-ips`; no graceful drain of
+  running scorings.
+- [ ] Compose publishes API on `0.0.0.0:8000` (no auth) and Postgres on `0.0.0.0:5434` with default
+  password `opengrade`. Bind to 127.0.0.1 by default.
+- [ ] No server observability: no `/metrics`, no self-instrumentation, no request/job IDs in logs;
+  `/health` doesn't check the DB (no readiness probe).
+- [ ] No ingest backpressure: no rate limit / concurrency cap on `/v1/traces`, never 429/503 so
+  exporters can't back off.
+- [ ] SQLite mode: no WAL / `busy_timeout`, no backup/upgrade story.
+
+### Frontend — P1
+
+- [ ] **Live traffic search loses focus on every keystroke** (`features/live-runs/live-run-list.tsx:82-86,219`):
+  toolbar unmounted while the new query loads. Fix: spinner only in the table, `placeholderData:
+  keepPreviousData`, debounce search.
+- [ ] **One failed 5 s refresh wipes the live list** (`live-run-list.tsx:220`). Fix: `isError && !data`,
+  stale banner otherwise.
+- [ ] **Overview time window frozen at page load** (`features/overview/overview-dashboard.tsx:47,75-80`);
+  Refresh refetches the same window, "Updated just now" misleading. Same in `ProductionScoresCard`.
+  Fix: anchor in state, reset on refresh (as `monitoring-dashboard.tsx:334,370`).
+- [ ] **`experiment_metrics.<key>.max` checks rendered wrong** (`features/release/describe-check.ts:73-81`):
+  shown as "≥ 2000.00 average score" while backend checks `<=`. Fix: dedicated branch, right sign, raw format.
+- [ ] **Compare row verdict uses mean only** (`features/experiments/group-metrics-by-evaluator.ts:47` vs
+  `experiment-compare-view.tsx:214-215`; backend flags pass-rate changes `regression/aggregate.py:221-224`):
+  banner "1 metric worse" while every row "No real change". Also UI QA: compare says "0 worse" while the
+  release gate fails the same pair with −8 pts; CI not shown. Fix: worse of mean/pass-rate verdicts, show CI.
+- [ ] **Monitoring threshold field** (`features/monitoring/monitoring-dashboard.tsx:151-157`): invalid/empty
+  value restores the old number in the field but deletes the saved custom alarm (falls back to 20%).
+- [ ] **`compare-bars.tsx:66` checks `"regression"`, backend sends `"regressed"`**
+  (`application/project_overview.py:50`) → non-significant drops shown red as "worse".
+- [ ] **Experiment detail stale after scoring** (`features/experiments/use-experiments.ts:50-53`,
+  `experiment-detail.tsx:364`): only status is polled; Refresh only refetches summary. Fix: refetch
+  summary + answers on running→finished and on Refresh.
+- [ ] **"Waiting for judge" filter sends only `pending`** (`live-run-list.tsx:83`), `running` items
+  disappear. Fix: accept a status list in the backend.
+- [ ] **Monitoring thresholds not tied to project** (`monitoring-dashboard.tsx:58-66`): A shows B's
+  thresholds and next edit saves them under A. Fix: `key={projectId}`.
+- [ ] **Traces count capped at 5000 silently** (`monitoring-dashboard.tsx:260`, backend
+  `application/monitoring.py:25,237,254`); error rate / cost per trace computed on the sample. Show "5,000+"
+  or return true count.
+- [ ] **Next prefetch 404s on every page**: browser requests `/<page>/__next.!KGFwcCk.<page>.__PAGE__.txt`,
+  export writes `__next.!KGFwcCk/<page>/__PAGE__.txt`. Fix mapping in `backend/.../ui.py` `resolve_ui_file`.
+- [ ] **Annotation queue**: clicking "Correct" removes the card immediately, so "Add to test set" can't
+  be done for that item and the next promote hits the wrong interaction.
+- [ ] **Experiment detail hides params and run metrics** (`temperature`, `cost_usd`, `opengrade.latency_p50_ms`…);
+  only in Compare-all (cut off on the right).
+- [ ] Test-set picker on `/monitoring` shows a raw UUID after selection.
+
+### Frontend — P2
+
+- [ ] Mobile: at 375px sidebar never collapses, horizontal scroll (scrollWidth 586–689px).
+- [ ] Sidebar background stops at viewport height on long pages.
+- [ ] Production latency chart empty when all data is in one time bucket.
+- [ ] 24h/7d chart axes show only HH:MM (`monitoring-charts-inner.tsx:34`).
+- [ ] Live run detail error screen has no Retry (`live-run-detail.tsx:285-297`); malformed id shows
+  generic "Something went wrong" instead of not-found.
+- [ ] Accessibility: `components/data-table.tsx:67-77,111-124` rows not focusable, only j/k, `aria-selected`
+  outside grid role; `features/traces/trace-waterfall.tsx:349,372` button nested in `role="button"`.
+- [ ] No basePath/asset prefix (`next.config.ts:21-25`, `lib/api/client.ts:105`): UI can't be served
+  under a sub-path behind a proxy. Fix: build-time `NEXT_PUBLIC_BASE_PATH`.
+- [ ] Naming mismatch UI vs code (`hit_at_k` → "Hit rate", `must_contain` → "Required phrases"; import CSV
+  `question`/`expected_answer` vs SDK `input`/`expected_output`); metrics set label
+  `sdk:hit_at_k+must_contain+latency@689cc45d v1`; local Python metrics missing from `/metrics`.
+- [ ] Test sets list: duplicate names per version, no question-count column; Overview "Test sets 2 —
+  Questions with expected answers" reads like a question count.
+- [ ] Import dialog on a locked test set doesn't say it creates a new version.
+- [ ] Compare-all: same green for two metrics, uneven decimals; side-by-side defaults to first metric
+  even when others changed; release gate rule names truncated.
+- [ ] Empty states: Traces says "No traces match these filters" instead of how to send traces; Live
+  traffic suggests `client.live_runs.submit` instead of `@opengrade.trace` + `init(live=True)`; live
+  traces with no extractable question are silently skipped with no hint.
+- [ ] Deleted saved project → "Unknown project" + failing requests; fall back to a valid project.
+
+### Product gaps vs MLflow / Langfuse — P2
+
+- [ ] **Auth**: API key (`OPENGRADE_API_KEY`) in SDK + server — needed before any non-localhost
+  container deployment (see also "Optional auth" below).
+- [ ] **PII redaction**: capture currently grabs every argument incl. `self`/secrets. Per-arg
+  include/exclude, redaction hook, global capture switch.
+- [ ] **Sampling** (head sampling) and configurable span size limits.
+- [ ] `with opengrade.span(...)` context manager.
+- [ ] `AsyncClient` parity (datasets, experiments), `aevaluate`.
+- [ ] Pagination on SDK list calls; `set_project` / `evaluate` scan all projects/datasets/experiments.
+- [ ] Experiments over time: x-axis by date, chart `log_metrics` (cost, p50/p95), dataset-version
+  column/filter, metric columns in the experiments list.
+- [ ] Compare shows params and experiment-metric deltas (backend already returns
+  `ExperimentCompareResponse.experiment_metrics`), lower-is-better marking for latency/cost.
+- [ ] Live view: session/user grouping, filter by SDK metric / feedback, SDK metrics + feedback in the
+  list Scores column, "load more" beyond 50, time-range/metadata filters, auto-refresh on
+  Overview/Monitoring/Traces.
+- [ ] Drill-down from alarms / chart points to the traces that caused them.
+- [ ] Filters persisted in the URL (live-runs, trace search, matrix rows); CSV/JSON export.
+- [ ] Retention/TTL and per-project quotas (see "OTLP high volume" below).
+- [ ] Custom time range / timezone and compare-to-previous-period on monitoring.
 
 ## Deferred
 
