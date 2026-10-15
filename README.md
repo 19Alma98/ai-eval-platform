@@ -23,8 +23,6 @@ Optional Postgres (production / Compose):
 opengrade ui --backend-store-uri 'postgresql+asyncpg://opengrade:opengrade@localhost:5434/opengrade'
 ```
 
-**Upgrading:** Compose Postgres credentials are now `opengrade` / `opengrade` (replacing `aiobs`). Volumes initialized with the old user/database will fail authentication after you pull this change. Recreate the volume with `docker compose down -v && docker compose up`, or migrate the data if you need to keep it.
-
 ## Quickstart (Docker Compose)
 
 ```bash
