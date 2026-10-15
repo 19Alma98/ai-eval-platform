@@ -28,6 +28,7 @@ class FakeServer:
     """Just enough of the platform API for the experiment loop."""
 
     def __init__(self) -> None:
+        self.projects: list[dict[str, Any]] = []
         self.datasets: dict[str, dict[str, Any]] = {}
         self.items: dict[str, list[dict[str, Any]]] = {}
         self.experiments: dict[str, dict[str, Any]] = {}
@@ -90,6 +91,17 @@ class FakeServer:
         body = json.loads(request.content) if request.content else None
         self.calls.append((method, path, body))
 
+        if path.rstrip("/") == "/api/v1/projects":
+            if method == "GET":
+                return httpx2.Response(200, json=self.projects)
+            created = {
+                "id": str(uuid.uuid4()),
+                "name": body["name"],
+                "slug": body["slug"],
+                "created_at": "2026-01-01T00:00:00+00:00",
+            }
+            self.projects.append(created)
+            return httpx2.Response(201, json=created)
         if m := re.fullmatch(r"/api/v1/projects/[^/]+/datasets", path):
             if method == "GET":
                 return httpx2.Response(200, json=list(self.datasets.values()))
@@ -507,6 +519,29 @@ def test_csv_path_input(server: FakeServer, tmp_path: Any) -> None:
     assert len(result.items) == 2
 
 
+def test_csv_empty_optional_and_json_metadata(server: FakeServer, tmp_path: Any) -> None:
+    path = tmp_path / "gold.csv"
+    path.write_text(
+        'input,expected_output,metadata,context\nq1,,"{""tag"":""x""}","[""c1""]"\nq2,a2,,\n',
+        encoding="utf-8",
+    )
+    opengrade.evaluate(dataset=str(path), task=_task, metrics=["hit_at_k"])
+    (ds_id,) = server.items
+    items = server.items[ds_id]
+    assert "expected_output" not in items[0]
+    assert items[0]["metadata"] == {"tag": "x"}
+    assert items[0]["context"] == ["c1"]
+    assert items[1]["expected_output"] == "a2"
+    assert "metadata" not in items[1] or items[1].get("metadata") in (None, {})
+
+
+def test_csv_invalid_metadata_json_raises(server: FakeServer, tmp_path: Any) -> None:
+    path = tmp_path / "bad.csv"
+    path.write_text("input,metadata\nq1,not-json\n", encoding="utf-8")
+    with pytest.raises(ValueError, match="metadata"):
+        opengrade.evaluate(dataset=path, task=_task)
+
+
 def test_csv_missing_input_column_raises(server: FakeServer, tmp_path: Any) -> None:
     path = tmp_path / "bad.csv"
     path.write_text("expected_answer,expected_doc_ids\na1,pto\n", encoding="utf-8")
@@ -698,6 +733,43 @@ def test_async_metric_and_non_finite_score(server: FakeServer) -> None:
     assert [r["score"] for r in slow_sub["results"]] == [0.25, 0.25]
     assert {r["label"] for r in nan_sub["results"]} == {"ERROR"}
     assert all("finite" in r["explanation"] for r in nan_sub["results"])
+
+
+def test_async_task_is_awaited(server: FakeServer) -> None:
+    async def async_task(item: Any) -> str:
+        await asyncio.sleep(0)
+        opengrade.set_retrieval_documents([{"id": "d1", "text": "doc"}])
+        return f"answer to {item.input}"
+
+    result = opengrade.evaluate(dataset=ROWS, task=async_task, metrics=["hit_at_k"])
+    assert sorted(o["actual_output"] for o in server.outputs[result.id].values()) == [
+        "answer to q1",
+        "answer to q2",
+    ]
+
+
+def test_evaluate_explicit_client_project_does_not_mutate_global(
+    server: FakeServer, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.delenv("OPENGRADE_PROJECT_ID", raising=False)
+    explicit = Client("http://test", transport=httpx2.MockTransport(server.handler))
+    before = opengrade.get_project()
+    opengrade.evaluate(
+        dataset=ROWS,
+        task=_task,
+        metrics=["hit_at_k"],
+        project="Demo Project",
+        client=explicit,
+    )
+    assert opengrade.get_project() is before
+    assert server.projects[0]["slug"] == "demo-project"
+    created_pid = server.projects[0]["id"]
+    exp_posts = [
+        path
+        for method, path, _ in server.calls
+        if method == "POST" and path.endswith("/experiments")
+    ]
+    assert any(created_pid in path for path in exp_posts)
 
 
 def test_non_json_metadata_becomes_item_error(server: FakeServer) -> None:

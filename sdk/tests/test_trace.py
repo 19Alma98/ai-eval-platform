@@ -190,3 +190,44 @@ def test_set_error_marks_span(spans: InMemorySpanExporter) -> None:
     span = spans.get_finished_spans()[0]
     assert span.status.status_code == StatusCode.ERROR
     assert span.status.description == "no documents"
+
+
+def test_skips_serialize_when_not_recording(monkeypatch: pytest.MonkeyPatch) -> None:
+    from contextlib import contextmanager
+    from unittest.mock import MagicMock
+
+    from opengrade import _trace
+
+    serialize_calls: list[object] = []
+    truncate_calls: list[object] = []
+
+    def counting_serialize(args: tuple, kwargs: dict) -> str:
+        serialize_calls.append((args, kwargs))
+        return "{}"
+
+    def counting_truncate(value: object, *, limit: int = MAX_CAPTURE_BYTES) -> str:
+        truncate_calls.append(value)
+        return "x"
+
+    monkeypatch.setattr(_trace, "_serialize_args", counting_serialize)
+    monkeypatch.setattr(_trace, "truncate_value", counting_truncate)
+
+    @contextmanager
+    def non_recording_span(_name: str):
+        span = MagicMock()
+        span.is_recording.return_value = False
+        yield span
+
+    class _Tracer:
+        def start_as_current_span(self, name: str):
+            return non_recording_span(name)
+
+    monkeypatch.setattr(_trace.otel_trace, "get_tracer", lambda _name: _Tracer())
+
+    @opengrade.trace(name="quiet")
+    def greet(name: str) -> str:
+        return f"hi {name}"
+
+    assert greet("ada") == "hi ada"
+    assert serialize_calls == []
+    assert truncate_calls == []

@@ -30,28 +30,31 @@ Priority: **P0** blocks a public release, **P1** fix before promoting it, **P2**
 
 ### SDK — P1
 
-- [ ] **Capture serialises full args/return even when not recording** (`_trace.py:45-47,169,182`).
+- [x] **Capture serialises full args/return even when not recording** (`_trace.py:45-47,169,182`).
   2M-int list arg adds ~360 ms/call even without `init()` / with `OPENGRADE_DISABLED`. Fix: skip when
   `not span.is_recording()`, serializer that stops at 32 KiB. (confirmed)
-- [ ] **`@trace(metrics=…)` on methods deep-copies `self`** (`_production.py:295-311,351`) on the
+  Done (Approach A): skip serialize when `not span.is_recording()`; keep existing 32 KiB truncate.
+- [x] **`@trace(metrics=…)` on methods deep-copies `self`** (`_production.py:295-311,351`) on the
   request thread (~315 ms for a RAG class with an in-memory index) and `Sample.input` becomes
   `{"args":[self,"hi"],…}`. Fix: drop bound `self` via signature, snapshot only needed fields off-thread.
   (confirmed)
-- [ ] **`evaluate(client=c, project="name")` uses the global client** for project lookup and mutates
+  Done (Approach A): drop bound `self`/`cls` via signature; snapshot still on request thread.
+- [x] **`evaluate(client=c, project="name")` uses the global client** for project lookup and mutates
   the global active project (`experiment.py:773-778,1087`). Fix: pass `client` through. (confirmed)
-- [ ] **`async def` task never awaited in `evaluate`** (`experiment.py:443-448`): output stored as
+- [x] **`async def` task never awaited in `evaluate`** (`experiment.py:443-448`): output stored as
   `"<coroutine object …>"`, only a RuntimeWarning. Fix: await coroutine results via `run_sync` or add
   `aevaluate`. (confirmed)
-- [ ] **CSV loading** (`experiment.py:819-829,866-869`): documented `metadata` column sent as string →
+  Done (Approach A): await via `run_sync`; no `aevaluate`.
+- [x] **CSV loading** (`experiment.py:819-829,866-869`): documented `metadata` column sent as string →
   422 `dict_type`; empty cells sent as `""` instead of None → `rag_qa` dataset with a missing expected
   answer rejected (422). Fix: parse `metadata`/`context` as JSON, empty cell → None. (confirmed)
-- [ ] **`init(force=True)` never uninstruments** (`instrumentation.py:81`, `_otel.py:209`):
+- [x] **`init(force=True)` never uninstruments** (`instrumentation.py:81`, `_otel.py:209`):
   OpenInference instrumentors are singletons, keep exporting to the shut-down provider → spans lost.
   Fix: `uninstrument()` before re-instrumenting. (code)
-- [ ] **No fork handler** (`_async.py:9-20`): forked child (gunicorn, multiprocessing) inherits
+- [x] **No fork handler** (`_async.py:9-20`): forked child (gunicorn, multiprocessing) inherits
   `_LOOP` without its thread → async local metrics hang forever in experiments, 60 s timeout in
   production. Fix: `os.register_at_fork(after_in_child=…)` resets `_LOOP` and lock. (code)
-- [ ] **`init("auto")` imports langchain / llama_index / boto3 just to detect them**
+- [x] **`init("auto")` imports langchain / llama_index / boto3 just to detect them**
   (`instrumentation.py:49-54`): seconds of startup + import side effects. Fix: `importlib.util.find_spec`.
   (code)
 

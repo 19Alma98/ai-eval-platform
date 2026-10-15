@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import csv
 import hashlib
+import inspect
 import io
 import json
 import logging
@@ -24,7 +25,8 @@ from opentelemetry import trace as otel_trace
 from opentelemetry.trace import Status, StatusCode
 
 from opengrade import _config, _otel
-from opengrade._context import get_client, set_project
+from opengrade._async import run_sync
+from opengrade._context import get_client, resolve_or_create_project
 from opengrade._eval_run import bind_evaluation
 from opengrade._http import OpengradeAPIError, OpengradeError
 from opengrade._links import experiment_item_url, experiment_url, trace_url, ui_base_url
@@ -479,6 +481,8 @@ class Experiment:
             try:
                 with self.run(item) as run:
                     output = task(item)
+                    if inspect.isawaitable(output):
+                        output = run_sync(output)
                     if output is not None or not run.has_output:
                         run.log(output)
             except Exception as exc:
@@ -813,12 +817,17 @@ DatasetLike = (
 dicts, pandas DataFrame, or Polars DataFrame."""
 
 
-def _resolve_project(project: str | None) -> str:
+def _resolve_project(
+    project: str | None,
+    client: Client,
+    *,
+    activate: bool,
+) -> str:
     if project is None:
         return _config.resolve_project_id()
     if _is_uuid(project):
         return project
-    created = set_project(project)
+    created = resolve_or_create_project(project, client, activate=activate)
     if created is None:
         raise ValueError(f"could not resolve project {project!r}: platform unreachable")
     return created.id
@@ -900,17 +909,36 @@ def _records_from(dataset: Any) -> list[dict[str, Any]] | None:
     return None
 
 
+def _parse_json_column(key: str, value: str) -> Any:
+    try:
+        return json.loads(value)
+    except json.JSONDecodeError as exc:
+        raise ValueError(f"dataset column {key!r} must be valid JSON: {exc.msg}") from exc
+
+
+def _normalize_item_value(key: str, value: Any) -> Any:
+    """CSV empty cells become ``None``; ``metadata``/``context`` strings are JSON."""
+    if value == "":
+        return None
+    if key in ("metadata", "context") and isinstance(value, str):
+        return _parse_json_column(key, value)
+    return value
+
+
 def _item_body(row: dict[str, Any], index: int) -> dict[str, Any]:
     raw_keys = sorted(row)
     row = _canonicalize_row(row)
-    if "input" not in row:
+    if "input" not in row or row.get("input") in (None, ""):
         raise DatasetColumnError(
             missing=["input (or question)"],
             found=raw_keys,
             row_index=index,
         )
-    body = {k: row[k] for k in _ITEM_KEYS if row.get(k) is not None}
-    extras = {k: v for k, v in row.items() if k not in _ITEM_KEYS}
+    normalized = {k: _normalize_item_value(k, v) for k, v in row.items()}
+    body = {k: normalized[k] for k in _ITEM_KEYS if normalized.get(k) is not None}
+    extras = {
+        k: v for k, v in normalized.items() if k not in _ITEM_KEYS and v is not None and v != ""
+    }
     if extras:
         body["metadata"] = {**extras, **dict(body.get("metadata") or {})}
     return body
@@ -1143,8 +1171,9 @@ def start_experiment(
     server snapshots it as the experiment's params (``exp.params``), replacing
     ``params``.
     """
+    explicit_client = client is not None
     client = client or get_client()
-    project_id = _resolve_project(project)
+    project_id = _resolve_project(project, client, activate=not explicit_client)
     dataset_id = _resolve_dataset(client, project_id, dataset, task_type=task_type)
 
     server_metrics: list[dict[str, Any]] = []

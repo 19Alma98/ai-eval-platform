@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import os
 import threading
 from collections.abc import Awaitable
 
@@ -42,3 +43,14 @@ def run_sync[T](awaitable: Awaitable[T], timeout: float | None = None) -> T:
     except TimeoutError:
         future.cancel()
         raise
+
+
+def _after_fork_in_child() -> None:
+    """Drop the inherited loop (no thread in the child) so the next call builds a fresh one."""
+    global _LOOP, _LOCK
+    _LOOP = None
+    _LOCK = threading.Lock()
+
+
+if hasattr(os, "register_at_fork"):  # not on Windows
+    os.register_at_fork(after_in_child=_after_fork_in_child)

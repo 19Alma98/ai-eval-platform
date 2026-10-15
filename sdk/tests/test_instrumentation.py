@@ -7,7 +7,8 @@ from unittest.mock import MagicMock
 import pytest
 from opentelemetry.sdk.trace import TracerProvider
 
-from opengrade.instrumentation import TIER1, activate_instrumentors
+from opengrade import instrumentation
+from opengrade.instrumentation import TIER1, activate_instrumentors, deactivate_instrumentors
 
 
 def test_tier1_keys() -> None:
@@ -15,22 +16,23 @@ def test_tier1_keys() -> None:
 
 
 def test_skips_missing_packages(monkeypatch: pytest.MonkeyPatch) -> None:
-    # Ensure targets are not importable
-    for mod in (
-        "openai",
-        "anthropic",
-        "langchain",
-        "langchain_core",
-        "llama_index",
-        "boto3",
-    ):
-        monkeypatch.setitem(sys.modules, mod, None)
-        # Better: remove if present
-        sys.modules.pop(mod, None)
+    monkeypatch.setattr(instrumentation, "_module_available", lambda _name: False)
 
     provider = TracerProvider()
     activated = activate_instrumentors(None, provider)
     assert activated == []
+
+
+def test_module_available_uses_find_spec_not_import(monkeypatch: pytest.MonkeyPatch) -> None:
+    calls: list[str] = []
+
+    def boom(name: str):
+        calls.append(name)
+        raise AssertionError(f"should not import {name}")
+
+    monkeypatch.setattr(instrumentation.importlib, "import_module", boom)
+    assert instrumentation._module_available("openai") in (True, False)
+    assert calls == []
 
 
 def test_activates_when_both_present(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -49,10 +51,17 @@ def test_activates_when_both_present(monkeypatch: pytest.MonkeyPatch) -> None:
     sys.modules["openinference.instrumentation"] = oi_inst
     sys.modules["openinference.instrumentation.openai"] = fake_mod
 
+    monkeypatch.setattr(instrumentation, "_module_available", lambda _name: True)
+    deactivate_instrumentors()
     provider = TracerProvider()
     activated = activate_instrumentors(["openai"], provider)
     assert activated == ["openai"]
     instrumentor_instance.instrument.assert_called_once_with(tracer_provider=provider)
+    assert instrumentation._ACTIVE == [instrumentor_instance]
+
+    deactivate_instrumentors()
+    instrumentor_instance.uninstrument.assert_called_once_with()
+    assert instrumentation._ACTIVE == []
 
     # cleanup
     for key in list(sys.modules):
@@ -68,6 +77,7 @@ def test_failing_instrumentor_is_skipped(monkeypatch: pytest.MonkeyPatch) -> Non
     oi_inst = types.ModuleType("openinference.instrumentation")
     monkeypatch.setitem(sys.modules, "openinference.instrumentation", oi_inst)
     monkeypatch.setitem(sys.modules, "openinference.instrumentation.openai", fake_mod)
+    monkeypatch.setattr(instrumentation, "_module_available", lambda _name: True)
 
     assert activate_instrumentors(["openai"], TracerProvider()) == []
 

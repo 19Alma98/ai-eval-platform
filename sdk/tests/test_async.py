@@ -4,6 +4,7 @@ import asyncio
 
 import pytest
 
+from opengrade import _async
 from opengrade._async import run_sync
 
 
@@ -38,3 +39,11 @@ def test_works_when_caller_already_runs_a_loop() -> None:
         return run_sync(_value(7))  # e.g. a sync metric called from Jupyter
 
     assert asyncio.run(main()) == 7
+
+
+def test_after_fork_hook_resets_loop() -> None:
+    parent_loop = run_sync(_current_loop())
+    _async._after_fork_in_child()
+    assert _async._LOOP is None
+    child_loop = run_sync(_current_loop())
+    assert child_loop is not parent_loop

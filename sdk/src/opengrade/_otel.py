@@ -18,7 +18,7 @@ from opentelemetry.util._once import Once
 
 from opengrade import _live, _production
 from opengrade._config import project_headers, resolve_config
-from opengrade.instrumentation import activate_instrumentors
+from opengrade.instrumentation import activate_instrumentors, deactivate_instrumentors
 
 logger = logging.getLogger("opengrade")
 
@@ -198,6 +198,7 @@ def _shutdown_and_reset_global_tracer_provider() -> None:
 
 def _reset_for_tests() -> None:
     global _INITIALIZED
+    deactivate_instrumentors()
     _shutdown_and_reset_global_tracer_provider()
     _live._reset_for_tests()
     _INITIALIZED = False
@@ -250,6 +251,9 @@ def init(
         return
 
     if force:
+        # OpenInference instrumentors are process singletons; uninstrument before
+        # tearing down the provider so they do not keep exporting to a dead one.
+        deactivate_instrumentors()
         # Never shut down a host TracerProvider we did not create.
         _teardown_opengrade_tracing(reset_global=_OWNS_PROVIDER)
         _INITIALIZED = False

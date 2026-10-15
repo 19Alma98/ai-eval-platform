@@ -301,6 +301,34 @@ def call_input(args: tuple[Any, ...], kwargs: dict[str, Any]) -> Any:
     return {"args": list(args), "kwargs": dict(kwargs)}
 
 
+def _metric_call_args(
+    fn: Callable[..., Any] | None,
+    args: tuple[Any, ...],
+    kwargs: dict[str, Any],
+) -> tuple[tuple[Any, ...], dict[str, Any]]:
+    """Drop bound ``self``/``cls`` so metric samples do not deep-copy the instance."""
+    if fn is None or not args:
+        return args, kwargs
+    target = fn
+    while isinstance(target, functools.partial):
+        target = target.func
+    try:
+        params = list(inspect.signature(target).parameters.values())
+    except (TypeError, ValueError):
+        return args, kwargs
+    if not params:
+        return args, kwargs
+    first = params[0]
+    if first.name not in ("self", "cls"):
+        return args, kwargs
+    if first.kind not in (
+        inspect.Parameter.POSITIONAL_ONLY,
+        inspect.Parameter.POSITIONAL_OR_KEYWORD,
+    ):
+        return args, kwargs
+    return args[1:], kwargs
+
+
 def _snapshot(value: Any) -> Any:
     """Copy ``value`` so later mutation by the caller is invisible to metrics."""
     try:
@@ -333,6 +361,8 @@ def after_call(
     args: tuple[Any, ...],
     kwargs: dict[str, Any],
     result: Any,
+    *,
+    fn: Callable[..., Any] | None = None,
 ) -> None:
     """Schedule the metrics for a finished call; never raises into the caller."""
     try:
@@ -347,8 +377,11 @@ def after_call(
             _warn("project", "opengrade: production metrics skipped: %s", exc)
             return
         try:
+            metric_args, metric_kwargs = _metric_call_args(fn, args, kwargs)
             sample = Sample(
-                input=_snapshot(capture.input if capture.has_input else call_input(args, kwargs)),
+                input=_snapshot(
+                    capture.input if capture.has_input else call_input(metric_args, metric_kwargs)
+                ),
                 output=_snapshot(result),
                 documents=_snapshot(list(capture.documents or [])),
                 trace_id=format(ctx.trace_id, "032x"),

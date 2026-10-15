@@ -219,6 +219,28 @@ def test_input_falls_back_to_args_and_kwargs(sent: Recorder) -> None:
     assert sorted(seen, key=repr) == sorted([{"args": ["x"], "kwargs": {"b": "y"}}, "q"], key=repr)
 
 
+def test_method_trace_drops_self_from_metric_input(sent: Recorder) -> None:
+    seen: list[Any] = []
+
+    @opengrade.metric
+    def record(s: opengrade.Sample) -> float:
+        seen.append(s.input)
+        return 1.0
+
+    class Rag:
+        def __init__(self) -> None:
+            self.index = list(range(1000))
+
+        @opengrade.trace(name="rag.query", metrics=[record])
+        def query(self, question: str) -> str:
+            return f"a:{question}"
+
+    rag = Rag()
+    assert rag.query("hi") == "a:hi"
+    opengrade.flush()
+    assert seen == ["hi"]
+
+
 def test_async_traced_call_runs_metrics(sent: Recorder) -> None:
     @opengrade.metric
     def length(s: opengrade.Sample) -> float:

@@ -133,7 +133,7 @@ def _span_session(
     tracer = otel_trace.get_tracer(_TRACER_NAME)
     with tracer.start_as_current_span(span_name) as span:
         span.set_attribute("openinference.span.kind", kind)
-        if capture_input:
+        if capture_input and span.is_recording():
             span.set_attribute("input.value", _serialize_args(args, kwargs))
         live_token = _live.mark_if_live(span, live)
         capture_token = _production.start(production, span)
@@ -153,12 +153,13 @@ def _finish_span(
     args: tuple[Any, ...],
     kwargs: dict[str, Any],
     result: Any,
+    fn: Callable[..., Any] | None = None,
 ) -> None:
     capture = _production.stop(capture_token)
-    if capture_output:
+    if capture_output and span.is_recording():
         span.set_attribute("output.value", truncate_value(result))
     if capture is not None:
-        _production.after_call(production, rate, span, capture, args, kwargs, result)
+        _production.after_call(production, rate, span, capture, args, kwargs, result, fn=fn)
 
 
 def _record_error(span: Span, exc: BaseException) -> None:
@@ -205,6 +206,7 @@ def _wrap_sync[**P, R](
                 args=args,
                 kwargs=kwargs,
                 result=result,
+                fn=fn,
             )
             return result
 
@@ -250,6 +252,7 @@ def _wrap_async[**P, R](
                 args=args,
                 kwargs=kwargs,
                 result=result,
+                fn=fn,
             )
             return result
 
@@ -276,7 +279,7 @@ def _wrap_sync_gen[**P, R](
         tracer = otel_trace.get_tracer(_TRACER_NAME)
         with tracer.start_as_current_span(span_name) as span:
             span.set_attribute("openinference.span.kind", kind)
-            if capture_input:
+            if capture_input and span.is_recording():
                 span.set_attribute("input.value", _serialize_args(args, kwargs))
             live_token = _live.mark_if_live(span, live)
             capture_token = _production.start(production, span)
@@ -300,6 +303,7 @@ def _wrap_sync_gen[**P, R](
                     args=args,
                     kwargs=kwargs,
                     result=result,
+                    fn=fn,
                 )
 
     return cast(Callable[P, R], wrapper)
@@ -326,7 +330,7 @@ def _wrap_async_gen[**P, R](
         tracer = otel_trace.get_tracer(_TRACER_NAME)
         with tracer.start_as_current_span(span_name) as span:
             span.set_attribute("openinference.span.kind", kind)
-            if capture_input:
+            if capture_input and span.is_recording():
                 span.set_attribute("input.value", _serialize_args(args, kwargs))
             live_token = _live.mark_if_live(span, live)
             capture_token = _production.start(production, span)
@@ -350,6 +354,7 @@ def _wrap_async_gen[**P, R](
                     args=args,
                     kwargs=kwargs,
                     result=result,
+                    fn=fn,
                 )
 
     return cast(Callable[P, R], wrapper)

@@ -1,13 +1,18 @@
 from __future__ import annotations
 
 import importlib
+import importlib.util
 import logging
 from collections.abc import Sequence
 from dataclasses import dataclass
+from typing import Any
 
 from opentelemetry.sdk.trace import TracerProvider
 
 logger = logging.getLogger("opengrade")
+
+# Instrumentor instances activated by the last ``activate_instrumentors`` call.
+_ACTIVE: list[Any] = []
 
 
 @dataclass(frozen=True, slots=True)
@@ -47,15 +52,26 @@ TIER1: dict[str, InstrumentorSpec] = {
 
 
 def _module_available(name: str) -> bool:
+    """True if ``name`` can be imported, without executing the module."""
     try:
-        importlib.import_module(name)
-        return True
-    except Exception:  # noqa: BLE001 — probe imports may raise beyond ImportError
+        return importlib.util.find_spec(name) is not None
+    except Exception:  # noqa: BLE001 — probe may raise beyond ImportError
         return False
 
 
 def _any_target_available(spec: InstrumentorSpec) -> bool:
     return any(_module_available(m) for m in spec.target_modules)
+
+
+def deactivate_instrumentors() -> None:
+    """Call ``uninstrument()`` on every instrumentor we previously activated."""
+    global _ACTIVE
+    for instrumentor in _ACTIVE:
+        try:
+            instrumentor.uninstrument()
+        except Exception as exc:  # noqa: BLE001 — teardown must not break re-init
+            logger.debug("opengrade: uninstrument failed: %s", exc)
+    _ACTIVE = []
 
 
 def activate_instrumentors(
@@ -78,10 +94,12 @@ def activate_instrumentors(
         try:
             module = importlib.import_module(spec.instrumentor_module)
             cls = getattr(module, spec.instrumentor_class)
-            cls().instrument(tracer_provider=tracer_provider)
+            instrumentor = cls()
+            instrumentor.instrument(tracer_provider=tracer_provider)
         except Exception as exc:  # noqa: BLE001 — a broken instrumentor must not break the app
             logger.warning("opengrade: could not activate instrumentor %s: %s", key, exc)
             continue
+        _ACTIVE.append(instrumentor)
         activated.append(key)
         logger.info("opengrade: activated OpenInference instrumentor %s", key)
 

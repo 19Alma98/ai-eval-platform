@@ -133,20 +133,20 @@ def _activate_project(project: ProjectResponse, cleaned: str) -> ProjectResponse
     return project
 
 
-def set_project(name: str) -> ProjectResponse | None:
-    """Make ``name`` the active project, creating it if missing.
+def resolve_or_create_project(
+    name: str,
+    client: Client,
+    *,
+    activate: bool = True,
+) -> ProjectResponse | None:
+    """Find or create ``name`` on ``client``. Optionally make it the active project.
 
-    Matches an existing project by slug (``slugify(name)``) or exact name.
-    ``opengrade.init()`` called afterwards exports traces to this project.
-
-    On platform unreachable / API failure, logs a warning and returns ``None``
-    so app startup is never blocked by a down opengrade host.
+    On platform unreachable / API failure, logs a warning and returns ``None``.
     """
     cleaned = name.strip()
     if not cleaned:
         raise ValueError("project name must not be empty")
     slug = _slugify(cleaned)
-    client = get_client()
 
     try:
         project = _find_project(client, cleaned, slug)
@@ -165,7 +165,21 @@ def set_project(name: str) -> ProjectResponse | None:
         logger.warning("opengrade.set_project(%r) failed: %s", cleaned, exc)
         return None
 
-    return _activate_project(project, cleaned)
+    if activate:
+        return _activate_project(project, cleaned)
+    return project
+
+
+def set_project(name: str) -> ProjectResponse | None:
+    """Make ``name`` the active project, creating it if missing.
+
+    Matches an existing project by slug (``slugify(name)``) or exact name.
+    ``opengrade.init()`` called afterwards exports traces to this project.
+
+    On platform unreachable / API failure, logs a warning and returns ``None``
+    so app startup is never blocked by a down opengrade host.
+    """
+    return resolve_or_create_project(name, get_client(), activate=True)
 
 
 async def aset_project(name: str) -> ProjectResponse | None:
