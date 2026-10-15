@@ -85,8 +85,8 @@ Priority: **P0** blocks a public release, **P1** fix before promoting it, **P2**
   `opengrade_server`, run `upgrade head` programmatically on startup under an advisory lock. (confirmed)
 - [ ] **Docker image not published** (`publish.yml` only does PyPI). Publish to GHCR/Docker Hub on tag,
   non-root user, documented env vars.
-- [ ] Decide `requires-python>=3.12` (PEP 695 generics) vs supporting 3.10/3.11 — still a large share
-  of production AI apps. (Keep in sync with "Python version bump" below.)
+- [x] Decide `requires-python>=3.12` (PEP 695 generics) vs supporting 3.10/3.11 — **keep `>=3.12`**
+  (PEP 695 / current CI+mypy). No backport to 3.10/3.11. Synced with "Python version bump" below.
 
 ### Packaging / getting started — P1
 
