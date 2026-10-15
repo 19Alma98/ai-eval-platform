@@ -25,7 +25,7 @@ The `opengrade` command ships with the SDK. Without the `[ui]` extra it exits wi
 Develop from this monorepo:
 
 ```bash
-cd sdk && uv sync --extra dev
+cd sdk && uv sync
 uv sync --extra openai   # add OpenAI instrumentor
 # UI packaging (server wheel): ./scripts/package-ui.sh then cd backend && uv sync
 ```
@@ -430,7 +430,7 @@ With the platform running and a project created:
 **Anthropic**
 
 ```bash
-cd sdk && uv sync --extra anthropic --extra dev
+cd sdk && uv sync --extra anthropic
 uv pip install anthropic
 uv run python -c "
 import opengrade
@@ -447,7 +447,7 @@ go(); opengrade.flush()
 **LangChain**
 
 ```bash
-cd sdk && uv sync --extra langchain --extra dev
+cd sdk && uv sync --extra langchain
 # install langchain + your LLM backend as needed
 uv run python -c "
 import opengrade

@@ -74,10 +74,10 @@ Priority: **P0** blocks a public release, **P1** fix before promoting it, **P2**
 
 ### Packaging / release — P0
 
-- [ ] No `LICENSE` file; no license / authors / project URLs / classifiers in either `pyproject.toml`.
-- [ ] No `py.typed` in the SDK wheel → typed API looks untyped to users.
-- [ ] `dev` extra (pytest, ruff, mypy) published to PyPI. Fix: move to `[dependency-groups]`.
-- [ ] `[ui]` / server pin only applied when `OPENGRADE_RELEASE_BUILD=1`. Fix: fail release builds
+- [x] No `LICENSE` file; no license / authors / project URLs / classifiers in either `pyproject.toml`.
+- [x] No `py.typed` in the SDK wheel → typed API looks untyped to users.
+- [x] `dev` extra (pytest, ruff, mypy) published to PyPI. Fix: move to `[dependency-groups]`.
+- [x] `[ui]` / server pin only applied when `OPENGRADE_RELEASE_BUILD=1`. Fix: fail release builds
   that don't set it (or pin unconditionally in CI).
 - [ ] **Migrations not shipped / not run outside Docker** (`infrastructure/db.py:85`,
   `pyproject.toml` packages only `src/opengrade_server`). `opengrade ui --backend-store-uri

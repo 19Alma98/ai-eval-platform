@@ -45,9 +45,9 @@ for job in "$@"; do
     backend)
       echo "==> package-ui"
       "$ROOT/scripts/package-ui.sh"
-      run_python_job backend src/opengrade_server "--all-extras"
+      run_python_job backend src/opengrade_server "--all-extras --group dev"
       ;;
-    sdk)      run_python_job sdk src/opengrade "--extra dev" ;;
+    sdk)      run_python_job sdk src/opengrade "--group dev" ;;
     frontend) run_frontend ;;
     *)
       echo "Unknown job: $job (expected: backend sdk frontend)" >&2

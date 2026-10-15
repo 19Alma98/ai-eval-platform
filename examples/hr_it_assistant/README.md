@@ -29,7 +29,7 @@ ollama pull tinyllama
 Sync the SDK env once:
 
 ```bash
-cd sdk && uv sync --extra openai --extra dev
+cd sdk && uv sync --extra openai
 ```
 
 ## Single question

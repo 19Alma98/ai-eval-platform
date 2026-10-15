@@ -43,7 +43,7 @@ Dataset-first RAG loop: gold test set → metrics pack → `opengrade.evaluate` 
 
 1. `docker compose up --build`
 2. Pull two chat models, e.g. `ollama pull gemma4:e2b` and `ollama pull tinyllama`
-3. Sync SDK: `cd sdk && uv sync --extra openai --extra dev && cd ..`
+3. Sync SDK: `cd sdk && uv sync --extra openai && cd ..`
 4. Sync server/CLI: `cd backend && uv sync && cd ..`
 5. Run: `python scripts/portfolio_demo.py`
 

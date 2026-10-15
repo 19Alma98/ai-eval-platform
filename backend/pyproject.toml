@@ -4,8 +4,28 @@ dynamic = ["version", "dependencies"]
 description = "AI Evaluation & Observability Platform server (FastAPI backend)"
 readme = "README.md"
 requires-python = ">=3.12"
+license = "Apache-2.0"
+license-files = ["LICENSE"]
+authors = [
+    { name = "Alessandro Magliola", email = "alessandromagliola1998@gmail.com" },
+]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Software Development :: Quality Assurance",
+    "Framework :: FastAPI",
+]
 
-[project.optional-dependencies]
+[project.urls]
+Homepage = "https://github.com/19Alma98/ai-eval-platform"
+Repository = "https://github.com/19Alma98/ai-eval-platform"
+Issues = "https://github.com/19Alma98/ai-eval-platform/issues"
+Documentation = "https://github.com/19Alma98/ai-eval-platform#readme"
+
+[dependency-groups]
 dev = [
     "pytest>=8.3.0",
     "pytest-asyncio>=0.24.0",
@@ -17,7 +37,7 @@ dev = [
 opengrade-server = "opengrade_server.cli:app"
 
 [build-system]
-requires = ["hatchling", "hatch-vcs"]
+requires = ["hatchling", "hatch-vcs", "packaging"]
 build-backend = "hatchling.build"
 
 [tool.hatch.version]
@@ -47,6 +67,7 @@ dependencies = [
 
 [tool.uv]
 cache-keys = [{ file = "pyproject.toml" }, { file = "hatch_build.py" }, { git = { commit = true, tags = true } }]
+default-groups = ["dev"]
 
 [tool.uv.sources]
 opengrade-ai = { path = "../sdk", editable = true }

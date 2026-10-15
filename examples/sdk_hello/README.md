@@ -11,7 +11,7 @@ Emits one CHAIN span (`@opengrade.trace`) and an LLM child span from
 ## Run
 
 ```bash
-cd sdk && uv sync --extra openai --extra dev && cd ..
+cd sdk && uv sync --extra openai && cd ..
 cd examples/sdk_hello
 uv run --directory ../../sdk --with openai python main.py
 # or: pip install -r requirements.txt && python main.py
