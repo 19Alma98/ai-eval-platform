@@ -67,7 +67,9 @@ def sample_rate() -> float:
     try:
         return _parse_rate(raw)
     except ValueError:
-        logger.warning("opengrade: invalid OPENGRADE_LIVE_SAMPLE_RATE=%r; judging every interaction", raw)
+        logger.warning(
+            "opengrade: invalid OPENGRADE_LIVE_SAMPLE_RATE=%r; judging every interaction", raw
+        )
         return 1.0
 
 

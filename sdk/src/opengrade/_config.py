@@ -53,7 +53,7 @@ def otlp_endpoint() -> str:
 
 
 def resolve_project_id(project_id: str | None = None) -> str:
-    """Project id for control-plane calls: argument > ``set_project()`` > ``OPENGRADE_PROJECT_ID``."""
+    """Project id for control-plane calls: argument > set_project() > OPENGRADE_PROJECT_ID."""
     resolved = project_id or _ACTIVE_PROJECT_ID or os.getenv("OPENGRADE_PROJECT_ID")
     if not resolved:
         raise ValueError(

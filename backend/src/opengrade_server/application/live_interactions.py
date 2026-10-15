@@ -39,7 +39,10 @@ from opengrade_server.domain.repositories import (
 from opengrade_server.domain.retrieval import normalize_documents
 from opengrade_server.domain.trace_score import TraceScore, trace_score_is_failed
 from opengrade_server.evaluation.judges.errors import JUDGE_OUTPUT_INVALID
-from opengrade_server.evaluation.judges.warnings import JUDGE_MODEL_UNSUITABLE, unsuitable_model_warning
+from opengrade_server.evaluation.judges.warnings import (
+    JUDGE_MODEL_UNSUITABLE,
+    unsuitable_model_warning,
+)
 from opengrade_server.evaluation.outcomes import item_verdict
 from opengrade_server.evaluation.protocol import EvaluationSample
 from opengrade_server.evaluation.registry import create_evaluator

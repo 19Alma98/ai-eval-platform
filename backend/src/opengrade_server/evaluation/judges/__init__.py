@@ -7,7 +7,11 @@ from typing import Any
 
 from opengrade_server.domain.repositories import JudgeClaimCacheRepository
 from opengrade_server.evaluation.judges.cache import InMemoryJudgeClaimCache
-from opengrade_server.evaluation.judges.evaluators import JUDGE_KINDS, JudgeDefaults, create_llm_judge
+from opengrade_server.evaluation.judges.evaluators import (
+    JUDGE_KINDS,
+    JudgeDefaults,
+    create_llm_judge,
+)
 from opengrade_server.evaluation.protocol import Evaluator, LlmClient
 
 

@@ -278,7 +278,10 @@ def flush(timeout_millis: int = 5000) -> bool:
         except Exception:  # noqa: BLE001
             logger.debug("opengrade: flush raised", exc_info=True)
             ok = False
-    from opengrade import _production, _scores  # lazy: avoids an import cycle through opengrade._context
+    from opengrade import (
+        _production,
+        _scores,
+    )  # lazy: avoids an import cycle through opengrade._context
 
     try:
         ok = _production.drain(max(0.0, deadline - time.monotonic())) and ok

@@ -304,10 +304,15 @@ def test_invalid_metric_configuration_fails_at_decoration() -> None:
         opengrade.trace(metrics=[lambda s: 1.0])
     with pytest.raises(ValueError, match="duplicate"):
         opengrade.trace(
-            metrics=[opengrade.metric(lambda s: 1.0, name="m"), opengrade.metric(lambda s: 0.0, name="m")]
+            metrics=[
+                opengrade.metric(lambda s: 1.0, name="m"),
+                opengrade.metric(lambda s: 0.0, name="m"),
+            ]
         )
     with pytest.raises(ValueError, match="sample_rate"):
-        opengrade.trace(metrics=[opengrade.metric(lambda s: 1.0, name="m")], metrics_sample_rate=1.5)
+        opengrade.trace(
+            metrics=[opengrade.metric(lambda s: 1.0, name="m")], metrics_sample_rate=1.5
+        )
     with pytest.raises(ValueError, match="sample_rate"):
         opengrade.trace_async(
             metrics=[opengrade.metric(lambda s: 1.0, name="m")], metrics_sample_rate=float("nan")
@@ -317,7 +322,9 @@ def test_invalid_metric_configuration_fails_at_decoration() -> None:
 @pytest.mark.parametrize("bad", [True, False, "0.5", None])
 def test_sample_rate_must_be_a_real_number(bad: Any) -> None:
     with pytest.raises(ValueError, match=r"metrics_sample_rate must be a number within \[0, 1\]"):
-        opengrade.trace(metrics=[opengrade.metric(lambda s: 1.0, name="m")], metrics_sample_rate=bad)
+        opengrade.trace(
+            metrics=[opengrade.metric(lambda s: 1.0, name="m")], metrics_sample_rate=bad
+        )
 
 
 def test_sync_trace_with_metrics_rejects_coroutine_and_generator_functions() -> None:

@@ -168,7 +168,7 @@ def metric(
 ) -> LocalMetric | Callable[[Callable[..., Any]], LocalMetric]:
     """Turn a function into a ``LocalMetric``.
 
-    ``@opengrade.metric`` or ``@opengrade.metric(threshold=0.5, version=2, requires=("documents",))``.
+    @opengrade.metric or @opengrade.metric(threshold=0.5, version=2, requires=("documents",)).
     ``version`` is stored as ``config["version"]``.
     """
 

@@ -188,7 +188,9 @@ def resolve_workers() -> int:
     try:
         return parse_workers(int(raw, 10))
     except ValueError:
-        logger.warning("opengrade: invalid OPENGRADE_METRICS_WORKERS=%r; using %d", raw, MAX_WORKERS)
+        logger.warning(
+            "opengrade: invalid OPENGRADE_METRICS_WORKERS=%r; using %d", raw, MAX_WORKERS
+        )
         return MAX_WORKERS
 
 
@@ -229,7 +231,7 @@ def normalize_metrics(
             raise TypeError(f"unsupported metric {item!r}")
         if not spec.name:
             raise ValueError(
-                "production metrics need a name: use a named function or @opengrade.metric(name=...)"
+                "production metrics need a name: use named function or @opengrade.metric(name=...)"
             )
         out.append(spec)
     names = [m.name for m in out]
@@ -405,7 +407,9 @@ def _run_metrics(metrics: tuple[LocalMetric, ...], sample: Sample, project_id: s
     for spec in metrics:
         missing = missing_requirement(sample, spec.requires)
         if missing is not None:
-            logger.debug("opengrade: metric %s skipped in production: missing %s", spec.name, missing)
+            logger.debug(
+                "opengrade: metric %s skipped in production: missing %s", spec.name, missing
+            )
             continue
         try:
             result = evaluate_metric(spec, sample, timeout=METRIC_TIMEOUT_S)

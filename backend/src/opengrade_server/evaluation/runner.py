@@ -13,7 +13,10 @@ from uuid import UUID
 from opengrade_server.domain.dataset import DatasetItem
 from opengrade_server.domain.evaluation import EvaluationResultRecord, EvaluationRun
 from opengrade_server.domain.evaluator import Evaluator as EvaluatorEntity
-from opengrade_server.evaluation.judges.warnings import JUDGE_MODEL_UNSUITABLE, unsuitable_model_warning
+from opengrade_server.evaluation.judges.warnings import (
+    JUDGE_MODEL_UNSUITABLE,
+    unsuitable_model_warning,
+)
 from opengrade_server.evaluation.outcomes import item_verdict
 from opengrade_server.evaluation.protocol import Evaluator
 from opengrade_server.evaluation.registry import create_evaluator

@@ -620,7 +620,9 @@ def test_missing_required_field_is_submitted_as_skipped(server: FakeServer) -> N
     def needs_docs(sample: opengrade.Sample) -> float:
         return 1.0
 
-    result = opengrade.evaluate(dataset=ROWS, task=lambda item: "no retrieval", metrics=[needs_docs])
+    result = opengrade.evaluate(
+        dataset=ROWS, task=lambda item: "no retrieval", metrics=[needs_docs]
+    )
 
     (submitted,) = server.client_results[result.id]
     assert [(r["score"], r["label"], r["explanation"]) for r in submitted["results"]] == [
@@ -777,7 +779,9 @@ def test_finish_survives_run_metrics_failure(server: FakeServer) -> None:
     assert result.metrics == {"hit_at_k": 0.5}
     assert result.experiment_metrics == {}
     assert not any(
-        key.startswith("opengrade.") for stored in server.experiment_metrics.values() for key in stored
+        key.startswith("opengrade.")
+        for stored in server.experiment_metrics.values()
+        for key in stored
     )
 
 
@@ -785,7 +789,9 @@ def test_summary_shows_negative_experiment_metric_delta(server: FakeServer) -> N
     base = opengrade.evaluate(dataset=ROWS, task=_task, metrics=["hit_at_k"], name="base")
     server.experiment_metrics[base.id]["cost_usd"] = 2.5
 
-    with opengrade.start_experiment("cand", dataset=ROWS, metrics=["hit_at_k"], baseline=base) as exp:
+    with opengrade.start_experiment(
+        "cand", dataset=ROWS, metrics=["hit_at_k"], baseline=base
+    ) as exp:
         exp.run_task(_task)
         exp.log_metrics({"cost_usd": 2.0})
 
@@ -798,7 +804,9 @@ def test_summary_shows_experiment_metric_delta_vs_baseline(server: FakeServer) -
     base = opengrade.evaluate(dataset=ROWS, task=_task, metrics=["hit_at_k"], name="base")
     server.experiment_metrics[base.id]["cost_usd"] = 1.5
 
-    with opengrade.start_experiment("cand", dataset=ROWS, metrics=["hit_at_k"], baseline=base) as exp:
+    with opengrade.start_experiment(
+        "cand", dataset=ROWS, metrics=["hit_at_k"], baseline=base
+    ) as exp:
         exp.run_task(_task)
         exp.log_metrics({"cost_usd": 2.0})
 

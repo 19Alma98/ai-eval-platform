@@ -8,7 +8,7 @@ import httpx2
 import pytest
 
 import opengrade
-from opengrade import OpengradeAPIError, AsyncClient
+from opengrade import AsyncClient, OpengradeAPIError
 from opengrade._http import _AsyncHttpTransport
 
 

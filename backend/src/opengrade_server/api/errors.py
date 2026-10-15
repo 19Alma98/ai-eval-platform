@@ -10,11 +10,17 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from sqlalchemy.exc import IntegrityError
 
-from opengrade_server.application.app_configs import AppConfigAliasNotFoundError, AppConfigNotFoundError
+from opengrade_server.application.app_configs import (
+    AppConfigAliasNotFoundError,
+    AppConfigNotFoundError,
+)
 from opengrade_server.application.compare import InvalidCompareSelectionError
 from opengrade_server.application.compare_items import AmbiguousEvaluatorError, DatasetMismatchError
 from opengrade_server.application.datasets import DatasetConflictError, DatasetNotFoundError
-from opengrade_server.application.evaluate import EmptyEvaluatorListError, EvaluationRunNotFoundError
+from opengrade_server.application.evaluate import (
+    EmptyEvaluatorListError,
+    EvaluationRunNotFoundError,
+)
 from opengrade_server.application.evaluators import (
     EvaluatorConflictError,
     EvaluatorNotFoundError,

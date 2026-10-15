@@ -12,7 +12,11 @@ from opengrade_server.evaluation.judges.errors import (
     JudgeOutputError,
     classify_llm_error,
 )
-from opengrade_server.evaluation.judges.parsing import CallOptions, call_structured, extract_json_object
+from opengrade_server.evaluation.judges.parsing import (
+    CallOptions,
+    call_structured,
+    extract_json_object,
+)
 from opengrade_server.evaluation.judges.schemas import (
     CoverageVerifyOut,
     ExtractOut,

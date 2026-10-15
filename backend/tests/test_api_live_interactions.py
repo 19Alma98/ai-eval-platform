@@ -16,6 +16,7 @@ from opengrade_server.api.deps import (
     get_project_repository,
     get_trace_score_repository,
 )
+from opengrade_server.config import get_settings
 from opengrade_server.domain.dataset import Dataset, DatasetItem
 from opengrade_server.domain.live_interaction import (
     LiveInteraction,
@@ -23,7 +24,6 @@ from opengrade_server.domain.live_interaction import (
     LiveScoreReview,
 )
 from opengrade_server.domain.project import Project
-from opengrade_server.config import get_settings
 from opengrade_server.evaluation import bootstrap_evaluators
 from opengrade_server.evaluation.registry import clear_registry
 from opengrade_server.infrastructure.db import bootstrap_schema, dispose_db, init_db

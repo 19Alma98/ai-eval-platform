@@ -587,7 +587,9 @@ class Experiment:
         try:
             self.log_metrics(_auto_metrics(records))
         except (OpengradeAPIError, httpx2.HTTPError) as exc:
-            logger.warning("opengrade: could not log run metrics for experiment %s: %s", self.id, exc)
+            logger.warning(
+                "opengrade: could not log run metrics for experiment %s: %s", self.id, exc
+            )
 
     def runs(self) -> list[ItemRun]:
         with self._lock:
@@ -633,13 +635,17 @@ class Experiment:
             try:
                 server_summary = self._client.experiments.summary(self.id)
             except (OpengradeAPIError, httpx2.HTTPError) as exc:
-                logger.warning("opengrade: could not fetch summary for experiment %s: %s", self.id, exc)
+                logger.warning(
+                    "opengrade: could not fetch summary for experiment %s: %s", self.id, exc
+                )
         # Compare needs evaluator runs on both sides; experiment metrics ride along.
         if scored and self.baseline_id is not None:
             try:
                 comparison = self._client.experiments.compare(self.id, self.baseline_id)
             except OpengradeAPIError as exc:
-                logger.warning("opengrade: compare with baseline %s failed: %s", self.baseline_id, exc)
+                logger.warning(
+                    "opengrade: compare with baseline %s failed: %s", self.baseline_id, exc
+                )
 
         project_id = self.experiment.project_id or None
         for record in records:

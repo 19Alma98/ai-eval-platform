@@ -22,7 +22,11 @@ from opengrade_server.evaluation.deterministic import (
     register_deterministic_evaluators,
 )
 from opengrade_server.evaluation.protocol import EvaluationSample
-from opengrade_server.evaluation.registry import clear_registry, create_evaluator, list_registered_kinds
+from opengrade_server.evaluation.registry import (
+    clear_registry,
+    create_evaluator,
+    list_registered_kinds,
+)
 from opengrade_server.evaluation.runner import EvaluationRunner
 from opengrade_server.evaluation.trace_context import build_eval_context_from_trace
 

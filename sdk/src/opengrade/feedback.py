@@ -143,7 +143,9 @@ def _warn_config(category: str, what: str, message: str) -> None:
         loud = last is None or now - last >= _WARN_EVERY_S
         if loud:
             _config_warned[category] = now
-    logger.log(logging.WARNING if loud else logging.DEBUG, "opengrade: %s ignored: %s", what, message)
+    logger.log(
+        logging.WARNING if loud else logging.DEBUG, "opengrade: %s ignored: %s", what, message
+    )
 
 
 def _describe(exc: BaseException) -> str:

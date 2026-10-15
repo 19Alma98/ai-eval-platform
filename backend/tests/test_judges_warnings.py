@@ -7,7 +7,10 @@ import pytest
 from opengrade_server.domain.dataset import DatasetItem
 from opengrade_server.domain.evaluation import EvaluationResultRecord, EvaluationRun
 from opengrade_server.domain.evaluator import Evaluator
-from opengrade_server.evaluation.judges.warnings import JUDGE_MODEL_UNSUITABLE, unsuitable_model_warning
+from opengrade_server.evaluation.judges.warnings import (
+    JUDGE_MODEL_UNSUITABLE,
+    unsuitable_model_warning,
+)
 from opengrade_server.evaluation.runner import EvaluationRunner
 from support.fake_llm import ScriptedJudgeLlm
 

@@ -7,7 +7,7 @@ import httpx2
 import pytest
 
 import opengrade
-from opengrade import OpengradeAPIError, Client
+from opengrade import Client, OpengradeAPIError
 from opengrade.client import Client as ClientDirect
 
 
