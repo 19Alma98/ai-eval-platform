@@ -40,3 +40,4 @@ opengrade.db
 **/opengrade.db
 
 .opengrade/
+.gstack/
