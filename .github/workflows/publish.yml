@@ -164,6 +164,4 @@ jobs:
         uses: pypa/gh-action-pypi-publish@release/v1
         with:
           packages-dir: dist/
-          # Upload both projects from the same workflow; each needs a Trusted
-          # Publisher on PyPI pointing at this repo + publish.yml + env `pypi`.
-          skip-existing: false
+          skip-existing: true
