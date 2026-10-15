@@ -288,7 +288,7 @@ def test_evaluate_prints_the_results_link(
     server: FakeServer, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
 ) -> None:
     result = opengrade.evaluate(dataset=ROWS, task=_task, metrics=["hit_at_k"], name="linked")
-    assert f"opengrade: experiment linked → {result.url}" in capsys.readouterr().err
+    assert f"opengrade: experiment linked -> {result.url}" in capsys.readouterr().err
 
     monkeypatch.setenv("OPENGRADE_QUIET", "1")
     opengrade.evaluate(dataset=ROWS, task=_task, metrics=["hit_at_k"], name="quiet")
@@ -907,6 +907,18 @@ def test_finish_survives_run_metrics_failure(server: FakeServer) -> None:
         for stored in server.experiment_metrics.values()
         for key in stored
     )
+
+
+def test_fmt_delta_labels_unchanged_as_not_significant() -> None:
+    from opengrade.experiment import _fmt_delta
+    from opengrade.models import MetricComparisonResponse
+
+    row = MetricComparisonResponse(delta=-0.083, status="unchanged")
+    assert _fmt_delta(row) == "-0.083 not significant"
+    row_n = MetricComparisonResponse(delta=0.01, status="insufficient_n")
+    assert _fmt_delta(row_n) == "+0.010 insufficient n"
+    row_ok = MetricComparisonResponse(delta=0.05, status="improved")
+    assert _fmt_delta(row_ok) == "+0.050 improved"
 
 
 def test_summary_shows_negative_experiment_metric_delta(server: FakeServer) -> None:

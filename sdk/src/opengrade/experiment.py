@@ -355,20 +355,31 @@ _MAX_ERROR_LINKS = 5
 
 
 def announce(result: ExperimentResult) -> None:
-    """Print where to see the results; ``OPENGRADE_QUIET=1`` silences it."""
+    """Print where to see the results; ``OPENGRADE_QUIET=1`` silences it.
+
+    Links use ``OPENGRADE_UI_URL`` when set, otherwise the API host (see ``ui_base_url``).
+    """
     if os.getenv("OPENGRADE_QUIET", "").strip().lower() in {"1", "true", "yes"}:
         return
-    print(f"opengrade: experiment {result.experiment.name} → {result.url}", file=sys.stderr)
+    print(f"opengrade: experiment {result.experiment.name} -> {result.url}", file=sys.stderr)
 
 
 def _fmt(value: float | None) -> str:
     return "-" if value is None else f"{value:.3f}"
 
 
+_STATUS_LABELS = {
+    "unchanged": "not significant",
+    "insufficient_n": "insufficient n",
+}
+
+
 def _fmt_delta(row: MetricComparisonResponse | None) -> str:
     if row is None or row.delta is None:
         return ""
-    return f"{row.delta:+.3f} {row.status or ''}".rstrip()
+    status = row.status or ""
+    label = _STATUS_LABELS.get(status, status.replace("_", " ") if status else "")
+    return f"{row.delta:+.3f} {label}".rstrip()
 
 
 # ---------------------------------------------------------------------------

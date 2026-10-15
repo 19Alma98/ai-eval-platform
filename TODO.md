@@ -60,16 +60,16 @@ Priority: **P0** blocks a public release, **P1** fix before promoting it, **P2**
 
 ### SDK — P2
 
-- [ ] Exceptions recorded twice on the span (`_trace.py:174-176`). Fix: `record_exception=False`. (confirmed)
-- [ ] `OPENGRADE_DISABLED` only affects `init()`; `log_score`, `log_feedback`, score sender still send
+- [x] Exceptions recorded twice on the span (`_trace.py:174-176`). Fix: `record_exception=False`. (confirmed)
+- [x] `OPENGRADE_DISABLED` only affects `init()`; `log_score`, `log_feedback`, score sender still send
   HTTP (`feedback.py:180-195`, `_production.py`). Fix: check `is_disabled()` in `_queue` / `after_call`. (code)
-- [ ] `import opengrade` takes ~0.87 s (protobuf, OTLP exporter, pydantic, httpx2 eager) → serverless
+- [x] `import opengrade` takes ~0.87 s (protobuf, OTLP exporter, pydantic, httpx2 eager) → serverless
   cold starts. Fix: lazy imports. (confirmed)
-- [ ] Ints outside int64 passed as attributes → OTel logs a traceback per span and drops the attribute
+- [x] Ints outside int64 passed as attributes → OTel logs a traceback per span and drops the attribute
   (`_trace.py:54-61`). Fix: stringify. (confirmed)
-- [ ] Windows console prints `→` literally; result links point to `localhost:8000` even when the UI
+- [x] Windows console prints `→` literally; result links point to `localhost:8000` even when the UI
   runs elsewhere; summary prints "−0.083 unchanged" without saying the drop is not significant.
-- [ ] OTLP exporter and control-plane client use different HTTP stacks (requests vs httpx2) → proxy/TLS
+- [x] OTLP exporter and control-plane client use different HTTP stacks (requests vs httpx2) → proxy/TLS
   settings can differ. Document or align.
 
 ### Packaging / release — P0

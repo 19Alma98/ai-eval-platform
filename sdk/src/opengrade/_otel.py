@@ -9,9 +9,6 @@ from collections.abc import Sequence
 from typing import Literal
 
 from opentelemetry import trace
-from opentelemetry.exporter.otlp.proto.http import Compression
-from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
-from opentelemetry.sdk.resources import Resource
 from opentelemetry.sdk.trace import ReadableSpan, TracerProvider
 from opentelemetry.sdk.trace.export import BatchSpanProcessor, SpanExporter, SpanExportResult
 from opentelemetry.util._once import Once
@@ -270,6 +267,10 @@ def init(
         logger.warning("opengrade: metrics_workers ignored: %s", exc)
 
     try:
+        from opentelemetry.exporter.otlp.proto.http import Compression
+        from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
+        from opentelemetry.sdk.resources import Resource
+
         config = resolve_config(
             project_id=project_id,
             project_slug=project_slug,

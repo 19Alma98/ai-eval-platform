@@ -366,6 +366,10 @@ def after_call(
 ) -> None:
     """Schedule the metrics for a finished call; never raises into the caller."""
     try:
+        from opengrade._otel import is_disabled
+
+        if is_disabled():
+            return
         ctx = span.get_span_context()
         if not span.is_recording() or not ctx.is_valid:
             return

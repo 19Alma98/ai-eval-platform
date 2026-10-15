@@ -2,13 +2,12 @@
 
 from __future__ import annotations
 
+from importlib import import_module
 from importlib.metadata import PackageNotFoundError
 from importlib.metadata import version as _version
+from typing import Any
 
 from opengrade._config import get_tracking_uri, set_tracking_uri
-from opengrade._context import aset_project, get_async_client, get_client, get_project, set_project
-from opengrade._eval_run import bind_evaluation, set_retrieval_documents
-from opengrade._http import OpengradeAPIError, OpengradeConnectionError, OpengradeError
 from opengrade._otel import flush, init
 from opengrade._trace import (
     current_trace_id,
@@ -20,22 +19,33 @@ from opengrade._trace import (
     trace,
     trace_async,
 )
-from opengrade.async_client import AsyncClient
-from opengrade.client import Client
-from opengrade.experiment import (
-    DatasetColumnError,
-    Experiment,
-    ExperimentResult,
-    ItemRun,
-    LocalMetric,
-    evaluate,
-    log_metrics,
-    log_params,
-    start_experiment,
-)
 from opengrade.feedback import log_feedback, log_score, score_trace
-from opengrade.metrics import Sample, Score, metric
-from opengrade.registry import AppConfigClient
+from opengrade.metrics import LocalMetric, Sample, Score, metric
+
+# Heavy modules (httpx2, pydantic, experiment stack) load on first attribute access.
+_LAZY: dict[str, tuple[str, str]] = {
+    "OpengradeAPIError": ("opengrade._errors", "OpengradeAPIError"),
+    "OpengradeConnectionError": ("opengrade._errors", "OpengradeConnectionError"),
+    "OpengradeError": ("opengrade._errors", "OpengradeError"),
+    "AppConfigClient": ("opengrade.registry", "AppConfigClient"),
+    "AsyncClient": ("opengrade.async_client", "AsyncClient"),
+    "Client": ("opengrade.client", "Client"),
+    "DatasetColumnError": ("opengrade.experiment", "DatasetColumnError"),
+    "Experiment": ("opengrade.experiment", "Experiment"),
+    "ExperimentResult": ("opengrade.experiment", "ExperimentResult"),
+    "ItemRun": ("opengrade.experiment", "ItemRun"),
+    "aset_project": ("opengrade._context", "aset_project"),
+    "bind_evaluation": ("opengrade._eval_run", "bind_evaluation"),
+    "evaluate": ("opengrade.experiment", "evaluate"),
+    "get_async_client": ("opengrade._context", "get_async_client"),
+    "get_client": ("opengrade._context", "get_client"),
+    "get_project": ("opengrade._context", "get_project"),
+    "log_metrics": ("opengrade.experiment", "log_metrics"),
+    "log_params": ("opengrade.experiment", "log_params"),
+    "set_project": ("opengrade._context", "set_project"),
+    "set_retrieval_documents": ("opengrade._eval_run", "set_retrieval_documents"),
+    "start_experiment": ("opengrade.experiment", "start_experiment"),
+}
 
 __all__ = [
     "__version__",
@@ -80,6 +90,21 @@ __all__ = [
     "trace",
     "trace_async",
 ]
+
+
+def __getattr__(name: str) -> Any:
+    try:
+        module_name, attr = _LAZY[name]
+    except KeyError:
+        raise AttributeError(f"module {__name__!r} has no attribute {name!r}") from None
+    value = getattr(import_module(module_name), attr)
+    globals()[name] = value
+    return value
+
+
+def __dir__() -> list[str]:
+    return sorted(__all__)
+
 
 try:
     __version__ = _version("opengrade-ai")

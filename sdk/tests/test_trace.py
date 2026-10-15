@@ -88,6 +88,8 @@ def test_trace_reraises_and_records_exception(spans: InMemorySpanExporter) -> No
         boom()
     span = spans.get_finished_spans()[0]
     assert span.status.status_code == StatusCode.ERROR
+    exception_events = [e for e in span.events if e.name == "exception"]
+    assert len(exception_events) == 1
 
 
 def test_trace_async(spans: InMemorySpanExporter) -> None:
@@ -181,6 +183,16 @@ def test_span_helpers_set_io_attrs_and_trace_id(spans: InMemorySpanExporter) -> 
     assert seen["trace_id"] == format(span.context.trace_id, "032x")
 
 
+def test_attr_value_stringifies_ints_outside_int64() -> None:
+    from opengrade._trace import _attr_value
+
+    assert _attr_value(2**63) == str(2**63)
+    assert _attr_value(-(2**63) - 1) == str(-(2**63) - 1)
+    assert _attr_value(2**63 - 1) == 2**63 - 1
+    assert _attr_value(-(2**63)) == -(2**63)
+    assert _attr_value(True) is True
+
+
 def test_set_error_marks_span(spans: InMemorySpanExporter) -> None:
     @opengrade.trace(name="err", capture_input=False, capture_output=False)
     def run() -> None:
@@ -213,14 +225,14 @@ def test_skips_serialize_when_not_recording(monkeypatch: pytest.MonkeyPatch) -> 
     monkeypatch.setattr(_trace, "truncate_value", counting_truncate)
 
     @contextmanager
-    def non_recording_span(_name: str):
+    def non_recording_span(_name: str, **_kwargs: object):
         span = MagicMock()
         span.is_recording.return_value = False
         yield span
 
     class _Tracer:
-        def start_as_current_span(self, name: str):
-            return non_recording_span(name)
+        def start_as_current_span(self, name: str, **kwargs: object):
+            return non_recording_span(name, **kwargs)
 
     monkeypatch.setattr(_trace.otel_trace, "get_tracer", lambda _name: _Tracer())
 

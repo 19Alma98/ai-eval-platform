@@ -253,3 +253,43 @@ def test_init_honors_service_name_env(monkeypatch: pytest.MonkeyPatch) -> None:
 
 def test_flush_without_init_returns_true() -> None:
     assert opengrade.flush() is True
+
+
+def test_otlp_exporter_not_imported_until_init(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Cold-start path: importing opengrade / calling is_disabled must not load protobuf OTLP."""
+    import sys
+
+    monkeypatch.setenv("OPENGRADE_DISABLED", "1")
+    doomed = [name for name in sys.modules if "opentelemetry.exporter.otlp" in name]
+    for name in doomed:
+        del sys.modules[name]
+
+    assert opengrade._otel.is_disabled()
+    assert not any("opentelemetry.exporter.otlp" in name for name in sys.modules)
+
+    opengrade.init(project_slug="demo", instrument=False)
+    assert not any("opentelemetry.exporter.otlp" in name for name in sys.modules)
+
+
+def test_package_import_defers_httpx_and_otlp() -> None:
+    """Documented cold-start graph: ``import opengrade`` leaves heavy deps unloaded.
+
+    Runs in a subprocess so earlier tests cannot have already imported the modules.
+    """
+    import subprocess
+    import sys
+
+    script = """
+import sys
+import opengrade
+assert opengrade.trace is not None
+assert "httpx2" not in sys.modules
+assert "pydantic" not in sys.modules
+assert not any("opentelemetry.exporter.otlp" in m for m in sys.modules)
+assert "opengrade.client" not in sys.modules
+assert "opengrade.experiment" not in sys.modules
+"""
+    result = subprocess.run(
+        [sys.executable, "-c", script], check=False, capture_output=True, text=True
+    )
+    assert result.returncode == 0, result.stderr

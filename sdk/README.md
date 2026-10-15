@@ -390,14 +390,21 @@ Install the extra for the providers you use, then `init(instrument="auto")` acti
 | Variable | Purpose |
 |---|---|
 | `OPENGRADE_TRACKING_URI` | Platform URL for `Client()` and OTLP (default `http://localhost:8000`); `set_tracking_uri()` wins |
+| `OPENGRADE_UI_URL` | Base URL for experiment/trace links in `announce()` / `ExperimentResult.url` (default: same as the API host) |
 | `OPENGRADE_PROJECT_ID` | Project UUID header (`X-Project-Id`); used when no `set_project()` / `init()` argument |
 | `OPENGRADE_PROJECT_SLUG` | Project slug header (`X-Project-Slug`); the project must already exist |
 | `OPENGRADE_SERVICE_NAME` | OpenTelemetry `service.name` (default `opengrade-app`) |
 | `OPENGRADE_OTLP_ENDPOINT` | Optional override of the derived OTLP URL (e.g. a separate collector) |
-| `OPENGRADE_DISABLED` | `1` / `true` / `yes` / `on` turns `init()` into a no-op (decorators keep working, nothing is exported) |
+| `OPENGRADE_DISABLED` | `1` / `true` / `yes` / `on` turns `init()` into a no-op and skips score/feedback HTTP (`log_score`, `log_feedback`, production metrics); decorators keep working |
 | `OPENGRADE_METRICS_WORKERS` | Size of the `@opengrade.trace(metrics=...)` background pool (default `2`, range 1–64); `init(metrics_workers=...)` wins |
 
 Project precedence for `init()`: arguments > `set_project()` > env. If both `OPENGRADE_PROJECT_ID` and `OPENGRADE_PROJECT_SLUG` are set, id wins. `init(project_slug=…)` also wires control-plane calls (`log_score`, production metrics) via lazy slug→id resolution.
+
+When the UI is served on a different host than the API, set `OPENGRADE_UI_URL` so result links open the UI instead of the API origin.
+
+### HTTP stacks (proxy / TLS)
+
+Control-plane calls (`Client`, `log_score`, experiments) use **httpx2**. OTLP span export uses OpenTelemetry’s HTTP exporter (**requests** / **urllib3**). Proxy and TLS settings can therefore differ: configure httpx2 for the API client, and `HTTP_PROXY` / `HTTPS_PROXY` / `REQUESTS_CA_BUNDLE` (or equivalent) for trace export. If the two stacks disagree in your environment, set `OPENGRADE_DISABLED=1` to stop tracing and score posts, or align both proxy/CA configs.
 
 ## Failure behavior
 

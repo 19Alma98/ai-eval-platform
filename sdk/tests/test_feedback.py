@@ -131,6 +131,14 @@ def test_no_project_warns(
     assert any("No project" in r.message for r in caplog.records)
 
 
+def test_log_score_noop_when_disabled(sent: Recorder, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("OPENGRADE_DISABLED", "1")
+    assert opengrade.log_score("q", 1.0, trace_id=TID) is False
+    assert opengrade.log_feedback(True, trace_id=TID) is False
+    opengrade.flush()
+    assert sent.scores == []
+
+
 def test_score_trace_runs_metric_and_queues_result(sent: Recorder) -> None:
     @opengrade.metric(threshold=0.5)
     def short(s: opengrade.Sample) -> opengrade.Score:

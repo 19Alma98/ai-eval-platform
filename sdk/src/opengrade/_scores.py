@@ -12,7 +12,7 @@ from collections import deque
 from collections.abc import Callable
 from typing import Any
 
-from opengrade._http import OpengradeAPIError
+from opengrade._errors import OpengradeAPIError
 
 logger = logging.getLogger("opengrade")
 

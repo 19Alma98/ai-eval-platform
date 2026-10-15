@@ -179,6 +179,10 @@ def _guarded(what: str, action: Callable[[], bool]) -> bool:
 
 def _queue(what: str, trace_id: str | None, build: Callable[[], dict[str, Any]]) -> bool:
     """Resolve trace + project, build the payload, enqueue; warn and return False on any problem."""
+    from opengrade._otel import is_disabled
+
+    if is_disabled():
+        return False
 
     def action() -> bool:
         resolved = trace_id if trace_id is not None else _trace.current_trace_id()

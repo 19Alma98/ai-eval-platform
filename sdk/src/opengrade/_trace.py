@@ -59,10 +59,16 @@ def _current_span() -> Span:
     return otel_trace.get_current_span()
 
 
+_INT64_MIN = -(2**63)
+_INT64_MAX = 2**63 - 1
+
+
 def _attr_value(value: object) -> bool | int | float | str:
     if isinstance(value, bool):
         return value
     if isinstance(value, int) and not isinstance(value, bool):
+        if value < _INT64_MIN or value > _INT64_MAX:
+            return str(value)
         return value
     if isinstance(value, float):
         return value
@@ -131,7 +137,9 @@ def _span_session(
 ) -> Iterator[tuple[Span, Any]]:
     """Open a span; yield ``(span, capture_token)``. Caller ends metrics via ``_finish_span``."""
     tracer = otel_trace.get_tracer(_TRACER_NAME)
-    with tracer.start_as_current_span(span_name) as span:
+    with tracer.start_as_current_span(
+        span_name, record_exception=False, set_status_on_exception=False
+    ) as span:
         span.set_attribute("openinference.span.kind", kind)
         if capture_input and span.is_recording():
             span.set_attribute("input.value", _serialize_args(args, kwargs))
