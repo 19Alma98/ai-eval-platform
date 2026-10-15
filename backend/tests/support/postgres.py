@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import os
 import re
+import socket
 from collections.abc import AsyncIterator
 
 import pytest
@@ -25,6 +26,8 @@ def integration_database_url() -> str:
 
 
 def _is_unreachable(exc: BaseException) -> bool:
+    if isinstance(exc, (ConnectionError, TimeoutError, socket.gaierror)):
+        return True
     text_exc = str(exc).lower()
     return any(
         token in text_exc
