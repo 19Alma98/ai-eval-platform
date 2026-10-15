@@ -12,7 +12,13 @@ import pytest
 
 import opengrade
 from opengrade import Client, _context
-from opengrade.experiment import _auto_metrics, _output_entry
+from opengrade.experiment import (
+    _auto_metrics,
+    _chunk_by_bytes,
+    _inline_dataset_id,
+    _jsonable,
+    _output_entry,
+)
 from opengrade.models import DatasetItemResponse
 
 PROJECT_ID = str(uuid.uuid4())
@@ -282,6 +288,52 @@ def test_evaluate_reuses_inline_dataset_and_metrics_set(server: FakeServer) -> N
     opengrade.evaluate(dataset=ROWS, task=_task, metrics=["hit_at_k"], name="b")
     assert len(server.datasets) == 1
     assert len(server.metrics_sets) == 2  # default + one sdk set
+
+
+def test_inline_dataset_resumes_partial_create(server: FakeServer) -> None:
+    rows = [{"input": f"q{i}"} for i in range(5)]
+    # First call creates the dataset then fails mid-upload.
+    calls = {"n": 0}
+    original_add = server.handler
+
+    def flaky(request: httpx2.Request) -> httpx2.Response:
+        if request.method == "POST" and request.url.path.endswith("/items"):
+            calls["n"] += 1
+            if calls["n"] == 3:
+                return httpx2.Response(503, json={"detail": "blip"})
+        return original_add(request)
+
+    server.handler = flaky  # type: ignore[method-assign]
+    _context._CLIENT = opengrade.Client("http://test", transport=httpx2.MockTransport(flaky))
+    client = opengrade.get_client()
+    with pytest.raises(opengrade.OpengradeAPIError):
+        _inline_dataset_id(client, PROJECT_ID, rows, task_type="rag_qa")
+    assert len(server.datasets) == 1
+    ds_id = next(iter(server.datasets))
+    assert len(server.items[ds_id]) == 2  # failed on 3rd
+
+    # Second call resumes remaining items.
+    _context._CLIENT = opengrade.Client("http://test", transport=httpx2.MockTransport(original_add))
+    server.handler = original_add  # type: ignore[method-assign]
+    resumed = _inline_dataset_id(opengrade.get_client(), PROJECT_ID, rows, task_type="rag_qa")
+    assert resumed == ds_id
+    assert len(server.items[ds_id]) == 5
+
+
+def test_jsonable_replaces_non_finite_floats() -> None:
+    assert _jsonable({"x": float("nan"), "y": float("inf"), "z": 1.5}) == {
+        "x": None,
+        "y": None,
+        "z": 1.5,
+    }
+
+
+def test_chunk_by_bytes_splits_large_payloads() -> None:
+    items = [{"id": i, "blob": "x" * 1000} for i in range(10)]
+    chunks = list(_chunk_by_bytes(items, max_count=100, max_bytes=2500))
+    assert len(chunks) > 1
+    assert sum(len(c) for c in chunks) == 10
+    assert all(len(c) >= 1 for c in chunks)
 
 
 def test_evaluate_by_dataset_name_with_baseline_by_name(server: FakeServer) -> None:

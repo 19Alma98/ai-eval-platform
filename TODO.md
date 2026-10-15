@@ -11,42 +11,22 @@ Priority: **P0** blocks a public release, **P1** fix before promoting it, **P2**
 
 ### SDK — P0 (an observability SDK must never break the host app)
 
-- [ ] **`init()` hijacks the global OTel TracerProvider** (`_otel.py:130-148,209-211,239`). If the app
-  already has OTel (Datadog, Honeycomb…), opengrade's provider is not installed but `_INITIALIZED=True`,
-  so `@trace` spans go to the host backend. `init(force=True)` shuts down the host's provider.
-  Fix: attach via `add_span_processor` to an existing SDK provider; never shut down a provider we
-  didn't create. (confirmed)
-- [ ] **`@trace` always uses a sync wrapper** (`_trace.py:156-187`). On `async def` the span ends
-  immediately with `output="<coroutine object>"` and `iscoroutinefunction(wrapper)` is False (breaks
-  FastAPI); on generators the span closes before the first token; `@trace_async` on an async generator
-  raises `TypeError` in the user's code. Fix: one decorator dispatching on function kind, span open
-  until the result is fully consumed. (confirmed)
-- [ ] **OTLP batches have no size cap / compression** (`_otel.py:236-238`). Server limit 4 MiB → 413,
-  whole batch dropped, then 30 s cooldown drops following spans unsent. Fix: gzip, smaller
-  `max_export_batch_size` / span size cap, split batch on 413 instead of cooldown. (confirmed)
-- [ ] **Transport errors escape raw** (`_http.py:68-74`, `_context.py:139`). `httpx2.ConnectError` is
-  not an `OpengradeAPIError`; `set_project("demo")` crashes app startup when the platform is down and
-  can block 2×30 s on a black-holed host; `experiment.py:579,646` only catch `OpengradeAPIError`.
-  Fix: `OpengradeError` → `APIError` / `ConnectionError` hierarchy, retries with backoff, lazy /
-  non-raising project resolution. (confirmed)
-- [ ] **Shared `AsyncClient` bound to the first event loop** (`_context.py:42-49`). Second
-  `asyncio.run()` (Celery, scripts, tests) → `RuntimeError: Event loop is closed`; `set_tracking_uri()`
-  raises the same from `_reset_client`. Fix: one client per loop (WeakKeyDictionary), swallow close
-  errors. (confirmed)
-- [ ] **`resolve_project_id` ignores `init(project_id=…/project_slug=…)` and `OPENGRADE_PROJECT_SLUG`**
-  (`_config.py:52-62`). README production setup `init(project_slug="acme", live=True)` drops every
-  `log_score` / `log_feedback` / `trace(metrics=…)` with "No project". Setting both
-  `OPENGRADE_PROJECT_ID` and `OPENGRADE_PROJECT_SLUG` disables tracing (`_config.py:106`). Fix: `init()`
-  records the active project (lazy slug→id), id wins over slug. (confirmed)
-- [ ] **Inline dataset partially created then reused** (`experiment.py:885-897`, `client.py:147-168`).
-  Dataset (named by content hash) is created before items, items uploaded one POST each, no rollback.
-  Network blip at row 3/5 → later `evaluate()` silently runs on 2/5 rows; failure on row 1 → "dataset
-  has no items" forever. Fix: atomic bulk create, or verify stored item count/hash before reuse. (confirmed)
-- [ ] **`finish()` crashes after all task work** (`experiment.py:115-119,578,614-615`). Outputs
-  uploaded 100/request with no byte cap (100×54 KB → 413); `_jsonable` lets NaN through →
-  `ValueError: Out of range float values`; client-results sent unchunked → 413 → "local only".
-  Experiment left unfinished. Fix: chunk by bytes, NaN/inf → null, each upload step fails on its own.
-  (confirmed)
+- [x] **`init()` hijacks the global OTel TracerProvider** — attach via `add_span_processor`; never shut
+  down a provider we didn't create. (fixed)
+- [x] **`@trace` always uses a sync wrapper** — dispatch on sync / async / gen / async-gen; span open
+  until the result is fully consumed. (fixed)
+- [x] **OTLP batches have no size cap / compression** — gzip, smaller batch size, split on failure
+  instead of cooldown storm. (fixed)
+- [x] **Transport errors escape raw** — `OpengradeError` / `OpengradeConnectionError` hierarchy;
+  soft `set_project`; broader experiment catches. (fixed)
+- [x] **Shared `AsyncClient` bound to the first event loop** — one client per loop
+  (`WeakKeyDictionary`); swallow close errors. (fixed)
+- [x] **`resolve_project_id` ignores `init(project_id=…/project_slug=…)`** — `init()` records the
+  active project (lazy slug→id); env id wins over slug. (fixed)
+- [x] **Inline dataset partially created then reused** — verify item count on reuse; resume
+  `add_item` for remaining rows. (fixed)
+- [x] **`finish()` crashes after all task work** — byte-chunk upserts / client-results; NaN/inf →
+  null; per-chunk upload errors isolated. (fixed)
 
 ### SDK — P1
 

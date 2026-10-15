@@ -7,7 +7,14 @@ from typing import Any
 import httpx2
 import pytest
 
-from opengrade._http import OpengradeAPIError, _HttpTransport, read_upload, resolve_api_base_url
+from opengrade._http import (
+    OpengradeAPIError,
+    OpengradeConnectionError,
+    OpengradeError,
+    _HttpTransport,
+    read_upload,
+    resolve_api_base_url,
+)
 
 
 def test_request_json_post_and_get() -> None:
@@ -63,6 +70,22 @@ def test_request_raises_opengrade_api_error() -> None:
     assert exc_info.value.status == 404
     assert "missing" in exc_info.value.body
     assert exc_info.value.detail == "missing"
+    assert isinstance(exc_info.value, OpengradeError)
+    transport.close()
+
+
+def test_request_wraps_connect_error(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr("opengrade._http._CONNECT_RETRY_BACKOFF_S", 0.0)
+
+    def handler(request: httpx2.Request) -> httpx2.Response:
+        raise httpx2.ConnectError("boom", request=request)
+
+    transport = _HttpTransport(
+        "http://localhost:8000",
+        transport=httpx2.MockTransport(handler),
+    )
+    with pytest.raises(OpengradeConnectionError, match="platform unreachable"):
+        transport.request("GET", "/api/v1/projects")
     transport.close()
 
 

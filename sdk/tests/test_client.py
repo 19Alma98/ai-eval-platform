@@ -198,7 +198,7 @@ def test_public_exports() -> None:
     assert "AsyncClient" in opengrade.__all__
     assert "OpengradeAPIError" in opengrade.__all__
     assert Client is ClientDirect
-    assert issubclass(OpengradeAPIError, RuntimeError)
+    assert issubclass(OpengradeAPIError, opengrade.OpengradeError)
 
 
 def test_health_and_projects(

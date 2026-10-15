@@ -163,9 +163,32 @@ class _DatasetsResource:
             task_type=task_type,
         )
         dataset_id = str(dataset.id)
-        for item in items:
-            self.add_item(dataset_id, **item)
+        self._add_items_from(dataset_id, items, start=0)
         return dataset
+
+    def _add_items_from(
+        self,
+        dataset_id: str,
+        items: builtins.list[dict[str, Any]],
+        *,
+        start: int,
+    ) -> None:
+        """Append ``items[start:]``; leaves a prefix dataset on mid-loop failure."""
+        for item in items[start:]:
+            self.add_item(dataset_id, **item)
+
+    def ensure_items(
+        self,
+        dataset_id: str,
+        items: builtins.list[dict[str, Any]],
+    ) -> int:
+        """Resume uploading until the dataset has ``len(items)`` rows; return stored count."""
+        detail = self.get(dataset_id)
+        have = len(detail.items)
+        if have >= len(items):
+            return have
+        self._add_items_from(dataset_id, items, start=have)
+        return len(items)
 
     def import_items(
         self,

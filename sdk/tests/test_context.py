@@ -59,7 +59,13 @@ class FakeServer:
     def install(self) -> None:
         transport = httpx2.MockTransport(self.handler)
         _context._CLIENT = opengrade.Client("http://test", transport=transport)
-        _context._ASYNC_CLIENT = opengrade.AsyncClient("http://test", transport=transport)
+        async_client = opengrade.AsyncClient("http://test", transport=transport)
+        _context._ASYNC_CLIENT_NO_LOOP = async_client
+        try:
+            loop = asyncio.get_running_loop()
+            _context._ASYNC_CLIENTS[loop] = async_client
+        except RuntimeError:
+            pass
 
 
 def test_tracking_uri_default_and_env(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -102,12 +108,42 @@ def test_get_async_client_is_shared_and_reset_on_uri_change() -> None:
     assert second.base_url == "http://other:1"
 
 
+def test_async_client_per_event_loop() -> None:
+    clients: list[object] = []
+
+    async def grab() -> None:
+        clients.append(opengrade.get_async_client())
+
+    asyncio.run(grab())
+    asyncio.run(grab())
+    assert len(clients) == 2
+    assert clients[0] is not clients[1]
+
+
+def test_set_tracking_uri_after_closed_loop_does_not_raise() -> None:
+    async def use_client() -> None:
+        opengrade.get_async_client()
+
+    asyncio.run(use_client())
+    opengrade.set_tracking_uri("http://other:1")
+    assert opengrade.get_async_client().base_url == "http://other:1"
+
+
+def test_set_project_platform_down_returns_none(caplog: pytest.LogCaptureFixture) -> None:
+    # Port 9: connection refused (or black-holed); must not raise into the app.
+    opengrade.set_tracking_uri("http://127.0.0.1:9")
+    with caplog.at_level(logging.WARNING, logger="opengrade"):
+        assert opengrade.set_project("demo") is None
+    assert any("set_project" in r.message for r in caplog.records)
+
+
 def test_after_fork_hook_resets_shared_client() -> None:
     parent = opengrade.get_client()
     parent_async = opengrade.get_async_client()
     _context._after_fork_in_child()
     assert _context._CLIENT is None
-    assert _context._ASYNC_CLIENT is None
+    assert _context._ASYNC_CLIENT_NO_LOOP is None
+    assert len(_context._ASYNC_CLIENTS) == 0
     child = opengrade.get_client()
     child_async = opengrade.get_async_client()
     assert child is not parent
@@ -152,11 +188,12 @@ def test_set_project_rejects_empty() -> None:
 
 def test_aset_project_creates_when_missing() -> None:
     server = FakeServer()
-    server.install()
 
     async def main() -> None:
+        server.install()
         project = await opengrade.aset_project("HR Assistant")
         assert server.created == [{"name": "HR Assistant", "slug": "hr-assistant"}]
+        assert project is not None
         assert project.slug == "hr-assistant"
         assert opengrade.get_project() == project
 
@@ -165,10 +202,11 @@ def test_aset_project_creates_when_missing() -> None:
 
 def test_aset_project_reuses_existing_by_slug() -> None:
     server = FakeServer([_project("p-1", "Whatever", "hr-assistant")])
-    server.install()
 
     async def main() -> None:
+        server.install()
         project = await opengrade.aset_project("hr-assistant")
+        assert project is not None
         assert project.id == "p-1"
         assert server.created == []
 
@@ -178,10 +216,12 @@ def test_aset_project_reuses_existing_by_slug() -> None:
 def test_aset_project_handles_concurrent_create() -> None:
     server = FakeServer()
     server.conflict_once_with = _project("p-race", "hr-assistant", "hr-assistant")
-    server.install()
 
     async def main() -> None:
-        assert (await opengrade.aset_project("hr-assistant")).id == "p-race"
+        server.install()
+        project = await opengrade.aset_project("hr-assistant")
+        assert project is not None
+        assert project.id == "p-race"
 
     asyncio.run(main())
 

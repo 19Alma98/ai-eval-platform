@@ -8,7 +8,7 @@ from importlib.metadata import version as _version
 from opengrade._config import get_tracking_uri, set_tracking_uri
 from opengrade._context import aset_project, get_async_client, get_client, get_project, set_project
 from opengrade._eval_run import bind_evaluation, set_retrieval_documents
-from opengrade._http import OpengradeAPIError
+from opengrade._http import OpengradeAPIError, OpengradeConnectionError, OpengradeError
 from opengrade._otel import flush, init
 from opengrade._trace import (
     current_trace_id,
@@ -40,6 +40,8 @@ from opengrade.registry import AppConfigClient
 __all__ = [
     "__version__",
     "OpengradeAPIError",
+    "OpengradeConnectionError",
+    "OpengradeError",
     "AppConfigClient",
     "AsyncClient",
     "Client",

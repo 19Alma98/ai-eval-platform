@@ -9,6 +9,7 @@ from collections.abc import Sequence
 from typing import Literal
 
 from opentelemetry import trace
+from opentelemetry.exporter.otlp.proto.http import Compression
 from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
 from opentelemetry.sdk.resources import Resource
 from opentelemetry.sdk.trace import ReadableSpan, TracerProvider
@@ -30,9 +31,14 @@ EXPORT_TIMEOUT_S = 5.0
 FAILURE_COOLDOWN_S = 30.0
 # Per-stage cap for span flush at exit (shares EXIT_FLUSH_TIMEOUT_S with metrics/scores).
 EXIT_FLUSH_TIMEOUT_MS = 2000
+# Stay under the platform's 4 MiB OTLP body limit (serialized, pre-gzip).
+OTLP_MAX_REQUEST_BYTES = 2 * 1024 * 1024
+OTLP_MAX_EXPORT_BATCH_SIZE = 64
 
 _PROVIDER: TracerProvider | None = None
+_PROCESSOR: BatchSpanProcessor | None = None
 _EXPORTER: _SafeSpanExporter | None = None
+_OWNS_PROVIDER: bool = False
 _INITIALIZED: bool = False
 _ATEXIT_REGISTERED: bool = False
 
@@ -73,16 +79,36 @@ class _SafeSpanExporter(SpanExporter):
         if self._closed or time.monotonic() < self._retry_after:
             self._drop(len(spans))
             return SpanExportResult.FAILURE
+        batch = list(spans)
+        result = self._export_split(batch)
+        if result is SpanExportResult.SUCCESS:
+            self._on_success()
+            return result
+        # Single-span failure (often oversize): drop without silencing later batches.
+        if len(batch) <= 1:
+            return SpanExportResult.FAILURE
+        # Whole batch failed even after bisecting → treat as connectivity outage.
+        self._on_failure(0)  # leaves already counted drops
+        return SpanExportResult.FAILURE
+
+    def _export_split(self, spans: list[ReadableSpan]) -> SpanExportResult:
         try:
             result = self._inner.export(spans)
         except Exception:  # noqa: BLE001 — export must never raise into the app
             logger.debug("opengrade: span export raised", exc_info=True)
             result = SpanExportResult.FAILURE
         if result is SpanExportResult.SUCCESS:
-            self._on_success()
-        else:
-            self._on_failure(len(spans))
-        return result
+            return SpanExportResult.SUCCESS
+        if len(spans) <= 1:
+            self._drop(len(spans))
+            logger.debug("opengrade: dropped %d oversize or rejected span(s)", len(spans))
+            return SpanExportResult.FAILURE
+        mid = len(spans) // 2
+        left = self._export_split(spans[:mid])
+        right = self._export_split(spans[mid:])
+        if left is SpanExportResult.SUCCESS or right is SpanExportResult.SUCCESS:
+            return SpanExportResult.SUCCESS
+        return SpanExportResult.FAILURE
 
     def _drop(self, count: int) -> None:
         with self._lock:
@@ -127,25 +153,47 @@ class _SafeSpanExporter(SpanExporter):
         return True
 
 
-def _shutdown_and_reset_global_tracer_provider() -> None:
-    global _PROVIDER, _EXPORTER
-    shutdown_targets: set[TracerProvider] = set()
-    if _PROVIDER is not None:
-        shutdown_targets.add(_PROVIDER)
-    otel_tp = getattr(trace, "_TRACER_PROVIDER", None)
-    if isinstance(otel_tp, TracerProvider):
-        shutdown_targets.add(otel_tp)
-    for provider in shutdown_targets:
+def _teardown_opengrade_tracing(*, reset_global: bool) -> None:
+    """Stop opengrade export. Only shut down / clear the global provider when we own it."""
+    global _PROVIDER, _PROCESSOR, _EXPORTER, _OWNS_PROVIDER
+    processor, exporter, provider, owns = _PROCESSOR, _EXPORTER, _PROVIDER, _OWNS_PROVIDER
+    _PROCESSOR = None
+    _EXPORTER = None
+    _PROVIDER = None
+    _OWNS_PROVIDER = False
+
+    if exporter is not None:
+        exporter.close()
+    if processor is not None:
+        try:
+            processor.shutdown()  # type: ignore[no-untyped-call]
+        except Exception:  # noqa: BLE001
+            logger.debug("opengrade: span processor shutdown raised", exc_info=True)
+
+    if reset_global and owns and provider is not None:
         try:
             provider.shutdown()
         except Exception:  # noqa: BLE001
             logger.debug("opengrade: tracer provider shutdown raised", exc_info=True)
+        # Private OTEL globals — only when opengrade installed the global provider.
+        setattr(trace, "_TRACER_PROVIDER", None)  # noqa: B010
+        setattr(trace, "_TRACER_PROVIDER_SET_ONCE", Once())  # noqa: B010
 
-    _PROVIDER = None
-    _EXPORTER = None
-    # Private OTEL globals — used to allow force=True re-init in tests/apps.
-    setattr(trace, "_TRACER_PROVIDER", None)  # noqa: B010
-    setattr(trace, "_TRACER_PROVIDER_SET_ONCE", Once())  # noqa: B010
+
+def _shutdown_and_reset_global_tracer_provider() -> None:
+    """Tear down opengrade tracing and clear the global provider (test / owned-init path)."""
+    owns = _OWNS_PROVIDER
+    _teardown_opengrade_tracing(reset_global=owns)
+    if not owns:
+        # Test isolation: drop whatever is on the global slot without assuming ownership.
+        otel_tp = getattr(trace, "_TRACER_PROVIDER", None)
+        if isinstance(otel_tp, TracerProvider):
+            try:
+                otel_tp.shutdown()
+            except Exception:  # noqa: BLE001
+                logger.debug("opengrade: tracer provider shutdown raised", exc_info=True)
+        setattr(trace, "_TRACER_PROVIDER", None)  # noqa: B010
+        setattr(trace, "_TRACER_PROVIDER_SET_ONCE", Once())  # noqa: B010
 
 
 def _reset_for_tests() -> None:
@@ -156,8 +204,8 @@ def _reset_for_tests() -> None:
 
 
 def _at_exit() -> None:
-    """Flush pending spans (bounded), then stop export so exit never hangs."""
-    provider, exporter = _PROVIDER, _EXPORTER
+    """Flush pending spans (bounded), then stop opengrade export so exit never hangs."""
+    provider = _PROVIDER
     if provider is None:
         return
     from opengrade import _scores  # lazy: avoids an import cycle through opengrade._context
@@ -168,12 +216,7 @@ def _at_exit() -> None:
         provider.force_flush(timeout_ms)
     except Exception:  # noqa: BLE001
         logger.debug("opengrade: flush at exit raised", exc_info=True)
-    if exporter is not None:
-        exporter.close()
-    try:
-        provider.shutdown()
-    except Exception:  # noqa: BLE001
-        logger.debug("opengrade: shutdown at exit raised", exc_info=True)
+    _teardown_opengrade_tracing(reset_global=_OWNS_PROVIDER)
 
 
 def init(
@@ -196,7 +239,7 @@ def init(
     ``metrics_workers`` (or ``OPENGRADE_METRICS_WORKERS``, default 2) is the size of the
     background pool that runs ``@opengrade.trace(metrics=...)``.
     """
-    global _PROVIDER, _EXPORTER, _INITIALIZED, _ATEXIT_REGISTERED
+    global _PROVIDER, _PROCESSOR, _EXPORTER, _OWNS_PROVIDER, _INITIALIZED, _ATEXIT_REGISTERED
 
     if is_disabled():
         logger.info("opengrade: OPENGRADE_DISABLED is set; tracing disabled")
@@ -207,7 +250,8 @@ def init(
         return
 
     if force:
-        _shutdown_and_reset_global_tracer_provider()
+        # Never shut down a host TracerProvider we did not create.
+        _teardown_opengrade_tracing(reset_global=_OWNS_PROVIDER)
         _INITIALIZED = False
 
     try:
@@ -230,13 +274,28 @@ def init(
         )
         headers = project_headers(config)
         resource = Resource.create({"service.name": config.service_name})
-        # opengrade registers its own bounded atexit handler instead of OTEL's.
-        provider = TracerProvider(resource=resource, shutdown_on_exit=False)
         exporter = _SafeSpanExporter(
-            OTLPSpanExporter(endpoint=config.endpoint, headers=headers, timeout=EXPORT_TIMEOUT_S)
+            OTLPSpanExporter(
+                endpoint=config.endpoint,
+                headers=headers,
+                timeout=EXPORT_TIMEOUT_S,
+                compression=Compression.Gzip,
+                max_request_size=OTLP_MAX_REQUEST_BYTES,
+            )
         )
-        provider.add_span_processor(BatchSpanProcessor(exporter))
-        trace.set_tracer_provider(provider)
+        processor = BatchSpanProcessor(exporter, max_export_batch_size=OTLP_MAX_EXPORT_BATCH_SIZE)
+        existing = trace.get_tracer_provider()
+        if isinstance(existing, TracerProvider):
+            # Host already has OTel (Datadog, Honeycomb, …): attach, do not replace.
+            existing.add_span_processor(processor)
+            provider = existing
+            owns_provider = False
+        else:
+            # opengrade registers its own bounded atexit handler instead of OTEL's.
+            provider = TracerProvider(resource=resource, shutdown_on_exit=False)
+            provider.add_span_processor(processor)
+            trace.set_tracer_provider(provider)
+            owns_provider = True
     except Exception as exc:  # noqa: BLE001 — init must never break the host app
         logger.warning("opengrade: tracing disabled, init failed: %s", exc)
         return
@@ -256,8 +315,18 @@ def init(
         except Exception as exc:  # noqa: BLE001
             logger.warning("opengrade: auto-instrumentation skipped: %s", exc)
 
+    # Record the active project for control-plane calls (log_score, metrics, …).
+    from opengrade._config import _set_active_project
+
+    if config.project_id:
+        _set_active_project(project_id=config.project_id)
+    elif config.project_slug:
+        _set_active_project(project_slug=config.project_slug)
+
     _PROVIDER = provider
+    _PROCESSOR = processor
     _EXPORTER = exporter
+    _OWNS_PROVIDER = owns_provider
     _INITIALIZED = True
     if not _ATEXIT_REGISTERED:
         atexit.register(_at_exit)

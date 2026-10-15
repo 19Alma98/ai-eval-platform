@@ -327,11 +327,8 @@ def test_sample_rate_must_be_a_real_number(bad: Any) -> None:
         )
 
 
-def test_sync_trace_with_metrics_rejects_coroutine_and_generator_functions() -> None:
+def test_sync_trace_with_metrics_rejects_generator_functions() -> None:
     decorate = opengrade.trace(metrics=[opengrade.metric(lambda s: 1.0, name="m")])
-
-    async def coro() -> str:
-        return "x"
 
     def gen() -> Iterator[str]:
         yield "x"
@@ -339,9 +336,18 @@ def test_sync_trace_with_metrics_rejects_coroutine_and_generator_functions() -> 
     async def agen() -> Any:
         yield "x"
 
-    for fn in (coro, gen, agen):
-        with pytest.raises(TypeError, match="trace_async|regular function"):
+    for fn in (gen, agen):
+        with pytest.raises(TypeError, match="generators are not supported"):
             decorate(fn)  # type: ignore[arg-type]
+
+
+def test_sync_trace_with_metrics_accepts_coroutine() -> None:
+    decorate = opengrade.trace(metrics=[opengrade.metric(lambda s: 1.0, name="m")])
+
+    async def coro() -> str:
+        return "x"
+
+    decorate(coro)  # unified @trace dispatches to the async wrapper
 
 
 def test_trace_async_with_metrics_rejects_non_coroutine_functions() -> None:
@@ -374,14 +380,13 @@ def test_trace_async_with_metrics_accepts_partial_and_marked_callables() -> None
     decorate(looks_sync)
 
 
-def test_sync_trace_with_metrics_rejects_partial_of_coroutine() -> None:
+def test_sync_trace_with_metrics_accepts_partial_of_coroutine() -> None:
     decorate = opengrade.trace(metrics=[opengrade.metric(lambda s: 1.0, name="m")])
 
     async def coro(prefix: str, q: str) -> str:
         return f"{prefix}{q}"
 
-    with pytest.raises(TypeError, match="trace_async|regular function"):
-        decorate(functools.partial(coro, "p:"))  # type: ignore[arg-type]
+    decorate(functools.partial(coro, "p:"))
 
 
 def test_without_metrics_decorators_accept_any_callable() -> None:

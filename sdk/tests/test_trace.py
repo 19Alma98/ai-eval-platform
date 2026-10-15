@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import asyncio
-from collections.abc import Iterator
+import inspect
+import time
+from collections.abc import AsyncIterator, Iterator
 
 import pytest
 from opentelemetry import trace
@@ -97,6 +99,64 @@ def test_trace_async(spans: InMemorySpanExporter) -> None:
     span = spans.get_finished_spans()[0]
     assert span.name == "async-faq"
     assert dict(span.attributes or {})["openinference.span.kind"] == "CHAIN"
+
+
+def test_trace_on_async_def_preserves_coroutine(spans: InMemorySpanExporter) -> None:
+    @opengrade.trace(name="async-via-trace")
+    async def ask(q: str) -> str:
+        return "pong"
+
+    assert inspect.iscoroutinefunction(ask)
+    assert asyncio.run(ask("ping")) == "pong"
+    span = spans.get_finished_spans()[0]
+    assert span.name == "async-via-trace"
+    assert dict(span.attributes or {})["output.value"] == "pong"
+
+
+def test_trace_sync_generator_keeps_span_open(spans: InMemorySpanExporter) -> None:
+    @opengrade.trace(name="stream")
+    def tokens() -> Iterator[str]:
+        yield "a"
+        time.sleep(0.02)
+        yield "b"
+
+    assert inspect.isgeneratorfunction(tokens)
+    assert list(tokens()) == ["a", "b"]
+    span = spans.get_finished_spans()[0]
+    assert span.name == "stream"
+    assert span.end_time - span.start_time >= 15_000_000  # >= 15ms in ns
+    assert dict(span.attributes or {})["output.value"] == '["a", "b"]'
+
+
+def test_trace_async_generator(spans: InMemorySpanExporter) -> None:
+    @opengrade.trace(name="astream")
+    async def tokens() -> AsyncIterator[str]:
+        yield "x"
+        yield "y"
+
+    assert inspect.isasyncgenfunction(tokens)
+
+    async def main() -> list[str]:
+        return [item async for item in tokens()]
+
+    assert asyncio.run(main()) == ["x", "y"]
+    span = spans.get_finished_spans()[0]
+    assert span.name == "astream"
+    assert dict(span.attributes or {})["output.value"] == '["x", "y"]'
+
+
+def test_trace_async_on_async_generator(spans: InMemorySpanExporter) -> None:
+    @opengrade.trace_async(name="astream2")
+    async def tokens() -> AsyncIterator[str]:
+        yield "z"
+
+    assert inspect.isasyncgenfunction(tokens)
+
+    async def main() -> list[str]:
+        return [item async for item in tokens()]
+
+    assert asyncio.run(main()) == ["z"]
+    assert spans.get_finished_spans()[0].name == "astream2"
 
 
 def test_span_helpers_set_io_attrs_and_trace_id(spans: InMemorySpanExporter) -> None:

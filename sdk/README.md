@@ -65,7 +65,7 @@ Runnable example: [`examples/sdk_hello/`](../examples/sdk_hello/README.md) (Olla
 | Function | Purpose |
 |---|---|
 | `opengrade.set_tracking_uri(uri)` | Platform URL for both `Client` and OTLP (`<uri>/v1/traces`) |
-| `opengrade.set_project(name)` | Get-or-create project by slug/name; becomes the default for `init()` |
+| `opengrade.set_project(name)` | Get-or-create project by slug/name; becomes the default for `init()`. Returns `None` (with a warning) if the platform is unreachable |
 | `opengrade.aset_project(name)` | Async variant of `set_project` (uses shared `AsyncClient`) |
 | `opengrade.get_client()` | Shared `Client` bound to the tracking URI (no per-call `Client()`) |
 | `opengrade.get_async_client()` | Shared `AsyncClient` for async app code |
@@ -184,7 +184,7 @@ datasets = client.datasets.list()  # project_id defaults to the active project
 exp = client.experiments.create(name="baseline", dataset_id=datasets[0].id)
 ```
 
-Project-scoped methods (`datasets.create/list/create_with_items`, `experiments.create/list`, `metrics_packs.ensure/get`, `live_runs.submit/list`, `projects.get`) take `project_id` as an optional first argument: explicit value > `set_project()` > `OPENGRADE_PROJECT_ID`, else `ValueError`.
+Project-scoped methods (`datasets.create/list/create_with_items`, `experiments.create/list`, `metrics_packs.ensure/get`, `live_runs.submit/list`, `projects.get`) take `project_id` as an optional first argument: explicit value > `init()` / `set_project()` id > `OPENGRADE_PROJECT_ID` > lazy slug resolve (`init(project_slug=…)` / `OPENGRADE_PROJECT_SLUG`), else `ValueError`.
 
 Explicit, self-managed client:
 
@@ -397,7 +397,7 @@ Install the extra for the providers you use, then `init(instrument="auto")` acti
 | `OPENGRADE_DISABLED` | `1` / `true` / `yes` / `on` turns `init()` into a no-op (decorators keep working, nothing is exported) |
 | `OPENGRADE_METRICS_WORKERS` | Size of the `@opengrade.trace(metrics=...)` background pool (default `2`, range 1–64); `init(metrics_workers=...)` wins |
 
-Project precedence for `init()`: arguments > `set_project()` > env.
+Project precedence for `init()`: arguments > `set_project()` > env. If both `OPENGRADE_PROJECT_ID` and `OPENGRADE_PROJECT_SLUG` are set, id wins. `init(project_slug=…)` also wires control-plane calls (`log_score`, production metrics) via lazy slug→id resolution.
 
 ## Failure behavior
 

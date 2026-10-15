@@ -1,7 +1,10 @@
 from __future__ import annotations
 
+import asyncio
 import json
 import mimetypes
+import time
+from collections.abc import Awaitable, Callable
 from pathlib import Path
 from typing import Any, TypeVar
 
@@ -12,8 +15,15 @@ from opengrade._config import get_tracking_uri
 
 T = TypeVar("T", bound=BaseModel)
 
+_CONNECT_RETRIES = 2
+_CONNECT_RETRY_BACKOFF_S = 1.0
 
-class OpengradeAPIError(RuntimeError):
+
+class OpengradeError(Exception):
+    """Base error for opengrade SDK failures."""
+
+
+class OpengradeAPIError(OpengradeError):
     """Raised when the platform API returns a non-2xx response."""
 
     def __init__(self, status: int, body: str, *, detail: Any = None) -> None:
@@ -21,6 +31,14 @@ class OpengradeAPIError(RuntimeError):
         self.body = body
         self.detail = detail
         super().__init__(f"HTTP {status}: {body}")
+
+
+class OpengradeConnectionError(OpengradeError):
+    """Raised when the platform cannot be reached (DNS, connect, timeout, …)."""
+
+    def __init__(self, message: str, *, cause: BaseException | None = None) -> None:
+        self.__cause__ = cause
+        super().__init__(message)
 
 
 def _parse_error_detail(body: str) -> Any:
@@ -31,6 +49,43 @@ def _parse_error_detail(body: str) -> Any:
     if isinstance(data, dict) and "detail" in data:
         return data["detail"]
     return None
+
+
+def _wrap_http_error(exc: httpx2.HTTPError) -> OpengradeConnectionError:
+    return OpengradeConnectionError(f"platform unreachable: {exc}", cause=exc)
+
+
+def _call_with_connect_retry(method: str, call: Callable[[], httpx2.Response]) -> httpx2.Response:
+    """Run ``call()``; retry GET-like methods once on transport failure."""
+    attempts = _CONNECT_RETRIES if method.upper() in {"GET", "HEAD", "OPTIONS"} else 1
+    last: httpx2.HTTPError | None = None
+    for attempt in range(attempts):
+        try:
+            return call()
+        except httpx2.HTTPError as exc:
+            last = exc
+            if attempt + 1 >= attempts:
+                break
+            time.sleep(_CONNECT_RETRY_BACKOFF_S)
+    assert last is not None
+    raise _wrap_http_error(last) from last
+
+
+async def _acall_with_connect_retry(
+    method: str, call: Callable[[], Awaitable[httpx2.Response]]
+) -> httpx2.Response:
+    attempts = _CONNECT_RETRIES if method.upper() in {"GET", "HEAD", "OPTIONS"} else 1
+    last: httpx2.HTTPError | None = None
+    for attempt in range(attempts):
+        try:
+            return await call()
+        except httpx2.HTTPError as exc:
+            last = exc
+            if attempt + 1 >= attempts:
+                break
+            await asyncio.sleep(_CONNECT_RETRY_BACKOFF_S)
+    assert last is not None
+    raise _wrap_http_error(last) from last
 
 
 class _HttpTransport:
@@ -65,11 +120,9 @@ class _HttpTransport:
         body: dict[str, Any] | None = None,
         query: dict[str, str] | None = None,
     ) -> Any:
-        response = self._client.request(
+        response = _call_with_connect_retry(
             method,
-            path,
-            json=body,
-            params=query,
+            lambda: self._client.request(method, path, json=body, params=query),
         )
         return self._parse(response)
 
@@ -111,11 +164,14 @@ class _HttpTransport:
         query: dict[str, str] | None = None,
     ) -> Any:
         ctype = content_type or mimetypes.guess_type(filename)[0] or "application/octet-stream"
-        response = self._client.request(
+        response = _call_with_connect_retry(
             method,
-            path,
-            params=query,
-            files={file_field: (filename, content, ctype)},
+            lambda: self._client.request(
+                method,
+                path,
+                params=query,
+                files={file_field: (filename, content, ctype)},
+            ),
         )
         return self._parse(response)
 
@@ -182,11 +238,9 @@ class _AsyncHttpTransport:
         body: dict[str, Any] | None = None,
         query: dict[str, str] | None = None,
     ) -> Any:
-        response = await self._client.request(
+        response = await _acall_with_connect_retry(
             method,
-            path,
-            json=body,
-            params=query,
+            lambda: self._client.request(method, path, json=body, params=query),
         )
         return _parse_response(response)
 

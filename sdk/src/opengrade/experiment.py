@@ -20,14 +20,13 @@ from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Any
 
-import httpx2
 from opentelemetry import trace as otel_trace
 from opentelemetry.trace import Status, StatusCode
 
 from opengrade import _config, _otel
 from opengrade._context import get_client, set_project
 from opengrade._eval_run import bind_evaluation
-from opengrade._http import OpengradeAPIError
+from opengrade._http import OpengradeAPIError, OpengradeError
 from opengrade._links import experiment_item_url, experiment_url, trace_url, ui_base_url
 from opengrade._run_context import ACTIVE_RUN
 from opengrade._trace import current_trace_id, truncate_value
@@ -112,11 +111,47 @@ def _has_input_column(columns: Iterable[str | None] | None) -> bool:
     return bool(_INPUT_KEYS.intersection(c for c in columns if c))
 
 
+def _sanitize_for_json(value: Any) -> Any:
+    """Replace non-finite floats with None so payloads survive strict JSON encoders."""
+    if isinstance(value, float):
+        return value if math.isfinite(value) else None
+    if isinstance(value, Mapping):
+        return {k: _sanitize_for_json(v) for k, v in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_sanitize_for_json(v) for v in value]
+    return value
+
+
 def _jsonable(value: Any) -> Any:
     """Round-trip through JSON so pydantic objects, numpy scalars etc. serialize."""
     if hasattr(value, "model_dump"):
         value = value.model_dump(mode="json")
-    return json.loads(json.dumps(value, default=str))
+    value = _sanitize_for_json(value)
+    return json.loads(json.dumps(value, default=str, allow_nan=False))
+
+
+_UPSERT_MAX_BYTES = 2 * 1024 * 1024  # under platform json_max_body_bytes (4 MiB)
+
+
+def _chunk_by_bytes(
+    items: list[Any],
+    *,
+    max_count: int,
+    max_bytes: int,
+) -> Iterator[list[Any]]:
+    """Yield slices of ``items`` capped by count and approximate JSON byte size."""
+    batch: list[Any] = []
+    budget = 0
+    for item in items:
+        size = len(json.dumps(item, default=str, separators=(",", ":"), allow_nan=False).encode())
+        if batch and (len(batch) >= max_count or budget + size > max_bytes):
+            yield batch
+            batch = []
+            budget = 0
+        batch.append(item)
+        budget += size
+    if batch:
+        yield batch
 
 
 def _digest(value: Any) -> str:
@@ -575,8 +610,11 @@ class Experiment:
                 entry["config"] = _jsonable(dict(metric.config))
             payload.append(entry)
         try:
-            self._client.experiments.submit_client_results(self.id, payload)
-        except OpengradeAPIError as exc:
+            for chunk in _chunk_by_bytes(
+                payload, max_count=_UPSERT_CHUNK, max_bytes=_UPSERT_MAX_BYTES
+            ):
+                self._client.experiments.submit_client_results(self.id, chunk)
+        except OpengradeError as exc:
             logger.warning(
                 "opengrade: could not submit local metrics for experiment %s: %s", self.id, exc
             )
@@ -586,7 +624,7 @@ class Experiment:
     def _log_auto_metrics(self, records: list[ItemRun]) -> None:
         try:
             self.log_metrics(_auto_metrics(records))
-        except (OpengradeAPIError, httpx2.HTTPError) as exc:
+        except OpengradeError as exc:
             logger.warning(
                 "opengrade: could not log run metrics for experiment %s: %s", self.id, exc
             )
@@ -611,8 +649,13 @@ class Experiment:
 
         stored = self._await_trace_binding(records, bind_timeout, poll_interval)
         payload = [_output_entry(record, stored.get(record.item.id)) for record in records]
-        for start in range(0, len(payload), _UPSERT_CHUNK):
-            self._client.experiments.upsert_outputs(self.id, payload[start : start + _UPSERT_CHUNK])
+        for chunk in _chunk_by_bytes(payload, max_count=_UPSERT_CHUNK, max_bytes=_UPSERT_MAX_BYTES):
+            try:
+                self._client.experiments.upsert_outputs(self.id, chunk)
+            except OpengradeError as exc:
+                logger.warning(
+                    "opengrade: could not upsert outputs for experiment %s: %s", self.id, exc
+                )
 
         # After the outputs: client runs record the inputs fingerprint they scored.
         submitted = self._submit_local_scores(records)
@@ -634,7 +677,7 @@ class Experiment:
         elif self._metrics_logged:
             try:
                 server_summary = self._client.experiments.summary(self.id)
-            except (OpengradeAPIError, httpx2.HTTPError) as exc:
+            except OpengradeError as exc:
                 logger.warning(
                     "opengrade: could not fetch summary for experiment %s: %s", self.id, exc
                 )
@@ -642,7 +685,7 @@ class Experiment:
         if scored and self.baseline_id is not None:
             try:
                 comparison = self._client.experiments.compare(self.id, self.baseline_id)
-            except OpengradeAPIError as exc:
+            except OpengradeError as exc:
                 logger.warning(
                     "opengrade: compare with baseline %s failed: %s", self.baseline_id, exc
                 )
@@ -775,7 +818,10 @@ def _resolve_project(project: str | None) -> str:
         return _config.resolve_project_id()
     if _is_uuid(project):
         return project
-    return set_project(project).id
+    created = set_project(project)
+    if created is None:
+        raise ValueError(f"could not resolve project {project!r}: platform unreachable")
+    return created.id
 
 
 def _canonicalize_row(row: dict[str, Any]) -> dict[str, Any]:
@@ -883,9 +929,22 @@ def _inline_dataset_id(
     # Content-addressed name: re-running on the same rows reuses the dataset, so runs
     # stay comparable against each other.
     name = f"inline-{_digest([task_type, bodies])[:12]}"
+    expected = len(bodies)
     for existing in client.datasets.list(project_id):
-        if existing.name == name:
+        if existing.name != name:
+            continue
+        detail = client.datasets.get(existing.id)
+        have = len(detail.items)
+        if have == expected:
             return existing.id
+        if have > expected:
+            # Unexpected extra rows: mint a fresh name rather than reuse a bad set.
+            name = f"{name}-r{_digest(existing.id)[:6]}"
+            break
+        # Partial create from a previous interrupted upload — resume remaining items.
+        client.datasets.ensure_items(existing.id, bodies)
+        logger.info("opengrade resumed dataset %s (%d → %d items)", existing.name, have, expected)
+        return existing.id
     created = client.datasets.create_with_items(
         project_id,
         name=name,

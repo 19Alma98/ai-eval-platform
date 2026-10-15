@@ -11,7 +11,7 @@ from opentelemetry.sdk.trace import ReadableSpan, TracerProvider
 from opentelemetry.sdk.trace.export import SpanExporter, SpanExportResult
 
 import opengrade
-from opengrade import _otel
+from opengrade import _config, _otel
 
 
 @contextmanager
@@ -25,8 +25,10 @@ def reset_otel_state(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
     monkeypatch.delenv("OPENGRADE_PROJECT_ID", raising=False)
     monkeypatch.delenv("OPENGRADE_PROJECT_SLUG", raising=False)
     monkeypatch.delenv("OPENGRADE_DISABLED", raising=False)
+    _config._reset_for_tests()
     _otel._reset_for_tests()
     yield
+    _config._reset_for_tests()
     _otel._reset_for_tests()
 
 
@@ -80,12 +82,33 @@ class _FailingExporter(SpanExporter):
     def __init__(self, *, raises: bool = False) -> None:
         self.calls = 0
         self.raises = raises
+        self.batch_sizes: list[int] = []
 
     def export(self, spans: Sequence[ReadableSpan]) -> SpanExportResult:
         self.calls += 1
+        self.batch_sizes.append(len(spans))
         if self.raises:
             raise ConnectionError("down")
         return SpanExportResult.FAILURE
+
+    def shutdown(self) -> None:
+        pass
+
+
+class _SizeSensitiveExporter(SpanExporter):
+    """Fails batches larger than ``limit`` spans (stands in for HTTP 413)."""
+
+    def __init__(self, *, limit: int) -> None:
+        self.limit = limit
+        self.calls = 0
+        self.exported = 0
+
+    def export(self, spans: Sequence[ReadableSpan]) -> SpanExportResult:
+        self.calls += 1
+        if len(spans) > self.limit:
+            return SpanExportResult.FAILURE
+        self.exported += len(spans)
+        return SpanExportResult.SUCCESS
 
     def shutdown(self) -> None:
         pass
@@ -96,12 +119,37 @@ def test_safe_exporter_drops_and_backs_off(raises: bool, caplog: pytest.LogCaptu
     inner = _FailingExporter(raises=raises)
     safe = _otel._SafeSpanExporter(inner, cooldown_s=60)
     with caplog.at_level(logging.DEBUG, logger="opengrade"):
+        # Single-span failure: drop without cooldown (oversize / reject).
         assert safe.export([object()]) is SpanExportResult.FAILURE  # type: ignore[list-item]
+        # Multi-span failure after split: all leaves fail → cooldown.
         assert safe.export([object(), object()]) is SpanExportResult.FAILURE  # type: ignore[list-item]
-    assert inner.calls == 1  # second batch dropped during cooldown, no network call
-    assert safe.dropped_spans == 3
+        assert safe.export([object()]) is SpanExportResult.FAILURE  # type: ignore[list-item]
+    # 1 + (2 then 1+1 split) = 4 attempts; third export skipped during cooldown.
+    assert inner.calls == 4
+    assert safe.dropped_spans == 4  # 1 + 2 leaves + 1 cooldown drop
     warnings = [r for r in caplog.records if r.levelno == logging.WARNING]
     assert len(warnings) == 1
+
+
+def test_safe_exporter_splits_oversized_batch_without_cooldown() -> None:
+    inner = _SizeSensitiveExporter(limit=1)
+    safe = _otel._SafeSpanExporter(inner, cooldown_s=60)
+    spans = [object(), object(), object()]  # type: ignore[list-item]
+    assert safe.export(spans) is SpanExportResult.SUCCESS
+    assert inner.exported == 3
+    assert safe.dropped_spans == 0
+    # A later export still reaches the network (no cooldown).
+    assert safe.export([object()]) is SpanExportResult.SUCCESS  # type: ignore[list-item]
+    assert inner.exported == 4
+
+
+def test_safe_exporter_single_oversize_does_not_cooldown() -> None:
+    inner = _FailingExporter()
+    safe = _otel._SafeSpanExporter(inner, cooldown_s=60)
+    assert safe.export([object()]) is SpanExportResult.FAILURE  # type: ignore[list-item]
+    assert safe.dropped_spans == 1
+    assert safe.export([object()]) is SpanExportResult.FAILURE  # type: ignore[list-item]
+    assert inner.calls == 2  # second attempt still hits the network
 
 
 def test_safe_exporter_drops_after_close() -> None:
@@ -133,7 +181,66 @@ def test_init_force_reconfigures(monkeypatch: pytest.MonkeyPatch) -> None:
     opengrade.init(project_slug="demo", instrument=False, force=True)
     assert isinstance(_otel._PROVIDER, TracerProvider)
     assert trace.get_tracer_provider() is _otel._PROVIDER
+    assert _otel._OWNS_PROVIDER is True
     assert _otel._INITIALIZED is True
+
+
+class _RecordingExporter(SpanExporter):
+    def __init__(self) -> None:
+        self.spans: list[ReadableSpan] = []
+
+    def export(self, spans: Sequence[ReadableSpan]) -> SpanExportResult:
+        self.spans.extend(spans)
+        return SpanExportResult.SUCCESS
+
+    def shutdown(self) -> None:
+        pass
+
+
+def test_init_attaches_to_existing_host_provider() -> None:
+    host = TracerProvider(shutdown_on_exit=False)
+    host_exporter = _RecordingExporter()
+    host.add_span_processor(_otel.BatchSpanProcessor(host_exporter))
+    trace.set_tracer_provider(host)
+
+    opengrade.init(project_slug="demo", instrument=False)
+
+    assert _otel._OWNS_PROVIDER is False
+    assert _otel._PROVIDER is host
+    assert trace.get_tracer_provider() is host
+
+    with opengrade_span():
+        pass
+    assert opengrade.flush() is True
+    # Spans go through the shared host provider (host + opengrade processors).
+    assert any(s.name == "s" for s in host_exporter.spans)
+
+
+def test_init_force_does_not_shutdown_host_provider() -> None:
+    host = TracerProvider(shutdown_on_exit=False)
+    trace.set_tracer_provider(host)
+    opengrade.init(project_slug="demo", instrument=False)
+    opengrade.init(project_slug="demo", instrument=False, force=True)
+
+    assert trace.get_tracer_provider() is host
+    assert _otel._OWNS_PROVIDER is False
+    # Host provider must still accept spans after force re-init.
+    with opengrade_span():
+        pass
+    opengrade.flush()  # may fail export to unreachable OTLP; must not raise
+
+
+def test_at_exit_does_not_shutdown_host_provider() -> None:
+    host = TracerProvider(shutdown_on_exit=False)
+    trace.set_tracer_provider(host)
+    opengrade.init(project_slug="demo", instrument=False)
+    _otel._at_exit()
+
+    assert trace.get_tracer_provider() is host
+    assert _otel._PROVIDER is None
+    assert _otel._OWNS_PROVIDER is False
+    with opengrade_span():
+        pass
 
 
 def test_init_honors_service_name_env(monkeypatch: pytest.MonkeyPatch) -> None:
