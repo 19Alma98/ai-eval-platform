@@ -10,6 +10,14 @@ import { LoadingBlock } from "@/components/loading-block";
 import { PageIntro } from "@/components/page-intro";
 import { RelativeTime } from "@/components/relative-time";
 import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { formatErrorForUi } from "@/lib/api/client";
 import { deleteProject } from "@/lib/api/projects";
 import type { Project } from "@/lib/api/types";
@@ -33,33 +41,22 @@ export function ProjectsPanel({
   const queryClient = useQueryClient();
   const query = useQuery(projectsQueryOptions());
   const [createOpen, setCreateOpen] = useState(false);
-  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [pendingDelete, setPendingDelete] = useState<Project | null>(null);
 
   const remove = useMutation({
     mutationFn: (id: string) => deleteProject(id),
     onSuccess: async (_data, id) => {
+      setPendingDelete(null);
       await queryClient.invalidateQueries({ queryKey: projectsQueryKey });
       toast.success("Project deleted");
       if (id === projectId) {
         clearProjectId();
       }
-      setDeletingId(null);
     },
     onError: (err) => {
-      const message = formatErrorForUi(err);
-      toast.error(message);
-      setDeletingId(null);
+      toast.error(formatErrorForUi(err));
     },
   });
-
-  function handleDelete(project: Project) {
-    const ok = window.confirm(
-      `Delete project “${project.name}”? This removes all related data and cannot be undone.`,
-    );
-    if (!ok) return;
-    setDeletingId(project.id);
-    remove.mutate(project.id);
-  }
 
   if (query.isLoading) {
     return <LoadingBlock className="min-h-[160px]" />;
@@ -143,9 +140,9 @@ export function ProjectsPanel({
                   variant="ghost"
                   size="sm"
                   className="shrink-0 text-muted-foreground hover:text-status-fail"
-                  disabled={remove.isPending && deletingId === p.id}
+                  disabled={remove.isPending && pendingDelete?.id === p.id}
                   aria-label={`Delete ${p.name}`}
-                  onClick={() => handleDelete(p)}
+                  onClick={() => setPendingDelete(p)}
                 >
                   <Trash2 className="size-4" />
                 </Button>
@@ -154,6 +151,48 @@ export function ProjectsPanel({
           })}
         </ul>
       )}
+
+      <Dialog
+        open={pendingDelete != null}
+        onOpenChange={(open) => {
+          if (remove.isPending) return;
+          if (!open) setPendingDelete(null);
+        }}
+      >
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Delete project</DialogTitle>
+            <DialogDescription>
+              Delete{" "}
+              <span className="font-medium text-foreground">
+                {pendingDelete?.name}
+              </span>
+              ? This removes all related data and cannot be undone.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              disabled={remove.isPending}
+              onClick={() => setPendingDelete(null)}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              variant="destructive"
+              disabled={remove.isPending || pendingDelete == null}
+              onClick={() => {
+                if (!pendingDelete) return;
+                remove.mutate(pendingDelete.id);
+              }}
+            >
+              {remove.isPending ? "Deleting…" : "Delete project"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </section>
   );
 }
