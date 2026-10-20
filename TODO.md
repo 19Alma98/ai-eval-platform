@@ -286,7 +286,8 @@ Priority: **P0** blocks a public release, **P1** fix before promoting it, **P2**
   traces with no extractable question are silently skipped with no hint.
   → Traces: setup hint + "Show all time" when only the time range is active; Live traffic: `init(live=True)` +
   `@opengrade.trace` + `set_input/set_output` + `CONTENT_CAPTURE_ENABLED`; trace detail warns when a live-marked
-  trace has no live answer.
+  trace has no live answer (content not stored vs empty question/answer). Ingestion's warning was invisible:
+  `alembic/env.py` `fileConfig` disabled every app logger at startup → `disable_existing_loggers=False`.
 - [x] Deleted saved project → "Unknown project" + failing requests; fall back to a valid project.
   → project switcher refetches the list and switches to the first project (toast) or clears the selection.
 

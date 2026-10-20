@@ -10,7 +10,9 @@ from opengrade_server.infrastructure.models import Base
 
 config = context.config
 if config.config_file_name is not None:
-    fileConfig(config.config_file_name)
+    # Migrations run inside the server at startup: keep the app's loggers enabled,
+    # otherwise every opengrade_server warning after startup is silently dropped.
+    fileConfig(config.config_file_name, disable_existing_loggers=False)
 
 target_metadata = Base.metadata
 
