@@ -22,6 +22,7 @@ from opengrade_server.application.compare_items import CompareExperimentItems
 from opengrade_server.application.datasets import (
     AddDatasetItem,
     CreateDataset,
+    DeleteDataset,
     GetDataset,
     ImportDatasetItems,
     ListDatasets,
@@ -334,6 +335,13 @@ def get_import_dataset_items(
     runs: SqlAlchemyEvaluationRunRepository = Depends(get_evaluation_run_repository),
 ) -> ImportDatasetItems:
     return ImportDatasetItems(datasets, experiments, runs)
+
+
+def get_delete_dataset(
+    datasets: SqlAlchemyDatasetRepository = Depends(get_dataset_repository),
+    experiments: SqlAlchemyExperimentRepository = Depends(get_experiment_repository),
+) -> DeleteDataset:
+    return DeleteDataset(datasets, experiments)
 
 
 def get_create_evaluator(

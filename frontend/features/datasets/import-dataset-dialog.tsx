@@ -83,13 +83,12 @@ export function ImportDatasetDialog({
       return importDatasetItems(datasetId, file);
     },
     onSuccess: async (result) => {
-      const forked =
-        result.forked_from_dataset_id != null &&
-        result.dataset_id !== datasetId;
+      // Import may land on another row (fork, or the writable tip of the same name).
+      const moved = result.dataset_id !== datasetId;
       await queryClient.invalidateQueries({
         queryKey: datasetQueryKey(datasetId),
       });
-      if (forked) {
+      if (moved) {
         await queryClient.invalidateQueries({
           queryKey: datasetQueryKey(result.dataset_id),
         });
@@ -98,7 +97,7 @@ export function ImportDatasetDialog({
         queryKey: datasetsQueryKey(projectId),
       });
       setImportErrors(result.errors);
-      if (forked) {
+      if (moved && result.created > 0) {
         toast.success(
           `Imported ${result.created} question${result.created === 1 ? "" : "s"} into new version v${result.version}`,
         );
@@ -116,7 +115,7 @@ export function ImportDatasetDialog({
         setFile(null);
         onOpenChange(false);
       }
-      if (forked) {
+      if (moved) {
         router.push(
           withProjectQuery(`/datasets/${result.dataset_id}`, projectId),
         );

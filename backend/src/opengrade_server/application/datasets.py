@@ -31,6 +31,20 @@ class DatasetConflictError(Exception):
 
 
 @dataclass(frozen=True, slots=True)
+class LinkedExperimentRef:
+    id: uuid.UUID
+    name: str
+
+
+class DatasetInUseError(Exception):
+    def __init__(self, dataset_id: uuid.UUID, experiments: list[LinkedExperimentRef]) -> None:
+        self.dataset_id = dataset_id
+        self.experiments = experiments
+        parts = ", ".join(f'"{e.name}" ({e.id})' for e in experiments)
+        super().__init__(f"Cannot delete test set: used by experiments {parts}")
+
+
+@dataclass(frozen=True, slots=True)
 class CreateDatasetCommand:
     project_id: uuid.UUID
     name: str
@@ -348,3 +362,30 @@ class ImportDatasetItems:
             version=result_dataset.version,
             forked_from_dataset_id=forked_from,
         )
+
+
+class DeleteDataset:
+    def __init__(
+        self,
+        datasets: DatasetRepository,
+        experiments: ExperimentRepository,
+    ) -> None:
+        self._datasets = datasets
+        self._experiments = experiments
+
+    async def execute(self, dataset_id: uuid.UUID) -> None:
+        dataset = await self._datasets.get_by_id(dataset_id)
+        if dataset is None:
+            raise DatasetNotFoundError(dataset_id)
+
+        linked = [
+            LinkedExperimentRef(id=e.id, name=e.name)
+            for e in await self._experiments.list_by_project(dataset.project_id)
+            if e.dataset_id == dataset_id
+        ]
+        if linked:
+            raise DatasetInUseError(dataset_id, linked)
+
+        deleted = await self._datasets.delete(dataset_id)
+        if not deleted:
+            raise DatasetNotFoundError(dataset_id)

@@ -1,8 +1,11 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
-import { FlaskConical, Lock } from "lucide-react";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { FlaskConical, Lock, Trash2 } from "lucide-react";
+import { toast } from "sonner";
 import { DataTable, type DataTableColumn } from "@/components/data-table";
 import { EmptyState } from "@/components/empty-state";
 import { ErrorState } from "@/components/error-state";
@@ -12,12 +15,25 @@ import { RelativeTime } from "@/components/relative-time";
 import { MetaItem, PageHeader } from "@/components/page-header";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { formatErrorForUi } from "@/lib/api/client";
+import { deleteDataset } from "@/lib/api/datasets";
 import type { DatasetItem } from "@/lib/api/types";
 import { withProjectQuery } from "@/lib/project-href";
 import { ImportDatasetDialog } from "./import-dataset-dialog";
-import { datasetQueryOptions, useDataset } from "./use-datasets";
+import {
+  datasetQueryOptions,
+  datasetsQueryKey,
+  useDataset,
+} from "./use-datasets";
 
 const PREVIEW_MAX = 96;
 
@@ -86,11 +102,29 @@ export function DatasetDetailView({
   projectId,
   datasetId,
 }: DatasetDetailViewProps) {
+  const router = useRouter();
+  const queryClient = useQueryClient();
   const query = useDataset(datasetId);
   const queryOpts = datasetQueryOptions(datasetId);
   const [inputFilter, setInputFilter] = useState("");
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [importOpen, setImportOpen] = useState(false);
+  const [deleteOpen, setDeleteOpen] = useState(false);
+
+  const remove = useMutation({
+    mutationFn: () => deleteDataset(datasetId),
+    onSuccess: async () => {
+      setDeleteOpen(false);
+      await queryClient.invalidateQueries({
+        queryKey: datasetsQueryKey(projectId),
+      });
+      toast.success("Test set deleted");
+      router.push(withProjectQuery("/datasets", projectId));
+    },
+    onError: (err) => {
+      toast.error(formatErrorForUi(err));
+    },
+  });
 
   const dataset = query.data;
   const items = useMemo(() => dataset?.items ?? [], [dataset?.items]);
@@ -188,7 +222,7 @@ export function DatasetDetailView({
     return out;
   }, [filteredItems, hasActual, hasMustContain, hasLiveOrigin]);
 
-  if (query.isLoading) {
+  if (query.isPending) {
     return <LoadingBlock className="min-h-[240px]" />;
   }
 
@@ -204,8 +238,9 @@ export function DatasetDetailView({
     );
   }
 
+  // After !isPending && !isError, React Query types data as defined; keep a guard for safety.
   if (!dataset) {
-    return null;
+    return <LoadingBlock className="min-h-[240px]" />;
   }
 
   const listHref = withProjectQuery("/datasets", projectId);
@@ -265,10 +300,61 @@ export function DatasetDetailView({
               open={importOpen}
               onOpenChange={setImportOpen}
             />
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              disabled={remove.isPending}
+              onClick={() => setDeleteOpen(true)}
+            >
+              <Trash2 className="size-4" />
+              Delete
+            </Button>
           </>
         }
         className="mb-0"
       />
+
+      <Dialog
+        open={deleteOpen}
+        onOpenChange={(open) => {
+          if (remove.isPending) return;
+          setDeleteOpen(open);
+        }}
+      >
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Delete test set</DialogTitle>
+            <DialogDescription>
+              Delete{" "}
+              <span className="font-medium text-foreground">
+                {dataset.name}
+              </span>{" "}
+              (v{dataset.version})? This cannot be undone. If experiments use
+              this version, delete will be blocked and those experiments will be
+              listed.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              disabled={remove.isPending}
+              onClick={() => setDeleteOpen(false)}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              variant="destructive"
+              disabled={remove.isPending}
+              onClick={() => remove.mutate()}
+            >
+              {remove.isPending ? "Deleting…" : "Delete test set"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {items.length > 0 ? (
         <div>

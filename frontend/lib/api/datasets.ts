@@ -1,4 +1,4 @@
-import { apiGet, apiPost, throwApiError, withBasePath } from "./client";
+import { apiDelete, apiGet, apiPost, throwApiError, withBasePath } from "./client";
 import type {
   Dataset,
   DatasetDetail,
@@ -32,6 +32,10 @@ export function createDataset(
   },
 ) {
   return apiPost<Dataset>(`/api/v1/projects/${projectId}/datasets`, body);
+}
+
+export function deleteDataset(datasetId: string) {
+  return apiDelete(`/api/v1/datasets/${encodeURIComponent(datasetId)}`);
 }
 
 export async function importDatasetItems(

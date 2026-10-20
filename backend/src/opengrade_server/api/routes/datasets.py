@@ -3,7 +3,7 @@ from __future__ import annotations
 import logging
 import uuid
 
-from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
+from fastapi import APIRouter, Depends, File, HTTPException, Query, Response, UploadFile, status
 from sqlalchemy.exc import IntegrityError
 
 from opengrade_server.api.body_limit import BodyTooLarge, read_upload_capped
@@ -11,6 +11,7 @@ from opengrade_server.api.deps import (
     get_add_dataset_item,
     get_app_settings,
     get_create_dataset,
+    get_delete_dataset,
     get_get_dataset,
     get_import_dataset_items,
     get_list_datasets,
@@ -32,7 +33,9 @@ from opengrade_server.application.datasets import (
     CreateDataset,
     CreateDatasetCommand,
     DatasetConflictError,
+    DatasetInUseError,
     DatasetNotFoundError,
+    DeleteDataset,
     GetDataset,
     ImportDatasetItems,
     ImportDatasetItemsCommand,
@@ -241,3 +244,20 @@ async def import_dataset_items(
         version=result.version,
         forked_from_dataset_id=result.forked_from_dataset_id,
     )
+
+
+@router.delete(
+    "/api/v1/datasets/{dataset_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+async def delete_dataset(
+    dataset_id: uuid.UUID,
+    use_case: DeleteDataset = Depends(get_delete_dataset),
+) -> Response:
+    try:
+        await use_case.execute(dataset_id)
+    except DatasetNotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    except DatasetInUseError as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+    return Response(status_code=status.HTTP_204_NO_CONTENT)

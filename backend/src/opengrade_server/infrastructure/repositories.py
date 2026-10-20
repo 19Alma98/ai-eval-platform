@@ -567,6 +567,14 @@ class SqlAlchemyDatasetRepository:
         row = await self._session.get(DatasetItemModel, item_id)
         return _item_to_domain(row) if row is not None else None
 
+    async def delete(self, dataset_id: uuid.UUID) -> bool:
+        row = await self._session.get(DatasetModel, dataset_id)
+        if row is None:
+            return False
+        await self._session.delete(row)
+        await self._session.commit()
+        return True
+
 
 class SqlAlchemyAppConfigRepository:
     def __init__(self, session: AsyncSession) -> None:

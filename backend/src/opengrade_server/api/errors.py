@@ -17,7 +17,11 @@ from opengrade_server.application.app_configs import (
 )
 from opengrade_server.application.compare import InvalidCompareSelectionError
 from opengrade_server.application.compare_items import AmbiguousEvaluatorError, DatasetMismatchError
-from opengrade_server.application.datasets import DatasetConflictError, DatasetNotFoundError
+from opengrade_server.application.datasets import (
+    DatasetConflictError,
+    DatasetInUseError,
+    DatasetNotFoundError,
+)
 from opengrade_server.application.evaluate import (
     EmptyEvaluatorListError,
     EvaluationRunNotFoundError,
@@ -73,6 +77,7 @@ _NOT_FOUND: tuple[type[Exception], ...] = (
 _CONFLICT: tuple[type[Exception], ...] = (
     ProjectSlugConflictError,
     DatasetConflictError,
+    DatasetInUseError,
     EvaluatorConflictError,
     MetricsSetConflictError,
     MetricsSetReferencedError,
