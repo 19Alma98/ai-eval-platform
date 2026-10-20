@@ -127,6 +127,20 @@ def _documents(context: Any) -> list[dict[str, Any]]:
     return [d for d in documents if isinstance(d, dict)]
 
 
+def _documents_precheck(context: Any, meta: dict[str, Any]) -> EvaluationResult | None:
+    documents = _documents(context)
+    if not documents:
+        return fail_min("context.documents are missing or empty", metadata=meta)
+    if not any(str(d.get("text") or "").strip() for d in documents):
+        # Ids only (e.g. text redacted at ingestion): judging would score against nothing.
+        return skip(
+            "retrieved documents have no text (only ids were stored, e.g. "
+            "CONTENT_CAPTURE_ENABLED=false)",
+            metadata=meta,
+        )
+    return None
+
+
 def _clip(text: str, limit: int) -> str:
     return text if len(text) <= limit else text[:limit] + "…"
 
@@ -238,9 +252,7 @@ class GroundednessJudge(_LlmJudge):
             return early
         if sample.context is None:
             return skip("context is missing", metadata=self._meta())
-        if not _documents(sample.context):
-            return fail_min("context.documents are missing or empty", metadata=self._meta())
-        return None
+        return _documents_precheck(sample.context, self._meta())
 
     async def _evaluate(self, sample: EvaluationSample) -> EvaluationResult:
         question = prompts.as_text(sample.input)
@@ -443,9 +455,7 @@ class ContextRecallJudge(_LlmJudge):
             return skip("expected_output is missing", metadata=self._meta())
         if sample.context is None:
             return skip("context is missing", metadata=self._meta())
-        if not _documents(sample.context):
-            return fail_min("context.documents are missing or empty", metadata=self._meta())
-        return None
+        return _documents_precheck(sample.context, self._meta())
 
     async def _evaluate(self, sample: EvaluationSample) -> EvaluationResult:
         question = prompts.as_text(sample.input)
@@ -535,9 +545,7 @@ class ContextPrecisionJudge(_LlmJudge):
             return skip("expected_output is missing", metadata=self._meta())
         if sample.context is None:
             return skip("context is missing", metadata=self._meta())
-        if not _documents(sample.context):
-            return fail_min("context.documents are missing or empty", metadata=self._meta())
-        return None
+        return _documents_precheck(sample.context, self._meta())
 
     def _select_documents(self, sample: EvaluationSample) -> tuple[list[dict[str, Any]], bool]:
         documents = _documents(sample.context)

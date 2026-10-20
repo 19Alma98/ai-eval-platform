@@ -2,10 +2,57 @@
 
 from __future__ import annotations
 
+import json
+import re
 from typing import Any
 
 from opengrade_server.domain.trace import Span, Trace
 from opengrade_server.tracing.openinference import CONTENT_ATTRIBUTE_KEYS
+
+# Retrieved documents: with capture off their text is dropped but ids, titles, scores
+# and metadata stay, so retrieval metrics (hit@k, recall, MRR) still work.
+DOCUMENT_ATTRIBUTE_KEYS = (
+    "retrieval.documents",
+    "reranker.input_documents",
+    "reranker.output_documents",
+    "documents",
+)
+_DOCUMENT_TEXT_FIELDS = frozenset({"text", "content", "page_content"})
+# OpenInference flattened document text: retrieval.documents.0.document.content
+_FLAT_DOCUMENT_TEXT = re.compile(r"^\d+\.document\.content$")
+# OpenInference flattened embedding input text: embedding.embeddings.0.embedding.text
+_FLAT_EMBEDDING_TEXT = re.compile(r"^embedding\.embeddings\.\d+\.embedding\.text$")
+
+
+def _is_content_key(key: str) -> bool:
+    """Text-bearing key, including OpenInference / GenAI flattened forms
+    (``llm.input_messages.0.message.content``, ``gen_ai.prompt.0.content``)."""
+    if key in CONTENT_ATTRIBUTE_KEYS or _FLAT_EMBEDDING_TEXT.match(key):
+        return True
+    if any(key.startswith(f"{base}.") for base in CONTENT_ATTRIBUTE_KEYS):
+        return True
+    for base in DOCUMENT_ATTRIBUTE_KEYS:
+        if key.startswith(f"{base}.") and _FLAT_DOCUMENT_TEXT.match(key[len(base) + 1 :]):
+            return True
+    return False
+
+
+def _strip_document_text(value: Any) -> Any:
+    """Aggregated document list (JSON string or list) without the text fields."""
+    parsed = value
+    if isinstance(value, str):
+        try:
+            parsed = json.loads(value)
+        except json.JSONDecodeError:
+            return None  # unparseable: may be raw text, drop it
+    if not isinstance(parsed, list):
+        return None
+    stripped = [
+        {k: v for k, v in doc.items() if k not in _DOCUMENT_TEXT_FIELDS}
+        for doc in parsed
+        if isinstance(doc, dict)
+    ]
+    return json.dumps(stripped) if isinstance(value, str) else stripped
 
 
 def redact_attributes(
@@ -13,7 +60,16 @@ def redact_attributes(
 ) -> dict[str, Any]:
     if content_capture_enabled:
         return dict(attributes)
-    return {k: v for k, v in attributes.items() if k not in CONTENT_ATTRIBUTE_KEYS}
+    out: dict[str, Any] = {}
+    for key, value in attributes.items():
+        if _is_content_key(key):
+            continue
+        if key in DOCUMENT_ATTRIBUTE_KEYS:
+            value = _strip_document_text(value)
+            if value is None:
+                continue
+        out[key] = value
+    return out
 
 
 def redact_span(span: Span, *, content_capture_enabled: bool) -> Span:

@@ -417,7 +417,7 @@ Tracing never breaks the host app:
 
 ## Content capture
 
-The SDK may set OpenInference `input` / `output` attributes on decorated spans (`capture_input` / `capture_output`, default on). The platform API applies its own policy: it stores them by default (`CONTENT_CAPTURE_ENABLED=true`); with `CONTENT_CAPTURE_ENABLED=false` it drops input/output values, LLM prompts/messages and completions at ingestion, while timings, tokens, cost and other attributes are kept. Turn capture off on either side when spans may carry data you must not store.
+The SDK may set OpenInference `input` / `output` attributes on decorated spans (`capture_input` / `capture_output`, default on). The platform API applies its own policy: it stores them by default (`CONTENT_CAPTURE_ENABLED=true`); with `CONTENT_CAPTURE_ENABLED=false` it drops input/output values, LLM prompts/messages and completions (including OpenInference flattened keys such as `llm.input_messages.0.message.content`) and the text of retrieved documents at ingestion. Timings, tokens, cost and document ids/titles/scores are kept, so retrieval metrics (hit@k, recall, MRR) still work, while judges that need document text (groundedness, context precision/recall) are SKIPPED. Turn capture off on either side when spans may carry data you must not store.
 
 ## Monorepo note
 

@@ -111,8 +111,8 @@ def print_ui_startup_banner(uri: str, settings: Settings) -> None:
     )
     if settings.content_capture_enabled:
         console.print(
-            "Content capture: [cyan]on[/cyan] (span inputs/outputs, prompts and completions "
-            "are stored; CONTENT_CAPTURE_ENABLED=false to redact)"
+            "Content capture: [cyan]on[/cyan] (span inputs/outputs, prompts, completions and "
+            "document text are stored; CONTENT_CAPTURE_ENABLED=false to redact)"
         )
     else:
         console.print(

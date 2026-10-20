@@ -11,7 +11,7 @@ from opengrade_server.tracing.normalization import (
     normalize_raw_spans,
 )
 from opengrade_server.tracing.openinference import resolve_span_kind
-from opengrade_server.tracing.redaction import redact_trace
+from opengrade_server.tracing.redaction import redact_attributes, redact_trace
 
 
 def test_resolve_span_kind_openinference() -> None:
@@ -302,3 +302,39 @@ def test_ingest_otlp_strips_nul_from_names_and_attrs() -> None:
     assert "lab\x00el" not in span.attributes
     assert span.events[0]["name"] == "event"
     assert span.events[0]["attributes"]["msg"] == "ok"
+
+
+def test_redaction_drops_flattened_content_and_document_text() -> None:
+    attrs = {
+        "llm.model_name": "gpt",
+        "llm.token_count.total": 12,
+        "llm.input_messages.0.message.role": "user",
+        "llm.input_messages.0.message.content": "SECRET prompt",
+        "llm.output_messages.0.message.content": "SECRET answer",
+        "llm.prompt_template.variables.question": "SECRET",
+        "gen_ai.prompt.0.content": "SECRET",
+        "embedding.embeddings.0.embedding.text": "SECRET",
+        "retrieval.documents.0.document.id": "pto",
+        "retrieval.documents.0.document.score": 0.9,
+        "retrieval.documents.0.document.content": "SECRET doc",
+        "reranker.output_documents.1.document.content": "SECRET doc",
+        "retrieval.documents": json.dumps(
+            [{"id": "pto", "title": "PTO", "text": "SECRET", "content": "SECRET", "score": 0.9}]
+        ),
+        "documents": [{"id": "vpn", "page_content": "SECRET"}],
+        "reranker.input_documents": "not json SECRET",
+    }
+    redacted = redact_attributes(attrs, content_capture_enabled=False)
+
+    assert "SECRET" not in json.dumps(redacted)
+    assert redacted["llm.model_name"] == "gpt"
+    assert redacted["llm.token_count.total"] == 12
+    assert redacted["retrieval.documents.0.document.id"] == "pto"
+    assert redacted["retrieval.documents.0.document.score"] == 0.9
+    assert json.loads(redacted["retrieval.documents"]) == [
+        {"id": "pto", "title": "PTO", "score": 0.9}
+    ]
+    assert redacted["documents"] == [{"id": "vpn"}]
+    assert "reranker.input_documents" not in redacted
+    # Capture on: untouched.
+    assert redact_attributes(attrs, content_capture_enabled=True) == attrs
