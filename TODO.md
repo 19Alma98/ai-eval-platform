@@ -326,6 +326,3 @@ the minimum just because a newer CPython shipped.
   support cut.
 
 
-## Other
-
-- **PyPI naming (done):** Public distributions are `opengrade-ai` / `opengrade-ai-server` — see `docs/superpowers/specs/2026-10-14-opengrade-ai-rename-design.md`.
