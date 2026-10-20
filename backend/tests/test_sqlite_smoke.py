@@ -19,7 +19,9 @@ from support.packaged_ui import requires_packaged_ui
 async def sqlite_client(tmp_path_factory: pytest.TempPathFactory) -> AsyncIterator[AsyncClient]:
     db_path = tmp_path_factory.mktemp("sqlite") / "opengrade.db"
     previous_url = os.environ.get("DATABASE_URL")
+    previous_capture = os.environ.get("CONTENT_CAPTURE_ENABLED")
     os.environ["DATABASE_URL"] = f"sqlite+aiosqlite:///{db_path}"
+    os.environ["CONTENT_CAPTURE_ENABLED"] = "true"
     get_settings.cache_clear()
     await dispose_db()
     init_db(get_settings())
@@ -35,6 +37,10 @@ async def sqlite_client(tmp_path_factory: pytest.TempPathFactory) -> AsyncIterat
         os.environ.pop("DATABASE_URL", None)
     else:
         os.environ["DATABASE_URL"] = previous_url
+    if previous_capture is None:
+        os.environ.pop("CONTENT_CAPTURE_ENABLED", None)
+    else:
+        os.environ["CONTENT_CAPTURE_ENABLED"] = previous_capture
     get_settings.cache_clear()
 
 
