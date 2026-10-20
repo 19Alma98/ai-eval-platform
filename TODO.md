@@ -145,14 +145,14 @@ Priority: **P0** blocks a public release, **P1** fix before promoting it, **P2**
 - [x] **Production/monitoring counts offline experiment traces** (`application/monitoring.py`):
   66 traces instead of 30, wrong error rate and p99. Fix: exclude traces bound to experiments
   (`opengrade.eval …`). (confirmed via UI)
-- [ ] **No gzip on `/v1/traces`** (`routes/otlp.py:53`, `otel.py:182`): OTel Collector otlphttp gzips by
+- [x] **No gzip on `/v1/traces`** (`routes/otlp.py:53`, `otel.py:182`): OTel Collector otlphttp gzips by
   default → 400. Fix: decompress gzip/deflate, cap decompressed size. (confirmed)
-- [ ] **Monitoring naive vs aware datetime** (`routes/monitoring.py:84`): `since=…Z&until=…` (no tz) →
+- [x] **Monitoring naive vs aware datetime** (`routes/monitoring.py:84`): `since=…Z&until=…` (no tz) →
   TypeError → 500. Fix: treat naive as UTC (like `trace_scores.py:123`). (confirmed)
-- [ ] **IntegrityError → 409 with `str(exc)`** (`errors.py:77,93`) leaks SQL + bound params (possibly
+- [x] **IntegrityError → 409 with `str(exc)`** (`errors.py:77,93`) leaks SQL + bound params (possibly
   content). Fix: generic message, log details. (confirmed)
-- [ ] **Production alarms fire on tiny samples** (4 answers, 1 fail = 25% > 20%). Add a minimum n.
-- [ ] **Overview "Needs attention" ignores SDK metric / feedback alarms** that `/monitoring` shows.
+- [x] **Production alarms fire on tiny samples** (4 answers, 1 fail = 25% > 20%). Add a minimum n.
+- [x] **Overview "Needs attention" ignores SDK metric / feedback alarms** that `/monitoring` shows.
 
 ### Backend — P2
 

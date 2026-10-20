@@ -113,6 +113,39 @@ describe("mergeAttentionItems", () => {
     const regression = rows.find((r) => r.kind === "regression");
     assert.equal(regression?.href, "/experiments/c1/compare?baseline=b1");
   });
+
+  it("merges firing metric alarms with a monitoring href", () => {
+    const rows = mergeAttentionItems(emptyOverview, {
+      metrics: [
+        {
+          name: "user_feedback",
+          source: "human",
+          n: 12,
+          mean: null,
+          fail_rate: 0.25,
+          threshold: null,
+          histogram_edges: [],
+          histogram_counts: [],
+          series: [{ bucket_start: "2026-01-01T00:00:00Z", n: 12, mean: null, fail_rate: 0.25 }],
+        },
+        {
+          name: "groundedness",
+          source: "judge",
+          n: 4,
+          mean: 0.5,
+          fail_rate: 0.25,
+          threshold: 0.7,
+          histogram_edges: [],
+          histogram_counts: [],
+          series: [{ bucket_start: "2026-01-01T00:00:00Z", n: 4, mean: 0.5, fail_rate: 0.25 }],
+        },
+      ],
+    });
+    const alarms = rows.filter((r) => r.kind === "metric_alarm");
+    assert.equal(alarms.length, 1);
+    assert.match(alarms[0]!.title, /user_feedback/i);
+    assert.equal(alarms[0]!.href, "/monitoring");
+  });
 });
 
 describe("overviewWarningMessages", () => {

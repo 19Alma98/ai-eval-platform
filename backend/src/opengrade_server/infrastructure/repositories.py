@@ -3,11 +3,12 @@ from __future__ import annotations
 import logging
 import uuid
 from datetime import UTC, datetime
-from typing import Any
+from typing import Any, cast
 
 from sqlalchemy import case, delete, func, select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
+from sqlalchemy.engine import CursorResult
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -770,13 +771,16 @@ class SqlAlchemyExperimentRepository:
         return _experiment_to_domain(row)
 
     async def try_mark_running(self, experiment_id: uuid.UUID) -> Experiment | None:
-        result = await self._session.execute(
-            update(ExperimentModel)
-            .where(
-                ExperimentModel.id == experiment_id,
-                ExperimentModel.status != "running",
-            )
-            .values(status="running")
+        result = cast(
+            CursorResult[Any],
+            await self._session.execute(
+                update(ExperimentModel)
+                .where(
+                    ExperimentModel.id == experiment_id,
+                    ExperimentModel.status != "running",
+                )
+                .values(status="running")
+            ),
         )
         await self._session.commit()
         if result.rowcount == 0:
@@ -1362,13 +1366,16 @@ class SqlAlchemyLiveInteractionRepository:
         return _live_interaction_to_domain(row)
 
     async def try_claim_for_scoring(self, interaction_id: uuid.UUID) -> LiveInteraction | None:
-        result = await self._session.execute(
-            update(LiveInteractionModel)
-            .where(
-                LiveInteractionModel.id == interaction_id,
-                LiveInteractionModel.judge_status.in_(("pending", "scored", "error")),
-            )
-            .values(judge_status="running", error_message=None, score_warning=None)
+        result = cast(
+            CursorResult[Any],
+            await self._session.execute(
+                update(LiveInteractionModel)
+                .where(
+                    LiveInteractionModel.id == interaction_id,
+                    LiveInteractionModel.judge_status.in_(("pending", "scored", "error")),
+                )
+                .values(judge_status="running", error_message=None, score_warning=None)
+            ),
         )
         await self._session.commit()
         if result.rowcount == 0:

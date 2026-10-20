@@ -20,13 +20,9 @@ import { formatDurationMs, formatPercent, formatScore } from "@/lib/format";
 import { metricLabel } from "@/lib/metrics-catalog";
 import { withProjectQuery } from "@/lib/project-href";
 import { rangeFromPreset } from "@/lib/time-range";
-import {
-  alarmState,
-  metricKey,
-  parseAlarmThresholds,
-  type AlarmThresholds,
-} from "./alarms";
+import { alarmState, metricKey, type AlarmThresholds } from "./alarms";
 import { AnnotationQueue, annotationQueueQueryKey } from "./annotation-queue";
+import { useAlarmThresholds } from "./use-alarm-thresholds";
 import { monitoringQueryKey, useMonitoring } from "./use-monitoring";
 
 const chartLoading = () => (
@@ -52,36 +48,6 @@ const HistogramChart = dynamic(
   () => import("./monitoring-charts-inner").then((m) => m.HistogramChartInner),
   { ssr: false, loading: chartLoading },
 );
-
-const ALARMS_KEY = "opengrade.monitoring.alarms";
-
-function useAlarmThresholds(projectId: string) {
-  const storageKey = `${ALARMS_KEY}.${projectId}`;
-  const [thresholds, setThresholds] = useState<AlarmThresholds>(() => {
-    try {
-      return parseAlarmThresholds(localStorage.getItem(storageKey));
-    } catch {
-      return {};
-    }
-  });
-  const update = useCallback(
-    (key: string, value: number | null) => {
-      setThresholds((prev) => {
-        const next = { ...prev };
-        if (value == null) delete next[key];
-        else next[key] = value;
-        try {
-          localStorage.setItem(storageKey, JSON.stringify(next));
-        } catch {
-          /* storage unavailable: keep for this visit */
-        }
-        return next;
-      });
-    },
-    [storageKey],
-  );
-  return [thresholds, update] as const;
-}
 
 function Kpi({
   label,

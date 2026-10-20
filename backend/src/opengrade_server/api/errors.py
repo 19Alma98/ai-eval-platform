@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import math
 from collections.abc import Awaitable, Callable
 from typing import Any
@@ -48,6 +49,8 @@ from opengrade_server.application.release_check import MissingBaselineError
 from opengrade_server.application.traces import ProjectMissingError, TraceNotFoundError
 from opengrade_server.regression.policy import InvalidPolicyError
 
+logger = logging.getLogger(__name__)
+
 ExceptionHandler = Callable[[Request, Exception], Awaitable[JSONResponse]]
 
 _NOT_FOUND: tuple[type[Exception], ...] = (
@@ -74,8 +77,9 @@ _CONFLICT: tuple[type[Exception], ...] = (
     MetricsSetConflictError,
     MetricsSetReferencedError,
     MetricsSetProtectedError,
-    IntegrityError,
 )
+
+INTEGRITY_CONFLICT_DETAIL = "Resource conflict"
 
 _BAD_REQUEST: tuple[type[Exception], ...] = (
     InvalidPolicyError,
@@ -121,6 +125,14 @@ async def request_validation_error(_request: Request, exc: Exception) -> JSONRes
     )
 
 
+async def integrity_error_handler(_request: Request, exc: Exception) -> JSONResponse:
+    logger.warning("Database integrity conflict", exc_info=exc)
+    return JSONResponse(
+        status_code=status.HTTP_409_CONFLICT,
+        content={"detail": INTEGRITY_CONFLICT_DETAIL},
+    )
+
+
 def register_exception_handlers(app: FastAPI) -> None:
     app.add_exception_handler(RequestValidationError, request_validation_error)
     not_found = _handler_for(status.HTTP_404_NOT_FOUND)
@@ -130,5 +142,6 @@ def register_exception_handlers(app: FastAPI) -> None:
         app.add_exception_handler(exc_type, not_found)
     for exc_type in _CONFLICT:
         app.add_exception_handler(exc_type, conflict)
+    app.add_exception_handler(IntegrityError, integrity_error_handler)
     for exc_type in _BAD_REQUEST:
         app.add_exception_handler(exc_type, bad_request)

@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import gzip
 import json
 import uuid
+import zlib
 from collections.abc import AsyncIterator
 from datetime import UTC, datetime
 
@@ -14,6 +16,7 @@ from opengrade_server.api.deps import (
     get_trace_repository,
     get_trace_score_repository,
 )
+from opengrade_server.config import get_settings
 from opengrade_server.domain.project import Project
 from opengrade_server.domain.trace import Trace
 from opengrade_server.main import create_app
@@ -195,6 +198,104 @@ async def test_otlp_json_ingest_and_get(client: AsyncClient) -> None:
     listed = await client.get(f"/api/v1/projects/{project_id}/traces")
     assert listed.status_code == 200
     assert [t["trace_id"] for t in listed.json()["items"]] == ["aa" * 16]
+
+
+def _minimal_otlp_payload() -> dict:
+    return {
+        "resourceSpans": [
+            {
+                "scopeSpans": [
+                    {
+                        "spans": [
+                            {
+                                "traceId": "aa" * 16,
+                                "spanId": "bb" * 8,
+                                "name": "chain",
+                                "startTimeUnixNano": "1700000000000000000",
+                                "endTimeUnixNano": "1700000001000000000",
+                                "status": {"code": "STATUS_CODE_OK"},
+                                "attributes": [
+                                    {
+                                        "key": "openinference.span.kind",
+                                        "value": {"stringValue": "CHAIN"},
+                                    },
+                                ],
+                            }
+                        ]
+                    }
+                ]
+            }
+        ]
+    }
+
+
+@pytest.mark.asyncio
+async def test_otlp_accepts_gzip_json(client: AsyncClient) -> None:
+    project = await _create_project(client)
+    raw = json.dumps(_minimal_otlp_payload()).encode("utf-8")
+    otlp = await client.post(
+        "/v1/traces",
+        content=gzip.compress(raw),
+        headers={
+            "content-type": "application/json",
+            "content-encoding": "gzip",
+            "X-Project-Id": project["id"],
+        },
+    )
+    assert otlp.status_code == 200, otlp.text
+
+
+@pytest.mark.asyncio
+async def test_otlp_accepts_deflate_json(client: AsyncClient) -> None:
+    project = await _create_project(client)
+    raw = json.dumps(_minimal_otlp_payload()).encode("utf-8")
+    otlp = await client.post(
+        "/v1/traces",
+        content=zlib.compress(raw),
+        headers={
+            "content-type": "application/json",
+            "content-encoding": "deflate",
+            "X-Project-Id": project["id"],
+        },
+    )
+    assert otlp.status_code == 200, otlp.text
+
+
+@pytest.mark.asyncio
+async def test_otlp_invalid_gzip_returns_400(client: AsyncClient) -> None:
+    project = await _create_project(client)
+    otlp = await client.post(
+        "/v1/traces",
+        content=b"not-gzip",
+        headers={
+            "content-type": "application/json",
+            "content-encoding": "gzip",
+            "X-Project-Id": project["id"],
+        },
+    )
+    assert otlp.status_code == 400
+    assert "gzip" in otlp.json()["detail"].lower()
+
+
+@pytest.mark.asyncio
+async def test_otlp_decompressed_oversize_returns_413(client: AsyncClient) -> None:
+    project = await _create_project(client)
+    max_bytes = get_settings().otlp_max_body_bytes
+    # Highly compressible payload that expands past the ingest cap.
+    raw = b"{" + (b"a" * (max_bytes + 1)) + b"}"
+    compressed = gzip.compress(raw)
+    assert len(compressed) < max_bytes
+    otlp = await client.post(
+        "/v1/traces",
+        content=compressed,
+        headers={
+            "content-type": "application/json",
+            "content-encoding": "gzip",
+            "X-Project-Id": project["id"],
+        },
+    )
+    assert otlp.status_code == 413
+    assert otlp.json()["detail"] == "OTLP payload too large"
 
 
 @pytest.mark.asyncio

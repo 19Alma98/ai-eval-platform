@@ -183,6 +183,10 @@ class InMemoryEvaluationRunRepository:
     async def list_runs_by_experiment(self, experiment_id: uuid.UUID) -> list[EvaluationRun]:
         return [r for r in self._runs.values() if r.experiment_id == experiment_id]
 
+    async def list_run_ids_with_results(self, experiment_id: uuid.UUID) -> set[uuid.UUID]:
+        run_ids = {r.id for r in self._runs.values() if r.experiment_id == experiment_id}
+        return {r.run_id for r in self._results.values() if r.run_id in run_ids}
+
     async def add_result(self, result: EvaluationResultRecord) -> EvaluationResultRecord:
         self._results[result.id] = result
         return result

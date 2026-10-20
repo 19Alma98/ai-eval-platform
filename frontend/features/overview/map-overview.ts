@@ -1,9 +1,11 @@
 import type {
   LiveSeriesBucket,
+  MetricMonitor,
   ProjectOverview,
 } from "@/lib/api/types";
-import { formatDeltaPoints } from "@/lib/format";
+import { formatDeltaPoints, formatPercent as formatPercentRate } from "@/lib/format";
 import { metricLabel } from "@/lib/metrics-catalog";
+import { alarmState, type AlarmThresholds } from "@/features/monitoring/alarms";
 
 export const OVERVIEW_ATTENTION_LIMIT = 8;
 
@@ -173,7 +175,7 @@ export function regressionDrillDownHref(
   return "/experiments";
 }
 
-export type AttentionRowKind = "live_fail" | "regression" | "calibration";
+export type AttentionRowKind = "live_fail" | "regression" | "calibration" | "metric_alarm";
 
 export type AttentionRow = {
   id: string;
@@ -184,8 +186,23 @@ export type AttentionRow = {
   createdAt?: string;
 };
 
+function metricAlarmTitle(metric: MetricMonitor): string {
+  const name = metric.source === "judge" ? metricLabel(metric.name) : metric.name;
+  const source =
+    metric.source === "judge"
+      ? "LLM judge"
+      : metric.source === "human"
+        ? "user feedback"
+        : "SDK";
+  return `Alarm on ${name} (${source})`;
+}
+
 export function mergeAttentionItems(
   overview: ProjectOverview,
+  options?: {
+    metrics?: MetricMonitor[];
+    alarmThresholds?: AlarmThresholds;
+  },
 ): AttentionRow[] {
   const rows: AttentionRow[] = [];
 
@@ -224,6 +241,22 @@ export function mergeAttentionItems(
       kind: "calibration",
       title: `Reviewers often disagree with the ${metricLabel(alert.kind)} judge`,
       subtitle: `${(alert.agreement_rate * 100).toFixed(0)}% agreement across ${alert.n_reviewed} reviews`,
+    });
+  }
+
+  const thresholds = options?.alarmThresholds ?? {};
+  for (const metric of options?.metrics ?? []) {
+    if (!alarmState(metric, thresholds).firing) continue;
+    const rate = metric.fail_rate;
+    rows.push({
+      id: `metric-alarm-${metric.source}-${metric.name}`,
+      kind: "metric_alarm",
+      title: metricAlarmTitle(metric),
+      subtitle:
+        rate != null
+          ? `${formatPercentRate(rate)} fail rate · n=${metric.n} in range`
+          : `n=${metric.n} in range`,
+      href: "/monitoring",
     });
   }
 

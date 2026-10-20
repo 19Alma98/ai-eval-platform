@@ -14,6 +14,8 @@ function kindLabel(kind: AttentionRow["kind"]): string {
       return "Regression";
     case "calibration":
       return "Judge reliability";
+    case "metric_alarm":
+      return "Production alarm";
   }
 }
 

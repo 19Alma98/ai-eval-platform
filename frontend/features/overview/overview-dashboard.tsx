@@ -11,6 +11,8 @@ import { formatErrorForUi } from "@/lib/api/client";
 import { useProjectId } from "@/lib/project-store";
 import { rangeFromPreset, type Preset } from "@/lib/time-range";
 import { cn } from "@/lib/cn";
+import { useAlarmThresholds } from "@/features/monitoring/use-alarm-thresholds";
+import { monitoringQueryKey, useMonitoring } from "@/features/monitoring/use-monitoring";
 import { parseOverviewRangeParam, OVERVIEW_DEFAULT_PRESET } from "./overview-range";
 import { useOverview, overviewQueryKey } from "./use-overview";
 import { DualKpi } from "./dual-kpi";
@@ -48,6 +50,8 @@ export function OverviewDashboard() {
   const since = start.toISOString();
   const until = end.toISOString();
   const overviewQuery = useOverview(projectId, since, until);
+  const monitoringQuery = useMonitoring(projectId, since, until);
+  const [alarmThresholds] = useAlarmThresholds(projectId ?? "");
 
   useEffect(() => {
     if (searchParams.get("range") != null) return;
@@ -77,6 +81,7 @@ export function OverviewDashboard() {
     await Promise.all([
       queryClient.refetchQueries({ queryKey: overviewQueryKey(projectId, since, until) }),
       queryClient.refetchQueries({ queryKey: traceScoreSummaryQueryKey(projectId, since, until) }),
+      queryClient.refetchQueries({ queryKey: monitoringQueryKey(projectId, since, until) }),
     ]);
   }, [projectId, queryClient, since, until]);
 
@@ -86,7 +91,12 @@ export function OverviewDashboard() {
 
   const dualKpi = overview ? mapOverviewToDualKpi(overview) : null;
   const loopCards = overview ? buildLoopCards(overview) : null;
-  const attentionRows = overview ? mergeAttentionItems(overview) : [];
+  const attentionRows = overview
+    ? mergeAttentionItems(overview, {
+        metrics: monitoringQuery.data?.metrics,
+        alarmThresholds,
+      })
+    : [];
   const warningMessages = overview ? overviewWarningMessages(overview.warnings) : [];
 
   const setupIncomplete = loopCards?.some((c) => c.status === "empty") ?? false;

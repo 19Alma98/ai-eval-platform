@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import uuid
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
@@ -12,6 +13,7 @@ from opengrade_server.api.deps import (
     get_import_dataset_items,
     get_list_datasets,
 )
+from opengrade_server.api.errors import INTEGRITY_CONFLICT_DETAIL
 from opengrade_server.api.schemas import (
     CreateDatasetItemRequest,
     CreateDatasetRequest,
@@ -38,6 +40,8 @@ from opengrade_server.application.datasets import (
 from opengrade_server.application.projects import ProjectNotFoundError
 from opengrade_server.domain.dataset import Dataset, DatasetItem
 from opengrade_server.domain.task_types import TASK_TYPE_CATALOG, normalize_task_type
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["datasets"])
 
@@ -103,8 +107,13 @@ async def create_dataset(
         )
     except ProjectNotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
-    except (DatasetConflictError, IntegrityError) as exc:
+    except DatasetConflictError as exc:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+    except IntegrityError as exc:
+        logger.warning("Database integrity conflict creating dataset", exc_info=exc)
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT, detail=INTEGRITY_CONFLICT_DETAIL
+        ) from exc
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
     return _dataset_response(dataset)

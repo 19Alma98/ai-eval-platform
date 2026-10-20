@@ -22,6 +22,12 @@ from opengrade_server.application.traces import (
     ResolveProject,
 )
 from opengrade_server.config import Settings
+from opengrade_server.tracing.http_body import (
+    BodyDecodeError,
+    BodyTooLargeError,
+    UnsupportedContentEncodingError,
+    decompress_http_body,
+)
 from opengrade_server.tracing.ingestion import ingest_otlp_payload
 from opengrade_server.tracing.live_binding import (
     CreateLiveInteractionsFromTraces,
@@ -50,11 +56,33 @@ async def export_traces(
     x_project_id: str | None = Header(default=None, alias="X-Project-Id"),
     x_project_slug: str | None = Header(default=None, alias="X-Project-Slug"),
 ) -> Response:
-    body = await request.body()
-    if len(body) > settings.otlp_max_body_bytes:
+    wire = await request.body()
+    if len(wire) > settings.otlp_max_body_bytes:
         return JSONResponse(
             status_code=status.HTTP_413_CONTENT_TOO_LARGE,
             content={"detail": "OTLP payload too large"},
+        )
+
+    try:
+        body = decompress_http_body(
+            wire,
+            request.headers.get("content-encoding"),
+            max_bytes=settings.otlp_max_body_bytes,
+        )
+    except BodyTooLargeError:
+        return JSONResponse(
+            status_code=status.HTTP_413_CONTENT_TOO_LARGE,
+            content={"detail": "OTLP payload too large"},
+        )
+    except UnsupportedContentEncodingError as exc:
+        return JSONResponse(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            content={"detail": str(exc)},
+        )
+    except BodyDecodeError as exc:
+        return JSONResponse(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            content={"detail": str(exc)},
         )
 
     try:

@@ -5,6 +5,8 @@ export type AlarmThresholds = Record<string, number>;
 
 export const DEFAULT_ALARM_FAIL_RATE = 0.2;
 
+export const MIN_ALARM_SAMPLES = 10;
+
 export function metricKey(metric: Pick<MetricMonitor, "name" | "source">): string {
   return `${metric.source}:${metric.name}`;
 }
@@ -24,11 +26,10 @@ export function parseAlarmThresholds(raw: string | null): AlarmThresholds {
   }
 }
 
-/** Fail rate of the most recent bucket that saw traffic. */
 export function latestFailRate(metric: MetricMonitor): number | null {
   for (let i = metric.series.length - 1; i >= 0; i--) {
     const bucket = metric.series[i];
-    if (bucket.n > 0 && bucket.fail_rate != null) return bucket.fail_rate;
+    if (bucket.n >= MIN_ALARM_SAMPLES && bucket.fail_rate != null) return bucket.fail_rate;
   }
   return null;
 }
@@ -43,7 +44,7 @@ export type AlarmState = {
 export function alarmState(metric: MetricMonitor, thresholds: AlarmThresholds): AlarmState {
   const limit = thresholds[metricKey(metric)] ?? DEFAULT_ALARM_FAIL_RATE;
   const latestRate = latestFailRate(metric);
-  const windowRate = metric.fail_rate;
+  const windowRate = metric.n >= MIN_ALARM_SAMPLES ? metric.fail_rate : null;
   const firing =
     (windowRate != null && windowRate > limit) || (latestRate != null && latestRate > limit);
   return { limit, windowRate, latestRate, firing };

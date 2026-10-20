@@ -96,9 +96,9 @@ def _attr_value_json(value: Any) -> Any:
         values = (value.get("kvlistValue") or {}).get("values") or []
         result: dict[str, Any] = {}
         for item in values:
-            key = _sanitize_attr_key(item.get("key"))
-            if key is not None:
-                result[key] = _attr_value_json(item.get("value"))
+            attr_key = _sanitize_attr_key(item.get("key"))
+            if attr_key is not None:
+                result[attr_key] = _attr_value_json(item.get("value"))
         return result
     return value
 
