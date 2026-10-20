@@ -27,6 +27,15 @@ def _judge_prompt_snapshots_tmpdir(
 
 @pytest.fixture(autouse=True)
 async def _dispose_db_engine() -> AsyncIterator[None]:
-    """Drop any engine opened accidentally during a test (incomplete overrides)."""
+    """Drop any engine opened during a test (``dispose_db`` also drains scorings)."""
     yield
     await dispose_db()
+
+
+@pytest.fixture(autouse=True)
+def _reset_otlp_backpressure() -> Iterator[None]:
+    from opengrade_server.api.otlp_backpressure import reset_otlp_backpressure_for_tests
+
+    reset_otlp_backpressure_for_tests()
+    yield
+    reset_otlp_backpressure_for_tests()

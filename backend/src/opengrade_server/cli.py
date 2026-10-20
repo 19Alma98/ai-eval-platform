@@ -192,13 +192,26 @@ def ui(
     if open_browser:
         webbrowser.open(url)
 
-    uvicorn.run(
-        "opengrade_server.main:app",
-        host=host,
-        port=port,
-        reload=reload,
-        log_level="info",
-    )
+    if reload:
+        uvicorn.run(
+            "opengrade_server.main:app",
+            host=host,
+            port=port,
+            reload=True,
+            log_level="info",
+        )
+    else:
+        # Match container entrypoint: trust proxy headers; allow scoring drain.
+        uvicorn.run(
+            "opengrade_server.main:app",
+            host=host,
+            port=port,
+            reload=False,
+            log_level="info",
+            proxy_headers=True,
+            forwarded_allow_ips=settings.forwarded_allow_ips,
+            timeout_graceful_shutdown=settings.shutdown_grace_seconds,
+        )
 
 
 @app.command("check")

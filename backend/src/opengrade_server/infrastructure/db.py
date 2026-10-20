@@ -28,6 +28,7 @@ __all__ = [
     "MIGRATION_ADVISORY_LOCK_KEY",
     "SQLITE_BUSY_TIMEOUT_MS",
     "bootstrap_schema",
+    "check_db_ready",
     "dispose_db",
     "ensure_sqlite_parent_dir",
     "get_session",
@@ -228,10 +229,31 @@ async def get_session() -> AsyncGenerator[AsyncSession, None]:
 
 
 async def dispose_db() -> None:
+    """Drain in-process scoring tasks, then dispose the engine."""
     global _engine, _session_factory
+    from opengrade_server.application.background_tasks import drain
+
+    try:
+        timeout = float(get_settings().shutdown_grace_seconds)
+    except Exception:
+        timeout = 30.0
+    await drain(timeout=timeout)
+
     engine = _engine
     _engine = None
     _session_factory = None
     if engine is not None:
         await engine.dispose()
         await asyncio.sleep(0)
+
+
+async def check_db_ready() -> bool:
+    """Return True when the process engine can run ``SELECT 1``."""
+    if _engine is None:
+        return False
+    try:
+        async with _engine.connect() as conn:
+            await conn.execute(text("SELECT 1"))
+        return True
+    except Exception:
+        return False

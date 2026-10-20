@@ -3,7 +3,7 @@ from __future__ import annotations
 import uuid
 from datetime import datetime
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from fastapi.responses import JSONResponse
 
 from opengrade_server.api.deps import (
@@ -28,6 +28,7 @@ from opengrade_server.api.schemas import (
     SubmitLiveInteractionRequest,
     UpsertLiveScoreReviewRequest,
 )
+from opengrade_server.application.background_tasks import enqueue_live_score
 from opengrade_server.application.datasets import DatasetNotFoundError
 from opengrade_server.application.live_interactions import (
     GetLiveInteraction,
@@ -44,7 +45,6 @@ from opengrade_server.application.live_interactions import (
     SubmitLiveInteractionCommand,
     UpsertLiveScoreReview,
     UpsertLiveScoreReviewCommand,
-    schedule_live_score,
 )
 from opengrade_server.application.live_judge_calibration import (
     JudgeCalibrationBucket,
@@ -178,7 +178,6 @@ def _calibration_response(bucket: JudgeCalibrationBucket) -> JudgeCalibrationBuc
 async def submit_live_interaction(
     project_id: uuid.UUID,
     body: SubmitLiveInteractionRequest,
-    background_tasks: BackgroundTasks,
     use_case: SubmitLiveInteraction = Depends(get_submit_live_interaction),
 ) -> JSONResponse:
     try:
@@ -201,7 +200,7 @@ async def submit_live_interaction(
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 
     if result.created and result.interaction.judge_status == "pending":
-        background_tasks.add_task(schedule_live_score, result.interaction.id)
+        enqueue_live_score(result.interaction.id)
 
     payload = _interaction_response(result.interaction).model_dump(mode="json")
     return JSONResponse(status_code=status.HTTP_202_ACCEPTED, content=payload)

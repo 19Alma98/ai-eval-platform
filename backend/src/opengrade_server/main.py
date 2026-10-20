@@ -1,17 +1,24 @@
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Response, status
+from fastapi.responses import JSONResponse
 
 from opengrade_server import __version__
 from opengrade_server.api.errors import register_exception_handlers
 from opengrade_server.api.json_guard import RejectNonFiniteJsonMiddleware
+from opengrade_server.api.request_id import RequestIdMiddleware, configure_request_id_logging
 from opengrade_server.api.routes import api_router
 from opengrade_server.api.schemas import HealthResponse
 from opengrade_server.config import get_settings
 from opengrade_server.evaluation import bootstrap_evaluators
 from opengrade_server.evaluation.registry import clear_registry
-from opengrade_server.infrastructure.db import bootstrap_schema, dispose_db, init_db
+from opengrade_server.infrastructure.db import (
+    bootstrap_schema,
+    check_db_ready,
+    dispose_db,
+    init_db,
+)
 from opengrade_server.infrastructure.llm import LiteLlmClient
 from opengrade_server.infrastructure.repositories import SqlJudgeClaimCache
 from opengrade_server.ui import mount_ui
@@ -40,6 +47,7 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
 
 
 def create_app(*, mount_packaged_ui: bool = True) -> FastAPI:
+    configure_request_id_logging()
     _ensure_evaluators_registered()
     app = FastAPI(
         title="AI Evaluation & Observability Platform",
@@ -47,15 +55,26 @@ def create_app(*, mount_packaged_ui: bool = True) -> FastAPI:
         lifespan=lifespan,
     )
     register_exception_handlers(app)
+    # Last added = outermost. Request ID wraps JSON guard.
     app.add_middleware(
         RejectNonFiniteJsonMiddleware,
         max_body_bytes=get_settings().json_max_body_bytes,
     )
+    app.add_middleware(RequestIdMiddleware)
     app.include_router(api_router)
 
     @app.get("/health", response_model=HealthResponse, tags=["health"])
     async def health() -> HealthResponse:
         return HealthResponse(status="ok")
+
+    @app.get("/ready", tags=["health"])
+    async def ready() -> Response:
+        if await check_db_ready():
+            return JSONResponse({"status": "ok"})
+        return JSONResponse(
+            {"status": "not_ready"},
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+        )
 
     if mount_packaged_ui:
         mount_ui(app)

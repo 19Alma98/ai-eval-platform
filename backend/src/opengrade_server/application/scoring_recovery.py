@@ -3,10 +3,9 @@ from __future__ import annotations
 import asyncio
 import logging
 import uuid
-from collections.abc import Coroutine
 from datetime import UTC, datetime
-from typing import Any
 
+from opengrade_server.application.background_tasks import spawn
 from opengrade_server.application.live_interactions import schedule_live_score
 from opengrade_server.domain.repositories import (
     EvaluationRunRepository,
@@ -17,22 +16,6 @@ from opengrade_server.domain.repositories import (
 logger = logging.getLogger(__name__)
 
 _LIVE_REQUEUE_CONCURRENCY = 4
-_background_tasks: set[asyncio.Task[Any]] = set()
-
-
-def _spawn_background(coro: Coroutine[Any, Any, None], *, name: str) -> None:
-    task = asyncio.create_task(coro, name=name)
-    _background_tasks.add(task)
-
-    def _done(t: asyncio.Task[Any]) -> None:
-        _background_tasks.discard(t)
-        if t.cancelled():
-            return
-        exc = t.exception()
-        if exc is not None:
-            logger.exception("Background task %s failed", name, exc_info=exc)
-
-    task.add_done_callback(_done)
 
 
 async def fail_stuck_experiments(
@@ -86,7 +69,7 @@ async def requeue_unfinished_live_scores(
         await asyncio.gather(*(_one(i) for i in ids))
 
     # Do not block lifespan on LLM scoring; run in the background.
-    _spawn_background(_pump(), name="requeue-live-scores")
+    spawn(_pump(), name="requeue-live-scores")
     logger.info("Re-queued %s unfinished live interaction score(s)", len(ids))
     return len(ids)
 

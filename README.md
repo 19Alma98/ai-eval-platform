@@ -33,11 +33,14 @@ docker compose up --build
 
 UI and API: http://127.0.0.1:8000 — one image serves both (the same static UI that `opengrade ui` ships). Compose publishes the API and Postgres (`127.0.0.1:5434`) on localhost only; change the port mappings to `"8000:8000"` / `"5434:5432"` if you intentionally need LAN access. For UI development run `npm run dev` in `frontend/` (http://localhost:3000, proxies `/api` to `API_ORIGIN`).
 
-Check health:
+Check liveness / readiness (single API replica only — do not scale `api` without a shared job queue):
 
 ```bash
-curl http://localhost:8000/health
+curl http://localhost:8000/health   # liveness
+curl http://localhost:8000/ready    # DB readiness (Compose healthcheck)
 ```
+
+Behind a reverse proxy, set `FORWARDED_ALLOW_IPS`. OTLP ingest may return `429`/`503` with `Retry-After` under load (see `backend/.env.example`).
 
 ### Portfolio demo (People Ops assistant + Ollama)
 

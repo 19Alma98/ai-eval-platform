@@ -30,4 +30,12 @@ Postgres:
 uv run opengrade ui --backend-store-uri 'postgresql+asyncpg://opengrade:opengrade@localhost:5434/opengrade'
 ```
 
+## Ops (container)
+
+- **Single API replica** — scoring runs in-process; multi-replica recovery is not safe yet.
+- Probes: `GET /health` (liveness), `GET /ready` (DB readiness). Compose healthchecks `/ready`.
+- Requests carry `X-Request-ID` (echoed / generated).
+- Entrypoint: `--proxy-headers`, `--forwarded-allow-ips` (`FORWARDED_ALLOW_IPS`), `--timeout-graceful-shutdown` (`SHUTDOWN_GRACE_SECONDS`).
+- OTLP `/v1/traces` may return **429** / **503** with `Retry-After` when rate, inflight, or pending-score caps are hit (`OTLP_*` in `.env.example`).
+
 See the repository root README for Docker Compose and SDK quickstart.
