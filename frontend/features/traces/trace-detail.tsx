@@ -22,7 +22,7 @@ import { formatDurationMs, formatScore, truncateId } from "@/lib/format";
 import { liveRunHref, traceHref } from "@/lib/links";
 import { withProjectQuery } from "@/lib/project-href";
 import { RagPipeline } from "./rag-pipeline";
-import { liveTraceSkipped } from "./live-skip";
+import { liveSkipReason } from "./live-skip";
 import { buildRagView, hasRagContent } from "./rag-view";
 import { SpanSidebar } from "./span-sidebar";
 import { traceUsage } from "./span-metrics";
@@ -47,6 +47,7 @@ export function TraceDetailView({ projectId, traceId }: { projectId: string; tra
 
   const ragView = useMemo(() => (trace ? buildRagView(trace) : null), [trace]);
   const usage = useMemo(() => traceUsage(trace?.spans ?? []), [trace]);
+  const liveSkip = trace ? liveSkipReason(trace) : null;
 
   if (query.isLoading) return <LoadingBlock className="min-h-[240px]" />;
   if (query.isError || !trace || !ragView) {
@@ -151,13 +152,22 @@ export function TraceDetailView({ projectId, traceId }: { projectId: string; tra
         className="mb-0"
       />
 
-      {liveTraceSkipped(trace) ? (
+      {liveSkip ? (
         <p className="rounded-md border border-status-warn bg-status-warn-bg px-3 py-2 text-sm text-status-warn">
-          This call is marked live but did not become a Live traffic answer: no question or
-          answer could be read from it. Check that the server runs with{" "}
-          <code>CONTENT_CAPTURE_ENABLED=true</code>; if the function takes several text arguments
-          or returns no text, call <code>opengrade.set_input(question)</code> and{" "}
-          <code>opengrade.set_output(answer)</code> inside it.
+          {liveSkip === "no_content" ? (
+            <>
+              This call is marked live but did not become a Live traffic answer: its input and
+              output were not stored. The server is running with{" "}
+              <code>CONTENT_CAPTURE_ENABLED=false</code>, or the SDK&apos;s{" "}
+              <code>capture_input</code> / <code>capture_output</code> are off.
+            </>
+          ) : (
+            <>
+              This call is marked live but did not become a Live traffic answer: its question or
+              answer is empty. Call <code>opengrade.set_input(question)</code> and{" "}
+              <code>opengrade.set_output(answer)</code> inside the traced function.
+            </>
+          )}
         </p>
       ) : null}
 

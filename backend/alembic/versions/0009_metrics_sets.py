@@ -139,6 +139,7 @@ def upgrade() -> None:
             ["project_id"],
             unique=True,
             postgresql_where=sa.text("is_project_default"),
+            sqlite_where=sa.text("is_project_default"),
         )
 
     if not inspector.has_table("metrics_set_entries"):

@@ -81,3 +81,10 @@ def test_ui_config_warnings_clean_ollama() -> None:
         llm_api_base="http://localhost:11434",
     )
     assert ui_config_warnings(settings) == []
+
+
+def test_content_capture_on_by_default(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("CONTENT_CAPTURE_ENABLED", raising=False)
+    assert Settings(_env_file=None).content_capture_enabled is True  # type: ignore[call-arg]
+    monkeypatch.setenv("CONTENT_CAPTURE_ENABLED", "false")
+    assert Settings(_env_file=None).content_capture_enabled is False  # type: ignore[call-arg]

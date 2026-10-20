@@ -135,6 +135,19 @@ async def test_groundedness_prechecks_do_not_call_llm() -> None:
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("kind", ["groundedness", "context_recall", "context_precision"])
+async def test_documents_without_text_skip_instead_of_failing(kind: str) -> None:
+    # Content capture off keeps document ids only: nothing to judge against.
+    llm = ScriptedJudgeLlm()
+    result = await _judge(kind, llm).evaluate(
+        _sample(context={"documents": [{"id": "kb-1"}, {"id": "kb-2", "title": "PTO"}]})
+    )
+    assert result.label == "SKIPPED"
+    assert "no text" in (result.explanation or "")
+    assert llm.calls == []
+
+
+@pytest.mark.asyncio
 async def test_groundedness_max_claims_truncates() -> None:
     llm = ScriptedJudgeLlm({"extract_answer_claims": {"claims": ["a", "b", "c"]}})
     result = await _judge("groundedness", llm, {"max_claims": 2}).evaluate(_sample())
