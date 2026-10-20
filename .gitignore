@@ -38,6 +38,8 @@ backend/src/opengrade_server/_ui/**
 
 opengrade.db
 **/opengrade.db
+opengrade.db-shm
+opengrade.db-wal
 
 .opengrade/
 .gstack/
