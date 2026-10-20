@@ -34,6 +34,9 @@ class _Runs:
     async def list_runs_by_experiment(self, experiment_id: uuid.UUID) -> list[EvaluationRun]:
         return []
 
+    async def list_run_ids_with_results(self, experiment_id: uuid.UUID) -> set[uuid.UUID]:
+        return set()
+
     async def list_results(self, run_id: uuid.UUID) -> list[Any]:
         return []
 

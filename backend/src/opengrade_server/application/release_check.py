@@ -98,6 +98,9 @@ class ReleaseCheck:
             selected = select_runs(
                 all_runs,
                 current_fingerprint=await current_fingerprint(self._fingerprints, experiment),
+                run_ids_with_results=await self._runs.list_run_ids_with_results(
+                    command.experiment_id
+                ),
             )
         except ValueError as exc:
             raise InvalidCompareSelectionError(str(exc)) from exc

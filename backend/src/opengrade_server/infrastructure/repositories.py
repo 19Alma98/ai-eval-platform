@@ -846,6 +846,15 @@ class SqlAlchemyEvaluationRunRepository:
         )
         return [_run_to_domain(row) for row in result.scalars().all()]
 
+    async def list_run_ids_with_results(self, experiment_id: uuid.UUID) -> set[uuid.UUID]:
+        result = await self._session.execute(
+            select(EvaluationResultModel.run_id)
+            .join(EvaluationRunModel, EvaluationRunModel.id == EvaluationResultModel.run_id)
+            .where(EvaluationRunModel.experiment_id == experiment_id)
+            .distinct()
+        )
+        return set(result.scalars().all())
+
     async def add_result(self, result: EvaluationResultRecord) -> EvaluationResultRecord:
         row = EvaluationResultModel(
             id=result.id,

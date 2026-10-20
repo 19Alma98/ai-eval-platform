@@ -28,12 +28,13 @@ def _run(
     started_at: datetime | None = None,
     finished_at: datetime | None = None,
     run_id: uuid.UUID | None = None,
+    status: str = "PASSED",
 ) -> EvaluationRun:
     return EvaluationRun(
         id=run_id or uuid.uuid4(),
         experiment_id=uuid.uuid4(),
         evaluator_id=evaluator_id or uuid.uuid4(),
-        status="PASSED",
+        status=status,
         started_at=started_at,
         finished_at=finished_at,
         metadata={},
@@ -63,8 +64,73 @@ def test_select_latest_runs_prefers_newest_finished_at() -> None:
         evaluator_id=evaluator_id,
         finished_at=datetime(2024, 1, 2, tzinfo=UTC),
     )
-    selected = select_latest_runs([older, newer])
+    selected = select_latest_runs(
+        [older, newer],
+        run_ids_with_results={older.id, newer.id},
+    )
     assert selected[evaluator_id].id == newer.id
+
+
+def test_select_latest_runs_skips_non_terminal_even_if_newer() -> None:
+    evaluator_id = uuid.uuid4()
+    older = _run(
+        evaluator_id=evaluator_id,
+        finished_at=datetime(2024, 1, 1, tzinfo=UTC),
+        status="PASSED",
+    )
+    pending = _run(
+        evaluator_id=evaluator_id,
+        started_at=datetime(2024, 1, 2, tzinfo=UTC),
+        status="PENDING",
+    )
+    running = _run(
+        evaluator_id=evaluator_id,
+        started_at=datetime(2024, 1, 3, tzinfo=UTC),
+        status="RUNNING",
+    )
+    selected = select_latest_runs(
+        [older, pending, running],
+        run_ids_with_results={older.id, pending.id, running.id},
+    )
+    assert selected[evaluator_id].id == older.id
+
+
+def test_select_latest_runs_skips_terminal_without_results() -> None:
+    evaluator_id = uuid.uuid4()
+    scored = _run(
+        evaluator_id=evaluator_id,
+        finished_at=datetime(2024, 1, 1, tzinfo=UTC),
+        status="PASSED",
+    )
+    empty_error = _run(
+        evaluator_id=evaluator_id,
+        finished_at=datetime(2024, 1, 2, tzinfo=UTC),
+        status="ERROR",
+    )
+    selected = select_latest_runs(
+        [scored, empty_error],
+        run_ids_with_results={scored.id},
+    )
+    assert selected[evaluator_id].id == scored.id
+
+
+def test_select_latest_runs_prefers_newer_terminal_with_results() -> None:
+    evaluator_id = uuid.uuid4()
+    older = _run(
+        evaluator_id=evaluator_id,
+        finished_at=datetime(2024, 1, 1, tzinfo=UTC),
+        status="PASSED",
+    )
+    newer_error = _run(
+        evaluator_id=evaluator_id,
+        finished_at=datetime(2024, 1, 2, tzinfo=UTC),
+        status="ERROR",
+    )
+    selected = select_latest_runs(
+        [older, newer_error],
+        run_ids_with_results={older.id, newer_error.id},
+    )
+    assert selected[evaluator_id].id == newer_error.id
 
 
 def test_select_runs_explicit_ids_and_evaluator_filter() -> None:
@@ -74,6 +140,12 @@ def test_select_runs_explicit_ids_and_evaluator_filter() -> None:
     r2 = _run(evaluator_id=e2)
     selected = select_runs([r1, r2], run_ids=[r1.id], evaluator_ids=[e1])
     assert [r.id for r in selected] == [r1.id]
+
+
+def test_select_runs_explicit_ids_ignore_results_filter() -> None:
+    empty = _run(status="ERROR")
+    selected = select_runs([empty], run_ids=[empty.id], run_ids_with_results=set())
+    assert [r.id for r in selected] == [empty.id]
 
 
 def test_select_runs_unknown_id_raises() -> None:
@@ -425,9 +497,17 @@ def test_select_runs_skips_runs_scored_on_other_inputs() -> None:
         metadata={"inputs_fingerprint": "new"},
     )
     legacy = _run(finished_at=t0)
-    selected = select_runs([stale, fresh, legacy], current_fingerprint="new")
+    with_results = {stale.id, fresh.id, legacy.id}
+    selected = select_runs(
+        [stale, fresh, legacy],
+        current_fingerprint="new",
+        run_ids_with_results=with_results,
+    )
     assert {r.id for r in selected} == {fresh.id, legacy.id}
     # Without a current fingerprint the newest run wins, as before.
-    assert stale in select_runs([stale, fresh])
+    assert stale in select_runs(
+        [stale, fresh],
+        run_ids_with_results={stale.id, fresh.id},
+    )
     # Explicit run ids are honored even when stale.
     assert select_runs([stale, fresh], run_ids=[stale.id], current_fingerprint="new") == [stale]

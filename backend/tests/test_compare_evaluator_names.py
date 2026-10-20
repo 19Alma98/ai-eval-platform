@@ -36,6 +36,10 @@ class _FakeRuns:
     async def list_runs_by_experiment(self, experiment_id: uuid.UUID) -> list[EvaluationRun]:
         return [r for r in self._runs if r.experiment_id == experiment_id]
 
+    async def list_run_ids_with_results(self, experiment_id: uuid.UUID) -> set[uuid.UUID]:
+        run_ids = {r.id for r in self._runs if r.experiment_id == experiment_id}
+        return {run_id for run_id, rows in self._results.items() if run_id in run_ids and rows}
+
     async def list_results(self, run_id: uuid.UUID) -> list[EvaluationResultRecord]:
         return list(self._results.get(run_id, []))
 

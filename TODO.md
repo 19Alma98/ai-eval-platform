@@ -126,7 +126,7 @@ Priority: **P0** blocks a public release, **P1** fix before promoting it, **P2**
   `repositories.py:1471`): resubmit with same `external_id` while pending, rescore, or startup requeue
   schedules another scoring → 3 submits = 6 judge calls, 2–3 scores per kind, inflated monitoring.
   Fix: atomic `pending→running` claim, skip if no row updated. (confirmed both)
-- [ ] **`select_latest_runs` ignores run status** (`regression/aggregate.py:57-63`): PENDING/RUNNING or
+- [x] **`select_latest_runs` ignores run status** (`regression/aggregate.py:57-63`): PENDING/RUNNING or
   interrupted ERROR run with 0 results becomes "latest" → summary `mean_score: None`, release gate
   `unavailable`, exit 1, good previous run hidden. Fix: latest terminal run with results. (confirmed both)
 

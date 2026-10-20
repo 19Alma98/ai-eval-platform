@@ -165,10 +165,12 @@ class CompareExperimentItems:
             selected_candidate = select_runs(
                 await self._runs.list_runs_by_experiment(experiment_id),
                 current_fingerprint=await current_fingerprint(self._fingerprints, experiment),
+                run_ids_with_results=await self._runs.list_run_ids_with_results(experiment_id),
             )
             selected_baseline = select_runs(
                 await self._runs.list_runs_by_experiment(baseline_id),
                 current_fingerprint=await current_fingerprint(self._fingerprints, baseline),
+                run_ids_with_results=await self._runs.list_run_ids_with_results(baseline_id),
             )
         except ValueError as exc:
             raise InvalidCompareSelectionError(str(exc)) from exc

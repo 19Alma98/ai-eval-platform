@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import uuid
-from collections.abc import Iterable, Sequence
+from collections.abc import Iterable, Sequence, Set
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Literal
@@ -18,6 +18,7 @@ MetricStatus = Literal[
 MetricName = Literal["mean_score", "pass_rate"]
 
 _EPOCH = datetime.min.replace(tzinfo=UTC)
+_TERMINAL_RUN_STATUSES = frozenset({"PASSED", "FAILED", "ERROR", "SKIPPED"})
 
 
 @dataclass(frozen=True, slots=True)
@@ -54,9 +55,22 @@ def _run_recency(run: EvaluationRun) -> datetime:
     return stamp
 
 
-def select_latest_runs(runs: Iterable[EvaluationRun]) -> dict[uuid.UUID, EvaluationRun]:
+def select_latest_runs(
+    runs: Iterable[EvaluationRun],
+    *,
+    run_ids_with_results: Set[uuid.UUID],
+) -> dict[uuid.UUID, EvaluationRun]:
+    """Latest terminal run per evaluator that has at least one result row.
+
+    PENDING/RUNNING and empty interrupted ERROR runs are skipped so they do not
+    hide a previous scored run in summaries and release gates.
+    """
     latest: dict[uuid.UUID, EvaluationRun] = {}
     for run in runs:
+        if run.status not in _TERMINAL_RUN_STATUSES:
+            continue
+        if run.id not in run_ids_with_results:
+            continue
         current = latest.get(run.evaluator_id)
         if current is None or _run_recency(run) >= _run_recency(current):
             latest[run.evaluator_id] = run
@@ -77,12 +91,16 @@ def select_runs(
     run_ids: list[uuid.UUID] | None = None,
     evaluator_ids: list[uuid.UUID] | None = None,
     current_fingerprint: str | None = None,
+    run_ids_with_results: Set[uuid.UUID] | None = None,
 ) -> list[EvaluationRun]:
     """Pick runs to report on: explicit ``run_ids``, else the latest fresh run per evaluator.
 
     With ``current_fingerprint``, runs scored on different inputs (outputs or test set
     changed since) are stale and skipped. Runs without a fingerprint predate it and
     are kept.
+
+    Auto-selection (no ``run_ids``) requires ``run_ids_with_results`` and keeps only
+    the latest terminal run that has results. Explicit ``run_ids`` are returned as-is.
     """
     run_list = list(runs)
     if run_ids is None and current_fingerprint is not None:
@@ -95,7 +113,11 @@ def select_runs(
         if missing:
             raise ValueError(f"Unknown run ids for experiment: {sorted(missing, key=str)}")
     else:
-        selected = list(select_latest_runs(run_list).values())
+        if run_ids_with_results is None:
+            raise ValueError("run_ids_with_results is required when run_ids is omitted")
+        selected = list(
+            select_latest_runs(run_list, run_ids_with_results=run_ids_with_results).values()
+        )
 
     if evaluator_ids is not None:
         allowed = set(evaluator_ids)

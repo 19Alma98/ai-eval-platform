@@ -147,6 +147,7 @@ class SummarizeExperiment:
                 run_ids=run_ids,
                 evaluator_ids=evaluator_ids,
                 current_fingerprint=await current_fingerprint(self._fingerprints, experiment),
+                run_ids_with_results=await self._runs.list_run_ids_with_results(experiment_id),
             )
         except ValueError as exc:
             raise InvalidCompareSelectionError(str(exc)) from exc
@@ -250,12 +251,14 @@ class CompareExperiments:
                 run_ids=candidate_run_ids,
                 evaluator_ids=evaluator_ids,
                 current_fingerprint=await current_fingerprint(self._fingerprints, experiment),
+                run_ids_with_results=await self._runs.list_run_ids_with_results(experiment_id),
             )
             selected_baseline = select_runs(
                 baseline_runs,
                 run_ids=baseline_run_ids,
                 evaluator_ids=evaluator_ids,
                 current_fingerprint=await current_fingerprint(self._fingerprints, baseline),
+                run_ids_with_results=await self._runs.list_run_ids_with_results(baseline_id),
             )
         except ValueError as exc:
             raise InvalidCompareSelectionError(str(exc)) from exc
