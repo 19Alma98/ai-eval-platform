@@ -86,3 +86,24 @@ def test_resolve_dynamic_trace_path(tmp_path: Path) -> None:
     (root / "index.html").write_text("<html>home</html>", encoding="utf-8")
 
     assert resolve_ui_file(root, "traces/" + "ab" * 16) == target.resolve()
+
+
+def test_resolve_segment_prefetch_files(tmp_path: Path) -> None:
+    """Prefetch requests use the flat name; older exports nest it in directories."""
+    root = tmp_path / "ui"
+    (root / "monitoring").mkdir(parents=True)
+    (root / "index.html").write_text("<html>home</html>", encoding="utf-8")
+    flat = root / "monitoring" / "__next.!KGFwcCk.monitoring.__PAGE__.txt"
+    flat.write_text("flat", encoding="utf-8")
+    nested = root / "traces" / "_" / "__next.!KGFwcCk" / "traces" / "$d$traceId" / "__PAGE__.txt"
+    nested.parent.mkdir(parents=True)
+    nested.write_text("nested", encoding="utf-8")
+
+    assert (
+        resolve_ui_file(root, "monitoring/__next.!KGFwcCk.monitoring.__PAGE__.txt")
+        == flat.resolve()
+    )
+    assert (
+        resolve_ui_file(root, "traces/abc/__next.!KGFwcCk.traces.$d$traceId.__PAGE__.txt")
+        == nested.resolve()
+    )

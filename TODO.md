@@ -193,41 +193,56 @@ Priority: **P0** blocks a public release, **P1** fix before promoting it, **P2**
 
 ### Frontend — P1
 
-- [ ] **Live traffic search loses focus on every keystroke** (`features/live-runs/live-run-list.tsx:82-86,219`):
+- [x] **Live traffic search loses focus on every keystroke** (`features/live-runs/live-run-list.tsx:82-86,219`):
   toolbar unmounted while the new query loads. Fix: spinner only in the table, `placeholderData:
   keepPreviousData`, debounce search.
-- [ ] **One failed 5 s refresh wipes the live list** (`live-run-list.tsx:220`). Fix: `isError && !data`,
+  → toolbar always mounted, loading/error only replace the table, `keepPreviousData` (same project only), 300 ms debounce.
+- [x] **One failed 5 s refresh wipes the live list** (`live-run-list.tsx:220`). Fix: `isError && !data`,
   stale banner otherwise.
-- [ ] **Overview time window frozen at page load** (`features/overview/overview-dashboard.tsx:47,75-80`);
+  → full error only without data; otherwise a "showing last loaded results" banner with Retry.
+- [x] **Overview time window frozen at page load** (`features/overview/overview-dashboard.tsx:47,75-80`);
   Refresh refetches the same window, "Updated just now" misleading. Same in `ProductionScoresCard`.
   Fix: anchor in state, reset on refresh (as `monitoring-dashboard.tsx:334,370`).
-- [ ] **`experiment_metrics.<key>.max` checks rendered wrong** (`features/release/describe-check.ts:73-81`):
+  → window anchored in state, moved forward on Refresh/preset change (overview, production scores, monitoring).
+- [x] **`experiment_metrics.<key>.max` checks rendered wrong** (`features/release/describe-check.ts:73-81`):
   shown as "≥ 2000.00 average score" while backend checks `<=`. Fix: dedicated branch, right sign, raw format.
-- [ ] **Compare row verdict uses mean only** (`features/experiments/group-metrics-by-evaluator.ts:47` vs
+  → `experiment_metrics.<key>.min|max` branch with ≥/≤ and raw number formatting.
+- [x] **Compare row verdict uses mean only** (`features/experiments/group-metrics-by-evaluator.ts:47` vs
   `experiment-compare-view.tsx:214-215`; backend flags pass-rate changes `regression/aggregate.py:221-224`):
   banner "1 metric worse" while every row "No real change". Also UI QA: compare says "0 worse" while the
   release gate fails the same pair with −8 pts; CI not shown. Fix: worse of mean/pass-rate verdicts, show CI.
-- [ ] **Monitoring threshold field** (`features/monitoring/monitoring-dashboard.tsx:151-157`): invalid/empty
+  → row verdict = worse of mean/pass-rate; banner counts the same row verdicts; 95% CI shown under the deltas.
+- [x] **Monitoring threshold field** (`features/monitoring/monitoring-dashboard.tsx:151-157`): invalid/empty
   value restores the old number in the field but deletes the saved custom alarm (falls back to 20%).
-- [ ] **`compare-bars.tsx:66` checks `"regression"`, backend sends `"regressed"`**
+  → empty → back to default 20%, invalid → previous value kept and saved alarm untouched; field follows values loaded from storage.
+- [x] **`compare-bars.tsx:66` checks `"regression"`, backend sends `"regressed"`**
   (`application/project_overview.py:50`) → non-significant drops shown red as "worse".
-- [ ] **Experiment detail stale after scoring** (`features/experiments/use-experiments.ts:50-53`,
+  → checks `"regressed"`, colours significant changes only.
+- [x] **Experiment detail stale after scoring** (`features/experiments/use-experiments.ts:50-53`,
   `experiment-detail.tsx:364`): only status is polled; Refresh only refetches summary. Fix: refetch
   summary + answers on running→finished and on Refresh.
-- [ ] **"Waiting for judge" filter sends only `pending`** (`live-run-list.tsx:83`), `running` items
+  → on running→finished and on Refresh, refetch experiment, summary, answers and evaluation runs.
+- [x] **"Waiting for judge" filter sends only `pending`** (`live-run-list.tsx:83`), `running` items
   disappear. Fix: accept a status list in the backend.
-- [ ] **Monitoring thresholds not tied to project** (`monitoring-dashboard.tsx:58-66`): A shows B's
+  → backend accepts `judge_status=pending,running` (comma-separated list), UI sends both.
+- [x] **Monitoring thresholds not tied to project** (`monitoring-dashboard.tsx:58-66`): A shows B's
   thresholds and next edit saves them under A. Fix: `key={projectId}`.
-- [ ] **Traces count capped at 5000 silently** (`monitoring-dashboard.tsx:260`, backend
+  → thresholds read via `useSyncExternalStore` from the current project's key + `key={projectId}` on the dashboard.
+- [x] **Traces count capped at 5000 silently** (`monitoring-dashboard.tsx:260`, backend
   `application/monitoring.py:25,237,254`); error rate / cost per trace computed on the sample. Show "5,000+"
   or return true count.
-- [ ] **Next prefetch 404s on every page**: browser requests `/<page>/__next.!KGFwcCk.<page>.__PAGE__.txt`,
+  → (UI only) shows "5,000+" when truncated and labels error rate / cost per trace as computed on the latest traces.
+- [x] **Next prefetch 404s on every page**: browser requests `/<page>/__next.!KGFwcCk.<page>.__PAGE__.txt`,
   export writes `__next.!KGFwcCk/<page>/__PAGE__.txt`. Fix mapping in `backend/.../ui.py` `resolve_ui_file`.
-- [ ] **Annotation queue**: clicking "Correct" removes the card immediately, so "Add to test set" can't
+  → with Next 16.3.8 the export writes flat names matching the requests (verified in browser, 0 404s); `resolve_ui_file` also falls back to the older nested layout.
+- [x] **Annotation queue**: clicking "Correct" removes the card immediately, so "Add to test set" can't
   be done for that item and the next promote hits the wrong interaction.
-- [ ] **Experiment detail hides params and run metrics** (`temperature`, `cost_usd`, `opengrade.latency_p50_ms`…);
+  → reviewed cards stay (with "Reviewed" + Done) so "Add to test set" still works; queue refetches on Done.
+- [x] **Experiment detail hides params and run metrics** (`temperature`, `cost_usd`, `opengrade.latency_p50_ms`…);
   only in Compare-all (cut off on the right).
-- [ ] Test-set picker on `/monitoring` shows a raw UUID after selection.
+  → "Parameters" and "Run metrics" cards on the detail page.
+- [x] Test-set picker on `/monitoring` shows a raw UUID after selection.
+  → `SelectItem` derives its text from mixed children (`{name} · v{version}`), fixes all pickers.
 
 ### Frontend — P2
 

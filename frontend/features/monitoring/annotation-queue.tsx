@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Plus, ThumbsDown, ThumbsUp } from "lucide-react";
+import { Check, Plus, ThumbsDown, ThumbsUp } from "lucide-react";
 import { toast } from "sonner";
 import { EmptyState } from "@/components/empty-state";
 import { ErrorState } from "@/components/error-state";
@@ -53,18 +53,25 @@ function readStoredDataset(projectId: string): string {
   }
 }
 
+type ReviewVerdict = "agree" | "disagree";
+
 function QueueItem({
   row,
   projectId,
   datasetId,
   selectedDataset,
+  reviewedVerdict,
+  onReviewed,
+  onDismiss,
 }: {
   row: LiveInteraction;
   projectId: string;
   datasetId: string;
   selectedDataset: Dataset | undefined;
+  reviewedVerdict: ReviewVerdict | undefined;
+  onReviewed: (row: LiveInteraction, verdict: ReviewVerdict) => void;
+  onDismiss: (id: string) => void;
 }) {
-  const queryClient = useQueryClient();
   const [gold, setGold] = useState("");
   const [expectedDocIds, setExpectedDocIds] = useState<string[]>([]);
   const [extraDocIds, setExtraDocIds] = useState("");
@@ -75,16 +82,15 @@ function QueueItem({
   const goldDocIds = mergeGoldDocIds(expectedDocIds, extraDocIds);
   const requiresDocIds = selectedDataset?.task_type === "rag_qa";
 
-  const invalidate = () =>
-    queryClient.invalidateQueries({ queryKey: annotationQueueQueryKey(projectId) });
-
   const review = useMutation({
-    mutationFn: async (v: "agree" | "disagree") => {
+    mutationFn: async (v: ReviewVerdict) => {
       await Promise.all(row.scores.map((s) => reviewLiveScore(s.id, { verdict: v })));
     },
-    onSuccess: async () => {
+    onSuccess: (_, v) => {
       toast.success("Review saved");
-      await invalidate();
+      // Keep the card until the user is done with it, so "Add to test set"
+      // still works for this answer.
+      onReviewed(row, v);
     },
     onError: (err) => toast.error(formatErrorForUi(err)),
   });
@@ -173,29 +179,50 @@ function QueueItem({
         ))}
       </div>
       <div className="flex flex-wrap items-center gap-2 border-t border-border pt-2">
-        <span className="text-xs text-muted-foreground">Is the judge right?</span>
-        <Button
-          type="button"
-          size="sm"
-          variant="outline"
-          className="h-7"
-          disabled={review.isPending}
-          onClick={() => review.mutate("agree")}
-        >
-          <ThumbsUp className="size-3.5" />
-          Correct
-        </Button>
-        <Button
-          type="button"
-          size="sm"
-          variant="outline"
-          className="h-7"
-          disabled={review.isPending}
-          onClick={() => review.mutate("disagree")}
-        >
-          <ThumbsDown className="size-3.5" />
-          Wrong
-        </Button>
+        {reviewedVerdict ? (
+          <>
+            <span className="inline-flex items-center gap-1 text-xs font-medium text-status-ok">
+              <Check className="size-3.5" aria-hidden />
+              Reviewed: judge {reviewedVerdict === "agree" ? "is right" : "is wrong"}
+            </span>
+            <span className="flex-1" />
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              className="h-7"
+              onClick={() => onDismiss(row.id)}
+            >
+              Done
+            </Button>
+          </>
+        ) : (
+          <>
+            <span className="text-xs text-muted-foreground">Is the judge right?</span>
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              className="h-7"
+              disabled={review.isPending}
+              onClick={() => review.mutate("agree")}
+            >
+              <ThumbsUp className="size-3.5" />
+              Correct
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              className="h-7"
+              disabled={review.isPending}
+              onClick={() => review.mutate("disagree")}
+            >
+              <ThumbsDown className="size-3.5" />
+              Wrong
+            </Button>
+          </>
+        )}
       </div>
       <div className="flex flex-col gap-1.5">
         <Textarea
@@ -232,7 +259,13 @@ function QueueItem({
 }
 
 export function AnnotationQueue({ projectId }: { projectId: string }) {
+  const queryClient = useQueryClient();
   const datasets = useDatasets(projectId);
+  // Reviewed cards stay on screen (at the position they had) until dismissed,
+  // even after the queue refetches without them.
+  const [reviewed, setReviewed] = useState<
+    Record<string, { row: LiveInteraction; verdict: ReviewVerdict; index: number }>
+  >({});
   const [datasetId, setDatasetId] = useState(() => readStoredDataset(projectId));
   const query = useQuery({
     queryKey: annotationQueueQueryKey(projectId),
@@ -248,8 +281,33 @@ export function AnnotationQueue({ projectId }: { projectId: string }) {
     }
   }
 
-  const rows = query.data?.items ?? [];
   const selectedDataset = (datasets.data ?? []).find((d) => d.id === datasetId);
+  const rows = useMemo(() => {
+    const list = [...(query.data?.items ?? [])].sort(
+      (a, b) => Number(liveVerdict(b) === "failing") - Number(liveVerdict(a) === "failing"),
+    );
+    const kept = Object.values(reviewed).sort((a, b) => a.index - b.index);
+    for (const entry of kept) {
+      if (!list.some((r) => r.id === entry.row.id)) {
+        list.splice(Math.min(entry.index, list.length), 0, entry.row);
+      }
+    }
+    return list;
+  }, [query.data?.items, reviewed]);
+
+  function onReviewed(row: LiveInteraction, verdict: ReviewVerdict) {
+    const index = rows.findIndex((r) => r.id === row.id);
+    setReviewed((prev) => ({ ...prev, [row.id]: { row, verdict, index: Math.max(index, 0) } }));
+  }
+
+  function onDismiss(id: string) {
+    setReviewed((prev) => {
+      const next = { ...prev };
+      delete next[id];
+      return next;
+    });
+    void queryClient.invalidateQueries({ queryKey: annotationQueueQueryKey(projectId) });
+  }
 
   return (
     <section aria-label="Annotation queue" className="flex flex-col gap-3">
@@ -293,20 +351,18 @@ export function AnnotationQueue({ projectId }: { projectId: string }) {
         />
       ) : (
         <ul className="flex flex-col gap-2">
-          {[...rows]
-            .sort(
-              (a, b) =>
-                Number(liveVerdict(b) === "failing") - Number(liveVerdict(a) === "failing"),
-            )
-            .map((row) => (
-              <QueueItem
-                key={row.id}
-                row={row}
-                projectId={projectId}
-                datasetId={datasetId}
-                selectedDataset={selectedDataset}
-              />
-            ))}
+          {rows.map((row) => (
+            <QueueItem
+              key={row.id}
+              row={row}
+              projectId={projectId}
+              datasetId={datasetId}
+              selectedDataset={selectedDataset}
+              reviewedVerdict={reviewed[row.id]?.verdict}
+              onReviewed={onReviewed}
+              onDismiss={onDismiss}
+            />
+          ))}
         </ul>
       )}
     </section>

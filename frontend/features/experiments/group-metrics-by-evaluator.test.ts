@@ -49,7 +49,7 @@ describe("groupMetricsByEvaluator", () => {
     assert.equal(rows[0].status, "regression");
   });
 
-  it("uses mean_score for delta and status, not pass_rate", () => {
+  it("uses the worse of the mean_score and pass_rate verdicts", () => {
     const rows = groupMetricsByEvaluator([
       metric({
         evaluator_id: "a",
@@ -66,7 +66,36 @@ describe("groupMetricsByEvaluator", () => {
     ]);
 
     assert.equal(rows[0].delta, 0.1);
-    assert.equal(rows[0].status, "improved");
+    assert.equal(rows[0].status, "regression");
+  });
+
+  it("flags a pass-rate drop even when the mean is unchanged", () => {
+    const rows = groupMetricsByEvaluator([
+      metric({ evaluator_id: "a", metric: "mean_score", status: "unchanged" }),
+      metric({
+        evaluator_id: "a",
+        metric: "pass_rate",
+        status: "regression",
+        ci_low: -0.14,
+        ci_high: -0.02,
+      }),
+    ]);
+
+    assert.equal(rows[0].status, "regression");
+    assert.deepEqual(rows[0].pass_rate_ci, [-0.14, -0.02]);
+    assert.equal(rows[0].mean_ci, null);
+  });
+
+  it("prefers a decisive verdict over a not-comparable one", () => {
+    const rows = groupMetricsByEvaluator([
+      metric({ evaluator_id: "a", metric: "mean_score", status: "insufficient_n" }),
+      metric({ evaluator_id: "a", metric: "pass_rate", status: "improved" }),
+      metric({ evaluator_id: "b", metric: "mean_score", status: "config_mismatch" }),
+      metric({ evaluator_id: "b", metric: "pass_rate", status: "unavailable" }),
+    ]);
+    const byId = Object.fromEntries(rows.map((r) => [r.evaluator_id, r.status]));
+    assert.equal(byId.a, "improved");
+    assert.equal(byId.b, "config_mismatch");
   });
 
   it("sorts regressions before improvements", () => {
@@ -87,7 +116,7 @@ describe("groupMetricsByEvaluator", () => {
     assert.equal(rows[1].evaluator_id, "good");
   });
 
-  it("marks status unavailable when mean_score is missing", () => {
+  it("falls back to the pass_rate verdict when mean_score is missing", () => {
     const rows = groupMetricsByEvaluator([
       metric({
         evaluator_id: "a",
@@ -99,7 +128,7 @@ describe("groupMetricsByEvaluator", () => {
       }),
     ]);
 
-    assert.equal(rows[0].status, "unavailable");
+    assert.equal(rows[0].status, "regression");
     assert.equal(rows[0].delta, null);
     assert.equal(rows[0].candidate_pass_rate, 0.5);
   });

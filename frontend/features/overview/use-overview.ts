@@ -1,6 +1,7 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
+import { keepPreviousInProject } from "@/lib/queries/keep-previous";
 import { getOverview } from "@/lib/api/overview";
 
 export function overviewQueryKey(
@@ -20,5 +21,7 @@ export function useOverview(
     queryKey: overviewQueryKey(projectId ?? "", since, until),
     queryFn: () => getOverview(projectId!, since, until),
     enabled: Boolean(projectId),
+    // A refresh moves the time window; keep the old numbers until the new ones arrive.
+    placeholderData: keepPreviousInProject(projectId ?? ""),
   });
 }

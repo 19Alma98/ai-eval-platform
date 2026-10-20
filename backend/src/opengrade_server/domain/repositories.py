@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import uuid
+from collections.abc import Collection
 from datetime import datetime
 from typing import Protocol
 
@@ -226,7 +227,7 @@ class LiveInteractionRepository(Protocol):
         self,
         project_id: uuid.UUID,
         *,
-        judge_status: str | None = None,
+        judge_statuses: Collection[str] | None = None,
         search: str | None = None,
         limit: int = 50,
         offset: int = 0,

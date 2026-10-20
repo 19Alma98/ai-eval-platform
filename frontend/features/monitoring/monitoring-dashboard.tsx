@@ -20,7 +20,7 @@ import { formatDurationMs, formatPercent, formatScore } from "@/lib/format";
 import { metricLabel } from "@/lib/metrics-catalog";
 import { withProjectQuery } from "@/lib/project-href";
 import { rangeFromPreset } from "@/lib/time-range";
-import { alarmState, metricKey, type AlarmThresholds } from "./alarms";
+import { alarmState, DEFAULT_ALARM_FAIL_RATE, metricKey, type AlarmThresholds } from "./alarms";
 import { AnnotationQueue, annotationQueueQueryKey } from "./annotation-queue";
 import { useAlarmThresholds } from "./use-alarm-thresholds";
 import { monitoringQueryKey, useMonitoring } from "./use-monitoring";
@@ -111,14 +111,28 @@ function MetricCard({
 }) {
   const alarm = alarmState(metric, thresholds);
   const key = metricKey(metric);
-  const [draft, setDraft] = useState(String(Math.round(alarm.limit * 100)));
+  const limitText = String(Math.round(alarm.limit * 100));
+  const [draft, setDraft] = useState(limitText);
+  // Follow the saved limit when it changes underneath (thresholds loaded from
+  // storage after mount, or reset to the default).
+  const [syncedLimit, setSyncedLimit] = useState(limitText);
+  if (syncedLimit !== limitText) {
+    setSyncedLimit(limitText);
+    setDraft(limitText);
+  }
   const title = metric.source === "judge" ? metricLabel(metric.name) : metric.name;
 
   function commit() {
-    const n = Number(draft);
-    if (draft.trim() === "" || !Number.isFinite(n) || n < 0 || n > 100) {
-      setDraft(String(Math.round(alarm.limit * 100)));
+    if (draft.trim() === "") {
+      // Cleared field: drop the custom alarm and show the default again.
+      setDraft(String(Math.round(DEFAULT_ALARM_FAIL_RATE * 100)));
       onAlarmChange(key, null);
+      return;
+    }
+    const n = Number(draft);
+    if (!Number.isFinite(n) || n < 0 || n > 100) {
+      // Invalid value: keep the saved alarm untouched.
+      setDraft(limitText);
       return;
     }
     onAlarmChange(key, n / 100);
@@ -223,8 +237,13 @@ function Dashboard({
       <section aria-label="Production KPIs" className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
         <Kpi
           label="Traces"
-          value={data.n_traces.toLocaleString()}
-          detail={errorRate != null ? `${formatPercent(errorRate)} errors` : undefined}
+          // Truncated: only the most recent traces were loaded, so the count is a floor.
+          value={`${data.n_traces.toLocaleString()}${data.traces_truncated ? "+" : ""}`}
+          detail={
+            errorRate != null
+              ? `${formatPercent(errorRate)} errors${data.traces_truncated ? " in the latest" : ""}`
+              : undefined
+          }
           tone={errorRate != null && errorRate > 0.05 ? "fail" : undefined}
           href={withProjectQuery("/traces", projectId)}
         />
@@ -242,7 +261,9 @@ function Dashboard({
           label="Cost"
           value={`$${data.cost_usd.toFixed(data.cost_usd < 1 ? 4 : 2)}`}
           detail={
-            data.n_traces ? `$${(data.cost_usd / data.n_traces).toFixed(5)} per trace` : undefined
+            data.n_traces
+              ? `$${(data.cost_usd / data.n_traces).toFixed(5)} per trace${data.traces_truncated ? " (latest traces)" : ""}`
+              : undefined
           }
         />
         <Kpi
@@ -352,7 +373,8 @@ export function MonitoringDashboard({ projectId }: { projectId: string }) {
           onRetry={() => void query.refetch()}
         />
       ) : (
-        <Dashboard projectId={projectId} data={query.data} />
+        // key: reset alarm thresholds and field drafts when the project changes.
+        <Dashboard key={projectId} projectId={projectId} data={query.data} />
       )}
     </div>
   );

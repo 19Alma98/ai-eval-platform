@@ -42,6 +42,22 @@ def _placeholder_path(cleaned: str) -> str | None:
     return None
 
 
+def _nested_segment_path(item: str) -> str | None:
+    """Older Next exports nest segment prefetch files instead of flattening them.
+
+    The browser asks for ``<page>/__next.!KGFwcCk.<page>.__PAGE__.txt``; those
+    builds wrote ``<page>/__next.!KGFwcCk/<page>/__PAGE__.txt``.
+    """
+    head, _, name = item.rpartition("/")
+    if not (name.startswith("__next.") and name.endswith(".txt")):
+        return None
+    segments = name[len("__next.") : -len(".txt")].split(".")
+    if len(segments) < 2:
+        return None
+    nested = "__next." + "/".join(segments) + ".txt"
+    return f"{head}/{nested}" if head else nested
+
+
 def resolve_ui_file(root: Path, path: str) -> Path | None:
     """Map a request path to a file under the static export."""
     cleaned = path.strip("/")
@@ -52,6 +68,7 @@ def resolve_ui_file(root: Path, path: str) -> Path | None:
     rewritten = _placeholder_path(cleaned) if cleaned else None
     if rewritten and rewritten != cleaned:
         paths.append(rewritten)
+    paths += [nested for item in list(paths) if (nested := _nested_segment_path(item))]
 
     candidates: list[Path] = []
     for item in paths:

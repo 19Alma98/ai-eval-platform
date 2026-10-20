@@ -2,7 +2,7 @@
 
 import { useRouter, useSearchParams } from "next/navigation";
 import { ThumbsDown, ThumbsUp } from "lucide-react";
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useMemo, useState, type ReactNode } from "react";
 import { DataTable, type DataTableColumn } from "@/components/data-table";
 import { EmptyState } from "@/components/empty-state";
 import { ErrorState } from "@/components/error-state";
@@ -18,6 +18,7 @@ import { formatScore } from "@/lib/format";
 import { metricLabel } from "@/lib/metrics-catalog";
 import { withProjectQuery } from "@/lib/project-href";
 import { useProjectId } from "@/lib/project-store";
+import { useDebouncedValue } from "@/lib/use-debounced-value";
 import { LIVE_VERDICT_LABELS, liveVerdict, type LiveVerdict } from "./live-verdict";
 import { feedbackThumb } from "./trace-feedback";
 import { useLiveJudgeCalibration, useLiveRuns } from "./use-live-runs";
@@ -79,10 +80,12 @@ export function LiveRunList() {
     searchParams.get("failed") === "1" ? "failing" : "all",
   );
   const [search, setSearch] = useState("");
+  const debouncedSearch = useDebouncedValue(search.trim());
   const query = useLiveRuns(projectId, {
-    judgeStatus: filter === "waiting" ? "pending" : undefined,
+    // "Waiting" covers both queued and in-flight judge runs.
+    judgeStatus: filter === "waiting" ? "pending,running" : undefined,
     failedOnly: filter === "failing" || undefined,
-    search: search.trim() || undefined,
+    search: debouncedSearch || undefined,
   });
   const calibration = useLiveJudgeCalibration(projectId);
 
@@ -216,18 +219,48 @@ export function LiveRunList() {
     [],
   );
 
-  if (query.isLoading) return <LoadingBlock />;
-  if (query.isError) {
-    return (
+  const filtersActive = filter !== "all" || debouncedSearch !== "";
+  // Only the table reacts to loading/errors so the toolbar (and the search
+  // field's focus) survives every refetch.
+  const staleError = query.isError && query.data != null;
+
+  let table: ReactNode;
+  if (query.isLoading) {
+    table = <LoadingBlock />;
+  } else if (query.isError && !query.data) {
+    table = (
       <ErrorState
         title="Could not load live traffic"
         message={formatErrorForUi(query.error)}
         onRetry={() => void query.refetch()}
       />
     );
+  } else if (rows.length === 0) {
+    table = filtersActive ? (
+      <EmptyState
+        title="Nothing matches"
+        description="No live answers match these filters."
+      />
+    ) : (
+      <EmptyState
+        title="No live traffic yet"
+        description="Send real questions and answers from your app with client.live_runs.submit(project_id, question=…, answer=…, documents=[…]). Each one is scored automatically."
+      />
+    );
+  } else {
+    table = (
+      <DataTable
+        rows={rows}
+        columns={columns}
+        getRowKey={(row) => row.id}
+        selectedIndex={selectedIndex}
+        onSelectedIndexChange={setSelectedIndex}
+        onRowActivate={onRowActivate}
+        aria-label="Live answers"
+        className={cn(query.isPlaceholderData && "opacity-60")}
+      />
+    );
   }
-
-  const filtersActive = filter !== "all" || search.trim() !== "";
 
   return (
     <div className="flex flex-col gap-4">
@@ -269,29 +302,25 @@ export function LiveRunList() {
           aria-label="Search questions"
         />
       </div>
-      {rows.length === 0 ? (
-        filtersActive ? (
-          <EmptyState
-            title="Nothing matches"
-            description="No live answers match these filters."
-          />
-        ) : (
-          <EmptyState
-            title="No live traffic yet"
-            description="Send real questions and answers from your app with client.live_runs.submit(project_id, question=…, answer=…, documents=[…]). Each one is scored automatically."
-          />
-        )
-      ) : (
-        <DataTable
-          rows={rows}
-          columns={columns}
-          getRowKey={(row) => row.id}
-          selectedIndex={selectedIndex}
-          onSelectedIndexChange={setSelectedIndex}
-          onRowActivate={onRowActivate}
-          aria-label="Live answers"
-        />
-      )}
+      {staleError ? (
+        <div
+          role="status"
+          className="flex items-center justify-between gap-3 rounded-md border border-status-warn bg-status-warn-bg px-3 py-2 text-sm text-status-warn"
+        >
+          <span>
+            Could not refresh live traffic — showing the last loaded results.{" "}
+            {formatErrorForUi(query.error)}
+          </span>
+          <button
+            type="button"
+            className="shrink-0 font-medium underline"
+            onClick={() => void query.refetch()}
+          >
+            Retry
+          </button>
+        </div>
+      ) : null}
+      {table}
       {calibrationRows.length > 0 ? (
         <details className="rounded-lg border border-border bg-surface px-4 py-3">
           <summary className="cursor-pointer text-sm font-medium text-foreground">

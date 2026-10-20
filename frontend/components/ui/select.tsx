@@ -96,6 +96,16 @@ function SelectContent({ className, children, ...props }: React.ComponentProps<t
   )
 }
 
+/** Plain text of simple children (`{name} · v{version}` is an array, not a string). */
+function childrenText(children: unknown): string | undefined {
+  if (typeof children === "string" || typeof children === "number") return String(children)
+  if (Array.isArray(children)) {
+    const parts = children.map(childrenText)
+    return parts.every((part) => part !== undefined) ? parts.join("") : undefined
+  }
+  return undefined
+}
+
 function SelectItem({
   className,
   children,
@@ -106,7 +116,7 @@ function SelectItem({
   return (
     <ListBoxItem
       id={value}
-      textValue={typeof children === "string" ? children : value}
+      textValue={childrenText(children) ?? value}
       isDisabled={disabled}
       data-slot="select-item"
       className={cn(

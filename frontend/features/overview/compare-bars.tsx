@@ -62,9 +62,9 @@ export function CompareBars({
         <>
           <ul className="flex flex-col gap-2">
             {rows.slice(0, MAX_ROWS).map((row) => {
-              const delta = row.delta ?? 0;
-              const worse = row.status === "regression" || delta < -0.0001;
-              const better = row.status === "improved" || delta > 0.0001;
+              // Colour only significant changes; the overview API sends "regressed".
+              const worse = row.status === "regressed";
+              const better = row.status === "improved";
               return (
                 <li key={row.name} className="flex items-center gap-3 text-sm">
                   <span className="w-40 shrink-0 truncate text-foreground">{row.name}</span>

@@ -245,13 +245,22 @@ def _list_response(result: ListLiveInteractionsResult) -> ListLiveInteractionsRe
     )
 
 
+def _parse_judge_statuses(raw: str | None) -> frozenset[str] | None:
+    if raw is None:
+        return None
+    statuses = frozenset(part.strip() for part in raw.split(",") if part.strip())
+    return statuses or None
+
+
 @router.get(
     "/api/v1/projects/{project_id}/live-interactions",
     response_model=ListLiveInteractionsResponse,
 )
 async def list_live_interactions(
     project_id: uuid.UUID,
-    judge_status: str | None = Query(default=None),
+    judge_status: str | None = Query(
+        default=None, description="One status or a comma-separated list, e.g. pending,running."
+    ),
     search: str | None = Query(default=None),
     failed_only: bool = Query(default=False),
     unreviewed_only: bool = Query(default=False),
@@ -261,7 +270,7 @@ async def list_live_interactions(
     try:
         result = await use_case.execute(
             project_id,
-            judge_status=judge_status,
+            judge_statuses=_parse_judge_statuses(judge_status),
             search=search,
             failed_only=failed_only,
             unreviewed_only=unreviewed_only,
