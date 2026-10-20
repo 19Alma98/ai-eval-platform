@@ -38,12 +38,12 @@ export function DataTable<T>({
   className?: string;
   /**
    * "persistent": the selected row stays highlighted (master–detail views).
-   * "focus": highlight only while the table has keyboard focus (navigation lists).
+   * "focus": highlight only the keyboard-focused row (navigation lists).
    */
   selectionMode?: "persistent" | "focus";
   "aria-label"?: string;
 }) {
-  const containerRef = useRef<HTMLDivElement>(null);
+  const rowRefs = useRef<(HTMLTableRowElement | null)[]>([]);
 
   useEffect(() => {
     if (rows.length === 0) return;
@@ -52,44 +52,53 @@ export function DataTable<T>({
     }
   }, [rows.length, selectedIndex, onSelectedIndexChange]);
 
-  function handleKeyDown(e: KeyboardEvent<HTMLDivElement>) {
+  // Roving tabindex: one row is in the tab order; arrows / j / k move it.
+  const focusIndex = Math.min(Math.max(selectedIndex, 0), Math.max(rows.length - 1, 0));
+
+  function moveTo(index: number) {
+    onSelectedIndexChange(index);
+    rowRefs.current[index]?.focus();
+  }
+
+  function handleKeyDown(e: KeyboardEvent<HTMLTableSectionElement>) {
     if (rows.length === 0) return;
     const target = e.target as HTMLElement;
-    if (
-      target.tagName === "INPUT" ||
-      target.tagName === "TEXTAREA" ||
-      target.tagName === "SELECT" ||
-      target.isContentEditable
-    ) {
-      return;
-    }
+    // Keys typed into a control inside a cell (or on a link/button) are theirs.
+    if (target.tagName !== "TR") return;
 
-    if (e.key === "j") {
+    if (e.key === "j" || e.key === "ArrowDown") {
       e.preventDefault();
-      onSelectedIndexChange(Math.min(selectedIndex + 1, rows.length - 1));
-    } else if (e.key === "k") {
+      moveTo(Math.min(focusIndex + 1, rows.length - 1));
+    } else if (e.key === "k" || e.key === "ArrowUp") {
       e.preventDefault();
-      onSelectedIndexChange(Math.max(selectedIndex - 1, 0));
-    } else if (e.key === "Enter") {
+      moveTo(Math.max(focusIndex - 1, 0));
+    } else if (e.key === "Home") {
       e.preventDefault();
-      const row = rows[selectedIndex];
-      if (row) onRowActivate(row, selectedIndex);
+      moveTo(0);
+    } else if (e.key === "End") {
+      e.preventDefault();
+      moveTo(rows.length - 1);
+    } else if (e.key === "Enter" || e.key === " ") {
+      e.preventDefault();
+      const row = rows[focusIndex];
+      if (row) onRowActivate(row, focusIndex);
     }
   }
 
   return (
     <div
-      ref={containerRef}
-      tabIndex={0}
       role="region"
       aria-label={ariaLabel}
-      onKeyDown={handleKeyDown}
       className={cn(
-        "group/table overflow-auto rounded-lg border border-border bg-surface outline-none focus-visible:ring-2 focus-visible:ring-ring",
+        "overflow-auto rounded-lg border border-border bg-surface",
         className,
       )}
     >
-      <table className="w-full border-collapse text-sm">
+      <table
+        role="grid"
+        aria-label={ariaLabel}
+        className="w-full border-collapse text-sm"
+      >
         <thead className="sticky top-0 z-10 bg-surface shadow-[0_1px_0_0_hsl(var(--border))]">
           <tr>
             {columns.map((col) => (
@@ -106,17 +115,20 @@ export function DataTable<T>({
             ))}
           </tr>
         </thead>
-        <tbody>
+        <tbody onKeyDown={handleKeyDown}>
           {rows.map((row, index) => (
             <tr
               key={getRowKey(row, index)}
+              ref={(el) => {
+                rowRefs.current[index] = el;
+              }}
+              tabIndex={index === focusIndex ? 0 : -1}
               aria-selected={index === selectedIndex}
               className={cn(
-                "cursor-pointer border-b border-border transition-colors last:border-b-0 hover:bg-row-hover",
+                "cursor-pointer border-b border-border outline-none transition-colors last:border-b-0 hover:bg-row-hover focus-visible:bg-row-selected focus-visible:shadow-[inset_2px_0_0_0_hsl(var(--ring))]",
                 index === selectedIndex &&
-                  (selectionMode === "persistent"
-                    ? "bg-row-selected"
-                    : "group-focus-visible/table:bg-row-selected"),
+                  selectionMode === "persistent" &&
+                  "bg-row-selected",
               )}
               onClick={() => {
                 onSelectedIndexChange(index);
@@ -126,6 +138,7 @@ export function DataTable<T>({
               {columns.map((col) => (
                 <td
                   key={col.id}
+                  role="gridcell"
                   className={cn(
                     col.wrap
                       ? "px-3 py-2 align-middle whitespace-normal break-words"

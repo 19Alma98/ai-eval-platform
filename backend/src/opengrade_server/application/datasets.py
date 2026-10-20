@@ -214,6 +214,9 @@ class ListDatasets:
             raise ProjectNotFoundError(project_id)
         return await self._datasets.list_by_project(project_id, task_type=task_type)
 
+    async def item_counts(self, datasets: list[Dataset]) -> dict[uuid.UUID, int]:
+        return await self._datasets.count_items([d.id for d in datasets])
+
 
 class GetDataset:
     def __init__(

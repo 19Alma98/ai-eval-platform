@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it, test } from "node:test";
 import {
+  formatBucketTick,
   formatDeltaPoints,
   formatDurationMs,
   formatPercent,
@@ -77,4 +78,16 @@ test("formatDeltaPoints is signed", () => {
   assert.equal(formatDeltaPoints(-0.1667), "−17 pts");
   assert.equal(formatDeltaPoints(0.05), "+5 pts");
   assert.equal(formatDeltaPoints(0.001), "±0");
+});
+
+describe("formatBucketTick", () => {
+  const iso = "2026-10-20T14:00:00";
+  const h = 3_600_000;
+  it("shows only the time for short ranges", () => {
+    assert.equal(formatBucketTick(iso, 1 * h, "en-GB", "UTC"), "14:00");
+  });
+  it("adds the weekday for 24h and the date for 7d", () => {
+    assert.equal(formatBucketTick(iso, 24 * h, "en-GB", "UTC"), "Tue 14:00");
+    assert.equal(formatBucketTick(iso, 7 * 24 * h, "en-GB", "UTC"), "20 Oct, 14:00");
+  });
 });

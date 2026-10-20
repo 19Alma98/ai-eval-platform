@@ -550,6 +550,19 @@ class SqlAlchemyDatasetRepository:
         )
         return [_item_to_domain(row) for row in result.scalars().all()]
 
+    async def count_items(self, dataset_ids: list[uuid.UUID]) -> dict[uuid.UUID, int]:
+        """Item count per dataset (0 for datasets without items)."""
+        if not dataset_ids:
+            return {}
+        result = await self._session.execute(
+            select(DatasetItemModel.dataset_id, func.count())
+            .where(DatasetItemModel.dataset_id.in_(dataset_ids))
+            .group_by(DatasetItemModel.dataset_id)
+        )
+        counts = {dataset_id: 0 for dataset_id in dataset_ids}
+        counts.update({row[0]: int(row[1]) for row in result.all()})
+        return counts
+
     async def get_item(self, item_id: uuid.UUID) -> DatasetItem | None:
         row = await self._session.get(DatasetItemModel, item_id)
         return _item_to_domain(row) if row is not None else None

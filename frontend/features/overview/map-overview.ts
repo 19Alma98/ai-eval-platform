@@ -4,7 +4,7 @@ import type {
   ProjectOverview,
 } from "@/lib/api/types";
 import { formatDeltaPoints, formatPercent as formatPercentRate } from "@/lib/format";
-import { metricLabel } from "@/lib/metrics-catalog";
+import { metricLabel, metricsSetDisplayName } from "@/lib/metrics-catalog";
 import { alarmState, type AlarmThresholds } from "@/features/monitoring/alarms";
 
 export const OVERVIEW_ATTENTION_LIMIT = 8;
@@ -131,12 +131,12 @@ export function mapOverviewToDualKpi(
         label: "Test sets",
         value: String(offline.n_datasets),
         href: "/datasets",
-        hint: "Questions with expected answers",
+        hint: "Saved lists of questions to test your app on",
       },
       {
         label: "Metrics",
         value: offline.metrics_set
-          ? `${offline.metrics_set.name} · v${offline.metrics_set.version}`
+          ? `${metricsSetDisplayName(offline.metrics_set.name)} · v${offline.metrics_set.version}`
           : "Not set up",
         href: "/metrics",
         hint: "What every experiment is scored on",
@@ -294,7 +294,9 @@ export function buildLoopCards(overview: ProjectOverview): LoopCard[] {
       title: "2. Choose metrics",
       measure: "What “good” means: correctness, groundedness, retrieval quality and their thresholds.",
       status: metricsSet ? "ready" : "empty",
-      summary: metricsSet ? `${metricsSet.name} · v${metricsSet.version}` : "Not set up",
+      summary: metricsSet
+        ? `${metricsSetDisplayName(metricsSet.name)} · v${metricsSet.version}`
+        : "Not set up",
       href: "/metrics",
       cta: "Set up metrics",
     },

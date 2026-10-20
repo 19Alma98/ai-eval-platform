@@ -4,11 +4,13 @@ import type { Experiment, ExperimentSummary } from "@/lib/api/types";
 import {
   bestByColumn,
   buildMatrix,
+  columnDecimals,
   filterRows,
   flattenParams,
   sortRows,
   trendSeries,
   varyingParams,
+  type MatrixRow,
 } from "./experiment-matrix";
 
 function exp(id: string, created: string, modelConfig: Record<string, unknown>): Experiment {
@@ -109,5 +111,25 @@ describe("experiment matrix", () => {
         ["exp-c", null],
       ],
     );
+  });
+});
+
+describe("columnDecimals", () => {
+  const rows = (values: (number | null)[]): MatrixRow[] =>
+    values.map(
+      (mean) =>
+        ({ metrics: { m: { mean, passRate: null, nScored: 1 } } }) as unknown as MatrixRow,
+    );
+  const logged = { key: "m", label: "m", kind: "logged" } as const;
+
+  it("uses one precision per column", () => {
+    assert.equal(columnDecimals(rows([1200, 980]), logged), 0);
+    assert.equal(columnDecimals(rows([812.5, 1204.25]), logged), 0);
+    assert.equal(columnDecimals(rows([0.5, 1.2345]), logged), 2);
+    assert.equal(columnDecimals(rows([0.0012, 0.0004, null]), logged), 4);
+  });
+
+  it("keeps two decimals for judge scores", () => {
+    assert.equal(columnDecimals(rows([0.5]), { key: "m", label: "m", kind: "evaluator" }), 2);
   });
 });

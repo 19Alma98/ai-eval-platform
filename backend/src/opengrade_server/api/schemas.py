@@ -246,6 +246,8 @@ class DatasetResponse(BaseModel):
     description: str | None
     task_type: str | None = None
     created_at: datetime
+    item_count: int | None = None
+    """Number of questions; set on list responses."""
 
 
 class DatasetItemResponse(BaseModel):

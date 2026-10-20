@@ -1,7 +1,7 @@
 "use client";
 
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { Download, Upload } from "lucide-react";
+import { Download, Lock, Upload } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useState, type SubmitEvent } from "react";
 import { toast } from "sonner";
@@ -22,9 +22,10 @@ import { withProjectQuery } from "@/lib/project-href";
 import { RAG_QA_TASK } from "./rag-qa";
 import { datasetQueryKey, datasetsQueryKey } from "./use-datasets";
 
+// The SDK names these input / expected_output; the importer accepts both spellings.
 const IMPORT_COLUMNS = [
-  { name: "question", help: "What the user asks (required)" },
-  { name: "expected_answer", help: "The correct answer (required)" },
+  { name: "question", alias: "input", help: "What the user asks (required)" },
+  { name: "expected_answer", alias: "expected_output", help: "The correct answer (required)" },
   { name: "expected_doc_ids", help: "IDs of the documents that contain the answer" },
   { name: "must_contain", help: "Phrases the answer must include (optional)" },
 ] as const;
@@ -50,6 +51,8 @@ export function ImportDatasetDialog({
   datasetId,
   datasetName,
   taskType,
+  locked = false,
+  version,
   open,
   onOpenChange,
   showTrigger = true,
@@ -58,6 +61,9 @@ export function ImportDatasetDialog({
   datasetId: string;
   datasetName?: string;
   taskType: string | null;
+  /** Experiments were scored on this version: the import goes into a newer version. */
+  locked?: boolean;
+  version?: number;
   open: boolean;
   onOpenChange: (open: boolean) => void;
   showTrigger?: boolean;
@@ -174,6 +180,20 @@ export function ImportDatasetDialog({
             </DialogDescription>
           </DialogHeader>
           <div className="flex flex-col gap-3 py-4">
+            {locked ? (
+              <p
+                role="note"
+                className="flex items-start gap-2 rounded-md border border-status-warn bg-status-warn-bg px-3 py-2 text-xs text-status-warn"
+              >
+                <Lock className="mt-0.5 size-3.5 shrink-0" aria-hidden />
+                <span>
+                  {version != null ? `v${version}` : "This version"} is locked because experiments
+                  were scored on it. The questions go into a newer version of this test set
+                  (created if needed, starting from the latest questions) and you&apos;ll be taken
+                  there, so past results stay comparable.
+                </span>
+              </p>
+            ) : null}
             <div className="flex flex-col gap-2">
               <label htmlFor="dataset-import-file" className="text-sm font-medium">
                 File (.csv or .json)
@@ -204,7 +224,13 @@ export function ImportDatasetDialog({
               <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-muted-foreground">
                 {IMPORT_COLUMNS.map((col) => (
                   <div key={col.name} className="contents">
-                    <dt className="font-mono text-foreground">{col.name}</dt>
+                    <dt className="font-mono text-foreground">
+                      {col.name}
+                      {"alias" in col ? (
+                        <span className="font-sans text-muted-foreground"> or </span>
+                      ) : null}
+                      {"alias" in col ? col.alias : null}
+                    </dt>
                     <dd>{col.help}</dd>
                   </div>
                 ))}
@@ -238,7 +264,11 @@ export function ImportDatasetDialog({
               type="submit"
               disabled={!file || !canImport || importMutation.isPending}
             >
-              {importMutation.isPending ? "Importing…" : "Import"}
+              {importMutation.isPending
+                ? "Importing…"
+                : locked
+                  ? "Import into new version"
+                  : "Import"}
             </Button>
           </DialogFooter>
         </form>

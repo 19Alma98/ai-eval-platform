@@ -67,6 +67,8 @@ export type Dataset = {
   description: string | null;
   task_type: string | null;
   created_at: string;
+  /** Number of questions (list endpoint only). */
+  item_count?: number | null;
 };
 
 export type TaskType = {

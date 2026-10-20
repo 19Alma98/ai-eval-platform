@@ -7,7 +7,10 @@ import { useMemo, useState } from "react";
 import { ArrowRight } from "lucide-react";
 import { CompareItemsTable } from "@/features/experiments/compare-items-table";
 import { CompareTable } from "@/features/experiments/compare-table";
-import { groupMetricsByEvaluator } from "@/features/experiments/group-metrics-by-evaluator";
+import {
+  defaultCompareEvaluatorId,
+  groupMetricsByEvaluator,
+} from "@/features/experiments/group-metrics-by-evaluator";
 import { EmptyState } from "@/components/empty-state";
 import { ErrorState } from "@/components/error-state";
 import { LoadingBlock } from "@/components/loading-block";
@@ -201,16 +204,14 @@ export function ExperimentCompareView({
   const hasJudgeUnsuitable =
     candidateJudgeWarnings.length > 0 || baselineJudgeWarnings.length > 0;
 
-  const firstRegression = comparison?.regressions[0]?.evaluator_id ?? null;
-  const firstMetric = comparison?.metrics[0]?.evaluator_id ?? null;
-  const selectedEvaluatorId =
-    pickedEvaluatorId &&
-    comparison?.metrics.some((m) => m.evaluator_id === pickedEvaluatorId)
-      ? pickedEvaluatorId
-      : (firstRegression ?? firstMetric);
   // Count per evaluator row, with the same verdict the table shows (worse of
   // mean score / pass rate), so the banner and the rows always agree.
-  const verdicts = groupMetricsByEvaluator(comparison?.metrics ?? []).map((r) => r.status);
+  const evaluatorRows = groupMetricsByEvaluator(comparison?.metrics ?? []);
+  const selectedEvaluatorId =
+    pickedEvaluatorId && evaluatorRows.some((r) => r.evaluator_id === pickedEvaluatorId)
+      ? pickedEvaluatorId
+      : defaultCompareEvaluatorId(evaluatorRows);
+  const verdicts = evaluatorRows.map((r) => r.status);
   const nWorse = verdicts.filter((s) => s === "regression").length;
   const nBetter = verdicts.filter((s) => s === "improved").length;
   const nUnchanged = verdicts.filter((s) => s === "unchanged").length;

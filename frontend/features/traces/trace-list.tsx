@@ -234,15 +234,22 @@ export function TraceList({ projectId }: { projectId: string }) {
           onRetry={() => void query.refetch()}
         />
       ) : rows.length === 0 ? (
-        filtersActive || range !== "all" ? (
+        filtersActive ? (
           <EmptyState
             title="Nothing matches"
-            description="No traces match these filters. Try a longer time range."
+            description="No traces match these filters. Clear the search or the status filter, or try a longer time range."
           />
         ) : (
           <EmptyState
-            title="No traces yet"
-            description="Decorate your app's entry point with @opengrade.trace and export spans to /v1/traces. Each call shows up here."
+            title={range === "all" ? "No traces yet" : "No traces in this time range"}
+            description="Call opengrade.init(project_slug=…) once at startup and decorate your app's entry point with @opengrade.trace (or point any OpenTelemetry exporter at /v1/traces). Each call shows up here."
+            action={
+              range !== "all" ? (
+                <Button type="button" variant="outline" size="sm" onClick={() => setParam("range", "all")}>
+                  Show all time
+                </Button>
+              ) : null
+            }
           />
         )
       ) : (

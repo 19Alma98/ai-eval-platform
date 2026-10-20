@@ -24,13 +24,14 @@ import { useDatasets } from "@/features/datasets/use-datasets";
 import { formatErrorForUi } from "@/lib/api/client";
 import { summarizeProjectExperiments } from "@/lib/api/experiments";
 import { cn } from "@/lib/cn";
-import { formatPercent, formatScore } from "@/lib/format";
+import { formatPercent } from "@/lib/format";
 import { experimentHref } from "@/lib/links";
 import { metricLabel } from "@/lib/metrics-catalog";
 import { withProjectQuery } from "@/lib/project-href";
 import {
   bestByColumn,
   buildMatrix,
+  columnDecimals,
   filterRows,
   sortRows,
   trendSeries,
@@ -173,6 +174,10 @@ export function ExperimentsMatrixView({ projectId }: { projectId: string }) {
     [allRows, filters, sort],
   );
   const best = useMemo(() => bestByColumn(rows, columns), [rows, columns]);
+  const decimals = useMemo(
+    () => Object.fromEntries(columns.map((c) => [c.key, columnDecimals(rows, c)])),
+    [rows, columns],
+  );
   const params = useMemo(() => varyingParams(allRows), [allRows]);
   const datasetNames = useMemo(
     () => new Map((datasetsQuery.data ?? []).map((d) => [d.id, `${d.name} · v${d.version}`])),
@@ -355,6 +360,7 @@ export function ExperimentsMatrixView({ projectId }: { projectId: string }) {
                     row={row}
                     columns={columns}
                     best={best}
+                    decimals={decimals}
                     projectId={projectId}
                     paramKey={filters.param?.key ?? null}
                     checked={selected.has(row.experiment.id)}
@@ -399,6 +405,7 @@ function MatrixTableRow({
   row,
   columns,
   best,
+  decimals,
   projectId,
   paramKey,
   checked,
@@ -407,6 +414,7 @@ function MatrixTableRow({
   row: MatrixRow;
   columns: MetricColumn[];
   best: Record<string, number>;
+  decimals: Record<string, number>;
   projectId: string;
   paramKey: string | null;
   checked: boolean;
@@ -462,13 +470,18 @@ function MatrixTableRow({
           >
             {cell?.mean != null ? (
               <span className={cn(isBest && "font-semibold text-status-ok")}>
-                {col.kind === "logged" ? Number(cell.mean.toFixed(4)) : formatScore(cell.mean)}
+                {cell.mean.toLocaleString(undefined, {
+                  minimumFractionDigits: decimals[col.key] ?? 2,
+                  maximumFractionDigits: decimals[col.key] ?? 2,
+                })}
               </span>
             ) : (
               <span className="text-muted-foreground">—</span>
             )}
             {cell?.passRate != null ? (
-              <span className="ml-1 text-xs text-muted-foreground">{formatPercent(cell.passRate)}</span>
+              <span className="ml-1 inline-block w-9 text-xs text-muted-foreground">
+                {Math.round(cell.passRate * 100)}%
+              </span>
             ) : null}
           </td>
         );

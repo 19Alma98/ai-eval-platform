@@ -15,7 +15,7 @@ import {
   YAxis,
 } from "recharts";
 import type { MetricMonitor, TrafficBucket } from "@/lib/api/types";
-import { formatDurationMs, formatTs } from "@/lib/format";
+import { formatBucketTick, formatDurationMs, formatTs, parseTimestamp } from "@/lib/format";
 
 const AXIS_TICK = { fontSize: 10 };
 
@@ -26,17 +26,28 @@ function formatUsd(value: number): string {
 }
 const TOOLTIP_STYLE = { fontSize: 12 };
 
-function timeAxis() {
+function timeAxis(data: { bucket: string }[]) {
+  const first = data[0]?.bucket;
+  const last = data.at(-1)?.bucket;
+  const spanMs = first && last ? parseTimestamp(last).getTime() - parseTimestamp(first).getTime() : 0;
   return (
     <XAxis
       dataKey="bucket"
-      tickFormatter={(v) =>
-        new Date(String(v)).toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" })
-      }
+      tickFormatter={(v) => formatBucketTick(String(v), spanMs)}
       tick={AXIS_TICK}
       interval="preserveStartEnd"
+      minTickGap={16}
     />
   );
+}
+
+/**
+ * Lines are drawn without dots, so a series with a single non-empty bucket (all
+ * traffic in one bucket) would render nothing: show a dot in that case.
+ */
+function dotWhenSparse(data: Record<string, unknown>[], key: string) {
+  const points = data.filter((row) => typeof row[key] === "number").length;
+  return points <= 1 ? { r: 3 } : false;
 }
 
 export function LatencyChartInner({ traffic }: { traffic: TrafficBucket[] }) {
@@ -50,7 +61,7 @@ export function LatencyChartInner({ traffic }: { traffic: TrafficBucket[] }) {
     <ResponsiveContainer width="100%" height={200}>
       <LineChart data={data} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
         <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
-        {timeAxis()}
+        {timeAxis(data)}
         <YAxis tick={AXIS_TICK} width={48} tickFormatter={(v) => formatDurationMs(Number(v))} />
         <Tooltip
           contentStyle={TOOLTIP_STYLE}
@@ -60,15 +71,15 @@ export function LatencyChartInner({ traffic }: { traffic: TrafficBucket[] }) {
             String(name),
           ]}
         />
-        <Line type="monotone" dataKey="p50" name="p50" stroke="hsl(var(--primary))" dot={false} connectNulls />
-        <Line type="monotone" dataKey="p90" name="p90" stroke="hsl(var(--status-warn))" dot={false} connectNulls />
+        <Line type="monotone" dataKey="p50" name="p50" stroke="hsl(var(--primary))" dot={dotWhenSparse(data, "p50")} connectNulls />
+        <Line type="monotone" dataKey="p90" name="p90" stroke="hsl(var(--status-warn))" dot={dotWhenSparse(data, "p90")} connectNulls />
         <Line
           type="monotone"
           dataKey="p99"
           name="p99"
           stroke="hsl(var(--status-fail))"
           strokeDasharray="4 4"
-          dot={false}
+          dot={dotWhenSparse(data, "p99")}
           connectNulls
         />
       </LineChart>
@@ -86,7 +97,7 @@ export function TrafficChartInner({ traffic }: { traffic: TrafficBucket[] }) {
     <ResponsiveContainer width="100%" height={200}>
       <BarChart data={data} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
         <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
-        {timeAxis()}
+        {timeAxis(data)}
         <YAxis tick={AXIS_TICK} width={32} allowDecimals={false} />
         <Tooltip contentStyle={TOOLTIP_STYLE} labelFormatter={(label) => formatTs(String(label))} />
         <Bar dataKey="ok" name="OK" stackId="t" fill="hsl(var(--primary) / 0.6)" />
@@ -106,7 +117,7 @@ export function UsageChartInner({ traffic }: { traffic: TrafficBucket[] }) {
     <ResponsiveContainer width="100%" height={200}>
       <ComposedChart data={data} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
         <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
-        {timeAxis()}
+        {timeAxis(data)}
         <YAxis yAxisId="tokens" tick={AXIS_TICK} width={48} />
         <YAxis
           yAxisId="cost"
@@ -124,7 +135,7 @@ export function UsageChartInner({ traffic }: { traffic: TrafficBucket[] }) {
           }}
         />
         <Bar yAxisId="tokens" dataKey="tokens" name="Tokens" fill="hsl(var(--primary) / 0.5)" />
-        <Line yAxisId="cost" type="monotone" dataKey="cost" name="Cost" stroke="hsl(var(--status-warn))" dot={false} />
+        <Line yAxisId="cost" type="monotone" dataKey="cost" name="Cost" stroke="hsl(var(--status-warn))" dot={dotWhenSparse(data, "cost")} />
       </ComposedChart>
     </ResponsiveContainer>
   );
@@ -147,7 +158,7 @@ export function MetricSeriesChartInner({
     <ResponsiveContainer width="100%" height={160}>
       <ComposedChart data={data} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
         <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
-        {timeAxis()}
+        {timeAxis(data)}
         <YAxis yAxisId="score" domain={unitScale ? [0, 1] : ["auto", "auto"]} tick={AXIS_TICK} width={32} />
         <YAxis
           yAxisId="rate"

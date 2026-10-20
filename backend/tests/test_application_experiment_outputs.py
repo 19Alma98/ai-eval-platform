@@ -95,6 +95,9 @@ class FakeDatasetRepository:
     async def get_item(self, item_id: uuid.UUID) -> DatasetItem | None:
         return self.items.get(item_id)
 
+    async def count_items(self, dataset_ids: list[uuid.UUID]) -> dict[uuid.UUID, int]:
+        return {d: len(await self.list_items(d)) for d in dataset_ids}
+
     async def list_items(self, dataset_id: uuid.UUID) -> list[DatasetItem]:
         return [i for i in self.items.values() if i.dataset_id == dataset_id]
 

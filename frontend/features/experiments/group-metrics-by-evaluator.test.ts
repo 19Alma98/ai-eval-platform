@@ -1,7 +1,10 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import type { MetricComparison } from "@/lib/api/types";
-import { groupMetricsByEvaluator } from "./group-metrics-by-evaluator";
+import {
+  defaultCompareEvaluatorId,
+  groupMetricsByEvaluator,
+} from "./group-metrics-by-evaluator";
 
 function metric(
   partial: Partial<MetricComparison> &
@@ -131,5 +134,25 @@ describe("groupMetricsByEvaluator", () => {
     assert.equal(rows[0].status, "regression");
     assert.equal(rows[0].delta, null);
     assert.equal(rows[0].candidate_pass_rate, 0.5);
+  });
+});
+
+describe("defaultCompareEvaluatorId", () => {
+  it("opens on a pass-rate-only regression, not on the first metric", () => {
+    const rows = groupMetricsByEvaluator([
+      metric({ evaluator_id: "a", metric: "mean_score", status: "unchanged" }),
+      metric({ evaluator_id: "b", metric: "mean_score", status: "unchanged" }),
+      metric({ evaluator_id: "b", metric: "pass_rate", status: "regression" }),
+    ]);
+    assert.equal(defaultCompareEvaluatorId(rows), "b");
+  });
+
+  it("falls back to an improved metric, then to the first row", () => {
+    const improved = groupMetricsByEvaluator([
+      metric({ evaluator_id: "a", metric: "mean_score", status: "unchanged" }),
+      metric({ evaluator_id: "b", metric: "mean_score", status: "improved" }),
+    ]);
+    assert.equal(defaultCompareEvaluatorId(improved), "b");
+    assert.equal(defaultCompareEvaluatorId([]), null);
   });
 });

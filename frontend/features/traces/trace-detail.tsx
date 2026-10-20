@@ -17,11 +17,12 @@ import {
   ResizablePanelGroup,
 } from "@/components/ui/resizable";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { ApiError, formatErrorForUi } from "@/lib/api/client";
+import { ApiError, formatErrorForUi, withBasePath } from "@/lib/api/client";
 import { formatDurationMs, formatScore, truncateId } from "@/lib/format";
 import { liveRunHref, traceHref } from "@/lib/links";
 import { withProjectQuery } from "@/lib/project-href";
 import { RagPipeline } from "./rag-pipeline";
+import { liveTraceSkipped } from "./live-skip";
 import { buildRagView, hasRagContent } from "./rag-view";
 import { SpanSidebar } from "./span-sidebar";
 import { traceUsage } from "./span-metrics";
@@ -30,7 +31,7 @@ import { useTrace, useTraceLiveInteraction } from "./use-traces";
 
 async function copyLink(href: string) {
   try {
-    await navigator.clipboard.writeText(new URL(href, window.location.origin).toString());
+    await navigator.clipboard.writeText(new URL(withBasePath(href), window.location.origin).toString());
     toast.success("Link copied");
   } catch {
     toast.error("Could not copy");
@@ -149,6 +150,16 @@ export function TraceDetailView({ projectId, traceId }: { projectId: string; tra
         }
         className="mb-0"
       />
+
+      {liveTraceSkipped(trace) ? (
+        <p className="rounded-md border border-status-warn bg-status-warn-bg px-3 py-2 text-sm text-status-warn">
+          This call is marked live but did not become a Live traffic answer: no question or
+          answer could be read from it. Check that the server runs with{" "}
+          <code>CONTENT_CAPTURE_ENABLED=true</code>; if the function takes several text arguments
+          or returns no text, call <code>opengrade.set_input(question)</code> and{" "}
+          <code>opengrade.set_output(answer)</code> inside it.
+        </p>
+      ) : null}
 
       {(trace.scores ?? []).length > 0 ? (
         <div className="flex flex-wrap gap-1.5" aria-label="Trace scores">

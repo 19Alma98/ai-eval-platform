@@ -398,7 +398,8 @@ class GetProjectOverview:
             until=until,
             live=live,
             offline=OfflineOverview(
-                n_datasets=len(datasets),
+                # Versions of one test set share a name: count test sets, not versions.
+                n_datasets=len({d.name for d in datasets}),
                 metrics_set=metrics_ref,
                 reference_threshold=ref_threshold,
                 latest_experiment=latest_ref,

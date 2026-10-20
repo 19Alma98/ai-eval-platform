@@ -4,8 +4,10 @@ import {
   compareMetrics,
   groupByMetricCategory,
   humanizeIdentifier,
+  metricCodeName,
   metricInfo,
   metricLabel,
+  metricsSetDisplayName,
 } from "./metrics-catalog";
 
 test("known kinds get friendly labels", () => {
@@ -32,4 +34,19 @@ test("grouping orders answer quality before retrieval and performance", () => {
   );
   assert.deepEqual(groups[0]!.rows, ["correctness", "groundedness"]);
   assert.ok(compareMetrics("correctness", "latency") < 0);
+});
+
+test("code names are shown only when the label hides them", () => {
+  assert.equal(metricCodeName("hit_at_k"), "hit_at_k");
+  assert.equal(metricCodeName("must_contain"), "must_contain");
+  assert.equal(metricCodeName("answer_relevance"), null);
+  assert.equal(metricCodeName("my_metric"), null);
+});
+
+test("SDK metrics set names list the metrics", () => {
+  assert.equal(
+    metricsSetDisplayName("sdk:hit_at_k+must_contain+latency@689cc45d"),
+    "From code: Hit rate, Required phrases, Latency",
+  );
+  assert.equal(metricsSetDisplayName("Strict release bar"), "Strict release bar");
 });

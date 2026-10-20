@@ -26,6 +26,7 @@ import {
 } from "@/components/ui/select";
 import { formatErrorForUi } from "@/lib/api/client";
 import { createExperiment } from "@/lib/api/experiments";
+import { metricsSetDisplayName } from "@/lib/metrics-catalog";
 import { withProjectQuery } from "@/lib/project-href";
 import {
   useAppConfigAliases,
@@ -391,7 +392,7 @@ export function CreateExperimentDialog({
                   </SelectItem>
                   {metricsSets.map((s) => (
                     <SelectItem key={s.id} value={s.id}>
-                      {s.name} v{s.version}
+                      {metricsSetDisplayName(s.name)} v{s.version}
                     </SelectItem>
                   ))}
                 </SelectContent>

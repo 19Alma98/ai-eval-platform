@@ -8,6 +8,7 @@ import { JsonBlock } from "@/components/json-block";
 import { JudgeClaimsTable } from "@/components/judge-claims-table";
 import { StatusBadge } from "@/components/status-badge";
 import { Badge } from "@/components/ui/badge";
+import { withBasePath } from "@/lib/api/client";
 import { cn } from "@/lib/cn";
 import { formatScore } from "@/lib/format";
 import { experimentItemHref, traceHref } from "@/lib/links";
@@ -22,7 +23,7 @@ import { RunItemTimeline } from "./run-item-timeline";
 
 async function copyItemLink(href: string) {
   try {
-    await navigator.clipboard.writeText(new URL(href, window.location.origin).toString());
+    await navigator.clipboard.writeText(new URL(withBasePath(href), window.location.origin).toString());
     toast.success("Link copied");
   } catch {
     toast.error("Could not copy");

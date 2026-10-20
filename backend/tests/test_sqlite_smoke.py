@@ -64,6 +64,29 @@ async def test_sqlite_health_and_project_create(sqlite_client: AsyncClient) -> N
     assert any(p["slug"] == "sqlite-demo" for p in listed.json())
 
 
+@pytest.mark.asyncio
+async def test_sqlite_dataset_list_has_item_count(sqlite_client: AsyncClient) -> None:
+    project = (await sqlite_client.post("/api/v1/projects", json={"name": "Counts"})).json()
+    base = f"/api/v1/projects/{project['id']}/datasets"
+    full = (await sqlite_client.post(base, json={"name": "full"})).json()
+    empty = (await sqlite_client.post(base, json={"name": "empty"})).json()
+    for question in ("Q1?", "Q2?"):
+        added = await sqlite_client.post(
+            f"/api/v1/datasets/{full['id']}/items",
+            json={
+                "input": question,
+                "expected_output": "A",
+                "metadata": {"expected_doc_ids": ["doc-1"]},
+            },
+        )
+        assert added.status_code == 201, added.text
+
+    listed = await sqlite_client.get(base)
+    assert listed.status_code == 200, listed.text
+    counts = {d["id"]: d["item_count"] for d in listed.json()}
+    assert counts == {full["id"]: 2, empty["id"]: 0}
+
+
 @requires_packaged_ui
 @pytest.mark.asyncio
 async def test_sqlite_ui_index_served(sqlite_client: AsyncClient) -> None:

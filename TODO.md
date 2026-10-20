@@ -246,28 +246,49 @@ Priority: **P0** blocks a public release, **P1** fix before promoting it, **P2**
 
 ### Frontend — P2
 
-- [ ] Mobile: at 375px sidebar never collapses, horizontal scroll (scrollWidth 586–689px).
-- [ ] Sidebar background stops at viewport height on long pages.
-- [ ] Production latency chart empty when all data is in one time bucket.
-- [ ] 24h/7d chart axes show only HH:MM (`monitoring-charts-inner.tsx:34`).
-- [ ] Live run detail error screen has no Retry (`live-run-detail.tsx:285-297`); malformed id shows
+- [x] Mobile: at 375px sidebar never collapses, horizontal scroll (scrollWidth 586–689px).
+  → sidebar hidden below `md`, menu button opens it as a drawer; tighter page padding. 375px: scrollWidth = 375 on every page.
+- [x] Sidebar background stops at viewport height on long pages.
+  → the aside stretches to the page height; only its inner column is sticky.
+- [x] Production latency chart empty when all data is in one time bucket.
+  → lines draw a dot when a series has a single non-empty bucket (latency, cost).
+- [x] 24h/7d chart axes show only HH:MM (`monitoring-charts-inner.tsx:34`).
+  → `formatBucketTick`: time up to 6h, weekday + time up to 48h, date + time beyond.
+- [x] Live run detail error screen has no Retry (`live-run-detail.tsx:285-297`); malformed id shows
   generic "Something went wrong" instead of not-found.
-- [ ] Accessibility: `components/data-table.tsx:67-77,111-124` rows not focusable, only j/k, `aria-selected`
+  → 404/422 → "Answer not found"; other errors show the message + Try again; both link back to Live traffic.
+- [x] Accessibility: `components/data-table.tsx:67-77,111-124` rows not focusable, only j/k, `aria-selected`
   outside grid role; `features/traces/trace-waterfall.tsx:349,372` button nested in `role="button"`.
-- [ ] No basePath/asset prefix (`next.config.ts:21-25`, `lib/api/client.ts:105`): UI can't be served
+  → table is a `grid` with roving tabindex on rows (arrows, j/k, Home/End, Enter/Space); waterfall row is no
+  longer `role="button"`, the span name is its own button next to the collapse toggle.
+- [x] No basePath/asset prefix (`next.config.ts:21-25`, `lib/api/client.ts:105`): UI can't be served
   under a sub-path behind a proxy. Fix: build-time `NEXT_PUBLIC_BASE_PATH`.
-- [ ] Naming mismatch UI vs code (`hit_at_k` → "Hit rate", `must_contain` → "Required phrases"; import CSV
+  → `basePath` from `NEXT_PUBLIC_BASE_PATH`; API calls / copied links prefixed (`withBasePath`); Docker build arg;
+  documented in `frontend/README.md` (proxy strips the prefix). Verified a `/og` export behind a stripping proxy.
+- [x] Naming mismatch UI vs code (`hit_at_k` → "Hit rate", `must_contain` → "Required phrases"; import CSV
   `question`/`expected_answer` vs SDK `input`/`expected_output`); metrics set label
   `sdk:hit_at_k+must_contain+latency@689cc45d v1`; local Python metrics missing from `/metrics`.
-- [ ] Test sets list: duplicate names per version, no question-count column; Overview "Test sets 2 —
+  → metrics set detail shows the code name next to the label; import dialog lists `input` / `expected_output`
+  aliases; `sdk:…@hash` sets shown as "From code: Hit rate, Required phrases, …" (raw name under it in the list);
+  `/metrics` has a "Metrics computed in your code" section (client evaluators).
+- [x] Test sets list: duplicate names per version, no question-count column; Overview "Test sets 2 —
   Questions with expected answers" reads like a question count.
-- [ ] Import dialog on a locked test set doesn't say it creates a new version.
-- [ ] Compare-all: same green for two metrics, uneven decimals; side-by-side defaults to first metric
+  → versions grouped under the newest one ("older version" rows), Questions column (`item_count` on the list
+  endpoint); Overview counts test sets by name, hint reworded.
+- [x] Import dialog on a locked test set doesn't say it creates a new version.
+  → locked notice in the dialog, submit button reads "Import into new version".
+- [x] Compare-all: same green for two metrics, uneven decimals; side-by-side defaults to first metric
   even when others changed; release gate rule names truncated.
-- [ ] Empty states: Traces says "No traces match these filters" instead of how to send traces; Live
+  → trend chart uses the five chart hues (dashed beyond five); one precision per logged-metric column, whole
+  pass-rate %; answers view opens on the first worse (else better) row verdict; release check titles wrap.
+- [x] Empty states: Traces says "No traces match these filters" instead of how to send traces; Live
   traffic suggests `client.live_runs.submit` instead of `@opengrade.trace` + `init(live=True)`; live
   traces with no extractable question are silently skipped with no hint.
-- [ ] Deleted saved project → "Unknown project" + failing requests; fall back to a valid project.
+  → Traces: setup hint + "Show all time" when only the time range is active; Live traffic: `init(live=True)` +
+  `@opengrade.trace` + `set_input/set_output` + `CONTENT_CAPTURE_ENABLED`; trace detail warns when a live-marked
+  trace has no live answer.
+- [x] Deleted saved project → "Unknown project" + failing requests; fall back to a valid project.
+  → project switcher refetches the list and switches to the first project (toast) or clears the selection.
 
 ### Product gaps vs MLflow / Langfuse — P2
 

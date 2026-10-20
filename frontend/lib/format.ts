@@ -82,3 +82,24 @@ export function formatDeltaPoints(value: number | null | undefined): string {
   if (pts === 0) return "±0";
   return pts > 0 ? `+${pts} pts` : `−${Math.abs(pts)} pts`;
 }
+
+const HOUR_MS = 3_600_000;
+
+/**
+ * Chart time-axis tick: time only for short ranges, weekday + time up to two days,
+ * date + time beyond, so 24h / 7d axes don't repeat ambiguous "14:00" labels.
+ */
+export function formatBucketTick(
+  iso: string,
+  spanMs: number,
+  locale?: string,
+  timeZone?: string,
+): string {
+  const d = parseTimestamp(iso);
+  const time = { hour: "2-digit", minute: "2-digit" } as const;
+  if (spanMs <= 6 * HOUR_MS) return d.toLocaleTimeString(locale, { ...time, timeZone });
+  if (spanMs <= 48 * HOUR_MS) {
+    return d.toLocaleString(locale, { weekday: "short", ...time, timeZone });
+  }
+  return d.toLocaleString(locale, { month: "short", day: "numeric", ...time, timeZone });
+}
