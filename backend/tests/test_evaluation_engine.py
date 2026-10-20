@@ -455,6 +455,48 @@ def test_build_eval_context_includes_retrieval_documents() -> None:
     assert ctx["documents"] == [{"id": "doc-3", "text": "Remote work policy."}]
 
 
+def test_build_eval_context_includes_documents_on_nested_chain_span() -> None:
+    t0 = datetime(2024, 1, 1, tzinfo=UTC)
+    t1 = datetime(2024, 1, 1, 0, 0, 1, tzinfo=UTC)
+    root = Span(
+        id=uuid.uuid4(),
+        span_id="a" * 16,
+        parent_span_id=None,
+        name="answer",
+        kind="CHAIN",
+        start_time=t0,
+        end_time=t1,
+        status="ok",
+        attributes={},
+    )
+    nested = Span(
+        id=uuid.uuid4(),
+        span_id="b" * 16,
+        parent_span_id="a" * 16,
+        name="retrieve",
+        kind="CHAIN",
+        start_time=t0,
+        end_time=t0,
+        status="ok",
+        attributes={
+            "retrieval.documents": [{"id": "doc-1", "text": "Remote work policy."}],
+        },
+    )
+    trace = Trace(
+        id=uuid.uuid4(),
+        project_id=uuid.uuid4(),
+        trace_id="e" * 32,
+        name="rag",
+        status="ok",
+        start_time=t0,
+        end_time=t1,
+        spans=(root, nested),
+    )
+    assert build_eval_context_from_trace(trace)["documents"] == [
+        {"id": "doc-1", "text": "Remote work policy."},
+    ]
+
+
 def test_build_eval_context_uses_last_retrieval_stage() -> None:
     t0 = datetime(2024, 1, 1, tzinfo=UTC)
     t1 = datetime(2024, 1, 1, 0, 0, 1, tzinfo=UTC)

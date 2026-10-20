@@ -7,6 +7,7 @@ from opengrade_server.domain.trace import Span, Trace
 from opengrade_server.tracing.run_binding import (
     build_output_from_trace,
     extract_run_binding,
+    merge_bind_context,
     traces_for_output_binding,
 )
 
@@ -42,6 +43,41 @@ def test_extract_run_binding_from_chain_span() -> None:
         spans=(chain,),
     )
     assert extract_run_binding(trace) == (exp_id, item_id)
+
+
+def test_merge_bind_context_keeps_documents_when_trace_has_no_retrieval() -> None:
+    start = datetime(2024, 1, 1, tzinfo=UTC)
+    end = datetime(2024, 1, 1, 0, 0, 1, tzinfo=UTC)
+    chain = Span(
+        id=uuid.uuid4(),
+        span_id="a" * 16,
+        parent_span_id=None,
+        name="chain",
+        kind="CHAIN",
+        start_time=start,
+        end_time=end,
+        status="ok",
+        attributes={},
+    )
+    trace = Trace(
+        id=uuid.uuid4(),
+        project_id=uuid.uuid4(),
+        trace_id="b" * 32,
+        name="chain",
+        status="ok",
+        start_time=start,
+        end_time=end,
+        spans=(chain,),
+    )
+    existing = {
+        "documents": [{"id": "client-doc", "text": "from PUT"}],
+        "custom": "keep-me",
+    }
+    merged = merge_bind_context(existing, trace)
+    assert merged is not None
+    assert merged["documents"] == [{"id": "client-doc", "text": "from PUT"}]
+    assert merged["custom"] == "keep-me"
+    assert merged["latency_ms"] == 1000.0
 
 
 def test_build_output_from_trace_sets_metadata_and_context() -> None:

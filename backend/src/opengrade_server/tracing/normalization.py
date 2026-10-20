@@ -11,7 +11,28 @@ from opengrade_server.domain.trace import Span, Trace
 from opengrade_server.tracing.openinference import extract_model_provider, resolve_span_kind
 
 
+def batch_defines_trace_summary(spans: list[Span] | list[dict[str, Any]]) -> bool:
+    """True when this batch may set trace-level name / input / output.
+
+    Child-only LLM/TOOL batches must not promote span I/O to the trace row.
+    A root span or any CHAIN span is enough to define the summary.
+    """
+    for span in spans:
+        if isinstance(span, Span):
+            if not span.parent_span_id or span.kind.upper() == "CHAIN":
+                return True
+            continue
+        if not span.get("parent_span_id"):
+            return True
+        kind = resolve_span_kind(span.get("attributes") or {})
+        if kind == "CHAIN":
+            return True
+    return False
+
+
 def _pick_trace_name(spans: list[dict[str, Any]]) -> str:
+    if not batch_defines_trace_summary(spans):
+        return "trace"
     roots = [s for s in spans if not s.get("parent_span_id")]
     candidates = roots or spans
     # Prefer LLM / CHAIN names when present
@@ -48,6 +69,8 @@ def _min_max_times(
 
 def _extract_trace_io(spans: list[Span]) -> tuple[Any | None, Any | None]:
     """Lift OpenInference input/output from the preferred root (CHAIN) span."""
+    if not batch_defines_trace_summary(spans):
+        return None, None
     roots = [s for s in spans if not s.parent_span_id]
     ordered = sorted(roots or spans, key=lambda s: 0 if s.kind == "CHAIN" else 1)
     for span in ordered:

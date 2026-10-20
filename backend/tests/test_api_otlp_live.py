@@ -273,3 +273,83 @@ def test_live_command_uses_documents_set_on_live_span() -> None:
     assert command is not None
     assert command.documents == [{"id": "d1", "text": "t"}]
     assert command.judge is False
+
+
+def test_live_command_collects_documents_from_nested_chain_retrieval() -> None:
+    docs = [{"id": "d1", "text": "from nested chain"}]
+    root = _span(
+        "root",
+        None,
+        {
+            "opengrade.live": True,
+            "opengrade.live.judge": False,
+            "input.value": "q",
+            "output.value": "a",
+        },
+    )
+    nested = _span(
+        "nested",
+        "root",
+        {"retrieval.documents": docs},
+    )
+    command = live_command_from_trace(_trace(root, nested))
+    assert command is not None
+    assert command.documents == docs
+
+
+@pytest.mark.asyncio
+async def test_live_nested_chain_retrieval_creates_interaction_with_docs(
+    env: tuple[AsyncClient, _Env, str],
+) -> None:
+    client, state, project_id = env
+    nested_id = "33" * 8
+    docs = json.dumps([{"id": "doc-nested", "text": "Nested retrieval."}])
+    payload = {
+        "resourceSpans": [
+            {
+                "scopeSpans": [
+                    {
+                        "spans": [
+                            {
+                                "traceId": TRACE_ID,
+                                "spanId": ROOT,
+                                "name": "answer",
+                                "startTimeUnixNano": "1700000000000000000",
+                                "endTimeUnixNano": "1700000001000000000",
+                                "status": {"code": "STATUS_CODE_OK"},
+                                "attributes": [
+                                    _attr("openinference.span.kind", "CHAIN"),
+                                    _attr(
+                                        "input.value",
+                                        json.dumps(
+                                            {"args": ["Can I work remotely?"], "kwargs": {}}
+                                        ),
+                                    ),
+                                    _attr("output.value", "Yes."),
+                                    _attr("opengrade.live", True),
+                                    _attr("opengrade.live.judge", False),
+                                ],
+                            },
+                            {
+                                "traceId": TRACE_ID,
+                                "spanId": nested_id,
+                                "parentSpanId": ROOT,
+                                "name": "retrieve",
+                                "startTimeUnixNano": "1700000000000000000",
+                                "endTimeUnixNano": "1700000000500000000",
+                                "status": {"code": "STATUS_CODE_OK"},
+                                "attributes": [
+                                    _attr("openinference.span.kind", "CHAIN"),
+                                    _attr("retrieval.documents", docs),
+                                ],
+                            },
+                        ]
+                    }
+                ]
+            }
+        ]
+    }
+    await _post(client, project_id, payload)
+    items = list(state.live._items.values())
+    assert len(items) == 1
+    assert items[0].documents == [{"id": "doc-nested", "text": "Nested retrieval."}]

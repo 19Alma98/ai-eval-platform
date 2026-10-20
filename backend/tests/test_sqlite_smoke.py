@@ -80,7 +80,17 @@ def _otlp_span(
     start_nano: str,
     end_nano: str,
     parent_span_id: str | None = None,
+    kind: str = "CHAIN",
+    input_value: str | None = None,
+    output_value: str | None = None,
 ) -> dict:
+    attributes = [
+        {"key": "openinference.span.kind", "value": {"stringValue": kind}},
+    ]
+    if input_value is not None:
+        attributes.append({"key": "input.value", "value": {"stringValue": input_value}})
+    if output_value is not None:
+        attributes.append({"key": "output.value", "value": {"stringValue": output_value}})
     span: dict = {
         "traceId": trace_id,
         "spanId": span_id,
@@ -88,9 +98,7 @@ def _otlp_span(
         "startTimeUnixNano": start_nano,
         "endTimeUnixNano": end_nano,
         "status": {"code": "STATUS_CODE_OK"},
-        "attributes": [
-            {"key": "openinference.span.kind", "value": {"stringValue": "CHAIN"}},
-        ],
+        "attributes": attributes,
     }
     if parent_span_id is not None:
         span["parentSpanId"] = parent_span_id
@@ -178,6 +186,71 @@ async def test_sqlite_otlp_upsert_same_trace_merges(sqlite_client: AsyncClient) 
     listed = await sqlite_client.get(f"/api/v1/projects/{project_id}/traces/{trace_id}")
     assert listed.status_code == 200
     assert len(listed.json()["spans"]) == 2
+
+
+@pytest.mark.asyncio
+async def test_sqlite_otlp_llm_child_batch_keeps_chain_summary(
+    sqlite_client: AsyncClient,
+) -> None:
+    """Later LLM-only child batch must not rename the trace or replace I/O."""
+    project = await sqlite_client.post(
+        "/api/v1/projects",
+        json={"name": "OTLP Summary", "slug": "otlp-sqlite-summary"},
+    )
+    assert project.status_code == 201
+
+    headers = {"X-Project-Slug": "otlp-sqlite-summary"}
+    trace_id = "dddddddddddddddddddddddddddddddd"
+
+    first = await sqlite_client.post(
+        "/v1/traces",
+        json=_otlp_payload(
+            [
+                _otlp_span(
+                    trace_id=trace_id,
+                    span_id="1111111111111111",
+                    name="rag",
+                    start_nano="1700000000000000000",
+                    end_nano="1700000002000000000",
+                    kind="CHAIN",
+                    input_value="user question",
+                    output_value="chain answer",
+                )
+            ]
+        ),
+        headers=headers,
+    )
+    assert first.status_code == 200
+
+    second = await sqlite_client.post(
+        "/v1/traces",
+        json=_otlp_payload(
+            [
+                _otlp_span(
+                    trace_id=trace_id,
+                    span_id="2222222222222222",
+                    name="ChatCompletion",
+                    start_nano="1700000000500000000",
+                    end_nano="1700000001500000000",
+                    parent_span_id="1111111111111111",
+                    kind="LLM",
+                    input_value="system: you are a bot",
+                    output_value="llm completion",
+                )
+            ]
+        ),
+        headers=headers,
+    )
+    assert second.status_code == 200
+
+    project_id = project.json()["id"]
+    detail = await sqlite_client.get(f"/api/v1/projects/{project_id}/traces/{trace_id}")
+    assert detail.status_code == 200
+    body = detail.json()
+    assert len(body["spans"]) == 2
+    assert body["name"] == "rag"
+    assert body["input"] == "user question"
+    assert body["output"] == "chain answer"
 
 
 @pytest.mark.asyncio

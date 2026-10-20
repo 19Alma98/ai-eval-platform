@@ -6,7 +6,10 @@ from datetime import UTC, datetime
 
 from opengrade_server.domain.trace import Span, Trace
 from opengrade_server.tracing.ingestion import ingest_otlp_payload
-from opengrade_server.tracing.normalization import normalize_raw_spans
+from opengrade_server.tracing.normalization import (
+    batch_defines_trace_summary,
+    normalize_raw_spans,
+)
 from opengrade_server.tracing.openinference import resolve_span_kind
 from opengrade_server.tracing.redaction import redact_trace
 
@@ -19,6 +22,35 @@ def test_resolve_span_kind_openinference() -> None:
 
 def test_resolve_span_kind_genai_execute_tool() -> None:
     assert resolve_span_kind({"gen_ai.operation.name": "execute_tool"}) == "TOOL"
+
+
+def test_normalize_llm_child_only_batch_does_not_promote_name_or_io() -> None:
+    project_id = uuid.uuid4()
+    start = datetime(2026, 1, 1, tzinfo=UTC)
+    raw = [
+        {
+            "trace_id": "a" * 32,
+            "span_id": "c" * 16,
+            "parent_span_id": "b" * 16,
+            "name": "ChatCompletion",
+            "start_time": start,
+            "end_time": start,
+            "status": "ok",
+            "attributes": {
+                "openinference.span.kind": "LLM",
+                "input.value": "system: you are a bot",
+                "output.value": "completion text",
+            },
+            "events": [],
+        },
+    ]
+    assert batch_defines_trace_summary(raw) is False
+    traces = normalize_raw_spans(project_id, raw)
+    assert len(traces) == 1
+    assert traces[0].name == "trace"
+    assert traces[0].input is None
+    assert traces[0].output is None
+    assert traces[0].spans[0].name == "ChatCompletion"
 
 
 def test_normalize_groups_by_trace_id() -> None:

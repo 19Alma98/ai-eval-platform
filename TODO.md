@@ -132,17 +132,17 @@ Priority: **P0** blocks a public release, **P1** fix before promoting it, **P2**
 
 ### Backend — P1
 
-- [ ] **Run binding overwrites client context** (`tracing/run_binding.py:118-122`): documents set via
+- [x] **Run binding overwrites client context** (`tracing/run_binding.py:118-122`): documents set via
   `PUT /outputs` replaced by `{"latency_ms":…}` when the trace arrives → groundedness/retrieval lose
   documents. Fix: merge, keep existing `documents` if trace has no retrieval spans. (confirmed both)
-- [ ] **Child-only batches rename the trace** (`repositories.py:175,192-195`, `normalization.py:15-16,51-52`):
+- [x] **Child-only batches rename the trace** (`repositories.py:175,192-195`, `normalization.py:15-16,51-52`):
   later LLM-only batch changes trace name and input/output to the LLM prompt. Fix: update only when
   the batch contains the root (or a CHAIN) span. (confirmed both)
-- [ ] **Groundedness SKIPPED on live traffic when retrieval is in a nested function**
+- [x] **Groundedness SKIPPED on live traffic when retrieval is in a nested function**
   (`tracing/live_binding.py` `_documents()`, `evaluation/trace_context.py` `_RETRIEVAL_KINDS`): docs on
   a child CHAIN span (`retrieval.documents`) are ignored; UI says "No documents were retrieved" while
   SDK metrics saw them. Fix: collect `retrieval.documents` from any descendant span. (confirmed via UI)
-- [ ] **Production/monitoring counts offline experiment traces** (`application/monitoring.py`):
+- [x] **Production/monitoring counts offline experiment traces** (`application/monitoring.py`):
   66 traces instead of 30, wrong error rate and p99. Fix: exclude traces bound to experiments
   (`opengrade.eval …`). (confirmed via UI)
 - [ ] **No gzip on `/v1/traces`** (`routes/otlp.py:53`, `otel.py:182`): OTel Collector otlphttp gzips by

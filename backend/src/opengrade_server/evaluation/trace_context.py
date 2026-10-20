@@ -91,14 +91,13 @@ def build_eval_context_from_trace(
     # Use the final retrieval stage (e.g. reranker after retriever): those are the
     # documents the model actually saw (all chunks; judges need full text). Retrieval
     # metrics dedupe ids separately. Stages that did not record documents are skipped;
-    # if none did, documents is an empty list.
-    stages = [s for s in spans if s.kind.upper() in _RETRIEVAL_KINDS]
+    stages: list[tuple[Span, int, list[dict[str, Any]] | None]] = []
+    for idx, span in enumerate(spans):
+        docs = _span_documents(span)
+        if docs is not None or span.kind.upper() in _RETRIEVAL_KINDS:
+            stages.append((span, idx, docs))
     if stages:
-        recorded = [
-            (_span_end(span), idx, docs)
-            for idx, span in enumerate(stages)
-            if (docs := _span_documents(span)) is not None
-        ]
+        recorded = [(_span_end(span), idx, docs) for span, idx, docs in stages if docs is not None]
         final_docs = max(recorded, key=lambda row: (row[0], row[1]))[2] if recorded else []
         context["documents"] = final_docs
 
@@ -106,6 +105,7 @@ def build_eval_context_from_trace(
 
 
 _RETRIEVAL_KINDS = frozenset({"RETRIEVER", "RERANKER"})
+_GENERIC_DOCUMENT_KEYS = ("reranker.output_documents", "retrieval.documents", "documents")
 _DOCUMENT_KEYS = {
     "RETRIEVER": ("retrieval.documents", "documents"),
     "RERANKER": ("reranker.output_documents", "retrieval.documents", "documents"),
@@ -117,10 +117,14 @@ def _span_end(span: Span) -> datetime:
     return stamp if stamp.tzinfo is not None else stamp.replace(tzinfo=UTC)
 
 
+def _document_keys_for(span: Span) -> tuple[str, ...]:
+    return _DOCUMENT_KEYS.get(span.kind.upper(), _GENERIC_DOCUMENT_KEYS)
+
+
 def _span_documents(span: Span) -> list[dict[str, Any]] | None:
-    """Documents recorded on a retrieval span, or None if it recorded none."""
+    """Documents recorded on a span, or None if it recorded none."""
     attrs = span.attributes or {}
-    for key in _DOCUMENT_KEYS[span.kind.upper()]:
+    for key in _document_keys_for(span):
         raw = attrs.get(key)
         if raw is None:
             # OpenInference auto-instrumentation; the aggregated SDK key wins when both exist.

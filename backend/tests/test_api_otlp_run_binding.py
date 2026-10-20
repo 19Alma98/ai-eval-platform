@@ -285,6 +285,82 @@ async def test_otlp_bind_preserves_existing_output_metadata(client: AsyncClient)
 
 
 @pytest.mark.asyncio
+async def test_otlp_bind_preserves_client_documents_without_retrieval(
+    client: AsyncClient,
+) -> None:
+    project_id, experiment_id, item_id = await _seed_rag_experiment(client)
+    client_docs = [{"id": "client-doc", "text": "from PUT /outputs"}]
+    seed = await client.put(
+        f"/api/v1/experiments/{experiment_id}/outputs",
+        json={
+            "items": [
+                {
+                    "dataset_item_id": item_id,
+                    "actual_output": "seed answer",
+                    "context": {"documents": client_docs},
+                }
+            ]
+        },
+    )
+    assert seed.status_code == 200, seed.text
+
+    # Chain-only bind (no RETRIEVER span) must not wipe client documents.
+    payload = {
+        "resourceSpans": [
+            {
+                "scopeSpans": [
+                    {
+                        "spans": [
+                            {
+                                "traceId": "aa" * 16,
+                                "spanId": "bb" * 8,
+                                "name": "chain",
+                                "startTimeUnixNano": "1700000000000000000",
+                                "endTimeUnixNano": "1700000001000000000",
+                                "status": {"code": "STATUS_CODE_OK"},
+                                "attributes": [
+                                    {
+                                        "key": "openinference.span.kind",
+                                        "value": {"stringValue": "CHAIN"},
+                                    },
+                                    {
+                                        "key": "opengrade.experiment_id",
+                                        "value": {"stringValue": experiment_id},
+                                    },
+                                    {
+                                        "key": "opengrade.dataset_item_id",
+                                        "value": {"stringValue": item_id},
+                                    },
+                                    {
+                                        "key": "output.value",
+                                        "value": {"stringValue": "model answer from trace"},
+                                    },
+                                ],
+                            },
+                        ]
+                    }
+                ]
+            }
+        ]
+    }
+    otlp = await client.post(
+        "/v1/traces",
+        content=json.dumps(payload),
+        headers={
+            "content-type": "application/json",
+            "X-Project-Id": project_id,
+        },
+    )
+    assert otlp.status_code == 200
+
+    listed = await client.get(f"/api/v1/experiments/{experiment_id}/outputs")
+    assert listed.status_code == 200
+    row = listed.json()[0]
+    assert row["context"]["documents"] == client_docs
+    assert "latency_ms" in row["context"]
+
+
+@pytest.mark.asyncio
 async def test_otlp_foreign_dataset_item_still_stores_trace(client: AsyncClient) -> None:
     project_id, experiment_id, _item_id = await _seed_rag_experiment(client)
     foreign_item = str(uuid.uuid4())

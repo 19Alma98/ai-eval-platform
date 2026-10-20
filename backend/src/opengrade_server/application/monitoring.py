@@ -21,6 +21,7 @@ from opengrade_server.domain.repositories import (
 from opengrade_server.domain.trace import Trace
 from opengrade_server.domain.trace_score import trace_score_is_failed
 from opengrade_server.evaluation.trace_context import build_eval_context_from_trace
+from opengrade_server.tracing.run_binding import extract_run_binding
 
 TRACE_LIMIT = 5000
 HISTOGRAM_BINS = 10
@@ -236,6 +237,7 @@ class GetProductionMonitoring:
         )
         truncated = len(traces) > TRACE_LIMIT
         traces = traces[:TRACE_LIMIT]
+        traces = [t for t in traces if extract_run_binding(t) is None]
 
         usages = [(trace, _usage(trace)) for trace in traces]
         traffic = self._traffic(usages, since=since, bucket=bucket, starts=starts)

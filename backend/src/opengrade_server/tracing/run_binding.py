@@ -80,6 +80,21 @@ def build_output_from_trace(trace: Trace) -> dict[str, Any]:
     }
 
 
+def merge_bind_context(existing: Any, trace: Trace) -> dict[str, Any] | None:
+    """Merge stored experiment-output context with trace-derived fields.
+
+    Trace fields overlay the existing dict (latency, tokens, documents from
+    retrieval spans). Client-provided keys such as ``documents`` are kept when
+    the trace did not record them (e.g. CHAIN-only bind with no retrieval).
+    """
+    base = dict(existing) if isinstance(existing, dict) else {}
+    overlay = build_eval_context_from_trace(trace)
+    if not overlay:
+        return base or None
+    merged = {**base, **overlay}
+    return merged or None
+
+
 @dataclass(frozen=True, slots=True)
 class BindOtlpTracesToExperimentOutputs:
     experiments: ExperimentRepository
@@ -117,7 +132,7 @@ class BindOtlpTracesToExperimentOutputs:
             actual_output = existing.actual_output
         patched = existing.with_patch(
             actual_output=actual_output,
-            context=payload["context"],
+            context=merge_bind_context(existing.context, trace),
             metadata=merged_metadata,
         )
         await self.outputs.upsert_many([patched])

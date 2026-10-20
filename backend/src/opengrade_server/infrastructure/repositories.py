@@ -51,6 +51,7 @@ from opengrade_server.infrastructure.models import (
     TraceModel,
     TraceScoreModel,
 )
+from opengrade_server.tracing.normalization import batch_defines_trace_summary
 
 
 def escape_like(value: str) -> str:
@@ -192,8 +193,6 @@ class SqlAlchemyTraceRepository:
         )
         existing = result.scalar_one()
 
-        existing.name = trace.name or existing.name
-        # Prefer error if either side reported it.
         if trace.status == "error" or existing.status == "error":
             existing.status = "error"
         elif trace.status == "ok" or existing.status == "ok":
@@ -208,10 +207,12 @@ class SqlAlchemyTraceRepository:
             existing.end_time is None or _as_utc(trace.end_time) > _as_utc(existing.end_time)
         ):
             existing.end_time = trace.end_time
-        if trace.input is not None:
-            existing.input = trace.input
-        if trace.output is not None:
-            existing.output = trace.output
+        if batch_defines_trace_summary(list(trace.spans)):
+            existing.name = trace.name or existing.name
+            if trace.input is not None:
+                existing.input = trace.input
+            if trace.output is not None:
+                existing.output = trace.output
         merged_meta = dict(existing.metadata_json or {})
         merged_meta.update(dict(trace.metadata))
         existing.metadata_json = merged_meta

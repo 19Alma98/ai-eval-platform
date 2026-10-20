@@ -156,6 +156,63 @@ async def test_monitoring_aggregates_traffic_and_scores() -> None:
     assert feedback.n == 1 and feedback.mean == 0.0
 
 
+def _experiment_bound_trace(project_id: uuid.UUID, offset_min: int, *, ms: int) -> Trace:
+    start = SINCE + timedelta(minutes=offset_min)
+    end = start + timedelta(milliseconds=ms)
+    chain = Span(
+        id=uuid.uuid4(),
+        span_id=uuid.uuid4().hex[:16],
+        parent_span_id=None,
+        name="opengrade.eval demo",
+        kind="CHAIN",
+        start_time=start,
+        end_time=end,
+        status="ok",
+        attributes={
+            "opengrade.experiment_id": str(uuid.uuid4()),
+            "opengrade.dataset_item_id": str(uuid.uuid4()),
+            "gen_ai.usage.input_tokens": 50,
+            "gen_ai.usage.output_tokens": 10,
+            "gen_ai.usage.cost": 0.005,
+        },
+    )
+    return Trace(
+        id=uuid.uuid4(),
+        project_id=project_id,
+        trace_id=uuid.uuid4().hex,
+        name="opengrade.eval demo",
+        status="ok",
+        start_time=start,
+        end_time=end,
+        spans=(chain,),
+    )
+
+
+async def test_monitoring_excludes_experiment_bound_traces() -> None:
+    projects = InMemoryProjectRepository()
+    project = await projects.add(Project.create("MonEval", slug="mon-eval"))
+    production = [
+        _trace(project.id, 1, ms=100),
+        _trace(project.id, 2, ms=300, error=True),
+    ]
+    offline = [
+        _experiment_bound_trace(project.id, 3, ms=200),
+        _experiment_bound_trace(project.id, 4, ms=400),
+    ]
+    live = _Live()
+    scores = InMemoryTraceScoreRepository()
+
+    result = await GetProductionMonitoring(
+        projects, _Traces(production + offline), live, scores
+    ).execute(project.id, since=SINCE, until=UNTIL)
+
+    assert result.n_traces == 2
+    assert result.n_errors == 1
+    assert result.latency.p50_ms == pytest.approx(200.0)
+    assert result.total_tokens == pytest.approx(240.0)
+    assert result.cost_usd == pytest.approx(0.02)
+
+
 async def test_monitoring_unknown_project() -> None:
     use_case = GetProductionMonitoring(
         InMemoryProjectRepository(), _Traces([]), _Live(), InMemoryTraceScoreRepository()
