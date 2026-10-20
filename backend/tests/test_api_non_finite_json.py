@@ -71,6 +71,35 @@ async def test_finite_and_malformed_bodies_pass_through(client: AsyncClient) -> 
     assert bad.json()["detail"][0]["type"] == "json_invalid"
 
 
+@pytest.mark.asyncio
+async def test_nul_byte_in_json_string_is_422(client: AsyncClient) -> None:
+    resp = await client.post(
+        "/api/v1/projects",
+        content='{"name": "x\\u0000y"}',
+        headers=JSON,
+    )
+    assert resp.status_code == 422, resp.text
+    (error,) = resp.json()["detail"]
+    assert error["type"] == "nul_byte"
+    assert "\x00" in error["input"]
+
+
+@pytest.mark.asyncio
+async def test_nul_byte_in_dataset_name_is_422(client: AsyncClient) -> None:
+    project = await client.post("/api/v1/projects", json={"name": "nul guard"})
+    project_id = project.json()["id"]
+    resp = await client.post(
+        f"/api/v1/projects/{project_id}/datasets",
+        content='{"name": "d\\u0000ataset"}',
+        headers=JSON,
+    )
+    assert resp.status_code == 422, resp.text
+    assert resp.json()["detail"][0]["type"] == "nul_byte"
+    listing = await client.get(f"/api/v1/projects/{project_id}/datasets")
+    assert listing.status_code == 200, listing.text
+    assert listing.json() == []
+
+
 class _StrictBody(BaseModel):
     model_config = ConfigDict(allow_inf_nan=False)
     x: float

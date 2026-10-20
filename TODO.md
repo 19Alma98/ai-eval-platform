@@ -109,10 +109,10 @@ Priority: **P0** blocks a public release, **P1** fix before promoting it, **P2**
   batches for a new trace collide on `uq_traces_project_trace_id` → 409 (6 posts: 5×409 SQLite,
   4×409 Postgres); OTLP exporters don't retry 409 → spans lost. Fix: `INSERT … ON CONFLICT DO
   NOTHING` then reload/merge, or retry on IntegrityError. (confirmed both DBs)
-- [ ] **NaN/Inf protobuf double attributes** (`tracing/otel.py:44`) → Postgres JSONB insert fails →
+- [x] **NaN/Inf protobuf double attributes** (`tracing/otel.py:44`) → Postgres JSONB insert fails →
   whole batch 500 (SQLite silently null). Fix: non-finite → string/None in `_attr_value_proto`.
   (confirmed pg)
-- [ ] **NUL bytes** (`\x00` in OTLP span name/attrs, `\u0000` in JSON API, e.g. dataset name) → 500 on
+- [x] **NUL bytes** (`\x00` in OTLP span name/attrs, `\u0000` in JSON API, e.g. dataset name) → 500 on
   Postgres. Fix: strip/replace at OTLP decode, reject (422) in the JSON guard middleware. (confirmed pg)
 - [ ] **Experiment stuck in `running`** (`application/evaluate.py:98-115`): `load_scoring_inputs` and
   evaluator lookup run outside the try/except after Start marked it running; any exception → every

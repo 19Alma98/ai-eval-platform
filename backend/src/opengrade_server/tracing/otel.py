@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import math
 from datetime import UTC, datetime
 from typing import Any
 
@@ -13,6 +14,31 @@ from opentelemetry.proto.collector.trace.v1.trace_service_pb2 import (
 
 class OtlpDecodeError(ValueError):
     pass
+
+
+def _strip_nul(text: str) -> str:
+    """Remove NUL bytes that Postgres text/JSONB reject."""
+    return text.replace("\x00", "")
+
+
+def _finite_or_none(value: Any) -> Any:
+    """Map non-finite floats to None so JSONB inserts never see NaN/Inf."""
+    if isinstance(value, float) and not math.isfinite(value):
+        return None
+    return value
+
+
+def _sanitize_scalar(value: Any) -> Any:
+    if isinstance(value, str):
+        return _strip_nul(value)
+    return _finite_or_none(value)
+
+
+def _sanitize_attr_key(key: Any) -> str | None:
+    if not isinstance(key, str):
+        return None
+    cleaned = _strip_nul(key)
+    return cleaned or None
 
 
 def _nanos_to_datetime(nanos: int | str | None) -> datetime | None:
@@ -40,15 +66,20 @@ def _attr_value_proto(value: Any) -> Any:
     if which == "array_value":
         return [_attr_value_proto(v) for v in raw.values]
     if which == "kvlist_value":
-        return {item.key: _attr_value_proto(item.value) for item in raw.values}
-    return raw
+        result: dict[str, Any] = {}
+        for item in raw.values:
+            key = _sanitize_attr_key(item.key)
+            if key is not None:
+                result[key] = _attr_value_proto(item.value)
+        return result
+    return _sanitize_scalar(raw)
 
 
 def _attr_value_json(value: Any) -> Any:
     if value is None:
         return None
     if not isinstance(value, dict):
-        return value
+        return _sanitize_scalar(value)
     for key in (
         "stringValue",
         "boolValue",
@@ -57,29 +88,35 @@ def _attr_value_json(value: Any) -> Any:
         "bytesValue",
     ):
         if key in value:
-            return value[key]
+            return _sanitize_scalar(value[key])
     if "arrayValue" in value:
         values = (value.get("arrayValue") or {}).get("values") or []
         return [_attr_value_json(v) for v in values]
     if "kvlistValue" in value:
         values = (value.get("kvlistValue") or {}).get("values") or []
-        return {
-            item.get("key"): _attr_value_json(item.get("value"))
-            for item in values
-            if item.get("key")
-        }
+        result: dict[str, Any] = {}
+        for item in values:
+            key = _sanitize_attr_key(item.get("key"))
+            if key is not None:
+                result[key] = _attr_value_json(item.get("value"))
+        return result
     return value
 
 
 def _attributes_proto(attributes: Any) -> dict[str, Any]:
-    return {attr.key: _attr_value_proto(attr.value) for attr in attributes or []}
+    result: dict[str, Any] = {}
+    for attr in attributes or []:
+        key = _sanitize_attr_key(attr.key)
+        if key is not None:
+            result[key] = _attr_value_proto(attr.value)
+    return result
 
 
 def _attributes_json(attributes: Any) -> dict[str, Any]:
     result: dict[str, Any] = {}
     for attr in attributes or []:
-        key = attr.get("key")
-        if key:
+        key = _sanitize_attr_key(attr.get("key"))
+        if key is not None:
             result[key] = _attr_value_json(attr.get("value"))
     return result
 
@@ -87,7 +124,7 @@ def _attributes_json(attributes: Any) -> dict[str, Any]:
 def _events_proto(events: Any) -> list[dict[str, Any]]:
     return [
         {
-            "name": event.name,
+            "name": _strip_nul(event.name),
             "time_unix_nano": event.time_unix_nano,
             "attributes": _attributes_proto(event.attributes),
         }
@@ -98,9 +135,10 @@ def _events_proto(events: Any) -> list[dict[str, Any]]:
 def _events_json(events: Any) -> list[dict[str, Any]]:
     out: list[dict[str, Any]] = []
     for event in events or []:
+        name = event.get("name")
         out.append(
             {
-                "name": event.get("name"),
+                "name": _strip_nul(name) if isinstance(name, str) else name,
                 "time_unix_nano": event.get("timeUnixNano"),
                 "attributes": _attributes_json(event.get("attributes") or []),
             }
@@ -129,7 +167,7 @@ def iter_raw_spans_from_proto(request: ExportTraceServiceRequest) -> list[dict[s
                         "trace_id": span.trace_id.hex(),
                         "span_id": span.span_id.hex(),
                         "parent_span_id": parent or None,
-                        "name": span.name,
+                        "name": _strip_nul(span.name),
                         "start_time": _nanos_to_datetime(span.start_time_unix_nano),
                         "end_time": _nanos_to_datetime(span.end_time_unix_nano),
                         "status": _status_code_name(span.status.code),
@@ -155,12 +193,14 @@ def iter_raw_spans_from_json(payload: dict[str, Any]) -> list[dict[str, Any]]:
                 parent = _hex_id(span.get("parentSpanId") or span.get("parent_span_id"))
                 status = span.get("status") or {}
                 status_code = status.get("code") if isinstance(status, dict) else status
+                raw_name = span.get("name") or "span"
+                name = _strip_nul(raw_name) if isinstance(raw_name, str) else "span"
                 spans.append(
                     {
                         "trace_id": _hex_id(span.get("traceId") or span.get("trace_id")),
                         "span_id": _hex_id(span.get("spanId") or span.get("span_id")),
                         "parent_span_id": parent or None,
-                        "name": span.get("name") or "span",
+                        "name": name,
                         "start_time": _nanos_to_datetime(
                             span.get("startTimeUnixNano") or span.get("start_time_unix_nano")
                         ),

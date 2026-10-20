@@ -155,3 +155,118 @@ def test_ingest_otlp_json_roundtrip() -> None:
     assert traces[0].spans[0].kind == "CHAIN"
     assert "input.value" not in traces[0].spans[0].attributes
     assert traces[0].spans[0].attributes.get("service.name") == "demo"
+
+
+def test_ingest_otlp_non_finite_doubles_become_none() -> None:
+    project_id = uuid.uuid4()
+    # allow_nan so the body carries NaN/Inf tokens the way some OTLP JSON exporters do.
+    body = json.dumps(
+        {
+            "resourceSpans": [
+                {
+                    "scopeSpans": [
+                        {
+                            "spans": [
+                                {
+                                    "traceId": "cc" * 16,
+                                    "spanId": "dd" * 8,
+                                    "name": "metrics",
+                                    "startTimeUnixNano": "1700000000000000000",
+                                    "endTimeUnixNano": "1700000001000000000",
+                                    "attributes": [
+                                        {
+                                            "key": "score.nan",
+                                            "value": {"doubleValue": float("nan")},
+                                        },
+                                        {
+                                            "key": "score.inf",
+                                            "value": {"doubleValue": float("inf")},
+                                        },
+                                        {
+                                            "key": "score.ninf",
+                                            "value": {"doubleValue": float("-inf")},
+                                        },
+                                        {
+                                            "key": "score.ok",
+                                            "value": {"doubleValue": 0.95},
+                                        },
+                                    ],
+                                }
+                            ]
+                        }
+                    ]
+                }
+            ]
+        },
+        allow_nan=True,
+    ).encode("utf-8")
+
+    traces = ingest_otlp_payload(
+        project_id=project_id,
+        body=body,
+        content_type="application/json",
+        content_capture_enabled=False,
+    )
+    attrs = traces[0].spans[0].attributes
+    assert attrs["score.nan"] is None
+    assert attrs["score.inf"] is None
+    assert attrs["score.ninf"] is None
+    assert attrs["score.ok"] == 0.95
+
+
+def test_ingest_otlp_strips_nul_from_names_and_attrs() -> None:
+    project_id = uuid.uuid4()
+    payload = {
+        "resourceSpans": [
+            {
+                "scopeSpans": [
+                    {
+                        "spans": [
+                            {
+                                "traceId": "ee" * 16,
+                                "spanId": "ff" * 8,
+                                "name": "hel\x00lo",
+                                "startTimeUnixNano": "1700000000000000000",
+                                "endTimeUnixNano": "1700000001000000000",
+                                "attributes": [
+                                    {
+                                        "key": "openinference.span.kind",
+                                        "value": {"stringValue": "CHAIN"},
+                                    },
+                                    {
+                                        "key": "lab\x00el",
+                                        "value": {"stringValue": "a\x00b"},
+                                    },
+                                ],
+                                "events": [
+                                    {
+                                        "name": "ev\x00ent",
+                                        "timeUnixNano": "1700000000500000000",
+                                        "attributes": [
+                                            {
+                                                "key": "msg",
+                                                "value": {"stringValue": "ok\x00"},
+                                            }
+                                        ],
+                                    }
+                                ],
+                            }
+                        ]
+                    }
+                ]
+            }
+        ]
+    }
+    body = json.dumps(payload).encode("utf-8")
+    traces = ingest_otlp_payload(
+        project_id=project_id,
+        body=body,
+        content_type="application/json",
+        content_capture_enabled=False,
+    )
+    span = traces[0].spans[0]
+    assert span.name == "hello"
+    assert span.attributes["label"] == "ab"
+    assert "lab\x00el" not in span.attributes
+    assert span.events[0]["name"] == "event"
+    assert span.events[0]["attributes"]["msg"] == "ok"
