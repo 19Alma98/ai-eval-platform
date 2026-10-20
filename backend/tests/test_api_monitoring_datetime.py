@@ -7,11 +7,17 @@ from datetime import UTC, datetime, timedelta
 import pytest
 from httpx2 import ASGITransport, AsyncClient
 
-from opengrade_server.api.deps import get_production_monitoring, get_project_repository
+from opengrade_server.api.deps import (
+    get_production_monitoring,
+    get_project_overview,
+    get_project_repository,
+)
 from opengrade_server.application.monitoring import (
     LatencyPercentiles,
     ProductionMonitoring,
 )
+from opengrade_server.application.project_overview import OfflineOverview, ProjectOverviewResult
+from opengrade_server.domain.live_overview import LiveOverviewStats
 from opengrade_server.main import create_app
 from tests.test_api_live_interactions import InMemoryProjectRepository
 
@@ -44,12 +50,49 @@ class _StubMonitoring:
         )
 
 
+class _StubOverview:
+    async def execute(
+        self,
+        project_id: uuid.UUID,
+        *,
+        since: datetime,
+        until: datetime | None = None,
+    ) -> ProjectOverviewResult:
+        end = until or datetime.now(tz=UTC)
+        return ProjectOverviewResult(
+            generated_at=end,
+            since=since,
+            until=end,
+            live=LiveOverviewStats(
+                n_interactions=0,
+                n_failed=0,
+                n_pending=0,
+                mean_score=None,
+                fail_rate=None,
+                series=[],
+                attention=[],
+            ),
+            offline=OfflineOverview(
+                n_datasets=0,
+                metrics_set=None,
+                reference_threshold=None,
+                latest_experiment=None,
+                release_ready=False,
+                compare=None,
+                regressions=[],
+            ),
+            calibration_alerts=[],
+            warnings=[],
+        )
+
+
 @pytest.fixture
 async def client() -> AsyncIterator[AsyncClient]:
     projects = InMemoryProjectRepository()
     app = create_app()
     app.dependency_overrides[get_project_repository] = lambda: projects
     app.dependency_overrides[get_production_monitoring] = lambda: _StubMonitoring()
+    app.dependency_overrides[get_project_overview] = lambda: _StubOverview()
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as ac:
         yield ac
@@ -81,6 +124,19 @@ async def test_monitoring_rejects_until_before_since_without_500(client: AsyncCl
     until = datetime(2026, 1, 1, 12, 0, 0)  # naive, earlier
     resp = await client.get(
         f"/api/v1/projects/{project_id}/monitoring",
+        params={"since": since.isoformat().replace("+00:00", "Z"), "until": until.isoformat()},
+    )
+    assert resp.status_code == 422
+    assert resp.json()["detail"] == "until must be after since"
+
+
+@pytest.mark.asyncio
+async def test_overview_rejects_until_before_since(client: AsyncClient) -> None:
+    project_id = await _project(client)
+    since = datetime(2026, 1, 1, 13, 0, 0, tzinfo=UTC)
+    until = datetime(2026, 1, 1, 12, 0, 0)
+    resp = await client.get(
+        f"/api/v1/projects/{project_id}/overview",
         params={"since": since.isoformat().replace("+00:00", "Z"), "until": until.isoformat()},
     )
     assert resp.status_code == 422

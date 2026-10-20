@@ -6,11 +6,22 @@ from datetime import UTC, datetime, timedelta
 
 from opengrade_server.application.live_interactions import GetLiveInteraction, ListLiveInteractions
 from opengrade_server.domain.live_interaction import LiveInteraction, LiveInteractionScore
+from opengrade_server.domain.project import Project
 from opengrade_server.domain.trace_score import TraceScore
 from support.repositories import InMemoryTraceScoreRepository
 from test_api_live_interactions import InMemoryLiveRepository
 
 PROJECT = uuid.uuid4()
+
+
+class _ProjectsOk:
+    async def get_by_id(self, project_id: uuid.UUID) -> Project | None:
+        if project_id != PROJECT:
+            return None
+        return Project.create("P", "p")
+
+
+_PROJECTS = _ProjectsOk()
 
 
 async def _interaction(
@@ -39,7 +50,7 @@ async def test_list_joins_trace_scores_with_one_query_per_page() -> None:
         ]
     )
 
-    result = await ListLiveInteractions(live, scores).execute(PROJECT)
+    result = await ListLiveInteractions(live, _PROJECTS, scores).execute(PROJECT)
 
     assert {i[0].id for i in result.items} == {a.id, b.id, c.id}
     assert [s.name for s in result.trace_scores[a.id]] == ["quality", "user_feedback"]
@@ -67,7 +78,7 @@ async def test_failed_only_counts_trace_score_fails() -> None:
         ]
     )
 
-    result = await ListLiveInteractions(live, scores).execute(PROJECT, failed_only=True)
+    result = await ListLiveInteractions(live, _PROJECTS, scores).execute(PROJECT, failed_only=True)
 
     assert {i[0].id for i in result.items} == {judged_fail.id, thumbs_down.id, sdk_fail.id}
 
@@ -91,7 +102,9 @@ async def test_failed_only_pages_past_recent_passing_to_find_trace_fail() -> Non
                 [TraceScore.create(PROJECT, tid, "cited", value=1.0, label="PASS")]
             )
 
-    result = await ListLiveInteractions(live, scores).execute(PROJECT, failed_only=True, limit=10)
+    result = await ListLiveInteractions(live, _PROJECTS, scores).execute(
+        PROJECT, failed_only=True, limit=10
+    )
 
     assert [row[0].id for row in result.items] == list(reversed(failed_ids))
     assert scores.list_calls >= 2  # first page of passes, then the page with FAILs
@@ -102,7 +115,7 @@ async def test_list_joins_upper_case_source_trace_id() -> None:
     a = await _interaction(live, "qa", "AA" * 16)  # metadata may store upper-case
     await scores.upsert_many([TraceScore.create(PROJECT, "aa" * 16, "quality", value=1.0)])
 
-    result = await ListLiveInteractions(live, scores).execute(PROJECT)
+    result = await ListLiveInteractions(live, _PROJECTS, scores).execute(PROJECT)
 
     assert [s.name for s in result.trace_scores[a.id]] == ["quality"]
 
@@ -110,7 +123,7 @@ async def test_list_joins_upper_case_source_trace_id() -> None:
 async def test_list_without_trace_score_repository_is_unchanged() -> None:
     live = InMemoryLiveRepository()
     await _interaction(live, "q", "aa" * 16)
-    result = await ListLiveInteractions(live).execute(PROJECT)
+    result = await ListLiveInteractions(live, _PROJECTS).execute(PROJECT)
     assert len(result.items) == 1 and result.trace_scores == {}
 
 

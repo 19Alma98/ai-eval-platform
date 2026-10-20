@@ -6,7 +6,12 @@ from collections.abc import AsyncIterator
 import pytest
 from httpx2 import ASGITransport, AsyncClient
 
-from opengrade_server.api.deps import get_dataset_repository, get_project_repository
+from opengrade_server.api.deps import (
+    get_app_settings,
+    get_dataset_repository,
+    get_project_repository,
+)
+from opengrade_server.config import Settings
 from opengrade_server.domain.dataset import Dataset, DatasetItem
 from opengrade_server.domain.project import Project
 from opengrade_server.main import create_app
@@ -196,6 +201,33 @@ async def test_import_invalid_utf8_returns_422(client: AsyncClient) -> None:
     )
     assert resp.status_code == 422
     assert "utf-8" in resp.json()["detail"].lower()
+
+
+@pytest.mark.asyncio
+async def test_import_file_over_limit_returns_413() -> None:
+    projects = InMemoryProjectRepository()
+    datasets = InMemoryDatasetRepository()
+    app = create_app()
+    app.dependency_overrides[get_project_repository] = lambda: projects
+    app.dependency_overrides[get_dataset_repository] = lambda: datasets
+    app.dependency_overrides[get_app_settings] = lambda: Settings(dataset_import_max_bytes=64)
+    wire_metrics_pack_repos(app)
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as ac:
+        proj = (await ac.post("/api/v1/projects", json={"name": "P", "slug": "p-big"})).json()
+        ds = (
+            await ac.post(
+                f"/api/v1/projects/{proj['id']}/datasets",
+                json={"name": "import-set", "task_type": "rag_qa"},
+            )
+        ).json()
+        resp = await ac.post(
+            f"/api/v1/datasets/{ds['id']}/items/import",
+            files={"file": ("items.csv", b"x" * 65, "text/csv")},
+        )
+    assert resp.status_code == 413
+    assert resp.json()["detail"] == "Import file too large"
+    app.dependency_overrides.clear()
 
 
 @pytest.mark.asyncio

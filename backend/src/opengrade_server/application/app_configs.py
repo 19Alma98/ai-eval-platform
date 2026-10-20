@@ -72,8 +72,9 @@ class CreateAppConfig:
 
 
 class ListAppConfigs:
-    def __init__(self, app_configs: AppConfigRepository) -> None:
+    def __init__(self, app_configs: AppConfigRepository, projects: ProjectRepository) -> None:
         self._app_configs = app_configs
+        self._projects = projects
 
     async def execute(
         self,
@@ -82,6 +83,9 @@ class ListAppConfigs:
         name: str | None = None,
         latest_only: bool = False,
     ) -> list[AppConfig]:
+        project = await self._projects.get_by_id(project_id)
+        if project is None:
+            raise ProjectNotFoundError(project_id)
         return await self._app_configs.list_by_project(
             project_id,
             name=name,

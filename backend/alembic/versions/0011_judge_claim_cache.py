@@ -11,7 +11,12 @@ from collections.abc import Sequence
 
 import sqlalchemy as sa
 from alembic import op
-from sqlalchemy.dialects import postgresql
+
+from opengrade_server.infrastructure.migration_helpers import (
+    json_server_default,
+    now_server_default,
+    portable_json,
+)
 
 revision: str = "0011_judge_claim_cache"
 down_revision: str | None = "0010_live_interactions"
@@ -27,11 +32,11 @@ def upgrade() -> None:
             sa.Column("key", sa.String(length=64), nullable=False),
             sa.Column("prompt_version", sa.String(length=128), nullable=False),
             sa.Column("model", sa.String(length=200), nullable=False),
-            sa.Column("claims", postgresql.JSONB(astext_type=sa.Text()), nullable=False),
+            sa.Column("claims", portable_json(), nullable=False),
             sa.Column(
                 "created_at",
                 sa.DateTime(timezone=True),
-                server_default=sa.text("now()"),
+                server_default=now_server_default(),
                 nullable=False,
             ),
             sa.PrimaryKeyConstraint("key"),
@@ -43,9 +48,9 @@ def upgrade() -> None:
             "live_interaction_scores",
             sa.Column(
                 "metadata",
-                postgresql.JSONB(astext_type=sa.Text()),
+                portable_json(),
                 nullable=False,
-                server_default=sa.text("'{}'::jsonb"),
+                server_default=json_server_default("{}"),
             ),
         )
 

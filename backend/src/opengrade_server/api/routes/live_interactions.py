@@ -259,14 +259,17 @@ async def list_live_interactions(
     limit: int = Query(default=50, ge=1, le=200),
     use_case: ListLiveInteractions = Depends(get_list_live_interactions),
 ) -> ListLiveInteractionsResponse:
-    result = await use_case.execute(
-        project_id,
-        judge_status=judge_status,
-        search=search,
-        failed_only=failed_only,
-        unreviewed_only=unreviewed_only,
-        limit=limit,
-    )
+    try:
+        result = await use_case.execute(
+            project_id,
+            judge_status=judge_status,
+            search=search,
+            failed_only=failed_only,
+            unreviewed_only=unreviewed_only,
+            limit=limit,
+        )
+    except ProjectNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
     return _list_response(result)
 
 

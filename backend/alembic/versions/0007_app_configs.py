@@ -11,7 +11,12 @@ from collections.abc import Sequence
 
 import sqlalchemy as sa
 from alembic import op
-from sqlalchemy.dialects import postgresql
+
+from opengrade_server.infrastructure.migration_helpers import (
+    json_server_default,
+    now_server_default,
+    portable_json,
+)
 
 revision: str = "0007_app_configs"
 down_revision: str | None = "0006_experiment_item_outputs"
@@ -29,27 +34,27 @@ def upgrade() -> None:
         sa.Column("description", sa.String(length=2000), nullable=True),
         sa.Column(
             "prompt",
-            postgresql.JSONB(astext_type=sa.Text()),
-            server_default=sa.text("'{}'::jsonb"),
+            portable_json(),
+            server_default=json_server_default("{}"),
             nullable=False,
         ),
         sa.Column(
             "model",
-            postgresql.JSONB(astext_type=sa.Text()),
-            server_default=sa.text("'{}'::jsonb"),
+            portable_json(),
+            server_default=json_server_default("{}"),
             nullable=False,
         ),
         sa.Column(
             "retrieval",
-            postgresql.JSONB(astext_type=sa.Text()),
-            server_default=sa.text("'{}'::jsonb"),
+            portable_json(),
+            server_default=json_server_default("{}"),
             nullable=False,
         ),
         sa.Column("content_hash", sa.String(length=64), nullable=False),
         sa.Column(
             "created_at",
             sa.DateTime(timezone=True),
-            server_default=sa.text("now()"),
+            server_default=now_server_default(),
             nullable=False,
         ),
         sa.ForeignKeyConstraint(["project_id"], ["projects.id"], ondelete="CASCADE"),
@@ -82,7 +87,7 @@ def upgrade() -> None:
         sa.Column(
             "updated_at",
             sa.DateTime(timezone=True),
-            server_default=sa.text("now()"),
+            server_default=now_server_default(),
             nullable=False,
         ),
         sa.ForeignKeyConstraint(
@@ -94,31 +99,30 @@ def upgrade() -> None:
         sa.PrimaryKeyConstraint("project_id", "name"),
     )
 
-    op.add_column("experiments", sa.Column("app_config_id", sa.Uuid(), nullable=True))
-    op.create_foreign_key(
-        "fk_experiments_app_config_id_app_configs",
-        "experiments",
-        "app_configs",
-        ["app_config_id"],
-        ["id"],
-        ondelete="SET NULL",
-    )
-    op.create_index(
-        "ix_experiments_app_config_id",
-        "experiments",
-        ["app_config_id"],
-        unique=False,
-    )
+    with op.batch_alter_table("experiments") as batch_op:
+        batch_op.add_column(sa.Column("app_config_id", sa.Uuid(), nullable=True))
+        batch_op.create_foreign_key(
+            "fk_experiments_app_config_id_app_configs",
+            "app_configs",
+            ["app_config_id"],
+            ["id"],
+            ondelete="SET NULL",
+        )
+        batch_op.create_index(
+            "ix_experiments_app_config_id",
+            ["app_config_id"],
+            unique=False,
+        )
 
 
 def downgrade() -> None:
-    op.drop_index("ix_experiments_app_config_id", table_name="experiments")
-    op.drop_constraint(
-        "fk_experiments_app_config_id_app_configs",
-        "experiments",
-        type_="foreignkey",
-    )
-    op.drop_column("experiments", "app_config_id")
+    with op.batch_alter_table("experiments") as batch_op:
+        batch_op.drop_index("ix_experiments_app_config_id")
+        batch_op.drop_constraint(
+            "fk_experiments_app_config_id_app_configs",
+            type_="foreignkey",
+        )
+        batch_op.drop_column("app_config_id")
     op.drop_table("app_config_aliases")
     op.drop_index("ix_app_configs_project_created_at", table_name="app_configs")
     op.drop_index("ix_app_configs_project_name", table_name="app_configs")

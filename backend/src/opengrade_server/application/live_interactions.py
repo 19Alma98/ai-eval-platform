@@ -418,9 +418,13 @@ class ScoreLiveInteraction:
 
 class ListLiveInteractions:
     def __init__(
-        self, live: LiveInteractionRepository, trace_scores: TraceScoreRepository | None = None
+        self,
+        live: LiveInteractionRepository,
+        projects: ProjectRepository,
+        trace_scores: TraceScoreRepository | None = None,
     ) -> None:
         self._live = live
+        self._projects = projects
         self._trace_scores = trace_scores
 
     async def _trace_scores_by_trace(
@@ -443,6 +447,9 @@ class ListLiveInteractions:
         unreviewed_only: bool = False,
         limit: int = 50,
     ) -> ListLiveInteractionsResult:
+        project = await self._projects.get_by_id(project_id)
+        if project is None:
+            raise ProjectNotFoundError(project_id)
         # failed_only / unreviewed_only filter after loading scores, so page through
         # until enough rows match instead of scanning a fixed window.
         post_filter = failed_only or unreviewed_only

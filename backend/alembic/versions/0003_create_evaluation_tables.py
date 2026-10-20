@@ -11,7 +11,12 @@ from collections.abc import Sequence
 
 import sqlalchemy as sa
 from alembic import op
-from sqlalchemy.dialects import postgresql
+
+from opengrade_server.infrastructure.migration_helpers import (
+    json_server_default,
+    now_server_default,
+    portable_json,
+)
 
 revision: str = "0003_create_evaluation_tables"
 down_revision: str | None = "0002_create_traces_spans"
@@ -30,7 +35,7 @@ def upgrade() -> None:
         sa.Column(
             "created_at",
             sa.DateTime(timezone=True),
-            server_default=sa.text("now()"),
+            server_default=now_server_default(),
             nullable=False,
         ),
         sa.ForeignKeyConstraint(["project_id"], ["projects.id"], ondelete="CASCADE"),
@@ -50,14 +55,14 @@ def upgrade() -> None:
         "dataset_items",
         sa.Column("id", sa.Uuid(), nullable=False),
         sa.Column("dataset_id", sa.Uuid(), nullable=False),
-        sa.Column("input", postgresql.JSONB(astext_type=sa.Text()), nullable=False),
-        sa.Column("expected_output", postgresql.JSONB(astext_type=sa.Text()), nullable=True),
-        sa.Column("actual_output", postgresql.JSONB(astext_type=sa.Text()), nullable=True),
-        sa.Column("context", postgresql.JSONB(astext_type=sa.Text()), nullable=True),
+        sa.Column("input", portable_json(), nullable=False),
+        sa.Column("expected_output", portable_json(), nullable=True),
+        sa.Column("actual_output", portable_json(), nullable=True),
+        sa.Column("context", portable_json(), nullable=True),
         sa.Column(
             "metadata",
-            postgresql.JSONB(astext_type=sa.Text()),
-            server_default=sa.text("'{}'::jsonb"),
+            portable_json(),
+            server_default=json_server_default("{}"),
             nullable=False,
         ),
         sa.Column("source_trace_id", sa.String(length=32), nullable=True),
@@ -75,8 +80,8 @@ def upgrade() -> None:
         sa.Column("type", sa.String(length=32), nullable=False),
         sa.Column(
             "config",
-            postgresql.JSONB(astext_type=sa.Text()),
-            server_default=sa.text("'{}'::jsonb"),
+            portable_json(),
+            server_default=json_server_default("{}"),
             nullable=False,
         ),
         sa.Column("version", sa.Integer(), server_default="1", nullable=False),
@@ -96,8 +101,8 @@ def upgrade() -> None:
         sa.Column("dataset_id", sa.Uuid(), nullable=False),
         sa.Column(
             "model_config",
-            postgresql.JSONB(astext_type=sa.Text()),
-            server_default=sa.text("'{}'::jsonb"),
+            portable_json(),
+            server_default=json_server_default("{}"),
             nullable=False,
         ),
         sa.Column("version", sa.String(length=200), nullable=True),
@@ -106,7 +111,7 @@ def upgrade() -> None:
         sa.Column(
             "created_at",
             sa.DateTime(timezone=True),
-            server_default=sa.text("now()"),
+            server_default=now_server_default(),
             nullable=False,
         ),
         sa.ForeignKeyConstraint(["project_id"], ["projects.id"], ondelete="CASCADE"),
@@ -133,8 +138,8 @@ def upgrade() -> None:
         sa.Column("finished_at", sa.DateTime(timezone=True), nullable=True),
         sa.Column(
             "metadata",
-            postgresql.JSONB(astext_type=sa.Text()),
-            server_default=sa.text("'{}'::jsonb"),
+            portable_json(),
+            server_default=json_server_default("{}"),
             nullable=False,
         ),
         sa.ForeignKeyConstraint(["experiment_id"], ["experiments.id"], ondelete="CASCADE"),
@@ -158,8 +163,8 @@ def upgrade() -> None:
         sa.Column("explanation", sa.String(length=4000), nullable=True),
         sa.Column(
             "metadata",
-            postgresql.JSONB(astext_type=sa.Text()),
-            server_default=sa.text("'{}'::jsonb"),
+            portable_json(),
+            server_default=json_server_default("{}"),
             nullable=False,
         ),
         sa.Column("duration_ms", sa.Integer(), nullable=True),

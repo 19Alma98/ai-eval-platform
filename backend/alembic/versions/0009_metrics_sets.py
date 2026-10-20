@@ -13,7 +13,12 @@ from uuid import UUID, uuid4
 
 import sqlalchemy as sa
 from alembic import op
-from sqlalchemy.dialects import postgresql
+
+from opengrade_server.infrastructure.migration_helpers import (
+    json_server_default,
+    now_server_default,
+    portable_json,
+)
 
 revision: str = "0009_metrics_sets"
 down_revision: str | None = "0008_metrics_packs"
@@ -25,7 +30,15 @@ def entry_is_default(raw: dict) -> bool:
     return not bool(raw["removable"]) if "removable" in raw else False
 
 
+def _json_bind_expr(connection) -> str:  # noqa: ANN001
+    dialect = getattr(connection, "dialect", None)
+    if getattr(dialect, "name", None) == "postgresql":
+        return "CAST(:value AS jsonb)"
+    return ":value"
+
+
 def backfill_metrics_sets(connection) -> None:  # noqa: ANN001
+    config_expr = _json_bind_expr(connection).replace(":value", ":config")
     result = connection.execute(
         sa.text("SELECT id, project_id, entries FROM metrics_packs"),
     )
@@ -57,13 +70,13 @@ def backfill_metrics_sets(connection) -> None:  # noqa: ANN001
             config = entry.get("config") or {}
             connection.execute(
                 sa.text(
-                    """
+                    f"""
                     INSERT INTO metrics_set_entries
                         (id, metrics_set_id, kind, enabled, threshold, config,
                          evaluator_id, is_default)
                     VALUES
                         (:id, :metrics_set_id, :kind, :enabled, :threshold,
-                         CAST(:config AS jsonb),
+                         {config_expr},
                          :evaluator_id, :is_default)
                     """
                 ),
@@ -102,13 +115,13 @@ def upgrade() -> None:
             sa.Column(
                 "created_at",
                 sa.DateTime(timezone=True),
-                server_default=sa.text("now()"),
+                server_default=now_server_default(),
                 nullable=False,
             ),
             sa.Column(
                 "updated_at",
                 sa.DateTime(timezone=True),
-                server_default=sa.text("now()"),
+                server_default=now_server_default(),
                 nullable=False,
             ),
             sa.ForeignKeyConstraint(["project_id"], ["projects.id"], ondelete="CASCADE"),
@@ -138,8 +151,8 @@ def upgrade() -> None:
             sa.Column("threshold", sa.Float(), nullable=True),
             sa.Column(
                 "config",
-                postgresql.JSONB(astext_type=sa.Text()),
-                server_default=sa.text("'{}'::jsonb"),
+                portable_json(),
+                server_default=json_server_default("{}"),
                 nullable=False,
             ),
             sa.Column("evaluator_id", sa.Uuid(), nullable=True),
@@ -152,7 +165,7 @@ def upgrade() -> None:
             sa.Column(
                 "created_at",
                 sa.DateTime(timezone=True),
-                server_default=sa.text("now()"),
+                server_default=now_server_default(),
                 nullable=False,
             ),
             sa.ForeignKeyConstraint(
@@ -176,15 +189,15 @@ def upgrade() -> None:
     if has_packs:
         backfill_metrics_sets(bind)
 
-    op.add_column("experiments", sa.Column("metrics_set_id", sa.Uuid(), nullable=True))
-    op.create_foreign_key(
-        "fk_experiments_metrics_set_id",
-        "experiments",
-        "metrics_sets",
-        ["metrics_set_id"],
-        ["id"],
-        ondelete="RESTRICT",
-    )
+    with op.batch_alter_table("experiments") as batch_op:
+        batch_op.add_column(sa.Column("metrics_set_id", sa.Uuid(), nullable=True))
+        batch_op.create_foreign_key(
+            "fk_experiments_metrics_set_id",
+            "metrics_sets",
+            ["metrics_set_id"],
+            ["id"],
+            ondelete="RESTRICT",
+        )
 
     if has_packs:
         op.drop_table("metrics_packs")
@@ -201,13 +214,13 @@ def downgrade() -> None:
             sa.Column("project_id", sa.Uuid(), nullable=False),
             sa.Column(
                 "entries",
-                postgresql.JSONB(astext_type=sa.Text()),
+                portable_json(),
                 nullable=False,
             ),
             sa.Column(
                 "updated_at",
                 sa.DateTime(timezone=True),
-                server_default=sa.text("now()"),
+                server_default=now_server_default(),
                 nullable=False,
             ),
             sa.ForeignKeyConstraint(["project_id"], ["projects.id"], ondelete="CASCADE"),
@@ -248,11 +261,12 @@ def downgrade() -> None:
                 if entry["evaluator_id"] is not None:
                     raw["evaluator_id"] = str(entry["evaluator_id"])
                 entries.append(raw)
+            entries_expr = _json_bind_expr(bind).replace(":value", ":entries")
             bind.execute(
                 sa.text(
-                    """
+                    f"""
                     INSERT INTO metrics_packs (id, project_id, entries, updated_at)
-                    VALUES (:id, :project_id, CAST(:entries AS jsonb), :updated_at)
+                    VALUES (:id, :project_id, {entries_expr}, :updated_at)
                     """
                 ),
                 {
@@ -263,8 +277,9 @@ def downgrade() -> None:
                 },
             )
 
-    op.drop_constraint("fk_experiments_metrics_set_id", "experiments", type_="foreignkey")
-    op.drop_column("experiments", "metrics_set_id")
+    with op.batch_alter_table("experiments") as batch_op:
+        batch_op.drop_constraint("fk_experiments_metrics_set_id", type_="foreignkey")
+        batch_op.drop_column("metrics_set_id")
 
     if inspector.has_table("metrics_set_entries"):
         op.drop_table("metrics_set_entries")

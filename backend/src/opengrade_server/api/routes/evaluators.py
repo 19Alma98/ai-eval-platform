@@ -11,6 +11,7 @@ from opengrade_server.application.evaluators import (
     CreateEvaluatorCommand,
     ListEvaluators,
 )
+from opengrade_server.application.projects import ProjectNotFoundError
 
 router = APIRouter(tags=["evaluators"])
 
@@ -48,5 +49,8 @@ async def list_evaluators(
     project_id: uuid.UUID,
     use_case: ListEvaluators = Depends(get_list_evaluators),
 ) -> list[EvaluatorResponse]:
-    evaluators = await use_case.execute(project_id)
+    try:
+        evaluators = await use_case.execute(project_id)
+    except ProjectNotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
     return [EvaluatorResponse.model_validate(e) for e in evaluators]

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import uuid
-from datetime import datetime
+from datetime import UTC, datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 
@@ -128,6 +128,14 @@ async def get_project_overview(
     until: datetime | None = Query(None),
     use_case: GetProjectOverview = Depends(get_project_overview_use_case),
 ) -> ProjectOverviewResponse:
+    if since.tzinfo is None:
+        since = since.replace(tzinfo=UTC)
+    if until is not None and until.tzinfo is None:
+        until = until.replace(tzinfo=UTC)
+    if until is not None and until <= since:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail="until must be after since"
+        )
     try:
         result = await use_case.execute(project_id, since=since, until=until)
     except ProjectNotFoundError as exc:

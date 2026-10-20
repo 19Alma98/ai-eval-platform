@@ -112,10 +112,14 @@ class CreateExperiment:
 
 
 class ListExperiments:
-    def __init__(self, experiments: ExperimentRepository) -> None:
+    def __init__(self, experiments: ExperimentRepository, projects: ProjectRepository) -> None:
         self._experiments = experiments
+        self._projects = projects
 
     async def execute(self, project_id: uuid.UUID) -> list[Experiment]:
+        project = await self._projects.get_by_id(project_id)
+        if project is None:
+            raise ProjectNotFoundError(project_id)
         return await self._experiments.list_by_project(project_id)
 
 

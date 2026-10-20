@@ -199,8 +199,9 @@ class CreateDataset:
 
 
 class ListDatasets:
-    def __init__(self, datasets: DatasetRepository) -> None:
+    def __init__(self, datasets: DatasetRepository, projects: ProjectRepository) -> None:
         self._datasets = datasets
+        self._projects = projects
 
     async def execute(
         self,
@@ -208,6 +209,9 @@ class ListDatasets:
         *,
         task_type: str | None = None,
     ) -> list[Dataset]:
+        project = await self._projects.get_by_id(project_id)
+        if project is None:
+            raise ProjectNotFoundError(project_id)
         return await self._datasets.list_by_project(project_id, task_type=task_type)
 
 

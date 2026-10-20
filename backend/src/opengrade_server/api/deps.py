@@ -270,8 +270,9 @@ def get_create_app_config(
 
 def get_list_app_configs(
     app_configs: SqlAlchemyAppConfigRepository = Depends(get_app_config_repository),
+    projects: SqlAlchemyProjectRepository = Depends(get_project_repository),
 ) -> ListAppConfigs:
-    return ListAppConfigs(app_configs)
+    return ListAppConfigs(app_configs, projects)
 
 
 def get_get_app_config(
@@ -306,8 +307,9 @@ def get_delete_app_config_alias(
 
 def get_list_datasets(
     datasets: SqlAlchemyDatasetRepository = Depends(get_dataset_repository),
+    projects: SqlAlchemyProjectRepository = Depends(get_project_repository),
 ) -> ListDatasets:
-    return ListDatasets(datasets)
+    return ListDatasets(datasets, projects)
 
 
 def get_get_dataset(
@@ -343,8 +345,9 @@ def get_create_evaluator(
 
 def get_list_evaluators(
     evaluators: SqlAlchemyEvaluatorRepository = Depends(get_evaluator_repository),
+    projects: SqlAlchemyProjectRepository = Depends(get_project_repository),
 ) -> ListEvaluators:
-    return ListEvaluators(evaluators)
+    return ListEvaluators(evaluators, projects)
 
 
 def get_ensure_project_default_metrics_set(
@@ -465,8 +468,9 @@ def get_create_experiment(
 
 def get_list_experiments(
     experiments: SqlAlchemyExperimentRepository = Depends(get_experiment_repository),
+    projects: SqlAlchemyProjectRepository = Depends(get_project_repository),
 ) -> ListExperiments:
-    return ListExperiments(experiments)
+    return ListExperiments(experiments, projects)
 
 
 def get_get_experiment(
@@ -694,9 +698,10 @@ def get_score_live_interaction(
 
 def get_list_live_interactions(
     live: SqlAlchemyLiveInteractionRepository = Depends(get_live_interaction_repository),
+    projects: SqlAlchemyProjectRepository = Depends(get_project_repository),
     trace_scores: SqlAlchemyTraceScoreRepository = Depends(get_trace_score_repository),
 ) -> ListLiveInteractions:
-    return ListLiveInteractions(live, trace_scores)
+    return ListLiveInteractions(live, projects, trace_scores)
 
 
 def get_get_live_interaction(

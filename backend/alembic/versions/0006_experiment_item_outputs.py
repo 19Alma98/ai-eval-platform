@@ -11,7 +11,12 @@ from collections.abc import Sequence
 
 import sqlalchemy as sa
 from alembic import op
-from sqlalchemy.dialects import postgresql
+
+from opengrade_server.infrastructure.migration_helpers import (
+    json_server_default,
+    now_server_default,
+    portable_json,
+)
 
 revision: str = "0006_experiment_item_outputs"
 down_revision: str | None = "0005_datasets_task_type"
@@ -25,18 +30,18 @@ def upgrade() -> None:
         sa.Column("id", sa.Uuid(), nullable=False),
         sa.Column("experiment_id", sa.Uuid(), nullable=False),
         sa.Column("dataset_item_id", sa.Uuid(), nullable=False),
-        sa.Column("actual_output", postgresql.JSONB(astext_type=sa.Text()), nullable=True),
-        sa.Column("context", postgresql.JSONB(astext_type=sa.Text()), nullable=True),
+        sa.Column("actual_output", portable_json(), nullable=True),
+        sa.Column("context", portable_json(), nullable=True),
         sa.Column(
             "metadata",
-            postgresql.JSONB(astext_type=sa.Text()),
-            server_default=sa.text("'{}'::jsonb"),
+            portable_json(),
+            server_default=json_server_default("{}"),
             nullable=False,
         ),
         sa.Column(
             "updated_at",
             sa.DateTime(timezone=True),
-            server_default=sa.text("now()"),
+            server_default=now_server_default(),
             nullable=False,
         ),
         sa.ForeignKeyConstraint(["experiment_id"], ["experiments.id"], ondelete="CASCADE"),

@@ -6,8 +6,10 @@ import uuid
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
 from sqlalchemy.exc import IntegrityError
 
+from opengrade_server.api.body_limit import BodyTooLarge, read_upload_capped
 from opengrade_server.api.deps import (
     get_add_dataset_item,
+    get_app_settings,
     get_create_dataset,
     get_get_dataset,
     get_import_dataset_items,
@@ -38,6 +40,7 @@ from opengrade_server.application.datasets import (
     ListDatasets,
 )
 from opengrade_server.application.projects import ProjectNotFoundError
+from opengrade_server.config import Settings
 from opengrade_server.domain.dataset import Dataset, DatasetItem
 from opengrade_server.domain.task_types import TASK_TYPE_CATALOG, normalize_task_type
 
@@ -132,7 +135,10 @@ async def list_datasets(
         normalized = normalize_task_type(task_type)
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
-    datasets = await use_case.execute(project_id, task_type=normalized)
+    try:
+        datasets = await use_case.execute(project_id, task_type=normalized)
+    except ProjectNotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
     return [_dataset_response(d) for d in datasets]
 
 
@@ -199,9 +205,10 @@ async def import_dataset_items(
     file: UploadFile = File(...),
     format: str | None = Query(default=None),
     use_case: ImportDatasetItems = Depends(get_import_dataset_items),
+    settings: Settings = Depends(get_app_settings),
 ) -> ImportDatasetItemsResponse:
     try:
-        raw = await file.read()
+        raw = await read_upload_capped(file, settings.dataset_import_max_bytes)
         result = await use_case.execute(
             ImportDatasetItemsCommand(
                 dataset_id=dataset_id,
@@ -210,6 +217,11 @@ async def import_dataset_items(
                 format=format,
             )
         )
+    except BodyTooLarge as exc:
+        raise HTTPException(
+            status_code=status.HTTP_413_CONTENT_TOO_LARGE,
+            detail="Import file too large",
+        ) from exc
     except DatasetNotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
     except ImportDatasetTaskTypeError as exc:

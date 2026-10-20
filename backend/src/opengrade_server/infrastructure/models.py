@@ -269,7 +269,10 @@ class EvaluatorModel(Base):
 
 class ExperimentModel(Base):
     __tablename__ = "experiments"
-    __table_args__ = (Index("ix_experiments_project_created_at", "project_id", "created_at"),)
+    __table_args__ = (
+        Index("ix_experiments_project_created_at", "project_id", "created_at"),
+        Index("ix_experiments_app_config_id", "app_config_id"),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True)
     project_id: Mapped[uuid.UUID] = mapped_column(

@@ -24,7 +24,6 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
 import {
   Select,
   SelectContent,
@@ -47,6 +46,11 @@ import { traceHref } from "@/lib/links";
 import { withProjectQuery } from "@/lib/project-href";
 import { useProjectId } from "@/lib/project-store";
 import { LIVE_VERDICT_LABELS, liveVerdict } from "./live-verdict";
+import {
+  docsFromLiveInteraction,
+  mergeGoldDocIds,
+  PromoteExpectedDocFields,
+} from "./promote-to-dataset-fields";
 import { FEEDBACK_NAME, feedbackThumb } from "./trace-feedback";
 import { liveRunQueryKey, useLiveRun } from "./use-live-runs";
 
@@ -260,24 +264,13 @@ export function LiveRunDetail({ interactionId }: { interactionId: string }) {
     onError: (err) => toast.error(formatErrorForUi(err)),
   });
 
-  const docPreview = useMemo(() => {
-    if (!row) return [];
-    return row.documents.map((d) => ({
-      id: String(d.id ?? ""),
-      title: typeof d.title === "string" ? d.title : undefined,
-      text: typeof d.text === "string" ? d.text : undefined,
-    }));
-  }, [row]);
-
-  const goldDocIds = Array.from(
-    new Set([
-      ...expectedDocIds,
-      ...extraDocIds
-        .split(",")
-        .map((x) => x.trim())
-        .filter(Boolean),
-    ]),
+  const docPreview = useMemo(
+    () => (row ? docsFromLiveInteraction(row.documents) : []),
+    [row],
   );
+
+  const goldDocIds = mergeGoldDocIds(expectedDocIds, extraDocIds);
+  const selectedDataset = (datasets.data ?? []).find((d) => d.id === datasetId);
 
   const reviewedKinds = (row?.scores ?? []).filter((s) => s.review).length;
 
@@ -305,6 +298,10 @@ export function LiveRunDetail({ interactionId }: { interactionId: string }) {
     }
     if (!expectedOutput.trim()) {
       toast.error("Write the correct answer");
+      return;
+    }
+    if (selectedDataset?.task_type === "rag_qa" && goldDocIds.length === 0) {
+      toast.error("Add expected document IDs for this RAG test set");
       return;
     }
     promoteMutation.mutate();
@@ -425,47 +422,13 @@ export function LiveRunDetail({ interactionId }: { interactionId: string }) {
                         required
                       />
                     </div>
-                    {docPreview.length > 0 ? (
-                      <fieldset className="flex flex-col gap-1.5 text-sm">
-                        <legend className="mb-1.5 font-medium">
-                          Which documents contain the answer?
-                        </legend>
-                        {docPreview.map((d) => (
-                          <label key={d.id} className="flex items-center gap-2">
-                            <input
-                              type="checkbox"
-                              className="size-4 accent-primary"
-                              checked={expectedDocIds.includes(d.id)}
-                              onChange={(e) =>
-                                setExpectedDocIds((prev) =>
-                                  e.target.checked
-                                    ? [...prev, d.id]
-                                    : prev.filter((x) => x !== d.id),
-                                )
-                              }
-                            />
-                            <span className="text-foreground">{d.title ?? d.id}</span>
-                            {d.title ? (
-                              <Badge variant="outline" className="font-normal">
-                                {d.id}
-                              </Badge>
-                            ) : null}
-                          </label>
-                        ))}
-                      </fieldset>
-                    ) : null}
-                    <div className="flex flex-col gap-1.5">
-                      <label htmlFor="promote-extra" className="text-sm font-medium">
-                        Other documents that should have been found{" "}
-                        <span className="font-normal text-muted-foreground">(optional)</span>
-                      </label>
-                      <Input
-                        id="promote-extra"
-                        value={extraDocIds}
-                        onChange={(e) => setExtraDocIds(e.target.value)}
-                        placeholder="Document IDs, comma-separated"
-                      />
-                    </div>
+                    <PromoteExpectedDocFields
+                      documents={docPreview}
+                      selectedIds={expectedDocIds}
+                      onSelectedIdsChange={setExpectedDocIds}
+                      extraDocIds={extraDocIds}
+                      onExtraDocIdsChange={setExtraDocIds}
+                    />
                   </div>
                   <DialogFooter>
                     <Button type="button" variant="outline" onClick={() => setPromoteOpen(false)}>

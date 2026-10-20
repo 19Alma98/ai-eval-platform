@@ -25,6 +25,18 @@ def test_entry_is_default_from_not_removable() -> None:
 def test_upgrade_creates_tables_when_missing(monkeypatch) -> None:
     module = _load_revision()
     created: list[str] = []
+    batch_ops = SimpleNamespace(
+        add_column=lambda *args, **kwargs: None,
+        create_foreign_key=lambda *args, **kwargs: None,
+    )
+
+    class _BatchCM:
+        def __enter__(self) -> SimpleNamespace:
+            return batch_ops
+
+        def __exit__(self, *args: object) -> None:
+            return None
+
     monkeypatch.setattr(module.op, "get_bind", lambda: object())
     monkeypatch.setattr(
         module.sa,
@@ -33,8 +45,7 @@ def test_upgrade_creates_tables_when_missing(monkeypatch) -> None:
     )
     monkeypatch.setattr(module.op, "create_table", lambda *args, **kwargs: created.append(args[0]))
     monkeypatch.setattr(module.op, "create_index", lambda *args, **kwargs: None)
-    monkeypatch.setattr(module.op, "add_column", lambda *args, **kwargs: None)
-    monkeypatch.setattr(module.op, "create_foreign_key", lambda *args, **kwargs: None)
+    monkeypatch.setattr(module.op, "batch_alter_table", lambda *args, **kwargs: _BatchCM())
     monkeypatch.setattr(module.op, "drop_table", lambda *args, **kwargs: None)
     monkeypatch.setattr(module, "backfill_metrics_sets", lambda _conn: None)
 

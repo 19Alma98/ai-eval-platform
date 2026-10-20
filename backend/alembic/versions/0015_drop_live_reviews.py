@@ -12,6 +12,8 @@ from collections.abc import Sequence
 import sqlalchemy as sa
 from alembic import op
 
+from opengrade_server.infrastructure.migration_helpers import now_server_default
+
 revision: str = "0015_drop_live_reviews"
 down_revision: str | None = "0014_trace_scores"
 branch_labels: str | Sequence[str] | None = None
@@ -38,7 +40,7 @@ def downgrade() -> None:
         sa.Column(
             "created_at",
             sa.DateTime(timezone=True),
-            server_default=sa.text("now()"),
+            server_default=now_server_default(),
             nullable=False,
         ),
         sa.ForeignKeyConstraint(

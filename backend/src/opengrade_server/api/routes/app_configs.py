@@ -32,6 +32,7 @@ from opengrade_server.application.app_configs import (
     SetAppConfigAlias,
     SetAppConfigAliasCommand,
 )
+from opengrade_server.application.projects import ProjectNotFoundError
 from opengrade_server.domain.app_config import AppConfig
 
 router = APIRouter(tags=["app-configs"])
@@ -103,7 +104,10 @@ async def list_app_configs(
     latest: bool = Query(default=False),
     use_case: ListAppConfigs = Depends(get_list_app_configs),
 ) -> list[AppConfigResponse]:
-    configs = await use_case.execute(project_id, name=name, latest_only=latest)
+    try:
+        configs = await use_case.execute(project_id, name=name, latest_only=latest)
+    except ProjectNotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
     return [_app_config_response(c) for c in configs]
 
 

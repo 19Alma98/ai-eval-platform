@@ -8,6 +8,7 @@ from opentelemetry.proto.collector.trace.v1.trace_service_pb2 import (
     ExportTraceServiceResponse,
 )
 
+from opengrade_server.api.body_limit import BodyTooLarge, read_body_capped
 from opengrade_server.api.deps import (
     get_app_settings,
     get_bind_otlp_traces,
@@ -56,8 +57,9 @@ async def export_traces(
     x_project_id: str | None = Header(default=None, alias="X-Project-Id"),
     x_project_slug: str | None = Header(default=None, alias="X-Project-Slug"),
 ) -> Response:
-    wire = await request.body()
-    if len(wire) > settings.otlp_max_body_bytes:
+    try:
+        wire = await read_body_capped(request, settings.otlp_max_body_bytes)
+    except BodyTooLarge:
         return JSONResponse(
             status_code=status.HTTP_413_CONTENT_TOO_LARGE,
             content={"detail": "OTLP payload too large"},

@@ -156,16 +156,16 @@ Priority: **P0** blocks a public release, **P1** fix before promoting it, **P2**
 
 ### Backend — P2
 
-- [ ] SQLite schema via `create_all` never alters existing tables → future column breaks existing
+- [x] SQLite schema via `create_all` never alters existing tables → future column breaks existing
   `./opengrade.db`. `alembic check` drift: migrations create `ix_experiments_app_config_id`, model
   doesn't declare it (SQLite lacks the index). Fix: Alembic for SQLite too (batch mode). (confirmed drift)
-- [ ] Protobuf OTLP bodies and multipart imports read fully into memory before any size check
+- [x] Protobuf OTLP bodies and multipart imports read fully into memory before any size check
   (`routes/otlp.py:53`, `routes/datasets.py:195`). Fix: check Content-Length, stream with a cap. (code)
-- [ ] `asyncio.create_task` in `scoring_recovery.py:71` not referenced → may be GC'd mid-requeue.
+- [x] `asyncio.create_task` in `scoring_recovery.py:71` not referenced → may be GC'd mid-requeue.
   Fix: module-level task set. (code)
-- [ ] Validation: overview accepts `until < since` (200); list endpoints (live-interactions,
+- [x] Validation: overview accepts `until < since` (200); list endpoints (live-interactions,
   experiments, evaluators, datasets, app-configs) return `200 []` for unknown project instead of 404.
-- [ ] Promote from queue requires `expected_doc_ids` (422) and the card has no field for it — exactly
+- [x] Promote from queue requires `expected_doc_ids` (422) and the card has no field for it — exactly
   the no-retrieval failures that most need to become test cases.
 
 ### Server / container production-readiness — P1

@@ -11,7 +11,12 @@ from collections.abc import Sequence
 
 import sqlalchemy as sa
 from alembic import op
-from sqlalchemy.dialects import postgresql
+
+from opengrade_server.infrastructure.migration_helpers import (
+    json_server_default,
+    now_server_default,
+    portable_json,
+)
 
 revision: str = "0010_live_interactions"
 down_revision: str | None = "0009_metrics_sets"
@@ -30,15 +35,15 @@ def upgrade() -> None:
             sa.Column("answer", sa.Text(), nullable=False),
             sa.Column(
                 "documents",
-                postgresql.JSONB(astext_type=sa.Text()),
+                portable_json(),
                 nullable=False,
-                server_default=sa.text("'[]'::jsonb"),
+                server_default=json_server_default("[]"),
             ),
             sa.Column(
                 "metadata",
-                postgresql.JSONB(astext_type=sa.Text()),
+                portable_json(),
                 nullable=False,
-                server_default=sa.text("'{}'::jsonb"),
+                server_default=json_server_default("{}"),
             ),
             sa.Column("external_id", sa.String(length=200), nullable=True),
             sa.Column("judge_status", sa.String(length=32), nullable=False),
@@ -48,7 +53,7 @@ def upgrade() -> None:
             sa.Column(
                 "created_at",
                 sa.DateTime(timezone=True),
-                server_default=sa.text("now()"),
+                server_default=now_server_default(),
                 nullable=False,
             ),
             sa.Column("scored_at", sa.DateTime(timezone=True), nullable=True),
@@ -91,7 +96,7 @@ def upgrade() -> None:
             sa.Column(
                 "created_at",
                 sa.DateTime(timezone=True),
-                server_default=sa.text("now()"),
+                server_default=now_server_default(),
                 nullable=False,
             ),
             sa.ForeignKeyConstraint(
@@ -124,7 +129,7 @@ def upgrade() -> None:
             sa.Column(
                 "created_at",
                 sa.DateTime(timezone=True),
-                server_default=sa.text("now()"),
+                server_default=now_server_default(),
                 nullable=False,
             ),
             sa.ForeignKeyConstraint(

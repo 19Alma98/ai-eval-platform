@@ -63,6 +63,12 @@ class InMemoryProjectRepository:
         return self._items.pop(project_id, None) is not None
 
 
+async def _projects_with(project_id: uuid.UUID) -> InMemoryProjectRepository:
+    projects = InMemoryProjectRepository()
+    await projects.add(Project(id=project_id, name="P", slug="p", created_at=datetime.now(UTC)))
+    return projects
+
+
 class InMemoryLiveRepository:
     def __init__(self) -> None:
         self._items: dict[uuid.UUID, LiveInteraction] = {}
@@ -847,7 +853,9 @@ async def test_failed_only_pages_past_recent_passing_interactions() -> None:
         if failed:
             failed_ids.append(interaction.id)
 
-    result = await ListLiveInteractions(live).execute(project_id, failed_only=True, limit=10)
+    result = await ListLiveInteractions(live, await _projects_with(project_id)).execute(
+        project_id, failed_only=True, limit=10
+    )
 
     assert [row[0].id for row in result.items] == list(reversed(failed_ids))
 
@@ -868,7 +876,9 @@ async def test_failed_only_stops_at_limit() -> None:
             [LiveInteractionScore.create(interaction.id, "groundedness", score=0.1, label="FAIL")],
         )
 
-    result = await ListLiveInteractions(live).execute(project_id, failed_only=True, limit=5)
+    result = await ListLiveInteractions(live, await _projects_with(project_id)).execute(
+        project_id, failed_only=True, limit=5
+    )
 
     assert [row[0].question for row in result.items] == ["q79", "q78", "q77", "q76", "q75"]
 
@@ -915,7 +925,10 @@ async def test_list_judge_warnings_use_unfiltered_per_kind_window() -> None:
     # Last 50 answer_relevance: 10 invalid → 20% → no warn (strictly above 20%).
     await _seed("answer_relevance", n=50, n_invalid=10, hour=2)
 
-    filtered = await ListLiveInteractions(live).execute(project_id, failed_only=True, limit=50)
+    projects = await _projects_with(project_id)
+    filtered = await ListLiveInteractions(live, projects).execute(
+        project_id, failed_only=True, limit=50
+    )
     # failed_only page is only failures (would inflate a client-side rate).
     assert filtered.items
     assert all(any(score_is_failed(s) for s in scores) for _, scores, _ in filtered.items)
@@ -925,7 +938,7 @@ async def test_list_judge_warnings_use_unfiltered_per_kind_window() -> None:
     assert warning.warnings == [JUDGE_MODEL_UNSUITABLE]
     assert warning.warning_detail["failure_rate"] == pytest.approx(0.22)
 
-    unfiltered = await ListLiveInteractions(live).execute(project_id, limit=1)
+    unfiltered = await ListLiveInteractions(live, projects).execute(project_id, limit=1)
     kinds = {w.kind for w in unfiltered.judge_warnings}
     assert kinds == {"groundedness"}
 

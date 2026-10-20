@@ -229,6 +229,8 @@ async def test_list_unreviewed_only_is_the_annotation_queue() -> None:
     await live.add(LiveInteraction.create(project_id, "not judged", "yet"))
     await live.upsert_score_review(LiveScoreReview.create(reviewed.id, "disagree"))
 
-    result = await ListLiveInteractions(live).execute(project_id, unreviewed_only=True)
+    projects = InMemoryProjectRepository()
+    await projects.add(Project(id=project_id, name="P", slug="p", created_at=datetime.now(UTC)))
+    result = await ListLiveInteractions(live, projects).execute(project_id, unreviewed_only=True)
 
     assert [item.id for item, _, _ in result.items] == [pending.live_interaction_id]

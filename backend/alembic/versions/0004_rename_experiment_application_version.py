@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 
+import sqlalchemy as sa
 from alembic import op
 
 revision: str = "0004_rename_experiment_version"
@@ -18,43 +19,14 @@ depends_on: str | Sequence[str] | None = None
 
 
 def upgrade() -> None:
-    op.execute(
-        """
-        DO $$
-        BEGIN
-            IF EXISTS (
-                SELECT 1
-                FROM information_schema.columns
-                WHERE table_name = 'experiments'
-                  AND column_name = 'application_version'
-            ) THEN
-                ALTER TABLE experiments
-                RENAME COLUMN application_version TO version;
-            END IF;
-        END $$;
-        """
-    )
+    inspector = sa.inspect(op.get_bind())
+    columns = {column["name"] for column in inspector.get_columns("experiments")}
+    if "application_version" in columns and "version" not in columns:
+        op.rename_column("experiments", "application_version", "version")
 
 
 def downgrade() -> None:
-    op.execute(
-        """
-        DO $$
-        BEGIN
-            IF EXISTS (
-                SELECT 1
-                FROM information_schema.columns
-                WHERE table_name = 'experiments'
-                  AND column_name = 'version'
-            ) AND NOT EXISTS (
-                SELECT 1
-                FROM information_schema.columns
-                WHERE table_name = 'experiments'
-                  AND column_name = 'application_version'
-            ) THEN
-                ALTER TABLE experiments
-                RENAME COLUMN version TO application_version;
-            END IF;
-        END $$;
-        """
-    )
+    inspector = sa.inspect(op.get_bind())
+    columns = {column["name"] for column in inspector.get_columns("experiments")}
+    if "version" in columns and "application_version" not in columns:
+        op.rename_column("experiments", "version", "application_version")

@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Plus, ThumbsDown, ThumbsUp } from "lucide-react";
 import { toast } from "sonner";
@@ -19,6 +19,11 @@ import {
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { useDatasets } from "@/features/datasets/use-datasets";
+import {
+  docsFromLiveInteraction,
+  mergeGoldDocIds,
+  PromoteExpectedDocFields,
+} from "@/features/live-runs/promote-to-dataset-fields";
 import { LIVE_VERDICT_LABELS, liveVerdict } from "@/features/live-runs/live-verdict";
 import { formatErrorForUi } from "@/lib/api/client";
 import {
@@ -26,7 +31,7 @@ import {
   promoteLiveInteraction,
   reviewLiveScore,
 } from "@/lib/api/live-runs";
-import type { LiveInteraction } from "@/lib/api/types";
+import type { Dataset, LiveInteraction } from "@/lib/api/types";
 import { cn } from "@/lib/cn";
 import { formatScore } from "@/lib/format";
 import { liveRunHref, traceHref } from "@/lib/links";
@@ -52,16 +57,23 @@ function QueueItem({
   row,
   projectId,
   datasetId,
+  selectedDataset,
 }: {
   row: LiveInteraction;
   projectId: string;
   datasetId: string;
+  selectedDataset: Dataset | undefined;
 }) {
   const queryClient = useQueryClient();
   const [gold, setGold] = useState("");
+  const [expectedDocIds, setExpectedDocIds] = useState<string[]>([]);
+  const [extraDocIds, setExtraDocIds] = useState("");
   const verdict = liveVerdict(row);
   const traceId =
     typeof row.metadata.source_trace_id === "string" ? row.metadata.source_trace_id : null;
+  const docPreview = useMemo(() => docsFromLiveInteraction(row.documents), [row.documents]);
+  const goldDocIds = mergeGoldDocIds(expectedDocIds, extraDocIds);
+  const requiresDocIds = selectedDataset?.task_type === "rag_qa";
 
   const invalidate = () =>
     queryClient.invalidateQueries({ queryKey: annotationQueueQueryKey(projectId) });
@@ -79,9 +91,15 @@ function QueueItem({
 
   const promote = useMutation({
     mutationFn: () =>
-      promoteLiveInteraction(row.id, { dataset_id: datasetId, expected_output: gold.trim() }),
+      promoteLiveInteraction(row.id, {
+        dataset_id: datasetId,
+        expected_output: gold.trim(),
+        expected_doc_ids: goldDocIds.length ? goldDocIds : undefined,
+      }),
     onSuccess: (item) => {
       setGold("");
+      setExpectedDocIds([]);
+      setExtraDocIds("");
       toast.success(
         item.dataset_id !== datasetId
           ? "Added to a new version of the test set"
@@ -90,6 +108,22 @@ function QueueItem({
     },
     onError: (err) => toast.error(formatErrorForUi(err)),
   });
+
+  function onPromote() {
+    if (!datasetId) {
+      toast.error("Choose a test set above");
+      return;
+    }
+    if (!gold.trim()) {
+      toast.error("Write the correct answer");
+      return;
+    }
+    if (requiresDocIds && goldDocIds.length === 0) {
+      toast.error("Add expected document IDs for this RAG test set");
+      return;
+    }
+    promote.mutate();
+  }
 
   return (
     <li className="flex flex-col gap-2 rounded-lg border border-border bg-surface p-3 text-sm">
@@ -163,7 +197,7 @@ function QueueItem({
           Wrong
         </Button>
       </div>
-      <div className="flex flex-col gap-1.5 sm:flex-row sm:items-start">
+      <div className="flex flex-col gap-1.5">
         <Textarea
           value={gold}
           onChange={(e) => setGold(e.target.value)}
@@ -172,13 +206,22 @@ function QueueItem({
           aria-label="Correct answer"
           className="min-h-8 flex-1 bg-background text-sm"
         />
+        <PromoteExpectedDocFields
+          documents={docPreview}
+          selectedIds={expectedDocIds}
+          onSelectedIdsChange={setExpectedDocIds}
+          extraDocIds={extraDocIds}
+          onExtraDocIdsChange={setExtraDocIds}
+          compact
+          idPrefix={`queue-${row.id}`}
+        />
         <Button
           type="button"
           size="sm"
-          className="h-8"
+          className="h-8 self-start"
           disabled={!datasetId || !gold.trim() || promote.isPending}
           title={datasetId ? undefined : "Choose a test set above"}
-          onClick={() => promote.mutate()}
+          onClick={onPromote}
         >
           <Plus className="size-4" />
           {promote.isPending ? "Adding…" : "Add to test set"}
@@ -206,6 +249,7 @@ export function AnnotationQueue({ projectId }: { projectId: string }) {
   }
 
   const rows = query.data?.items ?? [];
+  const selectedDataset = (datasets.data ?? []).find((d) => d.id === datasetId);
 
   return (
     <section aria-label="Annotation queue" className="flex flex-col gap-3">
@@ -255,7 +299,13 @@ export function AnnotationQueue({ projectId }: { projectId: string }) {
                 Number(liveVerdict(b) === "failing") - Number(liveVerdict(a) === "failing"),
             )
             .map((row) => (
-              <QueueItem key={row.id} row={row} projectId={projectId} datasetId={datasetId} />
+              <QueueItem
+                key={row.id}
+                row={row}
+                projectId={projectId}
+                datasetId={datasetId}
+                selectedDataset={selectedDataset}
+              />
             ))}
         </ul>
       )}

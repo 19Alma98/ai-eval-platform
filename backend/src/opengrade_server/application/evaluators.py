@@ -77,8 +77,12 @@ class CreateEvaluator:
 
 
 class ListEvaluators:
-    def __init__(self, evaluators: EvaluatorRepository) -> None:
+    def __init__(self, evaluators: EvaluatorRepository, projects: ProjectRepository) -> None:
         self._evaluators = evaluators
+        self._projects = projects
 
     async def execute(self, project_id: uuid.UUID) -> list[Evaluator]:
+        project = await self._projects.get_by_id(project_id)
+        if project is None:
+            raise ProjectNotFoundError(project_id)
         return await self._evaluators.list_by_project(project_id)

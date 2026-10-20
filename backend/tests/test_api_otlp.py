@@ -11,12 +11,13 @@ import pytest
 from httpx2 import ASGITransport, AsyncClient
 
 from opengrade_server.api.deps import (
+    get_app_settings,
     get_live_interaction_repository,
     get_project_repository,
     get_trace_repository,
     get_trace_score_repository,
 )
-from opengrade_server.config import get_settings
+from opengrade_server.config import Settings, get_settings
 from opengrade_server.domain.project import Project
 from opengrade_server.domain.trace import Trace
 from opengrade_server.main import create_app
@@ -296,6 +297,64 @@ async def test_otlp_decompressed_oversize_returns_413(client: AsyncClient) -> No
     )
     assert otlp.status_code == 413
     assert otlp.json()["detail"] == "OTLP payload too large"
+
+
+@pytest.mark.asyncio
+async def test_otlp_wire_content_length_over_limit_returns_413() -> None:
+    projects = InMemoryProjectRepository()
+    project = Project.create("Demo", "demo")
+    await projects.add(project)
+    app = create_app()
+    app.dependency_overrides[get_project_repository] = lambda: projects
+    app.dependency_overrides[get_trace_repository] = lambda: InMemoryTraceRepository()
+    app.dependency_overrides[get_trace_score_repository] = lambda: InMemoryTraceScoreRepository()
+    app.dependency_overrides[get_live_interaction_repository] = lambda: InMemoryLiveRepository()
+    app.dependency_overrides[get_app_settings] = lambda: Settings(otlp_max_body_bytes=64)
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as ac:
+        otlp = await ac.post(
+            "/v1/traces",
+            content=b"x" * 65,
+            headers={
+                "content-type": "application/x-protobuf",
+                "X-Project-Id": str(project.id),
+            },
+        )
+    assert otlp.status_code == 413
+    assert otlp.json()["detail"] == "OTLP payload too large"
+    app.dependency_overrides.clear()
+
+
+@pytest.mark.asyncio
+async def test_otlp_chunked_wire_over_limit_returns_413() -> None:
+    projects = InMemoryProjectRepository()
+    project = Project.create("Demo", "demo")
+    await projects.add(project)
+    app = create_app()
+    app.dependency_overrides[get_project_repository] = lambda: projects
+    app.dependency_overrides[get_trace_repository] = lambda: InMemoryTraceRepository()
+    app.dependency_overrides[get_trace_score_repository] = lambda: InMemoryTraceScoreRepository()
+    app.dependency_overrides[get_live_interaction_repository] = lambda: InMemoryLiveRepository()
+    app.dependency_overrides[get_app_settings] = lambda: Settings(otlp_max_body_bytes=64)
+    payload = b"x" * 80
+
+    async def chunks() -> AsyncIterator[bytes]:
+        for start in range(0, len(payload), 16):
+            yield payload[start : start + 16]
+
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as ac:
+        otlp = await ac.post(
+            "/v1/traces",
+            content=chunks(),
+            headers={
+                "content-type": "application/x-protobuf",
+                "X-Project-Id": str(project.id),
+            },
+        )
+    assert otlp.status_code == 413
+    assert otlp.json()["detail"] == "OTLP payload too large"
+    app.dependency_overrides.clear()
 
 
 @pytest.mark.asyncio

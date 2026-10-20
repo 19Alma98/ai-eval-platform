@@ -11,7 +11,8 @@ from collections.abc import Sequence
 
 import sqlalchemy as sa
 from alembic import op
-from sqlalchemy.dialects import postgresql
+
+from opengrade_server.infrastructure.migration_helpers import json_server_default, portable_json
 
 revision: str = "0002_create_traces_spans"
 down_revision: str | None = "0001_create_projects"
@@ -29,12 +30,12 @@ def upgrade() -> None:
         sa.Column("status", sa.String(length=32), nullable=False),
         sa.Column("start_time", sa.DateTime(timezone=True), nullable=False),
         sa.Column("end_time", sa.DateTime(timezone=True), nullable=True),
-        sa.Column("input", postgresql.JSONB(astext_type=sa.Text()), nullable=True),
-        sa.Column("output", postgresql.JSONB(astext_type=sa.Text()), nullable=True),
+        sa.Column("input", portable_json(), nullable=True),
+        sa.Column("output", portable_json(), nullable=True),
         sa.Column(
             "metadata",
-            postgresql.JSONB(astext_type=sa.Text()),
-            server_default=sa.text("'{}'::jsonb"),
+            portable_json(),
+            server_default=json_server_default("{}"),
             nullable=False,
         ),
         sa.Column("environment", sa.String(length=200), nullable=True),
@@ -71,14 +72,14 @@ def upgrade() -> None:
         sa.Column("status", sa.String(length=32), nullable=False),
         sa.Column(
             "attributes",
-            postgresql.JSONB(astext_type=sa.Text()),
-            server_default=sa.text("'{}'::jsonb"),
+            portable_json(),
+            server_default=json_server_default("{}"),
             nullable=False,
         ),
         sa.Column(
             "events",
-            postgresql.JSONB(astext_type=sa.Text()),
-            server_default=sa.text("'[]'::jsonb"),
+            portable_json(),
+            server_default=json_server_default("[]"),
             nullable=False,
         ),
         sa.ForeignKeyConstraint(["trace_pk"], ["traces.id"], ondelete="CASCADE"),

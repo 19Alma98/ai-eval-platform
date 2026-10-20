@@ -2,7 +2,9 @@ import asyncio
 from collections.abc import AsyncGenerator
 from pathlib import Path
 
-from sqlalchemy import event, text
+from alembic.config import Config
+from sqlalchemy import event, inspect, text
+from sqlalchemy.engine import Connection
 from sqlalchemy.ext.asyncio import (
     AsyncEngine,
     AsyncSession,
@@ -78,17 +80,50 @@ def init_db(settings: Settings | None = None) -> async_sessionmaker[AsyncSession
     return _session_factory
 
 
+def _alembic_config() -> Config:
+    # backend/src/opengrade_server/infrastructure/db.py → backend/
+    backend_root = Path(__file__).resolve().parents[3]
+    ini_path = backend_root / "alembic.ini"
+    cfg = Config(str(ini_path))
+    cfg.set_main_option("sqlalchemy.url", get_settings().database_url)
+    return cfg
+
+
+def _sqlite_needs_legacy_stamp(connection: Connection) -> bool:
+    """True when tables exist from old create_all but alembic_version is missing."""
+    insp = inspect(connection)
+    tables = set(insp.get_table_names())
+    if "alembic_version" in tables:
+        return False
+    user_tables = {t for t in tables if not t.startswith("sqlite_")}
+    return bool(user_tables)
+
+
+def _migrate_sqlite(connection: Connection) -> None:
+    from alembic import command
+
+    cfg = _alembic_config()
+    if _sqlite_needs_legacy_stamp(connection):
+        # Existing local DBs were created with create_all. Stamp head so upgrade
+        # is a no-op; future revisions apply. Stale DBs (schema behind models)
+        # must be deleted and recreated.
+        cfg.attributes["connection"] = connection
+        command.stamp(cfg, "head")
+    cfg.attributes["connection"] = connection
+    command.upgrade(cfg, "head")
+
+
 async def bootstrap_schema() -> None:
-    """Create tables for SQLite local mode. Postgres uses Alembic migrations."""
+    """Apply Alembic migrations for SQLite local mode. Postgres uses Docker entrypoint."""
     if _engine is None:
         raise RuntimeError("Database not initialized")
     if _engine.dialect.name != "sqlite":
         return
-    from opengrade_server.infrastructure.models import Base
 
-    async with _engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
+    async with _engine.connect() as conn:
+        await conn.run_sync(_migrate_sqlite)
         await conn.execute(text("PRAGMA foreign_keys=ON"))
+        await conn.commit()
 
 
 def get_session_factory() -> async_sessionmaker[AsyncSession]:

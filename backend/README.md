@@ -18,6 +18,8 @@ uv run opengrade ui
 # → http://127.0.0.1:8000  (SQLite ./opengrade.db by default)
 ```
 
+Local SQLite schema is applied with Alembic on startup (same revisions as Postgres).
+
 `opengrade ui` loads `.env` from the current working directory when present, prints LLM / content-capture settings, and exits if the bind port already has a listener (use `--port` or stop the other process).
 
 Postgres:
