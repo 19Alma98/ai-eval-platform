@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 import uuid
+from collections.abc import Collection
 from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime
 from typing import Any
@@ -441,7 +442,7 @@ class ListLiveInteractions:
         self,
         project_id: uuid.UUID,
         *,
-        judge_status: str | None = None,
+        judge_statuses: Collection[str] | None = None,
         search: str | None = None,
         failed_only: bool = False,
         unreviewed_only: bool = False,
@@ -466,7 +467,7 @@ class ListLiveInteractions:
         while True:
             items = await self._live.list_by_project(
                 project_id,
-                judge_status=judge_status,
+                judge_statuses=judge_statuses,
                 search=search,
                 limit=page_size,
                 offset=offset,

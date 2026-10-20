@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import os
 import uuid
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Collection
 from datetime import datetime
 
 import pytest
@@ -126,14 +126,14 @@ class InMemoryLiveRepository:
         self,
         project_id: uuid.UUID,
         *,
-        judge_status: str | None = None,
+        judge_statuses: Collection[str] | None = None,
         search: str | None = None,
         limit: int = 50,
         offset: int = 0,
     ) -> list[LiveInteraction]:
         rows = [i for i in self._items.values() if i.project_id == project_id]
-        if judge_status:
-            rows = [i for i in rows if i.judge_status == judge_status]
+        if judge_statuses:
+            rows = [i for i in rows if i.judge_status in judge_statuses]
         if search:
             rows = [i for i in rows if search.lower() in i.question.lower()]
         rows.sort(key=lambda i: i.created_at, reverse=True)
@@ -316,6 +316,16 @@ async def test_submit_rescore_review_promote(client: AsyncClient) -> None:
     )
     assert again.status_code == 202
     assert again.json()["id"] == interaction_id
+
+    waiting = await client.get(
+        f"/api/v1/projects/{project_id}/live-interactions?judge_status=pending,running"
+    )
+    assert waiting.status_code == 200
+    assert [row["id"] for row in waiting.json()["items"]] == [interaction_id]
+    only_running = await client.get(
+        f"/api/v1/projects/{project_id}/live-interactions?judge_status=running"
+    )
+    assert only_running.json()["items"] == []
 
     scored = await client.post(f"/api/v1/live-interactions/{interaction_id}/rescore")
     assert scored.status_code == 200

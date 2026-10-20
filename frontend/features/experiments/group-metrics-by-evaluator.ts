@@ -9,6 +9,9 @@ export type EvaluatorCompareRow = {
   baseline_mean: number | null;
   baseline_pass_rate: number | null;
   delta: number | null;
+  /** 95% CI of the paired mean-score / pass-rate difference, when the backend sent one. */
+  mean_ci: [number, number] | null;
+  pass_rate_ci: [number, number] | null;
   status: string;
 };
 
@@ -16,6 +19,22 @@ type MetricPair = {
   mean?: MetricComparison;
   pass?: MetricComparison;
 };
+
+function ciOf(m: MetricComparison | undefined): [number, number] | null {
+  return m?.ci_low != null && m?.ci_high != null ? [m.ci_low, m.ci_high] : null;
+}
+
+/**
+ * The backend flags a regression when either the mean score or the pass rate
+ * drops significantly, so the row verdict is the worse of the two.
+ */
+export function combinedStatus(mean?: string, pass?: string): string {
+  const statuses = [mean, pass].filter((s): s is string => s != null);
+  for (const decisive of ["regression", "improved", "unchanged"]) {
+    if (statuses.includes(decisive)) return decisive;
+  }
+  return mean ?? pass ?? "unavailable";
+}
 
 export function groupMetricsByEvaluator(
   metrics: MetricComparison[],
@@ -44,7 +63,9 @@ export function groupMetricsByEvaluator(
       baseline_mean: slot.mean?.baseline ?? null,
       baseline_pass_rate: slot.pass?.baseline ?? null,
       delta: slot.mean?.delta ?? null,
-      status: slot.mean?.status ?? "unavailable",
+      mean_ci: ciOf(slot.mean),
+      pass_rate_ci: ciOf(slot.pass),
+      status: combinedStatus(slot.mean?.status, slot.pass?.status),
     });
   }
 

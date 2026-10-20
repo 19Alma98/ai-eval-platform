@@ -2,6 +2,7 @@
 
 import { useQuery } from "@tanstack/react-query";
 import { ApiError } from "@/lib/api/client";
+import { keepPreviousInProject } from "@/lib/queries/keep-previous";
 import {
   getLiveInteraction,
   getLiveJudgeCalibration,
@@ -36,6 +37,8 @@ export function useLiveRuns(
       }),
     enabled: Boolean(projectId),
     refetchInterval: 5000,
+    // Keep the current rows on screen while a new filter/search loads.
+    placeholderData: keepPreviousInProject(key),
   });
 }
 

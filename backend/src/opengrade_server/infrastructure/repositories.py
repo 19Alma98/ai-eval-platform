@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 import uuid
+from collections.abc import Collection
 from datetime import UTC, datetime
 from typing import Any, cast
 
@@ -1418,14 +1419,14 @@ class SqlAlchemyLiveInteractionRepository:
         self,
         project_id: uuid.UUID,
         *,
-        judge_status: str | None = None,
+        judge_statuses: Collection[str] | None = None,
         search: str | None = None,
         limit: int = 50,
         offset: int = 0,
     ) -> list[LiveInteraction]:
         stmt = select(LiveInteractionModel).where(LiveInteractionModel.project_id == project_id)
-        if judge_status is not None:
-            stmt = stmt.where(LiveInteractionModel.judge_status == judge_status)
+        if judge_statuses:
+            stmt = stmt.where(LiveInteractionModel.judge_status.in_(sorted(judge_statuses)))
         if search:
             pattern = f"%{escape_like(search.strip())}%"
             stmt = stmt.where(LiveInteractionModel.question.ilike(pattern, escape="\\"))

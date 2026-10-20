@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import uuid
+from collections.abc import Collection
 from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 
@@ -120,14 +121,14 @@ class InMemoryLiveRepository:
         self,
         project_id: uuid.UUID,
         *,
-        judge_status: str | None = None,
+        judge_statuses: Collection[str] | None = None,
         search: str | None = None,
         limit: int = 50,
         offset: int = 0,
     ) -> list[LiveInteraction]:
         rows = [i for i in self._items.values() if i.project_id == project_id]
-        if judge_status:
-            rows = [i for i in rows if i.judge_status == judge_status]
+        if judge_statuses:
+            rows = [i for i in rows if i.judge_status in judge_statuses]
         if search:
             rows = [i for i in rows if search.lower() in i.question.lower()]
         rows.sort(key=lambda i: i.created_at, reverse=True)

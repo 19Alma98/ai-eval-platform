@@ -57,6 +57,13 @@ export function CompareStatusCell({ status }: { status: string }) {
   );
 }
 
+/** "95% CI −14 to −2 pts" — the range the true change likely sits in. */
+export function formatCi(ci: [number, number] | null): string | null {
+  if (!ci) return null;
+  const [low, high] = ci.map((v) => formatDeltaPoints(v).replace(/ pts$/, ""));
+  return `95% CI ${low} to ${high} pts`;
+}
+
 type CompareTableProps = {
   metrics: MetricComparison[];
   selectedEvaluatorId: string | null;
@@ -101,21 +108,27 @@ export function CompareTable({
       {
         id: "change",
         header: "Change",
-        headerClassName: "w-[110px] text-right",
+        headerClassName: "w-[160px] text-right",
         className: "text-right tabular-nums text-sm",
         cell: (row) => {
           const delta =
             row.candidate_pass_rate != null && row.baseline_pass_rate != null
               ? row.candidate_pass_rate - row.baseline_pass_rate
               : null;
+          const ci = formatCi(row.pass_rate_ci);
           return (
-            <span
-              className={cn(
-                delta != null && delta < -0.0001 && "text-status-fail",
-                delta != null && delta > 0.0001 && "text-status-ok",
-              )}
-            >
-              {formatDeltaPoints(delta)}
+            <span className="flex flex-col items-end">
+              <span
+                className={cn(
+                  delta != null && delta < -0.0001 && "text-status-fail",
+                  delta != null && delta > 0.0001 && "text-status-ok",
+                )}
+              >
+                {formatDeltaPoints(delta)}
+              </span>
+              {ci ? (
+                <span className="text-[11px] whitespace-nowrap text-muted-foreground">{ci}</span>
+              ) : null}
             </span>
           );
         },
@@ -123,10 +136,17 @@ export function CompareTable({
       {
         id: "score",
         header: "Avg. score",
-        headerClassName: "w-[130px] text-right",
+        headerClassName: "w-[160px] text-right",
         className: "text-right tabular-nums text-xs text-muted-foreground",
-        cell: (row) =>
-          `${formatScore(row.baseline_mean)} → ${formatScore(row.candidate_mean)}`,
+        cell: (row) => {
+          const ci = formatCi(row.mean_ci);
+          return (
+            <span className="flex flex-col items-end">
+              <span>{`${formatScore(row.baseline_mean)} → ${formatScore(row.candidate_mean)}`}</span>
+              {ci ? <span className="text-[11px] whitespace-nowrap">{ci}</span> : null}
+            </span>
+          );
+        },
       },
       {
         id: "status",

@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useMutation, useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useCallback, useMemo, useState, type SubmitEvent } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type SubmitEvent } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { ChevronDown, GitCompare, Play, ShieldCheck } from "lucide-react";
 import { toast } from "sonner";
@@ -60,7 +60,9 @@ import { resolveLabel } from "@/lib/format";
 import { metricInfo, metricLabel } from "@/lib/metrics-catalog";
 import { projectsQueryOptions } from "@/lib/queries/projects";
 import {
+  evaluationRunQueryKey,
   evaluationRunQueryOptions,
+  experimentQueryKey,
   experimentQueryOptions,
   experimentOutputsQueryKey,
   experimentSummaryQueryKey,
@@ -72,6 +74,7 @@ import {
   useExperiments,
 } from "./use-experiments";
 import { buildCaseViews, type CaseView } from "./case-results";
+import { flattenParams } from "./experiment-matrix";
 import { CaseDetail } from "./case-detail";
 import { ConnectAppCard } from "./connect-app-card";
 import { MetricScorecard } from "./metric-scorecard";
@@ -214,6 +217,26 @@ export function ExperimentDetailView({
 
   const scorePack = useScorePack(experimentId);
 
+  // Only the experiment status is polled while it runs; when a run finishes
+  // (or the user hits Refresh) pull the scores and answers it produced too.
+  const queryClient = useQueryClient();
+  const refreshAll = useCallback(
+    () =>
+      Promise.all([
+        queryClient.refetchQueries({ queryKey: experimentQueryKey(experimentId) }),
+        queryClient.refetchQueries({ queryKey: experimentSummaryQueryKey(experimentId) }),
+        queryClient.refetchQueries({ queryKey: experimentOutputsQueryKey(experimentId) }),
+        queryClient.invalidateQueries({ queryKey: evaluationRunQueryKey("").slice(0, 1) }),
+      ]),
+    [experimentId, queryClient],
+  );
+  const status = experiment?.status?.toLowerCase();
+  const prevStatus = useRef(status);
+  useEffect(() => {
+    if (prevStatus.current === "running" && status !== "running") void refreshAll();
+    prevStatus.current = status;
+  }, [refreshAll, status]);
+
   const caseColumns: DataTableColumn<{ c: CaseView; index: number }>[] = useMemo(
     () => [
       {
@@ -312,6 +335,12 @@ export function ExperimentDetailView({
   const focusedMetric = focusedRunId
     ? evaluators.find((e) => e.run_id === focusedRunId)
     : undefined;
+  const params = Object.entries(flattenParams(experiment.model_config ?? {})).sort(([a], [b]) =>
+    a.localeCompare(b),
+  );
+  const runMetrics = Object.entries(summaryQuery.data?.experiment_metrics ?? {}).sort(
+    ([a], [b]) => a.localeCompare(b),
+  );
 
   return (
     <div className="flex flex-col gap-6">
@@ -364,6 +393,7 @@ export function ExperimentDetailView({
             <RefreshControl
               queryKey={summaryOpts.queryKey}
               dataUpdatedAt={summaryQuery.dataUpdatedAt}
+              onRefresh={refreshAll}
             />
             {otherExperiments.length > 0 ? (
               <Button
@@ -485,6 +515,21 @@ export function ExperimentDetailView({
             </Button>
           }
         />
+      ) : null}
+
+      {params.length > 0 || runMetrics.length > 0 ? (
+        <section aria-label="Parameters and run metrics" className="grid gap-4 md:grid-cols-2">
+          {params.length > 0 ? <KeyValueCard title="Parameters" entries={params} /> : null}
+          {runMetrics.length > 0 ? (
+            <KeyValueCard
+              title="Run metrics"
+              entries={runMetrics.map(([key, value]) => [
+                key,
+                value.toLocaleString("en-US", { maximumFractionDigits: 4 }),
+              ])}
+            />
+          ) : null}
+        </section>
       ) : null}
 
       <section className="flex flex-col gap-3">
@@ -723,6 +768,26 @@ function useScorePack(experimentId: string) {
       toast.error(formatErrorForUi(err));
     },
   });
+}
+
+function KeyValueCard({ title, entries }: { title: string; entries: [string, string][] }) {
+  return (
+    <div className="flex flex-col gap-2 rounded-lg border border-border bg-surface px-4 py-3">
+      <h2 className="text-sm font-semibold text-foreground">{title}</h2>
+      <dl className="grid grid-cols-[minmax(0,auto)_minmax(0,1fr)] gap-x-4 gap-y-1 text-sm">
+        {entries.map(([key, value]) => (
+          <div key={key} className="contents">
+            <dt className="truncate font-mono text-xs leading-5 text-muted-foreground" title={key}>
+              {key}
+            </dt>
+            <dd className="truncate tabular-nums text-foreground" title={value}>
+              {value}
+            </dd>
+          </div>
+        ))}
+      </dl>
+    </div>
+  );
 }
 
 function useInvalidateExperimentScoring(experimentId: string) {

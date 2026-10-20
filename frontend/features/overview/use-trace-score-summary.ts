@@ -1,6 +1,7 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
+import { keepPreviousInProject } from "@/lib/queries/keep-previous";
 import { getTraceScoreSummary } from "@/lib/api/trace-scores";
 
 export function traceScoreSummaryQueryKey(projectId: string, since: string, until?: string) {
@@ -16,5 +17,7 @@ export function useTraceScoreSummary(
     queryKey: traceScoreSummaryQueryKey(projectId ?? "", since, until),
     queryFn: () => getTraceScoreSummary(projectId!, since, until),
     enabled: Boolean(projectId),
+    // A refresh moves the time window; keep the old numbers until the new ones arrive.
+    placeholderData: keepPreviousInProject(projectId ?? ""),
   });
 }

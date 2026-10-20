@@ -7,6 +7,7 @@ import { useMemo, useState } from "react";
 import { ArrowRight } from "lucide-react";
 import { CompareItemsTable } from "@/features/experiments/compare-items-table";
 import { CompareTable } from "@/features/experiments/compare-table";
+import { groupMetricsByEvaluator } from "@/features/experiments/group-metrics-by-evaluator";
 import { EmptyState } from "@/components/empty-state";
 import { ErrorState } from "@/components/error-state";
 import { LoadingBlock } from "@/components/loading-block";
@@ -192,10 +193,6 @@ export function ExperimentCompareView({
   }
 
   const comparison = compareQuery.data;
-  const unavailableCount =
-    comparison?.metrics.filter((m) => m.status === "unavailable").length ?? 0;
-  const configMismatchCount = comparison?.config_mismatches?.length ?? 0;
-  const insufficientNCount = comparison?.insufficient_n?.length ?? 0;
   const candidateJudgeWarnings = judgeWarningsFromRuns(comparison?.candidate_runs);
   const baselineJudgeWarnings = judgeWarningsFromRuns(comparison?.baseline_runs);
   const judgeWarningTitle = [...candidateJudgeWarnings, ...baselineJudgeWarnings].join(
@@ -211,9 +208,13 @@ export function ExperimentCompareView({
     comparison?.metrics.some((m) => m.evaluator_id === pickedEvaluatorId)
       ? pickedEvaluatorId
       : (firstRegression ?? firstMetric);
-  const nWorse = new Set(comparison?.regressions.map((m) => m.evaluator_id)).size;
-  const nBetter = new Set(comparison?.improved.map((m) => m.evaluator_id)).size;
-  const notComparable = configMismatchCount + insufficientNCount + unavailableCount;
+  // Count per evaluator row, with the same verdict the table shows (worse of
+  // mean score / pass rate), so the banner and the rows always agree.
+  const verdicts = groupMetricsByEvaluator(comparison?.metrics ?? []).map((r) => r.status);
+  const nWorse = verdicts.filter((s) => s === "regression").length;
+  const nBetter = verdicts.filter((s) => s === "improved").length;
+  const nUnchanged = verdicts.filter((s) => s === "unchanged").length;
+  const notComparable = verdicts.length - nWorse - nBetter - nUnchanged;
 
   return (
     <div className="flex flex-col gap-5">
@@ -256,7 +257,7 @@ export function ExperimentCompareView({
             </span>
             <span className="text-sm text-foreground">
               {nBetter} better · {nWorse} worse ·{" "}
-              {new Set(comparison.unchanged.map((m) => m.evaluator_id)).size} no real change
+              {nUnchanged} no real change
             </span>
             {notComparable > 0 ? (
               <span

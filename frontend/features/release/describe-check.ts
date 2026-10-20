@@ -17,6 +17,12 @@ function ms(value: number | null): string {
   return value < 1000 ? `${Math.round(value)} ms` : `${(value / 1000).toFixed(2)} s`;
 }
 
+/** Run metrics (`cost_usd`, `latency_p50_ms`, …) are arbitrary numbers, not 0–1 scores. */
+function rawNumber(value: number | null): string {
+  if (value === null || value === undefined || Number.isNaN(value)) return "—";
+  return value.toLocaleString("en-US", { maximumFractionDigits: 4 });
+}
+
 function outcomeOf(status: string): CheckView["outcome"] {
   const key = status.toLowerCase();
   if (key === "passed") return "passed";
@@ -68,6 +74,17 @@ export function describeCheck(check: ReleaseCheckItemResponse): CheckView {
       target: `no worse than ${formatDeltaPoints(check.threshold)}`,
       outcome,
       isRegression: true,
+    };
+  }
+  const runMetric = /^experiment_metrics\.(.+)\.(min|max)$/.exec(id);
+  if (runMetric) {
+    return {
+      key: id,
+      title: `Run metric ${runMetric[1]}`,
+      actual: rawNumber(check.actual),
+      target: `${runMetric[2] === "max" ? "≤" : "≥"} ${rawNumber(check.threshold)}`,
+      outcome,
+      isRegression: false,
     };
   }
   const min = /^(.+)\.min$/.exec(id);

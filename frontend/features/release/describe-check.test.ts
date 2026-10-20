@@ -33,6 +33,33 @@ test("describeCheck humanizes check ids", () => {
   );
 });
 
+test("describeCheck renders run-metric bounds with the backend's sign", () => {
+  assert.deepEqual(
+    describeCheck({
+      metric: "experiment_metrics.latency_p50_ms.max",
+      actual: 1850,
+      threshold: 2000,
+      status: "passed",
+    }),
+    {
+      key: "experiment_metrics.latency_p50_ms.max",
+      title: "Run metric latency_p50_ms",
+      actual: "1,850",
+      target: "≤ 2,000",
+      outcome: "passed",
+      isRegression: false,
+    },
+  );
+  const min = describeCheck({
+    metric: "experiment_metrics.cost_usd.min",
+    actual: 0.01234,
+    threshold: 0.005,
+    status: "passed",
+  });
+  assert.equal(min.target, "≥ 0.005");
+  assert.equal(min.actual, "0.0123");
+});
+
 test("policyFromQualityBar builds the API policy", () => {
   assert.deepEqual(
     policyFromQualityBar({

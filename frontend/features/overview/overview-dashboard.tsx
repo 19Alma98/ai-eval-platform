@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useQueryClient } from "@tanstack/react-query";
 import { TimeRangePicker } from "@/components/time-range-picker";
@@ -8,6 +8,9 @@ import { RefreshControl } from "@/components/refresh-control";
 import { ErrorState } from "@/components/error-state";
 import { PageHeader } from "@/components/page-header";
 import { formatErrorForUi } from "@/lib/api/client";
+import { getMonitoring } from "@/lib/api/monitoring";
+import { getOverview } from "@/lib/api/overview";
+import { getTraceScoreSummary } from "@/lib/api/trace-scores";
 import { useProjectId } from "@/lib/project-store";
 import { rangeFromPreset, type Preset } from "@/lib/time-range";
 import { cn } from "@/lib/cn";
@@ -46,7 +49,10 @@ export function OverviewDashboard() {
   const queryClient = useQueryClient();
 
   const preset = parseOverviewRangeParam(searchParams.get("range"));
-  const { start, end } = useMemo(() => rangeFromPreset(preset), [preset]);
+  // Window end is anchored in state so Refresh / preset changes move it forward
+  // instead of refetching the window computed at page load.
+  const [anchor, setAnchor] = useState(() => new Date());
+  const { start, end } = useMemo(() => rangeFromPreset(preset, anchor), [preset, anchor]);
   const since = start.toISOString();
   const until = end.toISOString();
   const overviewQuery = useOverview(projectId, since, until);
@@ -64,6 +70,7 @@ export function OverviewDashboard() {
     (p: string) => {
       const params = new URLSearchParams(searchParams.toString());
       params.set("range", p);
+      setAnchor(new Date());
       router.replace(`${pathname}?${params.toString()}`);
     },
     [pathname, router, searchParams],
@@ -78,12 +85,27 @@ export function OverviewDashboard() {
 
   const onRefresh = useCallback(async () => {
     if (!projectId) return;
+    // New anchor → new query keys → the overview, production scores and
+    // monitoring queries all fetch the window ending now.
+    const next = rangeFromPreset(preset, new Date());
+    const nextSince = next.start.toISOString();
+    const nextUntil = next.end.toISOString();
+    setAnchor(next.end);
     await Promise.all([
-      queryClient.refetchQueries({ queryKey: overviewQueryKey(projectId, since, until) }),
-      queryClient.refetchQueries({ queryKey: traceScoreSummaryQueryKey(projectId, since, until) }),
-      queryClient.refetchQueries({ queryKey: monitoringQueryKey(projectId, since, until) }),
-    ]);
-  }, [projectId, queryClient, since, until]);
+      queryClient.fetchQuery({
+        queryKey: overviewQueryKey(projectId, nextSince, nextUntil),
+        queryFn: () => getOverview(projectId, nextSince, nextUntil),
+      }),
+      queryClient.fetchQuery({
+        queryKey: traceScoreSummaryQueryKey(projectId, nextSince, nextUntil),
+        queryFn: () => getTraceScoreSummary(projectId, nextSince, nextUntil),
+      }),
+      queryClient.fetchQuery({
+        queryKey: monitoringQueryKey(projectId, nextSince, nextUntil),
+        queryFn: () => getMonitoring(projectId, nextSince, nextUntil),
+      }),
+    ]).catch(() => undefined); // errors surface through the queries themselves
+  }, [preset, projectId, queryClient]);
 
   const overview = overviewQuery.data;
   const loading = overviewQuery.isLoading && !overview;
