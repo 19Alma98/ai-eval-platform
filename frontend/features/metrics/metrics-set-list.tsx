@@ -27,6 +27,11 @@ import { formatErrorForUi } from "@/lib/api/client";
 import { ensureMetricsPack } from "@/lib/api/metrics-packs";
 import { getMetricsSet, listMetricsSets } from "@/lib/api/metrics-sets";
 import type { MetricsSetEntryInput, MetricsSetSummary } from "@/lib/api/types";
+import { metricsSetDisplayName } from "@/lib/metrics-catalog";
+
+// Evaluators holding scores uploaded by the SDK (backend CLIENT_EVALUATOR_KIND).
+const CLIENT_EVALUATOR_KIND = "client";
+import { useEvaluators } from "@/features/experiments/use-experiments";
 import {
   metricsSetsQueryOptions,
   useCreateMetricsSet,
@@ -89,7 +94,12 @@ export function MetricsSetList({ projectId }: { projectId: string }) {
         header: "Name",
         cell: (row) => (
           <span className="flex min-w-0 flex-col">
-            <span className="truncate font-medium text-foreground">{row.name}</span>
+            <span className="truncate font-medium text-foreground">
+              {metricsSetDisplayName(row.name)}
+            </span>
+            {metricsSetDisplayName(row.name) !== row.name ? (
+              <code className="truncate text-xs text-muted-foreground">{row.name}</code>
+            ) : null}
             {row.description ? (
               <span className="truncate text-xs text-muted-foreground">{row.description}</span>
             ) : null}
@@ -198,7 +208,43 @@ export function MetricsSetList({ projectId }: { projectId: string }) {
           aria-label="Metrics sets"
         />
       )}
+
+      <LocalMetrics projectId={projectId} />
     </div>
+  );
+}
+
+/** Python metrics passed to `opengrade.evaluate(metrics=[fn])`: scored in the SDK, not here. */
+function LocalMetrics({ projectId }: { projectId: string }) {
+  const query = useEvaluators(projectId);
+  const local = (query.data ?? [])
+    .filter((e) => e.config?.kind === CLIENT_EVALUATOR_KIND)
+    .sort((a, b) => a.name.localeCompare(b.name));
+  if (local.length === 0) return null;
+  return (
+    <section
+      aria-labelledby="local-metrics-title"
+      className="flex flex-col gap-2 rounded-lg border border-border bg-surface p-4"
+    >
+      <h2 id="local-metrics-title" className="text-sm font-semibold text-foreground">
+        Metrics computed in your code
+      </h2>
+      <p className="text-sm text-muted-foreground">
+        Python functions passed to <code>opengrade.evaluate(metrics=[…])</code>. The SDK
+        scores each answer and uploads the result, so their logic and pass rule live in your
+        code, not in a metrics set.
+      </p>
+      <ul className="flex flex-wrap gap-1.5" aria-label="Local metrics">
+        {local.map((e) => (
+          <li
+            key={e.id}
+            className="rounded border border-border bg-surface-2 px-2 py-0.5 font-mono text-xs text-foreground"
+          >
+            {e.name}
+          </li>
+        ))}
+      </ul>
+    </section>
   );
 }
 

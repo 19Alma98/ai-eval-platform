@@ -63,7 +63,7 @@ def _item_response(item: DatasetItem) -> DatasetItemResponse:
     )
 
 
-def _dataset_response(dataset: Dataset) -> DatasetResponse:
+def _dataset_response(dataset: Dataset, *, item_count: int | None = None) -> DatasetResponse:
     return DatasetResponse(
         id=dataset.id,
         project_id=dataset.project_id,
@@ -72,6 +72,7 @@ def _dataset_response(dataset: Dataset) -> DatasetResponse:
         description=dataset.description,
         task_type=dataset.task_type,
         created_at=dataset.created_at,
+        item_count=item_count,
     )
 
 
@@ -139,7 +140,8 @@ async def list_datasets(
         datasets = await use_case.execute(project_id, task_type=normalized)
     except ProjectNotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
-    return [_dataset_response(d) for d in datasets]
+    counts = await use_case.item_counts(datasets)
+    return [_dataset_response(d, item_count=counts.get(d.id)) for d in datasets]
 
 
 @router.get("/api/v1/datasets/{dataset_id}", response_model=DatasetDetailResponse)

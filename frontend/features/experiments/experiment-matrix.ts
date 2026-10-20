@@ -144,6 +144,23 @@ export function bestByColumn(rows: MatrixRow[], columns: MetricColumn[]): Record
   return best;
 }
 
+/**
+ * One decimal count per logged-metric column so values line up: whole numbers for
+ * large values (latency ms, tokens), more digits for small ones (cost in $).
+ */
+export function columnDecimals(rows: MatrixRow[], col: MetricColumn): number {
+  if (col.kind === "evaluator") return 2;
+  const values = rows
+    .map((r) => r.metrics[col.key]?.mean)
+    .filter((v): v is number => v != null && Number.isFinite(v));
+  if (values.length === 0) return 2;
+  if (values.every(Number.isInteger)) return 0;
+  const maxAbs = Math.max(...values.map(Math.abs));
+  if (maxAbs >= 100) return 0;
+  if (maxAbs >= 1) return 2;
+  return 4;
+}
+
 /** Distinct values per param key that differ across rows (constant params are noise). */
 export function varyingParams(rows: MatrixRow[]): Record<string, string[]> {
   const values: Record<string, Set<string>> = {};

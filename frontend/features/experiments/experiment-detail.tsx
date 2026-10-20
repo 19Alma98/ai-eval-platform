@@ -57,7 +57,7 @@ import {
 import { runJudgeWarning } from "@/features/judges/judge-metadata";
 import { cn } from "@/lib/cn";
 import { resolveLabel } from "@/lib/format";
-import { metricInfo, metricLabel } from "@/lib/metrics-catalog";
+import { metricInfo, metricLabel, metricsSetDisplayName } from "@/lib/metrics-catalog";
 import { projectsQueryOptions } from "@/lib/queries/projects";
 import {
   evaluationRunQueryKey,
@@ -903,7 +903,7 @@ function ScorePackOverrideDialog({
                     <SelectContent>
                       {metricsSets.map((s) => (
                         <SelectItem key={s.id} value={s.id}>
-                          {s.name} · v{s.version}
+                          {metricsSetDisplayName(s.name)} · v{s.version}
                         </SelectItem>
                       ))}
                     </SelectContent>

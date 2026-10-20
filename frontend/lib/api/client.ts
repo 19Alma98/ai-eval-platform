@@ -1,3 +1,11 @@
+/** Build-time sub-path (see next.config.ts); "" when served at the root. */
+export const BASE_PATH = (process.env.NEXT_PUBLIC_BASE_PATH ?? "").replace(/\/+$/, "");
+
+/** Prefix an absolute app path ("/api/v1/…", "/traces/…") with the sub-path. */
+export function withBasePath(path: string): string {
+  return path.startsWith("/") ? `${BASE_PATH}${path}` : path;
+}
+
 export class ApiError extends Error {
   constructor(
     public status: number,
@@ -107,13 +115,13 @@ export function formatErrorForUi(err: unknown): string {
 }
 
 export async function apiGet<T>(path: string): Promise<T> {
-  const res = await fetch(path, { headers: { Accept: "application/json" } });
+  const res = await fetch(withBasePath(path), { headers: { Accept: "application/json" } });
   if (!res.ok) await throwApiError(res);
   return res.json() as Promise<T>;
 }
 
 export async function apiPost<T>(path: string, body: unknown): Promise<T> {
-  const res = await fetch(path, {
+  const res = await fetch(withBasePath(path), {
     method: "POST",
     headers: {
       Accept: "application/json",
@@ -126,7 +134,7 @@ export async function apiPost<T>(path: string, body: unknown): Promise<T> {
 }
 
 export async function apiPut<T>(path: string, body: unknown): Promise<T> {
-  const res = await fetch(path, {
+  const res = await fetch(withBasePath(path), {
     method: "PUT",
     headers: {
       Accept: "application/json",
@@ -139,7 +147,7 @@ export async function apiPut<T>(path: string, body: unknown): Promise<T> {
 }
 
 export async function apiPatch<T>(path: string, body: unknown): Promise<T> {
-  const res = await fetch(path, {
+  const res = await fetch(withBasePath(path), {
     method: "PATCH",
     headers: {
       Accept: "application/json",
@@ -152,7 +160,7 @@ export async function apiPatch<T>(path: string, body: unknown): Promise<T> {
 }
 
 export async function apiDelete(path: string): Promise<void> {
-  const res = await fetch(path, {
+  const res = await fetch(withBasePath(path), {
     method: "DELETE",
     headers: { Accept: "application/json" },
   });

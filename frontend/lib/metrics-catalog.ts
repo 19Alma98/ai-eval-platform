@@ -139,6 +139,29 @@ export function metricLabel(nameOrKind: string | null | undefined): string {
   return metricInfo(nameOrKind).label;
 }
 
+/**
+ * Name to use in code (`evaluate(metrics=["hit_at_k"])`) when it differs from the
+ * label, so "Hit rate" can be matched to `hit_at_k`. Null when they read the same.
+ */
+export function metricCodeName(nameOrKind: string | null | undefined): string | null {
+  const raw = (nameOrKind ?? "").trim();
+  if (!raw) return null;
+  return metricLabel(raw).toLowerCase() === humanizeIdentifier(raw).toLowerCase() ? null : raw;
+}
+
+const SDK_SET_NAME = /^sdk:(.+)@([0-9a-f]+)$/i;
+
+/**
+ * Sets created by `opengrade.evaluate(metrics=[…])` are named
+ * `sdk:hit_at_k+must_contain@689cc45d`; show the metrics instead of the raw key.
+ */
+export function metricsSetDisplayName(name: string): string {
+  const match = SDK_SET_NAME.exec(name.trim());
+  if (!match) return name;
+  const labels = match[1].split("+").filter(Boolean).map(metricLabel);
+  return `From code: ${labels.join(", ")}`;
+}
+
 /** Stable sort key: category order first, then label. */
 export function compareMetrics(a: string, b: string): number {
   const ia = metricInfo(a);

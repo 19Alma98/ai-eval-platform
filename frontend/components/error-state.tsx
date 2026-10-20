@@ -1,3 +1,4 @@
+import type React from "react";
 import { AlertCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/cn";
@@ -6,11 +7,14 @@ export function ErrorState({
   title = "Something went wrong",
   message,
   onRetry,
+  action,
   className,
 }: {
   title?: string;
   message?: string;
   onRetry?: () => void;
+  /** Extra control next to "Try again" (e.g. a link back to the list). */
+  action?: React.ReactNode;
   className?: string;
 }) {
   return (
@@ -25,10 +29,15 @@ export function ErrorState({
       {message ? (
         <p className="mt-2 max-w-md text-sm text-muted-foreground">{message}</p>
       ) : null}
-      {onRetry ? (
-        <Button variant="outline" size="sm" className="mt-4" onClick={onRetry}>
-          Try again
-        </Button>
+      {onRetry || action ? (
+        <div className="mt-4 flex flex-wrap items-center justify-center gap-2">
+          {onRetry ? (
+            <Button variant="outline" size="sm" onClick={onRetry}>
+              Try again
+            </Button>
+          ) : null}
+          {action}
+        </div>
       ) : null}
     </div>
   );

@@ -7,6 +7,9 @@ COPY frontend/package.json frontend/package-lock.json ./
 RUN npm ci
 COPY frontend/ ./
 ENV NEXT_TELEMETRY_DISABLED=1
+# Sub-path behind a reverse proxy, e.g. --build-arg NEXT_PUBLIC_BASE_PATH=/opengrade
+ARG NEXT_PUBLIC_BASE_PATH=
+ENV NEXT_PUBLIC_BASE_PATH=$NEXT_PUBLIC_BASE_PATH
 RUN npm run build
 
 FROM python:3.12-slim

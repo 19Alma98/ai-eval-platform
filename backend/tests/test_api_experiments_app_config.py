@@ -48,6 +48,9 @@ class InMemoryDatasetRepository:
     async def add_item(self, item: Any) -> Any:
         raise NotImplementedError
 
+    async def count_items(self, dataset_ids: list[uuid.UUID]) -> dict[uuid.UUID, int]:
+        return {d: len(await self.list_items(d)) for d in dataset_ids}
+
     async def list_items(self, dataset_id: uuid.UUID) -> list[Any]:
         return []
 

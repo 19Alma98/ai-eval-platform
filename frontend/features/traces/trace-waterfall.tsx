@@ -345,16 +345,10 @@ function WaterfallRow({
   const isMatch = search ? spanMatchesSearch(span, search) : false;
 
   return (
+    // Not role="button": the collapse toggle is a real button, and buttons can't nest.
+    // The span name is the keyboard target; the rest of the row is a mouse shortcut.
     <div
-      role="button"
-      tabIndex={0}
       onClick={onSelect}
-      onKeyDown={(e) => {
-        if (e.key === "Enter" || e.key === " ") {
-          e.preventDefault();
-          onSelect();
-        }
-      }}
       className={cn(
         "grid h-8 cursor-pointer grid-cols-[minmax(0,1fr)_minmax(120px,28%)] items-center gap-2 border-b border-border/50 px-2 text-xs transition-colors",
         selected && "bg-row-selected",
@@ -387,11 +381,21 @@ function WaterfallRow({
         ) : (
           <span className="inline-block size-5 shrink-0" />
         )}
-        <span className="truncate font-medium">{span.name}</span>
-        <span className={cn("shrink-0 text-[10px] uppercase", kindTextClass(span.kind))}>
-          {span.kind}
-        </span>
-        <StatusBadge status={span.status} className="ml-auto shrink-0 scale-90" />
+        <button
+          type="button"
+          aria-pressed={selected}
+          className="flex min-w-0 flex-1 items-center gap-1 rounded text-left outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          onClick={(e) => {
+            e.stopPropagation();
+            onSelect();
+          }}
+        >
+          <span className="truncate font-medium">{span.name}</span>
+          <span className={cn("shrink-0 text-[10px] uppercase", kindTextClass(span.kind))}>
+            {span.kind}
+          </span>
+          <StatusBadge status={span.status} className="ml-auto shrink-0 scale-90" />
+        </button>
       </div>
       <div className="relative h-4 rounded-sm bg-muted/40">
         <div

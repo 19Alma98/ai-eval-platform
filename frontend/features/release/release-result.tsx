@@ -96,7 +96,7 @@ export function ReleaseResult({
           const body = (
             <span className="flex items-center gap-3 px-3 py-2 text-sm">
               <OutcomeIcon outcome={check.outcome} />
-              <span className="min-w-0 flex-1 truncate text-foreground">{check.title}</span>
+              <span className="min-w-0 flex-1 break-words text-foreground">{check.title}</span>
               <span
                 className={cn(
                   "shrink-0 tabular-nums",

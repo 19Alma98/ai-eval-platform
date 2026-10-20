@@ -260,6 +260,8 @@ export function DatasetDetailView({
               datasetId={datasetId}
               datasetName={dataset.name}
               taskType={dataset.task_type}
+              locked={dataset.immutable}
+              version={dataset.version}
               open={importOpen}
               onOpenChange={setImportOpen}
             />

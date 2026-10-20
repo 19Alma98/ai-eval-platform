@@ -459,3 +459,18 @@ async def test_calibration_failure_degraded(monkeypatch: pytest.MonkeyPatch) -> 
     result = await use_case.execute(project.id, since=since, until=until)
     assert result.calibration_alerts == []
     assert "calibration_unavailable" in result.warnings
+
+
+@pytest.mark.asyncio
+async def test_overview_counts_test_sets_not_versions() -> None:
+    projects = InMemoryProjectRepository()
+    project = Project.create("Versions")
+    await projects.add(project)
+    datasets = InMemoryDatasetRepository()
+    await datasets.add(Dataset.create(project.id, "faq", version=1))
+    await datasets.add(Dataset.create(project.id, "faq", version=2))
+    await datasets.add(Dataset.create(project.id, "billing"))
+    since = datetime(2026, 10, 9, 0, 0, tzinfo=UTC)
+    use_case = _build_use_case(projects=projects, datasets=datasets)
+    result = await use_case.execute(project.id, since=since, until=since + timedelta(hours=24))
+    assert result.offline.n_datasets == 2

@@ -12,13 +12,13 @@ import {
 } from "recharts";
 import type { MetricColumn } from "./experiment-matrix";
 
+// Five distinct hues; lines past the fifth reuse them dashed so no two look alike.
 const PALETTE = [
-  "hsl(var(--primary))",
-  "hsl(var(--status-ok))",
-  "hsl(var(--status-warn))",
-  "hsl(var(--status-fail))",
-  "hsl(var(--kind-retriever))",
-  "hsl(var(--kind-tool))",
+  "hsl(var(--chart-1))",
+  "hsl(var(--chart-2))",
+  "hsl(var(--chart-3))",
+  "hsl(var(--chart-4))",
+  "hsl(var(--chart-5))",
 ];
 
 export function MetricTrendChartInner({
@@ -49,6 +49,7 @@ export function MetricTrendChartInner({
             dataKey={col.key}
             name={col.label}
             stroke={PALETTE[i % PALETTE.length]}
+            strokeDasharray={i >= PALETTE.length ? "5 3" : undefined}
             dot={{ r: 3 }}
             connectNulls
           />

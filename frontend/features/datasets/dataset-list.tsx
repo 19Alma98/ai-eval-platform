@@ -26,8 +26,8 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { formatErrorForUi } from "@/lib/api/client";
 import { createDataset } from "@/lib/api/datasets";
-import type { Dataset } from "@/lib/api/types";
 import { useProjectId } from "@/lib/project-store";
+import { groupDatasetVersions, type DatasetRow } from "./dataset-versions";
 import { RAG_QA_TASK } from "./rag-qa";
 import {
   datasetsQueryKey,
@@ -43,10 +43,10 @@ export function DatasetList() {
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [createOpen, setCreateOpen] = useState(false);
 
-  const rows = query.data ?? [];
+  const rows = useMemo(() => groupDatasetVersions(query.data ?? []), [query.data]);
 
   const onRowActivate = useCallback(
-    (dataset: Dataset) => {
+    (dataset: DatasetRow) => {
       if (!projectId) return;
       router.push(
         `/datasets/${encodeURIComponent(dataset.id)}?project=${encodeURIComponent(projectId)}`,
@@ -55,21 +55,41 @@ export function DatasetList() {
     [projectId, router],
   );
 
-  const columns: DataTableColumn<Dataset>[] = useMemo(
+  const columns: DataTableColumn<DatasetRow>[] = useMemo(
     () => [
       {
         id: "name",
         header: "Name",
-        cell: (row) => (
-          <span className="font-medium text-foreground">{row.name}</span>
-        ),
+        cell: (row) =>
+          row.latest ? (
+            <span className="font-medium text-foreground">{row.name}</span>
+          ) : (
+            <span className="pl-4 text-muted-foreground">
+              <span aria-hidden>↳ </span>
+              <span className="sr-only">{row.name}, </span>older version
+            </span>
+          ),
       },
       {
         id: "version",
         header: "Version",
-        headerClassName: "w-[88px]",
+        headerClassName: "w-[120px]",
         className: "tabular-nums text-muted-foreground",
-        cell: (row) => `v${row.version}`,
+        cell: (row) =>
+          row.latest && row.versionCount > 1 ? (
+            <span title={`${row.versionCount} versions; older ones are listed below`}>
+              v{row.version} <span className="text-xs">(latest)</span>
+            </span>
+          ) : (
+            `v${row.version}`
+          ),
+      },
+      {
+        id: "questions",
+        header: "Questions",
+        headerClassName: "w-[96px] text-right",
+        className: "text-right tabular-nums",
+        cell: (row) => (row.item_count != null ? row.item_count.toLocaleString() : "—"),
       },
       {
         id: "description",

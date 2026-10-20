@@ -1,4 +1,4 @@
-import { apiGet, apiPost, throwApiError } from "./client";
+import { apiGet, apiPost, throwApiError, withBasePath } from "./client";
 import type {
   Dataset,
   DatasetDetail,
@@ -46,7 +46,7 @@ export async function importDatasetItems(
       ? `?format=${encodeURIComponent(format)}`
       : "";
   const res = await fetch(
-    `/api/v1/datasets/${encodeURIComponent(datasetId)}/items/import${qs}`,
+    withBasePath(`/api/v1/datasets/${encodeURIComponent(datasetId)}/items/import${qs}`),
     {
       method: "POST",
       body: form,

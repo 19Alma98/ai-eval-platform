@@ -244,7 +244,7 @@ export function LiveRunList() {
     ) : (
       <EmptyState
         title="No live traffic yet"
-        description="Send real questions and answers from your app with client.live_runs.submit(project_id, question=…, answer=…, documents=[…]). Each one is scored automatically."
+        description="Call opengrade.init(project_slug=…, live=True) at startup and decorate your app's entry point with @opengrade.trace: each call becomes a live answer scored by the judge. The question is the function's only text argument (or a question/query kwarg) and the answer its return value; otherwise call opengrade.set_input() / set_output(), or the call is skipped. The server needs CONTENT_CAPTURE_ENABLED=true to read them."
       />
     );
   } else {

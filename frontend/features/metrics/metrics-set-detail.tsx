@@ -20,8 +20,10 @@ import { cn } from "@/lib/cn";
 import {
   METRIC_CATEGORY_LABELS,
   compareMetrics,
+  metricCodeName,
   metricInfo,
   metricLabel,
+  metricsSetDisplayName,
 } from "@/lib/metrics-catalog";
 import { withProjectQuery } from "@/lib/project-href";
 import {
@@ -191,7 +193,14 @@ export function MetricsSetDetailView({
           const info = metricInfo(row.kind);
           return (
             <span className={cn("flex flex-col", !row.enabled && "opacity-60")}>
-              <span className="font-medium text-foreground">{info.label}</span>
+              <span className="font-medium text-foreground">
+                {info.label}
+                {metricCodeName(row.kind) ? (
+                  <code className="ml-1.5 text-xs font-normal text-muted-foreground">
+                    {row.kind}
+                  </code>
+                ) : null}
+              </span>
               {info.description ? (
                 <span className="text-xs text-muted-foreground">{info.description}</span>
               ) : null}
@@ -308,8 +317,11 @@ export function MetricsSetDetailView({
   return (
     <div className="flex flex-col gap-4">
       <PageHeader
-        breadcrumbs={[{ label: "Metrics", href: listHref }, { label: metricsSet.name }]}
-        title={metricsSet.name}
+        breadcrumbs={[
+          { label: "Metrics", href: listHref },
+          { label: metricsSetDisplayName(metricsSet.name) },
+        ]}
+        title={metricsSetDisplayName(metricsSet.name)}
         badges={
           <>
             <Badge variant="outline">v{metricsSet.version}</Badge>

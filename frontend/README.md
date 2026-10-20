@@ -33,4 +33,15 @@ uv run opengrade ui
 
 PyPI installs of `opengrade-ai[ui]` already include the packaged UI — no Node build required for end users.
 
+## Serving under a sub-path
+
+To put the UI behind a reverse proxy at a sub-path (e.g. `https://tools.example.com/opengrade/`), build it with that prefix; it is inlined at build time:
+
+```bash
+NEXT_PUBLIC_BASE_PATH=/opengrade python scripts/package_ui.py
+# Docker: docker build --build-arg NEXT_PUBLIC_BASE_PATH=/opengrade -f backend/Dockerfile .
+```
+
+Pages, assets and API calls then use `/opengrade/...`. The proxy must strip the prefix before forwarding to the server (which still serves `/`, `/api/v1/...` and `/v1/traces`), e.g. nginx `location /opengrade/ { proxy_pass http://opengrade:8000/; }`. `npm run dev` honours the same variable.
+
 See the [repository root README](../README.md) and [backend/README.md](../backend/README.md) for quickstart and Docker Compose.

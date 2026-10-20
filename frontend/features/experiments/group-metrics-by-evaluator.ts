@@ -71,3 +71,16 @@ export function groupMetricsByEvaluator(
 
   return sortMetricsForDisplay(rows);
 }
+
+/**
+ * Metric the answer-by-answer view opens on: the first that got worse, else the first
+ * that got better, else the first row. Uses the same row verdicts the table shows.
+ */
+export function defaultCompareEvaluatorId(rows: EvaluatorCompareRow[]): string | null {
+  return (
+    rows.find((r) => r.status === "regression")?.evaluator_id ??
+    rows.find((r) => r.status === "improved")?.evaluator_id ??
+    rows[0]?.evaluator_id ??
+    null
+  );
+}

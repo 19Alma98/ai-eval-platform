@@ -276,15 +276,30 @@ export function LiveRunDetail({ interactionId }: { interactionId: string }) {
 
   if (query.isLoading) return <LoadingBlock />;
   if (query.isError || !row) {
+    const err = query.error;
     const wrongProject =
-      query.error instanceof ApiError &&
-      query.error.message === "Live interaction not found in this project.";
+      err instanceof ApiError && err.message === "Live interaction not found in this project.";
+    // 404: unknown id; 422: the id in the URL is not a valid UUID.
+    const notFound = err instanceof ApiError && (err.status === 404 || err.status === 422);
     return (
       <ErrorState
+        title={notFound ? "Answer not found" : "Could not load this answer"}
         message={
           wrongProject
             ? "This answer belongs to another project."
-            : "Could not load this answer."
+            : notFound
+              ? "Check the link, or open the answer from the Live traffic list."
+              : formatErrorForUi(err)
+        }
+        onRetry={notFound ? undefined : () => void query.refetch()}
+        action={
+          <Button
+            variant="outline"
+            size="sm"
+            render={<Link href={withProjectQuery("/live-runs", projectId)} />}
+          >
+            Back to Live traffic
+          </Button>
         }
       />
     );
