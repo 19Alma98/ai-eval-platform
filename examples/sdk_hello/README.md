@@ -31,4 +31,4 @@ Expected UI: one trace under project **demo**, parent CHAIN + child LLM.
 | Empty trace list for **demo** | Export failed silently or wrong project slug | Check script env and API logs; verify `OPENGRADE_PROJECT_SLUG` is what you expect. |
 | Connection error to `:11434` | Ollama not running | Start Ollama; confirm `curl http://localhost:11434/api/tags`. |
 | Model not found / 404 from Ollama | Model not pulled | Run `ollama pull gemma4:e2b` (or point `OpenAI` client at a model you have). |
-| Script runs but UI shows spans without text | Content capture off on API | Expected when `CONTENT_CAPTURE_ENABLED` is false; spans still appear without stored bodies. |
+| Script runs but UI shows spans without text | Content capture off on API | Expected when the API runs with `CONTENT_CAPTURE_ENABLED=false` (default is true); spans still appear without stored bodies. |

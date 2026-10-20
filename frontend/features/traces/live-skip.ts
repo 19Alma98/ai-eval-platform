@@ -10,7 +10,7 @@ export type LiveSkipReason = "no_content" | "empty";
 /**
  * Why a live-marked trace has no live interaction, or null when it is not skipped.
  * Ingestion skips it when the live span carries no `input.value` / `output.value`
- * (server `CONTENT_CAPTURE_ENABLED=false`, the default, or SDK capture off), or when
+ * (server `CONTENT_CAPTURE_ENABLED=false` or SDK capture off), or when
  * the question or answer reads as empty. Experiment traces are never live.
  */
 export function liveSkipReason(

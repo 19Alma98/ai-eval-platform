@@ -265,7 +265,7 @@ def answer(question: str) -> str:
 - Every call is recorded; only `live_sample_rate` of them (default `1.0`) are sent to the judge. The rest show `judge_status="unsampled"` and can still be judged with `live_runs.rescore`. Sampling is deterministic on the trace id.
 - Question = the only string argument (or a `question`/`query`/`input`/`prompt` kwarg); answer = the return value. Override with `opengrade.set_input(...)` / `opengrade.set_output(...)`.
 - `@opengrade.trace(live=False)` excludes a function; `live=True` opts one in when `init(live=...)` is off.
-- The server must run with `CONTENT_CAPTURE_ENABLED=true`, otherwise input/output are redacted and no live interaction is created.
+- The server stores span text by default; with `CONTENT_CAPTURE_ENABLED=false` input/output are redacted and no live interaction is created.
 - Idempotent per trace (`external_id="trace:<trace_id>"`).
 
 ### Production scores and feedback
@@ -417,7 +417,7 @@ Tracing never breaks the host app:
 
 ## Content capture
 
-The SDK may set OpenInference `input` / `output` attributes on decorated spans (`capture_input` / `capture_output`, default on). The platform API applies its own policy: with `CONTENT_CAPTURE_ENABLED=false` (default), stored trace bodies may be redacted or omitted even if the SDK sent attributes. Configure both sides explicitly for demos that need bodies in the UI.
+The SDK may set OpenInference `input` / `output` attributes on decorated spans (`capture_input` / `capture_output`, default on). The platform API applies its own policy: it stores them by default (`CONTENT_CAPTURE_ENABLED=true`); with `CONTENT_CAPTURE_ENABLED=false` it drops input/output values, LLM prompts/messages and completions at ingestion, while timings, tokens, cost and other attributes are kept. Turn capture off on either side when spans may carry data you must not store.
 
 ## Monorepo note
 

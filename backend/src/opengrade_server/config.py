@@ -16,7 +16,9 @@ class Settings(BaseSettings):
     app_port: int = 8000
     project_name_max_length: int = 200
     project_slug_max_length: int = 200
-    content_capture_enabled: bool = False
+    # Store span text (inputs/outputs, prompts, completions). Live scoring and the
+    # RAG view need it; set CONTENT_CAPTURE_ENABLED=false to redact at ingestion.
+    content_capture_enabled: bool = True
     otlp_max_body_bytes: int = 4 * 1024 * 1024
     json_max_body_bytes: int = 4 * 1024 * 1024
     dataset_import_max_bytes: int = 4 * 1024 * 1024

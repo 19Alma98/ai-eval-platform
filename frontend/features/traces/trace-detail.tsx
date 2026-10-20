@@ -157,9 +157,9 @@ export function TraceDetailView({ projectId, traceId }: { projectId: string; tra
           {liveSkip === "no_content" ? (
             <>
               This call is marked live but did not become a Live traffic answer: its input and
-              output were not stored. Run the server with{" "}
-              <code>CONTENT_CAPTURE_ENABLED=true</code> (off by default) and keep the SDK&apos;s{" "}
-              <code>capture_input</code> / <code>capture_output</code> on.
+              output were not stored. The server is running with{" "}
+              <code>CONTENT_CAPTURE_ENABLED=false</code>, or the SDK&apos;s{" "}
+              <code>capture_input</code> / <code>capture_output</code> are off.
             </>
           ) : (
             <>

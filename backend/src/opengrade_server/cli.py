@@ -109,7 +109,16 @@ def print_ui_startup_banner(uri: str, settings: Settings) -> None:
         f"api_key=[cyan]{key_status}[/cyan] "
         f"api_base=[cyan]{api_base}[/cyan]"
     )
-    console.print(f"Content capture: [cyan]{settings.content_capture_enabled}[/cyan]")
+    if settings.content_capture_enabled:
+        console.print(
+            "Content capture: [cyan]on[/cyan] (span inputs/outputs, prompts and completions "
+            "are stored; CONTENT_CAPTURE_ENABLED=false to redact)"
+        )
+    else:
+        console.print(
+            "Content capture: [yellow]off[/yellow] (span text is redacted; live traffic "
+            "is not scored)"
+        )
 
     for message in ui_config_warnings(settings):
         console.print(f"[yellow]Warning:[/yellow] {message}")
