@@ -5,7 +5,7 @@ import uuid
 from datetime import UTC, datetime
 from typing import Any
 
-from sqlalchemy import case, delete, func, select
+from sqlalchemy import case, delete, func, select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.exc import IntegrityError
@@ -161,88 +161,9 @@ class SqlAlchemyTraceRepository:
         self._session = session
 
     async def upsert(self, trace: Trace) -> Trace:
-        result = await self._session.execute(
-            select(TraceModel)
-            .options(selectinload(TraceModel.spans))
-            .where(
-                TraceModel.project_id == trace.project_id,
-                TraceModel.trace_id == trace.trace_id,
-            )
-        )
-        existing = result.scalar_one_or_none()
-
-        if existing is not None:
-            existing.name = trace.name or existing.name
-            # Prefer error if either side reported it.
-            if trace.status == "error" or existing.status == "error":
-                existing.status = "error"
-            elif trace.status == "ok" or existing.status == "ok":
-                existing.status = "ok"
-            else:
-                existing.status = trace.status or existing.status
-            if trace.start_time and (
-                existing.start_time is None
-                or _as_utc(trace.start_time) < _as_utc(existing.start_time)
-            ):
-                existing.start_time = trace.start_time
-            if trace.end_time and (
-                existing.end_time is None or _as_utc(trace.end_time) > _as_utc(existing.end_time)
-            ):
-                existing.end_time = trace.end_time
-            if trace.input is not None:
-                existing.input = trace.input
-            if trace.output is not None:
-                existing.output = trace.output
-            merged_meta = dict(existing.metadata_json or {})
-            merged_meta.update(dict(trace.metadata))
-            existing.metadata_json = merged_meta
-            if trace.environment is not None:
-                existing.environment = trace.environment
-            if trace.user_id is not None:
-                existing.user_id = trace.user_id
-            if trace.session_id is not None:
-                existing.session_id = trace.session_id
-
-            by_span_id = {span.span_id: span for span in existing.spans}
-            for span in trace.spans:
-                current = by_span_id.get(span.span_id)
-                if current is None:
-                    self._session.add(
-                        SpanModel(
-                            id=span.id,
-                            trace_pk=existing.id,
-                            project_id=trace.project_id,
-                            span_id=span.span_id,
-                            parent_span_id=span.parent_span_id,
-                            name=span.name,
-                            kind=span.kind,
-                            start_time=span.start_time,
-                            end_time=span.end_time,
-                            status=span.status,
-                            attributes=dict(span.attributes),
-                            events=list(span.events),
-                        )
-                    )
-                else:
-                    current.parent_span_id = span.parent_span_id
-                    current.name = span.name
-                    current.kind = span.kind
-                    current.start_time = span.start_time
-                    current.end_time = span.end_time
-                    current.status = span.status
-                    current.attributes = dict(span.attributes)
-                    current.events = list(span.events)
-
-            await self._session.commit()
-            # New span rows were added outside the loaded collection; with
-            # expire_on_commit=False selectinload would return the stale list and
-            # run binding would miss spans from earlier OTLP batches.
-            self._session.expire(existing, ["spans"])
-            refreshed = await self.get_by_trace_id(trace.project_id, trace.trace_id)
-            assert refreshed is not None
-            return refreshed
-
-        row = TraceModel(
+        bind = self._session.get_bind()
+        insert_fn = pg_insert if bind.dialect.name == "postgresql" else sqlite_insert
+        stmt = insert_fn(TraceModel).values(
             id=trace.id,
             project_id=trace.project_id,
             trace_id=trace.trace_id,
@@ -252,34 +173,87 @@ class SqlAlchemyTraceRepository:
             end_time=trace.end_time,
             input=trace.input,
             output=trace.output,
-            metadata_json=dict(trace.metadata),
+            metadata=dict(trace.metadata),
             environment=trace.environment,
             user_id=trace.user_id,
             session_id=trace.session_id,
         )
-        self._session.add(row)
-        for span in trace.spans:
-            self._session.add(
-                SpanModel(
-                    id=span.id,
-                    trace_pk=trace.id,
-                    project_id=trace.project_id,
-                    span_id=span.span_id,
-                    parent_span_id=span.parent_span_id,
-                    name=span.name,
-                    kind=span.kind,
-                    start_time=span.start_time,
-                    end_time=span.end_time,
-                    status=span.status,
-                    attributes=dict(span.attributes),
-                    events=list(span.events),
-                )
+        stmt = stmt.on_conflict_do_nothing(index_elements=["project_id", "trace_id"])
+        await self._session.execute(stmt)
+        await self._session.commit()
+
+        result = await self._session.execute(
+            select(TraceModel)
+            .options(selectinload(TraceModel.spans))
+            .where(
+                TraceModel.project_id == trace.project_id,
+                TraceModel.trace_id == trace.trace_id,
             )
+        )
+        existing = result.scalar_one()
+
+        existing.name = trace.name or existing.name
+        # Prefer error if either side reported it.
+        if trace.status == "error" or existing.status == "error":
+            existing.status = "error"
+        elif trace.status == "ok" or existing.status == "ok":
+            existing.status = "ok"
+        else:
+            existing.status = trace.status or existing.status
+        if trace.start_time and (
+            existing.start_time is None or _as_utc(trace.start_time) < _as_utc(existing.start_time)
+        ):
+            existing.start_time = trace.start_time
+        if trace.end_time and (
+            existing.end_time is None or _as_utc(trace.end_time) > _as_utc(existing.end_time)
+        ):
+            existing.end_time = trace.end_time
+        if trace.input is not None:
+            existing.input = trace.input
+        if trace.output is not None:
+            existing.output = trace.output
+        merged_meta = dict(existing.metadata_json or {})
+        merged_meta.update(dict(trace.metadata))
+        existing.metadata_json = merged_meta
+        if trace.environment is not None:
+            existing.environment = trace.environment
+        if trace.user_id is not None:
+            existing.user_id = trace.user_id
+        if trace.session_id is not None:
+            existing.session_id = trace.session_id
+
+        by_span_id = {span.span_id: span for span in existing.spans}
+        for span in trace.spans:
+            current = by_span_id.get(span.span_id)
+            if current is None:
+                self._session.add(
+                    SpanModel(
+                        id=span.id,
+                        trace_pk=existing.id,
+                        project_id=trace.project_id,
+                        span_id=span.span_id,
+                        parent_span_id=span.parent_span_id,
+                        name=span.name,
+                        kind=span.kind,
+                        start_time=span.start_time,
+                        end_time=span.end_time,
+                        status=span.status,
+                        attributes=dict(span.attributes),
+                        events=list(span.events),
+                    )
+                )
+            else:
+                current.parent_span_id = span.parent_span_id
+                current.name = span.name
+                current.kind = span.kind
+                current.start_time = span.start_time
+                current.end_time = span.end_time
+                current.status = span.status
+                current.attributes = dict(span.attributes)
+                current.events = list(span.events)
 
         await self._session.commit()
-        # Span rows were added separately; expire so selectinload is not stuck
-        # on the empty in-memory collection of this new TraceModel.
-        self._session.expire(row, ["spans"])
+        self._session.expire(existing, ["spans"])
         refreshed = await self.get_by_trace_id(trace.project_id, trace.trace_id)
         assert refreshed is not None
         return refreshed
@@ -793,6 +767,20 @@ class SqlAlchemyExperimentRepository:
         await self._session.commit()
         await self._session.refresh(row)
         return _experiment_to_domain(row)
+
+    async def try_mark_running(self, experiment_id: uuid.UUID) -> Experiment | None:
+        result = await self._session.execute(
+            update(ExperimentModel)
+            .where(
+                ExperimentModel.id == experiment_id,
+                ExperimentModel.status != "running",
+            )
+            .values(status="running")
+        )
+        await self._session.commit()
+        if result.rowcount == 0:
+            return None
+        return await self.get_by_id(experiment_id)
 
     async def count_by_metrics_set_id(self, metrics_set_id: uuid.UUID) -> int:
         result = await self._session.execute(
@@ -1371,6 +1359,23 @@ class SqlAlchemyLiveInteractionRepository:
         await self._session.commit()
         await self._session.refresh(row)
         return _live_interaction_to_domain(row)
+
+    async def try_claim_for_scoring(self, interaction_id: uuid.UUID) -> LiveInteraction | None:
+        result = await self._session.execute(
+            update(LiveInteractionModel)
+            .where(
+                LiveInteractionModel.id == interaction_id,
+                LiveInteractionModel.judge_status.in_(("pending", "scored", "error")),
+            )
+            .values(judge_status="running", error_message=None, score_warning=None)
+        )
+        await self._session.commit()
+        if result.rowcount == 0:
+            return None
+        return await self.get_by_id(interaction_id)
+
+    async def rollback(self) -> None:
+        await self._session.rollback()
 
     async def get_by_id(self, interaction_id: uuid.UUID) -> LiveInteraction | None:
         row = await self._session.get(LiveInteractionModel, interaction_id)

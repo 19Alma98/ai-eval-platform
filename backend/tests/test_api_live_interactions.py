@@ -76,6 +76,21 @@ class InMemoryLiveRepository:
         self._items[interaction.id] = interaction
         return interaction
 
+    async def try_claim_for_scoring(self, interaction_id: uuid.UUID) -> LiveInteraction | None:
+        interaction = self._items.get(interaction_id)
+        if interaction is None or interaction.judge_status not in ("pending", "scored", "error"):
+            return None
+        updated = interaction.with_status(
+            "running",
+            error_message=None,
+            score_warning=None,
+        )
+        self._items[interaction_id] = updated
+        return updated
+
+    async def rollback(self) -> None:
+        return None
+
     async def get_by_id(self, interaction_id: uuid.UUID) -> LiveInteraction | None:
         return self._items.get(interaction_id)
 

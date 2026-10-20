@@ -271,13 +271,13 @@ class ScoreLiveInteraction:
         if interaction is None:
             raise LiveInteractionNotFoundError(interaction_id)
 
-        interaction = await self._live.update(
-            interaction.with_status(
-                "running",
-                error_message=None,
-                score_warning=None,
-            )
-        )
+        claimed = await self._live.try_claim_for_scoring(interaction_id)
+        if claimed is None:
+            existing = await self._live.get_by_id(interaction_id)
+            if existing is None:
+                raise LiveInteractionNotFoundError(interaction_id)
+            return existing
+        interaction = claimed
 
         try:
             metrics_set = await self._resolve_metrics_set(interaction)
@@ -397,7 +397,7 @@ class ScoreLiveInteraction:
             )
         except Exception as exc:
             logger.exception("Live interaction scoring failed: %s", interaction_id)
-            # Drop scores from a previous run so they are not shown next to an error.
+            await self._live.rollback()
             await self._live.replace_scores(interaction.id, [])
             return await self._live.update(
                 interaction.with_status(

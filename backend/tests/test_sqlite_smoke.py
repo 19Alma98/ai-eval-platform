@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import os
 from collections.abc import AsyncIterator
 
@@ -177,3 +178,43 @@ async def test_sqlite_otlp_upsert_same_trace_merges(sqlite_client: AsyncClient) 
     listed = await sqlite_client.get(f"/api/v1/projects/{project_id}/traces/{trace_id}")
     assert listed.status_code == 200
     assert len(listed.json()["spans"]) == 2
+
+
+@pytest.mark.asyncio
+async def test_sqlite_otlp_concurrent_first_batches_merge(sqlite_client: AsyncClient) -> None:
+    """Concurrent first inserts for a new trace_id must not 409 (OTLP does not retry)."""
+    project = await sqlite_client.post(
+        "/api/v1/projects",
+        json={"name": "OTLP Race", "slug": "otlp-sqlite-race"},
+    )
+    assert project.status_code == 201
+
+    headers = {"X-Project-Slug": "otlp-sqlite-race"}
+    trace_id = "dddddddddddddddddddddddddddddddd"
+    span_ids = [f"{i:016x}" for i in range(1, 7)]
+
+    async def post_span(span_id: str) -> int:
+        response = await sqlite_client.post(
+            "/v1/traces",
+            json=_otlp_payload(
+                [
+                    _otlp_span(
+                        trace_id=trace_id,
+                        span_id=span_id,
+                        name=f"span-{span_id}",
+                        start_nano="1700000000000000000",
+                        end_nano="1700000001000000000",
+                    )
+                ]
+            ),
+            headers=headers,
+        )
+        return response.status_code
+
+    statuses = await asyncio.gather(*(post_span(sid) for sid in span_ids))
+    assert statuses == [200] * len(span_ids), statuses
+
+    project_id = project.json()["id"]
+    listed = await sqlite_client.get(f"/api/v1/projects/{project_id}/traces/{trace_id}")
+    assert listed.status_code == 200
+    assert {s["span_id"] for s in listed.json()["spans"]} == set(span_ids)

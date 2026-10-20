@@ -95,29 +95,35 @@ class EvaluateExperiment:
         if experiment is None:
             raise ExperimentNotFoundError(command.experiment_id)
 
-        inputs = await load_scoring_inputs(experiment, self._datasets, self._outputs)
-        merged_items = inputs.items
-        missing_output_item_ids = inputs.missing_output_item_ids
-        evaluator_entities = await self._evaluators.get_by_ids(command.evaluator_ids)
-        by_id = {e.id: e for e in evaluator_entities}
-        missing = [eid for eid in command.evaluator_ids if eid not in by_id]
-        if missing:
-            raise EvaluatorNotFoundError(missing[0])
-        for entity in evaluator_entities:
-            if entity.project_id != experiment.project_id:
-                raise EvaluatorNotFoundError(entity.id)
-
         if command.mark_running:
-            if experiment.status == "running":
-                raise ExperimentAlreadyRunningError(experiment.id)
-            experiment = await self._experiments.update(experiment.with_status("running"))
+            claimed = await self._experiments.try_mark_running(command.experiment_id)
+            if claimed is None:
+                current = await self._experiments.get_by_id(command.experiment_id)
+                if current is None:
+                    raise ExperimentNotFoundError(command.experiment_id)
+                raise ExperimentAlreadyRunningError(command.experiment_id)
+            experiment = claimed
         elif experiment.status != "running":
-            experiment = await self._experiments.update(experiment.with_status("running"))
+            claimed = await self._experiments.try_mark_running(command.experiment_id)
+            if claimed is not None:
+                experiment = claimed
 
         finished_runs: list[EvaluationRun] = []
         results_by_run: dict[uuid.UUID, list[EvaluationResultRecord]] = {}
 
         try:
+            inputs = await load_scoring_inputs(experiment, self._datasets, self._outputs)
+            merged_items = inputs.items
+            missing_output_item_ids = inputs.missing_output_item_ids
+            evaluator_entities = await self._evaluators.get_by_ids(command.evaluator_ids)
+            by_id = {e.id: e for e in evaluator_entities}
+            missing = [eid for eid in command.evaluator_ids if eid not in by_id]
+            if missing:
+                raise EvaluatorNotFoundError(missing[0])
+            for entity in evaluator_entities:
+                if entity.project_id != experiment.project_id:
+                    raise EvaluatorNotFoundError(entity.id)
+
             for evaluator_id in command.evaluator_ids:
                 entity = by_id[evaluator_id]
                 run = EvaluationRun.create(
@@ -242,13 +248,13 @@ class ScoreExperimentFromPack:
         if not evaluator_ids:
             raise EmptyEvaluatorListError()
 
-        # Re-load in case save_as_default mutated metrics_set_id.
-        experiment = await self._experiments.get_by_id(command.experiment_id)
-        if experiment is None:
-            raise ExperimentNotFoundError(command.experiment_id)
-        if experiment.status == "running":
-            raise ExperimentAlreadyRunningError(experiment.id)
-        experiment = await self._experiments.update(experiment.with_status("running"))
+        claimed = await self._experiments.try_mark_running(command.experiment_id)
+        if claimed is None:
+            current = await self._experiments.get_by_id(command.experiment_id)
+            if current is None:
+                raise ExperimentNotFoundError(command.experiment_id)
+            raise ExperimentAlreadyRunningError(command.experiment_id)
+        experiment = claimed
 
         return StartEvaluateResult(
             experiment=experiment,
@@ -294,7 +300,13 @@ class StartEvaluateExperiment:
             if entity.is_client:
                 raise ClientEvaluatorNotRunnableError(entity.id)
 
-        experiment = await self._experiments.update(experiment.with_status("running"))
+        claimed = await self._experiments.try_mark_running(command.experiment_id)
+        if claimed is None:
+            current = await self._experiments.get_by_id(command.experiment_id)
+            if current is None:
+                raise ExperimentNotFoundError(command.experiment_id)
+            raise ExperimentAlreadyRunningError(command.experiment_id)
+        experiment = claimed
         return StartEvaluateResult(
             experiment=experiment,
             command=EvaluateExperimentCommand(

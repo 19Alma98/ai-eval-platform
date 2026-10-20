@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import asyncio
+
 import pytest
 from httpx2 import AsyncClient
 
@@ -127,6 +129,53 @@ async def test_otlp_persist_and_get(client: AsyncClient) -> None:
     kinds2 = {s["kind"] for s in spans2}
     assert kinds2 == {"CHAIN", "LLM", "TOOL"}
     assert detail2.json()["status"] == "error"
+
+
+@pytest.mark.asyncio
+async def test_otlp_concurrent_first_batches_merge(client: AsyncClient) -> None:
+    create_project = await client.post("/api/v1/projects", json={"name": "Trace Race"})
+    assert create_project.status_code == 201
+    project_id = create_project.json()["id"]
+    headers = {"X-Project-Id": project_id}
+    trace_id = "ee" * 16
+    span_ids = [f"{i:016x}" for i in range(1, 7)]
+
+    async def post_span(span_id: str) -> int:
+        payload = {
+            "resourceSpans": [
+                {
+                    "scopeSpans": [
+                        {
+                            "spans": [
+                                {
+                                    "traceId": trace_id,
+                                    "spanId": span_id,
+                                    "name": f"span-{span_id}",
+                                    "startTimeUnixNano": "1700000000000000000",
+                                    "endTimeUnixNano": "1700000001000000000",
+                                    "status": {"code": "STATUS_CODE_OK"},
+                                    "attributes": [
+                                        {
+                                            "key": "openinference.span.kind",
+                                            "value": {"stringValue": "CHAIN"},
+                                        }
+                                    ],
+                                }
+                            ]
+                        }
+                    ]
+                }
+            ]
+        }
+        response = await client.post("/v1/traces", json=payload, headers=headers)
+        return response.status_code
+
+    statuses = await asyncio.gather(*(post_span(sid) for sid in span_ids))
+    assert statuses == [200] * len(span_ids), statuses
+
+    detail = await client.get(f"/api/v1/projects/{project_id}/traces/{trace_id}")
+    assert detail.status_code == 200
+    assert {s["span_id"] for s in detail.json()["spans"]} == set(span_ids)
 
 
 @pytest.mark.asyncio

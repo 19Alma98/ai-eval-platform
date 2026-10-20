@@ -200,7 +200,7 @@ async def submit_live_interaction(
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 
-    if result.created or result.interaction.judge_status == "pending":
+    if result.created and result.interaction.judge_status == "pending":
         background_tasks.add_task(schedule_live_score, result.interaction.id)
 
     payload = _interaction_response(result.interaction).model_dump(mode="json")

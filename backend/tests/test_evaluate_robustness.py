@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import uuid
 from collections.abc import AsyncIterator
 from dataclasses import dataclass, field
@@ -62,6 +63,14 @@ class FakeExperimentRepository:
     async def update(self, experiment: Experiment) -> Experiment:
         self.experiments[experiment.id] = experiment
         return experiment
+
+    async def try_mark_running(self, experiment_id: uuid.UUID) -> Experiment | None:
+        exp = self.experiments.get(experiment_id)
+        if exp is None or exp.status == "running":
+            return None
+        updated = exp.with_status("running")
+        self.experiments[experiment_id] = updated
+        return updated
 
 
 @dataclass
@@ -295,3 +304,87 @@ async def test_evaluate_pack_409_when_already_running(
 
     second = await client.post(f"/api/v1/experiments/{experiment_id}/evaluate-pack")
     assert second.status_code == 409, second.text
+
+
+@pytest.mark.asyncio
+async def test_evaluate_load_inputs_failure_after_start_marks_failed(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Background path (mark_running=False) must not leave experiment stuck running."""
+    project_id = uuid.uuid4()
+    dataset_id = uuid.uuid4()
+    experiment = Experiment.create(project_id, "exp", dataset_id, model_config={}, status="running")
+    item = DatasetItem.create(dataset_id, input="q", expected_output="a", actual_output="a")
+    evaluator = Evaluator.create(project_id, "exact", "deterministic", {"kind": "exact_match"})
+    experiments = FakeExperimentRepository(experiments={experiment.id: experiment})
+
+    async def boom_inputs(*_args: object, **_kwargs: object) -> object:
+        raise RuntimeError("inputs boom")
+
+    monkeypatch.setattr(
+        "opengrade_server.application.evaluate.load_scoring_inputs",
+        boom_inputs,
+    )
+    use_case = EvaluateExperiment(
+        experiments,  # type: ignore[arg-type]
+        FakeDatasetRepository(items={item.id: item}),  # type: ignore[arg-type]
+        FakeEvaluatorRepository(evaluators={evaluator.id: evaluator}),  # type: ignore[arg-type]
+        FakeEvaluationRunRepository(),  # type: ignore[arg-type]
+        BoomRunner(),  # type: ignore[arg-type]
+        FakeExperimentItemOutputRepository(),  # type: ignore[arg-type]
+    )
+    with pytest.raises(RuntimeError, match="inputs boom"):
+        await use_case.execute(
+            EvaluateExperimentCommand(experiment.id, [evaluator.id], mark_running=False)
+        )
+    assert experiments.experiments[experiment.id].status == "failed"
+
+
+@pytest.mark.asyncio
+async def test_try_mark_running_only_one_wins() -> None:
+    project_id = uuid.uuid4()
+    dataset_id = uuid.uuid4()
+    experiment = Experiment.create(project_id, "exp", dataset_id, model_config={})
+    experiments = FakeExperimentRepository(experiments={experiment.id: experiment})
+
+    results = await asyncio.gather(*(experiments.try_mark_running(experiment.id) for _ in range(5)))
+    winners = [r for r in results if r is not None]
+    assert len(winners) == 1
+    assert experiments.experiments[experiment.id].status == "running"
+
+
+@pytest.mark.asyncio
+async def test_concurrent_evaluate_pack_only_one_starts(
+    robustness_client: tuple[AsyncClient, InMemoryExperimentRepository],
+) -> None:
+    client, _experiments = robustness_client
+    project = await client.post("/api/v1/projects", json={"name": "Concurrent"})
+    project_id = project.json()["id"]
+    await client.post(f"/api/v1/projects/{project_id}/metrics-pack/ensure")
+    dataset = await client.post(
+        f"/api/v1/projects/{project_id}/datasets",
+        json={"name": "ds", "task_type": "rag_qa"},
+    )
+    dataset_id = dataset.json()["id"]
+    await client.post(
+        f"/api/v1/datasets/{dataset_id}/items",
+        json={
+            "input": "q",
+            "expected_output": "a",
+            "actual_output": "a",
+            "context": {"retrieved_doc_ids": ["d"]},
+            "metadata": {"expected_doc_ids": ["d"]},
+        },
+    )
+    experiment = await client.post(
+        f"/api/v1/projects/{project_id}/experiments",
+        json={"name": "e", "dataset_id": dataset_id},
+    )
+    experiment_id = experiment.json()["id"]
+
+    responses = await asyncio.gather(
+        *(client.post(f"/api/v1/experiments/{experiment_id}/evaluate-pack") for _ in range(3))
+    )
+    codes = [r.status_code for r in responses]
+    assert codes.count(202) == 1, codes
+    assert codes.count(409) == 2, codes

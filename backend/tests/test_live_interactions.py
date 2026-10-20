@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import uuid
 from dataclasses import replace
 from datetime import UTC, datetime, timedelta
@@ -82,6 +83,21 @@ class InMemoryLiveRepository:
     async def update(self, interaction: LiveInteraction) -> LiveInteraction:
         self._items[interaction.id] = interaction
         return interaction
+
+    async def try_claim_for_scoring(self, interaction_id: uuid.UUID) -> LiveInteraction | None:
+        interaction = self._items.get(interaction_id)
+        if interaction is None or interaction.judge_status not in ("pending", "scored", "error"):
+            return None
+        updated = interaction.with_status(
+            "running",
+            error_message=None,
+            score_warning=None,
+        )
+        self._items[interaction_id] = updated
+        return updated
+
+    async def rollback(self) -> None:
+        return None
 
     async def get_by_id(self, interaction_id: uuid.UUID) -> LiveInteraction | None:
         return self._items.get(interaction_id)
@@ -598,6 +614,101 @@ async def _score_with(llm: object, entries: tuple[MetricsSetEntry, ...]):
     scores = {s.kind: s for s in await live.list_scores(scored.id)}
     clear_registry()
     return scored, scores, live, scorer
+
+
+@pytest.mark.asyncio
+async def test_concurrent_score_claims_once() -> None:
+    """While one scorer holds running, siblings must skip (not re-claim after scored)."""
+    clear_registry()
+    hold = asyncio.Event()
+    entered = asyncio.Event()
+    base = ScriptedJudgeLlm()
+
+    class HoldingLlm(ScriptedJudgeLlm):
+        async def complete(self, **kwargs: object) -> str:
+            entered.set()
+            await hold.wait()
+            return await base.complete(**kwargs)  # type: ignore[arg-type]
+
+    llm = HoldingLlm()
+    bootstrap_evaluators(llm)
+    projects = InMemoryProjectRepository()
+    live = InMemoryLiveRepository()
+    metrics = InMemoryMetricsSetRepository()
+    evaluators = InMemoryEvaluatorRepository()
+    project = Project.create("Demo", slug=f"demo-{uuid.uuid4().hex[:8]}")
+    await projects.add(project)
+    ms = await metrics.add(
+        MetricsSet.create(project.id, "live", entries=(_goldless_entry("groundedness"),))
+    )
+    create_eval = CreateEvaluator(evaluators, projects)
+    ensure = EnsureProjectDefaultMetricsSet(metrics, evaluators, projects, create_eval)
+    submitted = await SubmitLiveInteraction(projects, live, metrics).execute(
+        SubmitLiveInteractionCommand(
+            project_id=project.id,
+            question="q",
+            answer="a",
+            documents=[{"id": "d", "text": "t"}],
+            metrics_set_id=ms.id,
+        )
+    )
+    scorer = ScoreLiveInteraction(live, metrics, evaluators, create_eval, ensure)
+    tasks = [asyncio.create_task(scorer.execute(submitted.interaction.id)) for _ in range(3)]
+    await entered.wait()
+    # Winner is inside the judge; let the other two attempt claim and lose.
+    await asyncio.sleep(0)
+    hold.set()
+    results = await asyncio.gather(*tasks)
+    clear_registry()
+    assert sum(1 for r in results if r.judge_status == "scored") == 1
+    assert sum(1 for r in results if r.judge_status == "running") == 2
+    assert len(base.calls) > 0
+    assert len(await live.list_scores(submitted.interaction.id)) >= 1
+
+
+@pytest.mark.asyncio
+async def test_score_failure_rolls_back_and_marks_error() -> None:
+    class TrackingLive(InMemoryLiveRepository):
+        def __init__(self) -> None:
+            super().__init__()
+            self.rollbacks = 0
+
+        async def rollback(self) -> None:
+            self.rollbacks += 1
+
+    clear_registry()
+    bootstrap_evaluators(FakeLlm())
+    projects = InMemoryProjectRepository()
+    live = TrackingLive()
+    metrics = InMemoryMetricsSetRepository()
+    evaluators = InMemoryEvaluatorRepository()
+    project = Project.create("Demo", slug=f"demo-{uuid.uuid4().hex[:8]}")
+    await projects.add(project)
+    create_eval = CreateEvaluator(evaluators, projects)
+
+    class BoomEnsure(EnsureProjectDefaultMetricsSet):
+        async def execute(self, project_id: uuid.UUID) -> MetricsSet:  # type: ignore[override]
+            raise RuntimeError("metrics boom")
+
+    submitted = await SubmitLiveInteraction(projects, live, metrics).execute(
+        SubmitLiveInteractionCommand(
+            project_id=project.id,
+            question="q",
+            answer="a",
+            documents=[{"id": "d", "text": "t"}],
+        )
+    )
+    scored = await ScoreLiveInteraction(
+        live,
+        metrics,
+        evaluators,
+        create_eval,
+        BoomEnsure(metrics, evaluators, projects, create_eval),
+    ).execute(submitted.interaction.id)
+    clear_registry()
+    assert scored.judge_status == "error"
+    assert live.rollbacks == 1
+    assert "metrics boom" in (scored.error_message or "")
 
 
 @pytest.mark.asyncio

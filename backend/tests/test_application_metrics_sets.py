@@ -74,6 +74,14 @@ class InMemoryExperimentRepository:
         self.experiments[experiment.id] = experiment
         return experiment
 
+    async def try_mark_running(self, experiment_id: uuid.UUID) -> Experiment | None:
+        exp = self.experiments.get(experiment_id)
+        if exp is None or exp.status == "running":
+            return None
+        updated = exp.with_status("running")
+        self.experiments[experiment_id] = updated
+        return updated
+
     async def count_by_metrics_set_id(self, metrics_set_id: uuid.UUID) -> int:
         return sum(1 for e in self.experiments.values() if e.metrics_set_id == metrics_set_id)
 

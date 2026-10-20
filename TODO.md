@@ -105,7 +105,7 @@ Priority: **P0** blocks a public release, **P1** fix before promoting it, **P2**
 
 ### Backend — P0
 
-- [ ] **Trace upsert not atomic** (`repositories.py:163-285`, `errors.py:77`). Concurrent first
+- [x] **Trace upsert not atomic** (`repositories.py:163-285`, `errors.py:77`). Concurrent first
   batches for a new trace collide on `uq_traces_project_trace_id` → 409 (6 posts: 5×409 SQLite,
   4×409 Postgres); OTLP exporters don't retry 409 → spans lost. Fix: `INSERT … ON CONFLICT DO
   NOTHING` then reload/merge, or retry on IntegrityError. (confirmed both DBs)
@@ -114,15 +114,15 @@ Priority: **P0** blocks a public release, **P1** fix before promoting it, **P2**
   (confirmed pg)
 - [x] **NUL bytes** (`\x00` in OTLP span name/attrs, `\u0000` in JSON API, e.g. dataset name) → 500 on
   Postgres. Fix: strip/replace at OTLP decode, reject (422) in the JSON guard middleware. (confirmed pg)
-- [ ] **Experiment stuck in `running`** (`application/evaluate.py:98-115`): `load_scoring_inputs` and
+- [x] **Experiment stuck in `running`** (`application/evaluate.py:98-115`): `load_scoring_inputs` and
   evaluator lookup run outside the try/except after Start marked it running; any exception → every
   retry 409 until restart. Fix: move inside `try`. Same pattern in `live_interactions.py:398-408`:
   `replace_scores` on a failed session → PendingRollbackError, interaction stays `running`; fix with
   `session.rollback()` first. (confirmed / code)
-- [ ] **Concurrent `POST /evaluate` all start** (`evaluate.py:213-251,283-297`): read-then-write
+- [x] **Concurrent `POST /evaluate` all start** (`evaluate.py:213-251,283-297`): read-then-write
   guard → 3 calls = 3 scorings, 3 runs, 3× LLM cost. Fix: atomic `UPDATE … SET status='running' WHERE
   id=:id AND status<>'running'`, rowcount 0 → 409. (confirmed both)
-- [ ] **Live scoring not claimed** (`routes/live_interactions.py:203`, `live_interactions.py:274`,
+- [x] **Live scoring not claimed** (`routes/live_interactions.py:203`, `live_interactions.py:274`,
   `repositories.py:1471`): resubmit with same `external_id` while pending, rescore, or startup requeue
   schedules another scoring → 3 submits = 6 judge calls, 2–3 scores per kind, inflated monitoring.
   Fix: atomic `pending→running` claim, skip if no row updated. (confirmed both)

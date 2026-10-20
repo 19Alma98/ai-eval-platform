@@ -32,6 +32,14 @@ class FakeExperimentRepository:
         self.experiments[experiment.id] = experiment
         return experiment
 
+    async def try_mark_running(self, experiment_id: uuid.UUID) -> Experiment | None:
+        exp = self.experiments.get(experiment_id)
+        if exp is None or exp.status == "running":
+            return None
+        updated = exp.with_status("running")
+        self.experiments[experiment_id] = updated
+        return updated
+
 
 @dataclass
 class FakeDatasetRepository:
