@@ -1,9 +1,10 @@
 import asyncio
+import zlib
 from collections.abc import AsyncGenerator
 from pathlib import Path
 
 from alembic.config import Config
-from sqlalchemy import event, inspect, text
+from sqlalchemy import create_engine, event, inspect, text
 from sqlalchemy.engine import Connection
 from sqlalchemy.ext.asyncio import (
     AsyncEngine,
@@ -11,15 +12,21 @@ from sqlalchemy.ext.asyncio import (
     async_sessionmaker,
     create_async_engine,
 )
-from sqlalchemy.pool import StaticPool
+from sqlalchemy.pool import NullPool, StaticPool
 
 from opengrade_server.config import DEFAULT_SQLITE_URL, Settings, get_settings
 
 _engine: AsyncEngine | None = None
 _session_factory: async_sessionmaker[AsyncSession] | None = None
 
+# Session-level lock so concurrent replicas serialize Alembic upgrades.
+MIGRATION_ADVISORY_LOCK_KEY = zlib.crc32(b"opengrade_migrations")
+SQLITE_BUSY_TIMEOUT_MS = 5000
+
 __all__ = [
     "DEFAULT_SQLITE_URL",
+    "MIGRATION_ADVISORY_LOCK_KEY",
+    "SQLITE_BUSY_TIMEOUT_MS",
     "bootstrap_schema",
     "dispose_db",
     "ensure_sqlite_parent_dir",
@@ -27,12 +34,17 @@ __all__ = [
     "get_session_factory",
     "init_db",
     "is_sqlite_url",
+    "run_migrations",
     "try_get_session_factory",
 ]
 
 
 def is_sqlite_url(url: str) -> bool:
     return url.startswith("sqlite:") or url.startswith("sqlite+")
+
+
+def _is_memory_sqlite_url(url: str) -> bool:
+    return is_sqlite_url(url) and ":memory:" in url
 
 
 def ensure_sqlite_parent_dir(url: str) -> None:
@@ -50,6 +62,15 @@ def ensure_sqlite_parent_dir(url: str) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
 
 
+def _configure_sqlite_connection(dbapi_connection: object, *, file_backed: bool) -> None:
+    cursor = dbapi_connection.cursor()  # type: ignore[attr-defined]
+    cursor.execute("PRAGMA foreign_keys=ON")
+    if file_backed:
+        cursor.execute("PRAGMA journal_mode=WAL")
+        cursor.execute(f"PRAGMA busy_timeout={SQLITE_BUSY_TIMEOUT_MS}")
+    cursor.close()
+
+
 def init_db(settings: Settings | None = None) -> async_sessionmaker[AsyncSession]:
     global _engine, _session_factory
     if _engine is not None:
@@ -59,8 +80,10 @@ def init_db(settings: Settings | None = None) -> async_sessionmaker[AsyncSession
     ensure_sqlite_parent_dir(url)
 
     kwargs: dict[str, object] = {"pool_pre_ping": True}
+    file_backed_sqlite = False
     if is_sqlite_url(url):
-        if ":memory:" in url:
+        file_backed_sqlite = not _is_memory_sqlite_url(url)
+        if _is_memory_sqlite_url(url):
             kwargs["connect_args"] = {"check_same_thread": False}
             kwargs["poolclass"] = StaticPool
         else:
@@ -72,9 +95,7 @@ def init_db(settings: Settings | None = None) -> async_sessionmaker[AsyncSession
 
         @event.listens_for(_engine.sync_engine, "connect")
         def _sqlite_on_connect(dbapi_connection: object, _connection_record: object) -> None:
-            cursor = dbapi_connection.cursor()  # type: ignore[attr-defined]
-            cursor.execute("PRAGMA foreign_keys=ON")
-            cursor.close()
+            _configure_sqlite_connection(dbapi_connection, file_backed=file_backed_sqlite)
 
     _session_factory = async_sessionmaker(_engine, expire_on_commit=False)
     return _session_factory
@@ -111,6 +132,64 @@ def _migrate_sqlite(connection: Connection) -> None:
         command.stamp(cfg, "head")
     cfg.attributes["connection"] = connection
     command.upgrade(cfg, "head")
+
+
+def _upgrade_alembic_on_connection(connection: Connection) -> None:
+    from alembic import command
+
+    cfg = _alembic_config()
+    cfg.attributes["connection"] = connection
+    command.upgrade(cfg, "head")
+
+
+def _postgres_locked_upgrade(connection: Connection) -> None:
+    """Hold a session advisory lock for the whole Alembic upgrade."""
+    connection.execute(
+        text("SELECT pg_advisory_lock(:key)"),
+        {"key": MIGRATION_ADVISORY_LOCK_KEY},
+    )
+    connection.commit()
+    try:
+        _upgrade_alembic_on_connection(connection)
+        connection.commit()
+    finally:
+        connection.execute(
+            text("SELECT pg_advisory_unlock(:key)"),
+            {"key": MIGRATION_ADVISORY_LOCK_KEY},
+        )
+        connection.commit()
+
+
+def _sync_sqlite_url(url: str) -> str:
+    if url.startswith("sqlite+aiosqlite:"):
+        return "sqlite:" + url.removeprefix("sqlite+aiosqlite:")
+    return url
+
+
+async def _run_postgres_migrations(url: str) -> None:
+    engine = create_async_engine(url, poolclass=NullPool)
+    try:
+        async with engine.connect() as conn:
+            await conn.run_sync(_postgres_locked_upgrade)
+    finally:
+        await engine.dispose()
+
+
+def run_migrations(settings: Settings | None = None) -> None:
+    """Apply Alembic upgrades. Postgres path serializes via advisory lock."""
+    cfg = settings or get_settings()
+    url = cfg.database_url
+    if is_sqlite_url(url):
+        ensure_sqlite_parent_dir(url)
+        engine = create_engine(_sync_sqlite_url(url))
+        try:
+            with engine.connect() as conn:
+                _migrate_sqlite(conn)
+                conn.commit()
+        finally:
+            engine.dispose()
+        return
+    asyncio.run(_run_postgres_migrations(url))
 
 
 async def bootstrap_schema() -> None:

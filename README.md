@@ -17,7 +17,7 @@ pip install 'opengrade-ai[ui]'   # SDK + opengrade-ai-server (includes UI)
 opengrade ui                       # http://127.0.0.1:8000  → creates ./opengrade.db
 ```
 
-From a fresh clone (Node.js >= 22 required for the UI build): `python scripts/package_ui.py`, then install/sync the backend and run `opengrade ui`. The CLI fails if port 8000 is already in use (e.g. Docker); pass `--port` or stop the other process. It loads `.env` from the current working directory when present and prints judge / content-capture settings at startup.
+From a fresh clone (Node.js >= 22 required for the UI build): `python scripts/package_ui.py`, then install/sync the backend and run `opengrade ui`. The CLI fails if port 8000 is already in use (e.g. Docker); pass `--port` or stop the other process. It loads `.env` from the current working directory when present and prints judge / content-capture settings at startup. Schema upgrades run automatically via Alembic; see [`backend/README.md`](backend/README.md) for SQLite backup notes (WAL).
 
 Optional Postgres (production / Compose):
 
@@ -31,7 +31,7 @@ opengrade ui --backend-store-uri 'postgresql+asyncpg://opengrade:opengrade@local
 docker compose up --build
 ```
 
-UI and API: http://localhost:8000 — one image serves both (the same static UI that `opengrade ui` ships). For UI development run `npm run dev` in `frontend/` (http://localhost:3000, proxies `/api` to `API_ORIGIN`).
+UI and API: http://127.0.0.1:8000 — one image serves both (the same static UI that `opengrade ui` ships). Compose publishes the API and Postgres (`127.0.0.1:5434`) on localhost only; change the port mappings to `"8000:8000"` / `"5434:5432"` if you intentionally need LAN access. For UI development run `npm run dev` in `frontend/` (http://localhost:3000, proxies `/api` to `API_ORIGIN`).
 
 Check health:
 

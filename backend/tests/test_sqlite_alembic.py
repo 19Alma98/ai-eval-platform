@@ -9,7 +9,12 @@ import pytest
 from sqlalchemy import create_engine, inspect, text
 
 from opengrade_server.config import get_settings
-from opengrade_server.infrastructure.db import bootstrap_schema, dispose_db, init_db
+from opengrade_server.infrastructure.db import (
+    SQLITE_BUSY_TIMEOUT_MS,
+    bootstrap_schema,
+    dispose_db,
+    init_db,
+)
 from opengrade_server.infrastructure.models import Base
 
 
@@ -38,6 +43,29 @@ async def test_bootstrap_applies_alembic_on_fresh_sqlite(
         assert "ix_experiments_app_config_id" in exp_indexes
     finally:
         sync.dispose()
+        await dispose_db()
+        if previous is None:
+            os.environ.pop("DATABASE_URL", None)
+        else:
+            os.environ["DATABASE_URL"] = previous
+        get_settings.cache_clear()
+
+
+@pytest.mark.asyncio
+async def test_file_sqlite_enables_wal_and_busy_timeout(tmp_path: Path) -> None:
+    db_path = tmp_path / "wal.db"
+    previous = os.environ.get("DATABASE_URL")
+    os.environ["DATABASE_URL"] = f"sqlite+aiosqlite:///{db_path}"
+    get_settings.cache_clear()
+    await dispose_db()
+    factory = init_db(get_settings())
+    try:
+        async with factory() as session:
+            journal = (await session.execute(text("PRAGMA journal_mode"))).scalar()
+            busy = (await session.execute(text("PRAGMA busy_timeout"))).scalar()
+        assert str(journal).lower() == "wal"
+        assert int(busy) == SQLITE_BUSY_TIMEOUT_MS
+    finally:
         await dispose_db()
         if previous is None:
             os.environ.pop("DATABASE_URL", None)

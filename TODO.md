@@ -172,16 +172,19 @@ Priority: **P0** blocks a public release, **P1** fix before promoting it, **P2**
 
 - [ ] Multi-replica unsafe: startup recovery on one replica fails/requeues other replicas' running
   work. Needs leases or leader election (ties into "Pluggable job queue").
-- [ ] `docker-entrypoint.sh` runs `alembic upgrade head` on every replica with no advisory lock.
+- [x] `docker-entrypoint.sh` runs `alembic upgrade head` on every replica with no advisory lock.
+  → `python -m opengrade_server.migrate` / `run_migrations()` with Postgres `pg_advisory_lock`.
 - [ ] Single uvicorn worker; no `--proxy-headers`/`--forwarded-allow-ips`; no graceful drain of
   running scorings.
-- [ ] Compose publishes API on `0.0.0.0:8000` (no auth) and Postgres on `0.0.0.0:5434` with default
+- [x] Compose publishes API on `0.0.0.0:8000` (no auth) and Postgres on `0.0.0.0:5434` with default
   password `opengrade`. Bind to 127.0.0.1 by default.
+  → Compose ports bound to `127.0.0.1` (password still local default).
 - [ ] No server observability: no `/metrics`, no self-instrumentation, no request/job IDs in logs;
   `/health` doesn't check the DB (no readiness probe).
 - [ ] No ingest backpressure: no rate limit / concurrency cap on `/v1/traces`, never 429/503 so
   exporters can't back off.
-- [ ] SQLite mode: no WAL / `busy_timeout`, no backup/upgrade story.
+- [x] SQLite mode: no WAL / `busy_timeout`, no backup/upgrade story.
+  → WAL + `busy_timeout=5000` on file DBs; backup/upgrade notes in backend README.
 
 ### Frontend — P1
 
