@@ -127,7 +127,7 @@ Priority: **P0** blocks a public release, **P1** fix before promoting it, **P2**
   schedules another scoring → 3 submits = 6 judge calls, 2–3 scores per kind, inflated monitoring.
   Fix: atomic `pending→running` claim, skip if no row updated. (confirmed both)
 - [x] **`select_latest_runs` ignores run status** (`regression/aggregate.py:57-63`): PENDING/RUNNING or
-  interrupted ERROR run with 0 results becomes "latest" → summary `mean_score: None`, release gate
+  interrupted ERROR run with 0 results becomes "latest" → summary `mean_score: None`, quality gate
   `unavailable`, exit 1, good previous run hidden. Fix: latest terminal run with results. (confirmed both)
 
 ### Backend — P1
@@ -210,7 +210,7 @@ Priority: **P0** blocks a public release, **P1** fix before promoting it, **P2**
 - [x] **Compare row verdict uses mean only** (`features/experiments/group-metrics-by-evaluator.ts:47` vs
   `experiment-compare-view.tsx:214-215`; backend flags pass-rate changes `regression/aggregate.py:221-224`):
   banner "1 metric worse" while every row "No real change". Also UI QA: compare says "0 worse" while the
-  release gate fails the same pair with −8 pts; CI not shown. Fix: worse of mean/pass-rate verdicts, show CI.
+  quality gate fails the same pair with −8 pts; CI not shown. Fix: worse of mean/pass-rate verdicts, show CI.
   → row verdict = worse of mean/pass-rate; banner counts the same row verdicts; 95% CI shown under the deltas.
 - [x] **Monitoring threshold field** (`features/monitoring/monitoring-dashboard.tsx:151-157`): invalid/empty
   value restores the old number in the field but deletes the saved custom alarm (falls back to 20%).
@@ -278,7 +278,7 @@ Priority: **P0** blocks a public release, **P1** fix before promoting it, **P2**
 - [x] Import dialog on a locked test set doesn't say it creates a new version.
   → locked notice in the dialog, submit button reads "Import into new version".
 - [x] Compare-all: same green for two metrics, uneven decimals; side-by-side defaults to first metric
-  even when others changed; release gate rule names truncated.
+  even when others changed; quality gate rule names truncated.
   → trend chart uses the five chart hues (dashed beyond five); one precision per logged-metric column, whole
   pass-rate %; answers view opens on the first worse (else better) row verdict; release check titles wrap.
 - [x] Empty states: Traces says "No traces match these filters" instead of how to send traces; Live

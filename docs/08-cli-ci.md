@@ -21,7 +21,7 @@ Defaults to SQLite at `sqlite+aiosqlite:///./opengrade.db`. Override with `--bac
 
 Loads `.env` from the process working directory when present (Pydantic Settings) and prints judge model / API key presence / `LLM_API_BASE` / content-capture at startup. Exits with code `2` if the bind port already accepts connections (e.g. Docker on `:8000`) — stop the other process or pass `--port`.
 
-### Release gate
+### Quality gate
 
 ```text
 opengrade check --policy opengrade.yaml [--base-url URL] [--project-id ID] [--experiment-id ID] [--baseline-experiment-id ID]

@@ -192,7 +192,7 @@ export function ReleaseCheckForm({
     return (
       <EmptyState
         title="No experiments yet"
-        description="Run and score an experiment first. The release gate then checks it against your quality bar."
+        description="Run and score an experiment first. The quality gate then checks it against your quality bar."
         action={
           <Link
             href={withProjectQuery("/experiments", projectId)}
@@ -212,8 +212,8 @@ export function ReleaseCheckForm({
       <form onSubmit={handleSubmit} className="flex flex-col gap-4">
         <Step
           n={1}
-          title="Choose what to release"
-          description="The candidate is the new version. The baseline is what runs in production today."
+          title="Choose what to check"
+          description="The candidate is the new version. The baseline is the reference you compare against."
         >
           <div className="grid gap-3 sm:grid-cols-2">
             <div className="flex flex-col gap-1.5">
@@ -275,7 +275,7 @@ export function ReleaseCheckForm({
         <Step
           n={2}
           title="Set your quality bar"
-          description="The release passes only if every rule below is met. Defaults come from your project metrics."
+          description="The gate passes only if every rule below is met. Defaults come from your project metrics."
         >
           {!experimentId ? (
             <p className="text-sm text-muted-foreground">Choose a candidate experiment first.</p>
@@ -433,14 +433,14 @@ export function ReleaseCheckForm({
           disabled={releaseCheck.isPending || !experimentId || !scored}
         >
           <ShieldCheck className="size-4" />
-          {releaseCheck.isPending ? "Checking…" : "Run release check"}
+          {releaseCheck.isPending ? "Checking…" : "Run quality gate"}
         </Button>
       </form>
 
       <div className="flex flex-col gap-4">
         {releaseCheck.isError ? (
           <ErrorState
-            title="Release check failed"
+            title="Quality gate failed"
             message={formatErrorForUi(releaseCheck.error)}
             onRetry={() => releaseCheck.reset()}
           />

@@ -652,7 +652,7 @@ class ExperimentMetricRuleBody(BaseModel):
 
 
 class ReleasePolicyBody(BaseModel):
-    """Release gate policy.
+    """Quality gate policy.
 
     Named evaluator keys map to ``{min: ...}`` via extras; ``experiment_metrics``
     gates experiment-level scalars.

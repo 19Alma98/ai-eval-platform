@@ -389,7 +389,7 @@ Preconditions: both experiments exist (404); same `dataset_id` (400 on mismatch)
 
 Each item row includes `input`, `expected_output`, `baseline` / `candidate` sides (`actual_output`, `context`, `score`, `label`, `explanation`, `run_id`), per-item `delta`, and `status` (`regression` | `improved` | `unchanged` | `unavailable`). Outputs resolve from experiment item outputs with fallback to legacy dataset item fields.
 
-## Release gate
+## Quality gate
 
 ```http
 POST /projects/{project_id}/release-check

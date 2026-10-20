@@ -63,7 +63,7 @@ def select_latest_runs(
     """Latest terminal run per evaluator that has at least one result row.
 
     PENDING/RUNNING and empty interrupted ERROR runs are skipped so they do not
-    hide a previous scored run in summaries and release gates.
+    hide a previous scored run in summaries and quality gates.
     """
     latest: dict[uuid.UUID, EvaluationRun] = {}
     for run in runs:

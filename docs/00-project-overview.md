@@ -20,7 +20,7 @@ The platform combines:
 
 The primary differentiator is not generic observability. For **RAG / FAQ** evaluations, the primary workflow is **dataset-first**:
 
-Project → test set (`rag_qa` gold) → project metrics pack → SDK-bound runs → score with pack → compare / release gate.
+Project → test set (`rag_qa` gold) → project metrics pack → SDK-bound runs → score with pack → compare / quality gate.
 
 Trace-first promotion (production trace → dataset item) remains supported for other task types and debugging, but the RAG vertical product narrative starts from a fixed exam and grading rules.
 

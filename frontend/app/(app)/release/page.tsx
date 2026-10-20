@@ -20,8 +20,8 @@ function ReleasePageContent() {
   return (
     <>
       <PageIntro
-        title="Release gate"
-        glossary="Check a candidate experiment against your quality bar and your baseline before you ship."
+        title="Quality gate"
+        glossary="Check a candidate experiment against your quality bar and your baseline."
       />
       <ReleaseCheckForm
         projectId={projectId}

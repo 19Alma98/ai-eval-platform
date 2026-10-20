@@ -30,7 +30,7 @@ The console must be understandable by someone who has never read these docs:
 
 - **Plain language, one vocabulary.** UI copy is English only. Domain words are fixed:
   *Test set* (gold questions), *Experiment* (one app version run on a test set),
-  *Metrics* (what is scored + pass thresholds), *Release gate*, *Live traffic*.
+  *Metrics* (what is scored + pass thresholds), *Quality gate*, *Live traffic*.
 - **No technical identifiers on screen.** Never render UUIDs, content hashes or raw
   evaluator kinds. Metric kinds go through `lib/metrics-catalog.ts` (label, one-line
   description, category); unknown names are humanized. The only place an ID appears is
@@ -48,7 +48,7 @@ The console must be understandable by someone who has never read these docs:
 Sidebar groups (`components/app-shell.tsx`):
 
 - **Overview**
-- **Evaluate:** Test sets (`/datasets`) · Experiments (`/experiments`) · Release gate (`/release`)
+- **Evaluate:** Test sets (`/datasets`) · Experiments (`/experiments`) · Quality gate (`/release`)
 - **Monitor:** Live traffic (`/live-runs`)
 - **Configure:** Metrics (`/metrics`) · App configs (`/app-configs`)
 
@@ -61,10 +61,10 @@ Projects are managed from the project switcher (`/projects`).
 `/overview?project={id}` — single payload from `GET /projects/{project_id}/overview`
 (`range` preset `15m` | `1h` | `6h` | **24h** | `7d`).
 
-- **Getting started** — four numbered steps (test set → metrics → experiment → release),
+- **Getting started** — four numbered steps (test set → metrics → experiment → quality gate),
   shown only while one is incomplete.
 - **KPIs** — Live (questions answered, failing answers, average quality, waiting for
-  judge) and Offline (test sets, metrics, latest experiment, release gate). Failing
+  judge) and Offline (test sets, metrics, latest experiment, quality gate). Failing
   answers matches the Live "Failing" filter (judge FAIL, SDK metric FAIL, or thumbs-down);
   average quality is still the mean judge score.
 - **Needs attention** — failing live answers (same fail rule), regressions, unreliable judges.
@@ -95,7 +95,7 @@ experiments is shown as *Locked* (imports create a new version).
   metric table (baseline %, candidate %, change in points, verdict) and side-by-side
   answers for the selected metric.
 
-### Release gate
+### Quality gate
 
 Guided form: pick candidate + baseline, then a *quality bar* built from the experiment's
 metrics (defaults from the project metrics thresholds), latency budget and maximum allowed

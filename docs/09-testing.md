@@ -48,7 +48,7 @@ Playwright:
 - inspect trace
 - create dataset item
 - run experiment
-- view failed release gate
+- view failed quality gate
 
 ## Load tests
 

@@ -1,4 +1,4 @@
-# Example workflow: fail the job when an OpenGrade release gate fails.
+# Example workflow: fail the job when an OpenGrade quality gate fails.
 # This file is intentionally named *.yml.example so GitHub Actions does not run it.
 # Copy to release-gate.yml (or into a consumer repo) and adapt.
 # Requires a reachable OpenGrade API with evaluated experiment runs already available.
@@ -6,7 +6,7 @@
 # Exit codes from `opengrade check`:
 #   0 pass | 1 gate failed | 2 config error | 3 infra error
 
-name: Release gate example
+name: Quality gate example
 
 on:
   workflow_dispatch:

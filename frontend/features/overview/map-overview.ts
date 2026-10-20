@@ -148,7 +148,7 @@ export function mapOverviewToDualKpi(
         hint: "Most recent run of your app on a test set",
       },
       {
-        label: "Release gate",
+        label: "Quality gate",
         value: offline.release_ready ? "Ready to check" : "Not ready",
         href: "/release",
         hint: offline.release_ready
@@ -309,12 +309,12 @@ export function buildLoopCards(overview: ProjectOverview): LoopCard[] {
       cta: "New experiment",
     },
     {
-      title: "4. Check the release",
-      measure: "Compare against your baseline and decide if it is safe to ship.",
+      title: "4. Run the quality gate",
+      measure: "Compare against your baseline and decide if quality is good enough.",
       status: offline.release_ready ? "ready" : "empty",
       summary: offline.release_ready ? "Ready to check" : "Needs a finished experiment",
       href: "/release",
-      cta: "Open release gate",
+      cta: "Open quality gate",
     },
   ];
 }

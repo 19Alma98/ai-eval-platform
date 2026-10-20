@@ -60,9 +60,9 @@ const NAV: { section: string | null; items: NavItem[] }[] = [
       },
       {
         href: "/release",
-        label: "Release gate",
+        label: "Quality gate",
         icon: ShieldCheck,
-        hint: "Decide if a version is good enough to ship",
+        hint: "Decide if a version meets your quality bar",
       },
     ],
   },

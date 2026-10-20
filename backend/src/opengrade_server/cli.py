@@ -297,7 +297,7 @@ def check(
 
 
 def _print_checks(body: dict[str, Any]) -> None:
-    table = Table(title="Release gate checks")
+    table = Table(title="Quality gate checks")
     table.add_column("Metric")
     table.add_column("Actual")
     table.add_column("Threshold")

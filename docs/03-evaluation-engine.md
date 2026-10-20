@@ -147,7 +147,7 @@ Every step parses tolerantly (code fences, JSON wrapped in prose) and validates 
 ### Minimum judge model
 
 - **Dev / smoke / local Ollama:** `ollama/gemma4:e2b` is a workable minimum for `claims` judges: it discriminates good vs wrong_fact vs hallucination on the HR sanity suite, with format repair covering most schema glitches.
-- **Release gates / CI / production scoring:** prefer a stronger chat model that reliably emits structured JSON, or set `method: rubric` on groundedness/correctness/context_* for small models. There is no silent fallback from `claims` to `rubric`.
+- **Quality gates / CI / production scoring:** prefer a stronger chat model that reliably emits structured JSON, or set `method: rubric` on groundedness/correctness/context_* for small models. There is no silent fallback from `claims` to `rubric`.
 - Verify a candidate judge with `scripts/judge_sanity.py` (and optionally `scripts/judge_smoke.py`) using the same `LLM_MODEL` / `LLM_API_BASE` as the API.
 
 ### Unsuitable-model warning

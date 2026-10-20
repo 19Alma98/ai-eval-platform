@@ -47,7 +47,7 @@ Deliver:
 - aggregate metrics
 - result visualization
 
-## Phase 4 — release gates
+## Phase 4 — quality gates
 
 Deliver:
 - YAML policy

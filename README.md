@@ -44,7 +44,7 @@ Behind a reverse proxy, set `FORWARDED_ALLOW_IPS`. OTLP ingest may return `429`/
 
 ### Portfolio demo (People Ops assistant + Ollama)
 
-Dataset-first RAG loop: gold test set → metrics pack → `opengrade.evaluate` experiment per model (traces bound per item, outputs uploaded, pack scored) → compare → release gate. Compares two local models (`OLLAMA_MODEL1` vs `OLLAMA_MODEL2`) on the same test set and pipeline.
+Dataset-first RAG loop: gold test set → metrics pack → `opengrade.evaluate` experiment per model (traces bound per item, outputs uploaded, pack scored) → compare → quality gate. Compares two local models (`OLLAMA_MODEL1` vs `OLLAMA_MODEL2`) on the same test set and pipeline.
 
 1. `docker compose up --build`
 2. Pull two chat models, e.g. `ollama pull gemma4:e2b` and `ollama pull tinyllama`
@@ -109,7 +109,7 @@ After OTLP ingest, fetch one trace (e.g. for Run timeline binding):
 curl "http://localhost:8000/api/v1/projects/<project-uuid>/traces/<otel-trace-id-hex>"
 ```
 
-## Release gate (Phase 4)
+## Quality gate (Phase 4)
 
 After evaluating an experiment, check a YAML policy:
 

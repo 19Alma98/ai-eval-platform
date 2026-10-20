@@ -3,7 +3,7 @@ import { test, expect } from "@playwright/test";
 
 const API = process.env.API_ORIGIN ?? "http://localhost:8000";
 
-test("overview, live traffic and release gate render", async ({ page, request }) => {
+test("overview, live traffic and quality gate render", async ({ page, request }) => {
   const proj = await request.post(`${API}/api/v1/projects`, {
     data: { name: "E2E", slug: `e2e-${Date.now()}` },
   });
@@ -26,7 +26,7 @@ test("overview, live traffic and release gate render", async ({ page, request })
   await expect(page.getByRole("heading", { name: "Live traffic" })).toBeVisible();
 
   await page.goto(`/release?project=${id}`);
-  await expect(page.getByRole("heading", { name: "Release gate" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Quality gate" })).toBeVisible();
   await expect(page.getByRole("link", { name: "Go to Experiments" })).toBeVisible();
   await expect(page.getByLabel("Rules (YAML)")).toHaveCount(0);
 });

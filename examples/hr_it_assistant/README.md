@@ -89,9 +89,9 @@ In the UI, open each run’s **App config snapshot** to see the frozen prompts. 
 |---|---|
 | `OLLAMA_MODEL` | Fixed model for both runs (default: `gemma4:e2b`) |
 
-## Release gate note
+## Quality gate note
 
-Unlike a scripted “always fail” demo, **`opengrade check` may exit `0` or `1`** depending on pack scores (`hit_at_k`, judges, latency) and regression vs baseline. LLM judges require a configured judge provider in the API environment; without it, release checks may report `unavailable` for those metrics. Exit codes `2`/`3` indicate config or infra errors.
+Unlike a scripted “always fail” demo, **`opengrade check` may exit `0` or `1`** depending on pack scores (`hit_at_k`, judges, latency) and regression vs baseline. LLM judges require a configured judge provider in the API environment; without it, quality gate checks may report `unavailable` for those metrics. Exit codes `2`/`3` indicate config or infra errors.
 
 ## Design
 
