@@ -1,5 +1,3 @@
-"""Acme People Ops Assistant — FAQ RAG demo via opengrade SDK + Ollama."""
-
 from __future__ import annotations
 
 import argparse
@@ -30,7 +28,7 @@ def question_from_item_input(raw: Any) -> str:
 
 
 def gold_dataset_rows() -> list[dict[str, Any]]:
-    """Gold rows from knowledge.json, shaped for ``opengrade.evaluate(dataset=...)``.
+    """Gold rows from knowledge.json, shaped for ``start_experiment(dataset=...)``.
 
     Extra keys land in item metadata (``expected_doc_ids`` for retrieval metrics,
     ``must_contain`` for the phrase check). Same rows → same dataset on every run.
@@ -74,6 +72,9 @@ def resolve_system_prompt(params: dict[str, Any] | None = None) -> str:
     return DEFAULT_SYSTEM_PROMPT
 
 
+# --- Step 2: Retriever span ---
+# @trace opens a span for this call. kind="RETRIEVER" tells the UI this is search,
+# not the LLM. capture_input=False: we set input ourselves below for a clean value.
 @opengrade.trace(
     name="people-ops-retrieve",
     kind="RETRIEVER",
@@ -83,8 +84,10 @@ def resolve_system_prompt(params: dict[str, Any] | None = None) -> str:
 def retrieve_traced(
     question: str, docs: list[dict[str, Any]], *, top_k: int = 2
 ) -> list[dict[str, Any]]:
+    # Attach the user question as the span input (shown on the trace detail page).
     opengrade.set_input(question)
     hits = retrieve(docs, question, top_k=top_k)
+    # Publish hit docs in OpenInference shape so retrieval metrics / UI can use them.
     opengrade.set_retrieval_documents(
         [
             {
@@ -96,6 +99,7 @@ def retrieve_traced(
         ]
     )
     if not hits:
+        # Mark the span as failed without raising — empty retrieval is still a result.
         opengrade.set_error("no documents")
     return hits
 
@@ -103,6 +107,8 @@ def retrieve_traced(
 def call_ollama(
     client: OpenAI, *, model: str, user_prompt: str, system_prompt: str
 ) -> str:
+    # App: OpenAI-compatible call to Ollama. With init(instrument=["openai"]), the
+    # SDK's OpenAI instrumentor adds a child LLM span under the CHAIN from Step 3.
     response = client.chat.completions.create(
         model=model,
         messages=[
@@ -113,6 +119,9 @@ def call_ollama(
     return (response.choices[0].message.content or "").strip()
 
 
+# --- Step 3: RAG chain span ---
+# Parent CHAIN span for one question. Nested work (Step 2 retriever + instrumented
+# OpenAI call) becomes child spans in the same trace.
 @opengrade.trace(
     name="people-ops-rag", kind="CHAIN", capture_input=False, capture_output=False
 )
@@ -124,10 +133,13 @@ def answer_question(
     model: str,
     system_prompt: str,
 ) -> dict[str, Any]:
+    # Span I/O for the chain (we disabled auto-capture above for a clean question/answer).
     opengrade.set_input(question)
+    # Custom attributes show up on the span; useful for filtering and debugging.
     opengrade.set_attribute("llm.model", model)
     opengrade.set_attribute("llm.system_prompt_chars", len(system_prompt))
 
+    # Child RETRIEVER span (Step 2) — nested because we call it inside this CHAIN.
     hits = retrieve_traced(question, docs, top_k=2)
     if hits:
         context = "\n\n".join(
@@ -148,6 +160,7 @@ def answer_question(
         "answer": answer,
         "model": model,
         "doc_ids": [d["id"] for d in hits],
+        # Hex trace id for this CHAIN — open the same id in the UI.
         "trace_id": opengrade.current_trace_id() or "",
     }
 
@@ -189,15 +202,20 @@ def main(argv: list[str] | None = None) -> int:
     if not (args.eval or args.all or args.question):
         parser.error("provide a question, --all, or --eval")
 
+    # --- Step 1: Connect & init ---
+    # Resolve (or create) the project, then start OTLP export + optional instrumentors.
+    # Prefer OPENGRADE_PROJECT_ID if set; otherwise set_project(slug) creates/looks up.
     project_id = os.getenv("OPENGRADE_PROJECT_ID") or opengrade.set_project(
         os.getenv("OPENGRADE_PROJECT_SLUG", "hr-it-assistant")
     ).id
+    # instrument=["openai"] auto-wraps OpenAI client calls as LLM child spans.
     opengrade.init(
         project_id=project_id,
         service_name=os.getenv("OPENGRADE_SERVICE_NAME", "hr-it-assistant"),
         instrument=["openai"],
     )
 
+    # App: load the in-process KB and the OpenAI-compatible Ollama client.
     docs = load_knowledge()
     host = os.getenv("OLLAMA_HOST", "http://localhost:11434").rstrip("/")
     client = OpenAI(
@@ -208,7 +226,11 @@ def main(argv: list[str] | None = None) -> int:
 
     try:
         if args.eval:
+            # Step 5 — experiment path (same RAG as below, plus scoring).
             return run_eval(args, docs=docs, client=client)
+
+        # --- Step 4: One question → one trace ---
+        # Each answer_question call emits a CHAIN (+ children). No experiment, no scores.
         questions = [q for q, _, _ in iter_gold(docs)] if args.all else [args.question]
         system_prompt = resolve_system_prompt()
         for question in questions:
@@ -228,6 +250,7 @@ def main(argv: list[str] | None = None) -> int:
                 print(f"A: {result['answer']}")
                 print()
     finally:
+        # Push any buffered spans to the platform before the process exits.
         opengrade.flush()
     return 0
 
@@ -235,6 +258,10 @@ def main(argv: list[str] | None = None) -> int:
 def run_eval(
     args: argparse.Namespace, *, docs: list[dict[str, Any]], client: OpenAI
 ) -> int:
+    # --- Step 5: Experiment over the gold set ---
+    # Creates/reuses a dataset, runs task() once per item, binds each trace to its
+    # item, uploads outputs (+ retrieval docs from Step 2), and scores with the
+    # project metrics pack. Use --baseline / --app-config-id for A/B compares.
     with opengrade.start_experiment(
         args.name or f"hr-it-assistant-{time.strftime('%Y%m%d-%H%M%S')}",
         dataset=args.dataset or gold_dataset_rows(),
@@ -248,6 +275,7 @@ def run_eval(
         print(f"experiment {exp.name}: {exp.url}", file=sys.stderr)
 
         def task(item: Any) -> str:
+            # Same Step 3 RAG path; the SDK links this trace to the dataset item.
             result = answer_question(
                 question_from_item_input(item.input),
                 docs=docs,
@@ -257,6 +285,7 @@ def run_eval(
             )
             return str(result["answer"])
 
+        # Runs task for every item (optionally in parallel), then finishes the run.
         exp.run_task(task, max_concurrency=args.concurrency)
 
     result = exp.result
@@ -275,6 +304,7 @@ def run_eval(
             )
         )
     else:
+        # Human-readable metric table + deep link into the UI for this run.
         print(result.summary())
         print(result.url)
     for run in result.errors:
