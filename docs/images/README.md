@@ -2,7 +2,7 @@
 
 | File | Source |
 |------|--------|
-| `hero.gif` | Manual screen recording (30–60s). See below. |
+| `hero.gif` | `scripts/capture_hero_gif.py` (Playwright video → ffmpeg GIF). Manual re-record also OK. |
 | `ui-overview.png` | `scripts/capture_docs_screenshots.py` |
 | `ui-trace-waterfall.png` | same |
 | `ui-experiment.png` | same |
@@ -32,6 +32,12 @@ uv run --directory frontend --with playwright \
 
 ## Re-record hero.gif
 
-1. Start UI + run Core (and optionally Bonus).
-2. Record 30–60s: Overview → Traces waterfall → Experiments detail.
-3. Export GIF (~800–1200px wide), replace `docs/images/hero.gif`.
+Automated (UI running, demo seeded):
+
+```bash
+cd frontend && npx playwright install chromium
+cd ..
+uv run --directory frontend --with playwright python scripts/capture_hero_gif.py
+```
+
+Manual alternative: record 30–60s Overview → Traces waterfall → Experiments detail, export GIF (~800–1200px wide), replace `docs/images/hero.gif`.
