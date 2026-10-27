@@ -54,6 +54,9 @@ export function spanCost(span: Span): string {
 const IO_KEYS = [
   "input",
   "output",
+  // OpenInference / OpenGrade SDK: every span kind (CHAIN, TOOL, RETRIEVER, LLM).
+  "input.value",
+  "output.value",
   "gen_ai.prompt",
   "gen_ai.completion",
   "gen_ai.input.messages",

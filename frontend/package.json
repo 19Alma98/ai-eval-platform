@@ -10,6 +10,7 @@
     "build": "next build --webpack",
     "lint": "eslint",
     "typecheck": "tsc --noEmit",
+    "test:e2e": "playwright test",
     "test": "node --import tsx --test \"lib/**/*.test.ts\" \"features/**/*.test.ts\" \"components/**/*.test.ts\""
   },
   "dependencies": {

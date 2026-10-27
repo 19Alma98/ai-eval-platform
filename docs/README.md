@@ -50,6 +50,7 @@ Primary RAG loop: **Project → test set → metrics pack → evaluate → compa
 11. [`10-security-privacy.md`](10-security-privacy.md)
 12. [`11-roadmap.md`](11-roadmap.md)
 13. [`12-mvp-user-stories.md`](12-mvp-user-stories.md)
+14. [`16-custom-evaluators.md`](16-custom-evaluators.md) — contributor guide: adding an evaluator
 
 Architecture decisions: [`13-adr-001.md`](13-adr-001.md), [`14-adr-002.md`](14-adr-002.md).
 

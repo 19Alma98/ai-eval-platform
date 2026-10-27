@@ -127,3 +127,59 @@ jobs:
 
       - name: Unit tests
         run: npm test
+
+  e2e:
+    # Browser smoke tests against the packaged UI served by `opengrade ui` (SQLite).
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Package UI into opengrade_server
+        run: ./scripts/package-ui.sh
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          version: "0.8.4"
+
+      - name: Set up Python
+        run: uv python install 3.12
+
+      - name: Install server
+        working-directory: backend
+        run: uv sync
+
+      - name: Install Playwright browser
+        working-directory: frontend
+        run: npx playwright install --with-deps chromium
+
+      - name: Start OpenGrade
+        working-directory: ${{ runner.temp }}
+        run: |
+          uv run --project "$GITHUB_WORKSPACE/backend" opengrade ui \
+            --backend-store-uri "sqlite+aiosqlite:///./e2e.db" > server.log 2>&1 &
+          for _ in $(seq 1 60); do
+            curl -sf http://127.0.0.1:8000/ready && exit 0
+            sleep 1
+          done
+          cat server.log
+          exit 1
+
+      - name: Playwright smoke tests
+        working-directory: frontend
+        env:
+          PLAYWRIGHT_BASE_URL: http://127.0.0.1:8000
+          API_ORIGIN: http://127.0.0.1:8000
+        run: npm run test:e2e
+
+      - name: Server log
+        if: failure()
+        run: cat "${{ runner.temp }}/server.log"

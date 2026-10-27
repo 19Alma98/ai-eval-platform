@@ -31,8 +31,9 @@ services:
       DATABASE_URL: postgresql+asyncpg://opengrade:opengrade@postgres:5432/opengrade
       APP_HOST: 0.0.0.0
       APP_PORT: "8000"
-      # Required for OTLP → dataset from-trace (portfolio demo)
-      CONTENT_CAPTURE_ENABLED: "true"
+      # Required for OTLP → dataset from-trace (portfolio demo).
+      # `CONTENT_CAPTURE_ENABLED=false docker compose up` redacts span text at ingestion.
+      CONTENT_CAPTURE_ENABLED: ${CONTENT_CAPTURE_ENABLED:-true}
     ports:
       - "127.0.0.1:8000:8000"
     depends_on:
