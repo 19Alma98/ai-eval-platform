@@ -1,4 +1,4 @@
-"""AI Evaluation & Observability Platform backend."""
+"""OpenGrade backend."""
 
 from importlib.metadata import PackageNotFoundError
 from importlib.metadata import version as _version

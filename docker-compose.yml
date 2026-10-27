@@ -21,8 +21,10 @@ services:
       context: .
       dockerfile: backend/Dockerfile
 
+    # Optional: copy backend/.env.example → backend/.env for LLM judges / overrides.
     env_file:
-      - ./backend/.env
+      - path: ./backend/.env
+        required: false
     extra_hosts:
       - "host.docker.internal:host-gateway"
     environment:

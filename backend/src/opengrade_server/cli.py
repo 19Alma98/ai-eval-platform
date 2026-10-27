@@ -45,7 +45,7 @@ console = Console()
 
 @app.callback()
 def _root() -> None:
-    """AI Evaluation & Observability Platform CLI."""
+    """OpenGrade CLI."""
 
 
 class PortInUseError(Exception):

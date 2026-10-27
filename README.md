@@ -1,6 +1,8 @@
-# AI Evaluation & Observability Platform
+# OpenGrade
 
-Open-source, self-hosted platform for AI quality engineering: turn production traces into datasets, run experiments, compare against a baseline, and fail CI on regressions.
+Self-hosted AI evaluation & observability — traces, datasets, experiments, CI gates.
+
+Open-source platform for AI quality engineering: turn production traces into datasets, run experiments, compare against a baseline, and fail CI on regressions. Packages: `opengrade-ai` (SDK) and `opengrade-ai-server` (API + UI); CLI `opengrade`.
 
 **Best fit:** RAG/FAQ, classification, structured extraction, tool calling with fixed schemas, plus latency/cost/error gates.  
 **Not a fit:** open-ended agents where “good” is subjective, or as a substitute for live APM. The platform measures what you define; it does not invent a quality oracle. Details: [`docs/00-project-overview.md`](docs/00-project-overview.md).
@@ -28,7 +30,16 @@ opengrade ui --backend-store-uri 'postgresql+asyncpg://opengrade:opengrade@local
 ## Quickstart (Docker Compose)
 
 ```bash
+cp backend/.env.example backend/.env   # optional but recommended
 docker compose up --build
+```
+Copy the example when you want LLM judges or other overrides from [`backend/.env.example`](backend/.env.example). Without a configured judge (`LLM_API_KEY` for cloud, or Ollama + `LLM_MODEL` / `LLM_API_BASE`), the UI and OTLP ingest still work; LLM-judge metrics show as unavailable until you set one.
+
+For local Ollama as judge while the API runs in Compose, uncomment in `backend/.env`:
+
+```bash
+LLM_MODEL=ollama/gemma4:e2b
+LLM_API_BASE=http://host.docker.internal:11434
 ```
 
 UI and API: http://127.0.0.1:8000 — one image serves both (the same static UI that `opengrade ui` ships). Compose publishes the API and Postgres (`127.0.0.1:5434`) on localhost only; change the port mappings to `"8000:8000"` / `"5434:5432"` if you intentionally need LAN access. For UI development run `npm run dev` in `frontend/` (http://localhost:3000, proxies `/api` to `API_ORIGIN`).
@@ -46,17 +57,17 @@ Behind a reverse proxy, set `FORWARDED_ALLOW_IPS`. OTLP ingest may return `429`/
 
 Dataset-first RAG loop: gold test set → metrics pack → `opengrade.evaluate` experiment per model (traces bound per item, outputs uploaded, pack scored) → compare → quality gate. Compares two local models (`OLLAMA_MODEL1` vs `OLLAMA_MODEL2`) on the same test set and pipeline.
 
-1. `docker compose up --build`
+1. `cp backend/.env.example backend/.env`, then `docker compose up --build`
 2. Pull two chat models, e.g. `ollama pull gemma4:e2b` and `ollama pull tinyllama`
 3. Sync SDK: `cd sdk && uv sync --extra openai && cd ..`
 4. Sync server/CLI: `cd backend && uv sync --all-extras && cd ..`
 5. Run: `python scripts/portfolio_demo.py`
 
-In the UI: **Test set → Metriche → Runs**. Release policy uses pack names: `hit_at_k`, `groundedness`, `correctness`, `latency`.
+In the UI: **Test set → Metrics → Runs**. Release policy uses pack names: `hit_at_k`, `groundedness`, `correctness`, `latency`.
 
-**AI Eval Run (prod-sim):** with API + LLM judge up, run `cd sdk && uv run python ../scripts/live_run_demo.py` then open **Live runs** in the UI (`/live-runs`).
+**Live runs (prod-sim):** with API + LLM judge up, run `cd sdk && uv run python ../scripts/live_run_demo.py` then open **Live runs** in the UI (`/live-runs`).
 
-Details: [`examples/hr_it_assistant/README.md`](examples/hr_it_assistant/README.md). RAG vertical: [`docs/superpowers/specs/2026-10-05-rag-eval-dataset-first-design.md`](docs/superpowers/specs/2026-10-05-rag-eval-dataset-first-design.md).
+Details: [`examples/hr_it_assistant/README.md`](examples/hr_it_assistant/README.md). Naming and glossary: [`docs/README.md`](docs/README.md).
 
 Create a project:
 
@@ -121,7 +132,7 @@ uv run opengrade check --policy ../examples/opengrade.yaml \
   --experiment-id <experiment-uuid>
 ```
 
-Exit codes: `0` pass, `1` gate failed, `2` config error, `3` infra error. Example workflow: [`.github/workflows/release-gate.yml.example`](.github/workflows/release-gate.yml.example). Design: [`docs/superpowers/specs/2026-10-01-phase4-release-gates-design.md`](docs/superpowers/specs/2026-10-01-phase4-release-gates-design.md).
+Exit codes: `0` pass, `1` gate failed, `2` config error, `3` infra error. Example workflow: [`.github/workflows/release-gate.yml.example`](.github/workflows/release-gate.yml.example).
 
 ## PyPI release
 

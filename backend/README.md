@@ -1,6 +1,6 @@
 # opengrade-ai-server
 
-Server package for the AI Evaluation & Observability Platform.
+OpenGrade server package (API + packaged UI).
 
 - Distribution: `opengrade-ai-server` (PyPI)
 - Import path: `opengrade_server` (e.g. `uvicorn opengrade_server.main:app`)
@@ -38,4 +38,4 @@ uv run opengrade ui --backend-store-uri 'postgresql+asyncpg://opengrade:opengrad
 - Entrypoint: `--proxy-headers`, `--forwarded-allow-ips` (`FORWARDED_ALLOW_IPS`), `--timeout-graceful-shutdown` (`SHUTDOWN_GRACE_SECONDS`).
 - OTLP `/v1/traces` may return **429** / **503** with `Retry-After` when rate, inflight, or pending-score caps are hit (`OTLP_*` in `.env.example`).
 
-See the repository root README for Docker Compose and SDK quickstart.
+See the repository root README for Docker Compose and SDK quickstart. Compose loads `backend/.env` when present (`env_file` is optional); copy from `.env.example` for LLM judges and other overrides.

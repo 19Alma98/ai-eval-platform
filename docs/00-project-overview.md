@@ -1,4 +1,4 @@
-# AI Evaluation & Observability Platform — Technical Specification
+# OpenGrade — Technical Specification
 
 ## Status
 

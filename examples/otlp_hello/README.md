@@ -1,10 +1,10 @@
 # OTLP Hello Example
 
-Tiny OpenTelemetry Python app that exports one span to the platform OTLP endpoint.
+Tiny OpenTelemetry Python app that exports one span to the OpenGrade platform OTLP endpoint (no SDK required).
 
 ## Prerequisites
 
-1. Platform running (`docker compose up --build` or local uvicorn + Postgres).
+1. Platform running from repo root: `cp backend/.env.example backend/.env` (optional), then `docker compose up --build` (or local uvicorn + Postgres).
 2. A project exists (slug `demo` by default):
 
 ```bash

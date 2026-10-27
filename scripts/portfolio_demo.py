@@ -188,7 +188,7 @@ def main(argv: list[str] | None = None) -> int:
     )
 
     print(f"\nOpen UI: http://localhost:3000  (project slug={args.project_slug})")
-    print("Flow: Test set → Metriche → Runs")
+    print("Flow: Test set → Metrics → Runs")
     print(f"API project id: {project_id}")
 
     if args.skip_check:

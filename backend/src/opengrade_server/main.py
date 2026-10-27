@@ -50,7 +50,7 @@ def create_app(*, mount_packaged_ui: bool = True) -> FastAPI:
     configure_request_id_logging()
     _ensure_evaluators_registered()
     app = FastAPI(
-        title="AI Evaluation & Observability Platform",
+        title="OpenGrade",
         version=__version__,
         lifespan=lifespan,
     )

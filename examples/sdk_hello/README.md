@@ -1,11 +1,11 @@
 # SDK hello (OpenAI-compatible → Ollama)
 
-Emits one CHAIN span (`@opengrade.trace`) and an LLM child span from
+Minimal OpenGrade SDK example: emits one CHAIN span (`@opengrade.trace`) and an LLM child span from
 `openinference-instrumentation-openai`.
 
 ## Prerequisites
 
-1. Platform: `docker compose up --build` (API on `:8000`).
+1. Platform from repo root: `cp backend/.env.example backend/.env` (optional; see root README), then `docker compose up --build` (API on `:8000`).
 2. Ollama with a chat model: `ollama pull gemma4:e2b`.
 
 ## Run
@@ -26,7 +26,7 @@ Expected UI: one trace under project **demo**, parent CHAIN + child LLM.
 
 | Symptom | Likely cause | Fix |
 |---|---|---|
-| Connection refused / timeout to `:8000` | Platform API not running | Start `docker compose up --build` from repo root; confirm `curl http://localhost:8000/health` (or your API health route) succeeds. |
+| Connection refused / timeout to `:8000` | Platform API not running | From repo root: `cp backend/.env.example backend/.env` (optional), then `docker compose up --build`; confirm `curl http://localhost:8000/health` succeeds. |
 | OTLP export errors, no traces in UI | Wrong `OPENGRADE_TRACKING_URI` | Default is local `:8000`; OTLP goes to `<uri>/v1/traces`. Project **demo** is created on first run. |
 | Empty trace list for **demo** | Export failed silently or wrong project slug | Check script env and API logs; verify `OPENGRADE_PROJECT_SLUG` is what you expect. |
 | Connection error to `:11434` | Ollama not running | Start Ollama; confirm `curl http://localhost:11434/api/tags`. |

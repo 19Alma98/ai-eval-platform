@@ -1,6 +1,6 @@
 # OpenGrade UI
 
-Next.js (App Router) frontend for the AI Evaluation & Observability Platform. Production builds are a static export served by `opengrade ui` / the server wheel from `backend/src/opengrade_server/_ui`.
+Next.js (App Router) frontend for OpenGrade. Production builds are a static export served by `opengrade ui` / the server wheel from `backend/src/opengrade_server/_ui`.
 
 **Requires Node.js >= 22.**
 

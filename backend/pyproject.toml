@@ -1,7 +1,7 @@
 [project]
 name = "opengrade-ai-server"
 dynamic = ["version", "dependencies"]
-description = "AI Evaluation & Observability Platform server (FastAPI backend)"
+description = "OpenGrade server (FastAPI API + packaged UI)"
 readme = "README.md"
 requires-python = ">=3.12"
 license = "Apache-2.0"

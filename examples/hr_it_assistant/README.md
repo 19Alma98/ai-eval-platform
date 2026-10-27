@@ -1,12 +1,12 @@
 # Acme People Ops Assistant (portfolio example)
 
-Keyword-retrieval RAG over a fictional HR/IT policy knowledge base. Calls local **Ollama** via the OpenAI-compatible API, exports OpenInference spans through the **opengrade SDK** (`set_retrieval_documents`), and runs experiments with `opengrade.start_experiment` (`--eval`). `scripts/portfolio_demo.py` builds on it to score two models with the project metrics pack and compare them on the same exam.
+End-to-end OpenGrade demo: keyword-retrieval RAG over a fictional HR/IT policy knowledge base. Calls local **Ollama** via the OpenAI-compatible API, exports OpenInference spans through the SDK (`set_retrieval_documents`), and runs experiments with `opengrade.start_experiment` (`--eval`). `scripts/portfolio_demo.py` builds on it to score two models with the project metrics pack and compare them on the same exam.
 
 Canonical gold lives in `knowledge.json` (full `expected_answer` + `must_contain` per question). `eval_import.csv` is a derived CSV of the same rows for API/UI import.
 
 ## Prerequisites
 
-1. Platform running from the repo root: `docker compose up --build` (or `opengrade ui`).
+1. Platform running from the repo root: `cp backend/.env.example backend/.env` (enable Ollama judge for Compose — see root README), then `docker compose up --build` (or `opengrade ui`).
 2. [Ollama](https://ollama.com/) running locally.
 3. Pull **two** chat models (baseline vs candidate for the portfolio script), for example:
 
@@ -83,7 +83,7 @@ What it does:
 3. Prints `experiments.compare`.
 4. Writes `examples/hr_it_assistant/opengrade.prompt-ab.yaml` and runs `opengrade check` (unless `--skip-check`).
 
-In the UI, open each run’s **App config snapshot** to see the frozen prompts. Design: [`docs/superpowers/specs/2026-10-07-prompt-ab-demo-design.md`](../../docs/superpowers/specs/2026-10-07-prompt-ab-demo-design.md).
+In the UI, open each run’s **App config snapshot** to see the frozen prompts.
 
 | Variable | Purpose |
 |---|---|
@@ -92,7 +92,3 @@ In the UI, open each run’s **App config snapshot** to see the frozen prompts. 
 ## Quality gate note
 
 Unlike a scripted “always fail” demo, **`opengrade check` may exit `0` or `1`** depending on pack scores (`hit_at_k`, judges, latency) and regression vs baseline. LLM judges require a configured judge provider in the API environment; without it, quality gate checks may report `unavailable` for those metrics. Exit codes `2`/`3` indicate config or infra errors.
-
-## Design
-
-[`docs/superpowers/specs/2026-10-02-hr-it-assistant-portfolio-design.md`](../../docs/superpowers/specs/2026-10-02-hr-it-assistant-portfolio-design.md)

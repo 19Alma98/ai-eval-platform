@@ -242,7 +242,7 @@ regression:
 
 Legacy/custom evaluator names (for example `quality` with a `contains` evaluator) remain valid when those evaluators exist on the project.
 
-## LiveInteraction (AI Eval Run)
+## LiveInteraction (Live runs)
 
 Prod-like turn submitted for gold-less review (not a DatasetItem / Experiment).
 

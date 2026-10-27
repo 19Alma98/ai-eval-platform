@@ -1,7 +1,7 @@
 [project]
 name = "opengrade-ai"
 dynamic = ["version", "optional-dependencies"]
-description = "Python SDK for AI Evaluation & Observability Platform (OTLP + OpenInference)"
+description = "OpenGrade Python SDK (OTLP + OpenInference)"
 readme = "README.md"
 requires-python = ">=3.12"
 license = "Apache-2.0"

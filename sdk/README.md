@@ -1,6 +1,6 @@
 # opengrade
 
-Python SDK for the AI Evaluation & Observability Platform: OTLP/HTTP export with optional OpenInference instrumentation, plus a control-plane `Client` for datasets, experiments, and evaluation.
+Python SDK for **OpenGrade**: OTLP/HTTP export with optional OpenInference instrumentation, plus a control-plane `Client` for datasets, experiments, and evaluation.
 
 ## Install
 

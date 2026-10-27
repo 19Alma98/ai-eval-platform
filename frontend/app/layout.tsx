@@ -10,7 +10,7 @@ import "./globals.css";
 
 export const metadata: Metadata = {
   title: "OpenGrade",
-  description: "Evaluate, compare and monitor your AI app before and after release.",
+  description: "Self-hosted AI evaluation & observability",
 };
 
 export default function RootLayout({

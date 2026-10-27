@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Simulate production → AI Eval Run (Live runs) flow.
+"""Simulate production → Live runs flow.
 
 Submits a few prod-like Q/A/document turns via ``client.live_runs.submit``,
 waits for the background gold-less judge (or triggers rescore), then prints
