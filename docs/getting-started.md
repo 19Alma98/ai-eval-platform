@@ -39,8 +39,8 @@ uv add 'opengrade-ai[ui,openai]' openai
 From this monorepo instead of PyPI (soft-launch / local wheels):
 
 ```bash
-# repo root
-python scripts/package_ui.py
+# repo root (Node/npm required for the UI bundle)
+python3 scripts/package_ui.py
 mkdir -p /tmp/opengrade-demo && cd /tmp/opengrade-demo
 uv init --bare
 uv add --editable /ABS/PATH/TO/ai_eval_platform/sdk --extra ui --extra openai
@@ -128,7 +128,8 @@ if __name__ == "__main__":
 
 Same venv and UI. Ensure the judge env above is set, then restart `opengrade ui` if you just added `.env`.
 
-From the demo project, save and run the script below. From the repo:
+- **Demo project:** save the script below as `getting_started_bonus.py`, then `uv run python getting_started_bonus.py`.
+- **From the OpenGrade repo** (with UI still reachable at `http://127.0.0.1:8000`):
 
 ```bash
 uv run --directory sdk --with openai python ../scripts/getting_started_bonus.py

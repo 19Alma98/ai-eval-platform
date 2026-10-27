@@ -107,6 +107,8 @@ def _alembic_config() -> Config:
     backend_root = Path(__file__).resolve().parents[3]
     ini_path = backend_root / "alembic.ini"
     cfg = Config(str(ini_path))
+    cfg.set_main_option("script_location", str(backend_root / "alembic"))
+    cfg.set_main_option("prepend_sys_path", str(backend_root / "src"))
     cfg.set_main_option("sqlalchemy.url", get_settings().database_url)
     return cfg
 
