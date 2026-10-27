@@ -102,13 +102,38 @@ def init_db(settings: Settings | None = None) -> async_sessionmaker[AsyncSession
     return _session_factory
 
 
+def _is_alembic_root(root: Path) -> bool:
+    return (root / "alembic.ini").is_file() and (root / "alembic").is_dir()
+
+
+def _resolve_alembic_root() -> Path:
+    """Pick the directory containing ``alembic.ini`` and ``alembic/``.
+
+    Editable installs resolve via ``__file__``; Docker copies migrations to
+    ``WORKDIR`` while the package lives in site-packages.
+    """
+    editable_root = Path(__file__).resolve().parents[3]
+    if _is_alembic_root(editable_root):
+        return editable_root
+    cwd = Path.cwd()
+    if _is_alembic_root(cwd):
+        return cwd
+    app_root = Path("/app")
+    if _is_alembic_root(app_root):
+        return app_root
+    return editable_root
+
+
 def _alembic_config() -> Config:
-    # backend/src/opengrade_server/infrastructure/db.py → backend/
-    backend_root = Path(__file__).resolve().parents[3]
+    backend_root = _resolve_alembic_root()
     ini_path = backend_root / "alembic.ini"
     cfg = Config(str(ini_path))
     cfg.set_main_option("script_location", str(backend_root / "alembic"))
-    cfg.set_main_option("prepend_sys_path", str(backend_root / "src"))
+    src_path = backend_root / "src"
+    if src_path.is_dir():
+        cfg.set_main_option("prepend_sys_path", str(src_path))
+    else:
+        cfg.set_main_option("prepend_sys_path", "")
     cfg.set_main_option("sqlalchemy.url", get_settings().database_url)
     return cfg
 
