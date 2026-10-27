@@ -23,14 +23,14 @@ export function MetricScorecard({
   const groups = groupByMetricCategory(evaluators, (row) => row.evaluator_name);
 
   return (
-    <div className="grid gap-4 lg:grid-cols-2 xl:grid-cols-3">
+    <div className="grid gap-x-8 gap-y-4 lg:grid-cols-2 xl:grid-cols-3">
       {groups.map((group) => (
         <section
           key={group.category}
           aria-label={group.label}
-          className="flex flex-col rounded-lg border border-border bg-surface"
+          className="flex flex-col border-t border-border pt-1"
         >
-          <h3 className="border-b border-border px-4 py-2.5 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+          <h3 className="px-2.5 py-2 text-[13px] font-medium text-muted-foreground">
             {group.label}
           </h3>
           <ul className="flex flex-col p-1.5">

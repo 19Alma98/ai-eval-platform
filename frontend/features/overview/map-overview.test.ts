@@ -165,7 +165,7 @@ describe("overviewWarningMessages", () => {
 describe("buildReleasePanel", () => {
   it("asks for a test set first when nothing exists", () => {
     const panel = buildReleasePanel(emptyOverview);
-    assert.equal(panel.headline, "No experiments yet");
+    assert.equal(panel.headline, "No experiments yet.");
     assert.equal(panel.tone, "neutral");
     assert.deepEqual(panel.primary, { label: "Create test set", href: "/datasets" });
   });
@@ -196,7 +196,7 @@ describe("buildReleasePanel", () => {
         regressions: [{ name: "must_contain", delta: -0.6, status: "regressed" }],
       },
     });
-    assert.equal(panel.headline, "1 metric got worse");
+    assert.equal(panel.headline, "One metric got worse.");
     assert.equal(panel.tone, "fail");
     assert.equal(panel.detail, "candidate vs its baseline: 1 better, 1 worse, 0 unchanged.");
     assert.equal(panel.primary?.href, "/experiments/c1/compare?baseline=b1");
@@ -208,7 +208,7 @@ describe("buildReleasePanel", () => {
 describe("buildLivePanel", () => {
   it("explains an empty range", () => {
     const panel = buildLivePanel(emptyOverview, "24h");
-    assert.equal(panel.headline, "No live traffic");
+    assert.equal(panel.headline, "No live traffic.");
     assert.match(panel.detail, /last 24 hours/);
   });
 
@@ -220,7 +220,7 @@ describe("buildLivePanel", () => {
       },
       "1h",
     );
-    assert.equal(panel.headline, "75% of answers failing");
+    assert.equal(panel.headline, "75% of answers are failing.");
     assert.equal(panel.tone, "fail");
     assert.equal(panel.primary?.href, "/live-runs?failed=1");
   });

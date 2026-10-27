@@ -92,6 +92,14 @@ function plural(n: number, word: string): string {
   return `${n} ${word}${n === 1 ? "" : "s"}`;
 }
 
+const SMALL_NUMBERS = ["No", "One", "Two", "Three", "Four", "Five", "Six", "Seven", "Eight", "Nine"];
+
+/** Headlines read as sentences: "Two metrics got worse." rather than "2 metrics got worse". */
+function spelledPlural(n: number, word: string): string {
+  const count = SMALL_NUMBERS[n] ?? String(n);
+  return `${count} ${word}${n === 1 ? "" : "s"}`;
+}
+
 /** "Before release": the latest experiment against its baseline. */
 export function buildReleasePanel(overview: ProjectOverview): StatusPanel {
   const { offline } = overview;
@@ -109,7 +117,7 @@ export function buildReleasePanel(overview: ProjectOverview): StatusPanel {
   if (!latest) {
     return {
       eyebrow: "Before release",
-      headline: "No experiments yet",
+      headline: "No experiments yet.",
       tone: "neutral",
       detail:
         offline.n_datasets === 0
@@ -129,7 +137,7 @@ export function buildReleasePanel(overview: ProjectOverview): StatusPanel {
   if (!compare || passRates.length === 0) {
     return {
       eyebrow: "Before release",
-      headline: "No baseline to compare",
+      headline: "No baseline to compare.",
       tone: "neutral",
       detail: `${latest.name} finished. Compare it with an earlier experiment to see what improved.`,
       stats,
@@ -151,7 +159,7 @@ export function buildReleasePanel(overview: ProjectOverview): StatusPanel {
 
   return {
     eyebrow: "Before release",
-    headline: worse > 0 ? `${plural(worse, "metric")} got worse` : "No metric got worse",
+    headline: worse > 0 ? `${spelledPlural(worse, "metric")} got worse.` : "Nothing got worse.",
     tone: worse > 0 ? "fail" : "ok",
     detail: `${latest.name} vs its baseline: ${better} better, ${worse} worse, ${
       passRates.length - better - worse
@@ -173,11 +181,11 @@ export function buildLivePanel(overview: ProjectOverview, preset: string): Statu
   if (live.n_interactions === 0) {
     return {
       eyebrow: "In production",
-      headline: "No live traffic",
+      headline: "No live traffic.",
       tone: "neutral",
       detail: `No questions in the ${range}. Send production traffic with the SDK and the judge scores every answer.`,
       stats: [{ label: "Waiting for judge", value: String(live.n_pending), href: "/live-runs" }],
-      primary: { label: "Open live traffic", href: "/live-runs" },
+      primary: { label: "Open live answers", href: "/live-runs" },
       secondary: null,
     };
   }
@@ -186,8 +194,8 @@ export function buildLivePanel(overview: ProjectOverview, preset: string): Statu
   return {
     eyebrow: "In production",
     headline: failing
-      ? `${formatPercentRate(live.fail_rate)} of answers failing`
-      : "All answers passing",
+      ? `${formatPercentRate(live.fail_rate)} of answers are failing.`
+      : "Every answer passed.",
     tone: failing ? "fail" : "ok",
     detail: failing
       ? `${live.n_failed} of ${plural(live.n_interactions, "question")} in the ${range} failed the judge, an SDK metric or got a thumbs-down.`
@@ -203,8 +211,8 @@ export function buildLivePanel(overview: ProjectOverview, preset: string): Statu
     ],
     primary: failing
       ? { label: "Review failing answers", href: "/live-runs?failed=1" }
-      : { label: "Open live traffic", href: "/live-runs" },
-    secondary: { label: "Production trends", href: "/monitoring" },
+      : { label: "Open live answers", href: "/live-runs" },
+    secondary: { label: "Production health", href: "/monitoring" },
   };
 }
 
@@ -329,7 +337,7 @@ export function buildLoopCards(overview: ProjectOverview): LoopCard[] {
 
   return [
     {
-      title: "1. Add a test set",
+      title: "Add a test set",
       measure: "Questions your app must answer well, with expected answers and source documents.",
       status: nDatasets === 0 ? "empty" : "ready",
       summary:
@@ -340,7 +348,7 @@ export function buildLoopCards(overview: ProjectOverview): LoopCard[] {
       cta: "Create test set",
     },
     {
-      title: "2. Choose metrics",
+      title: "Choose metrics",
       measure: "What “good” means: correctness, groundedness, retrieval quality and their thresholds.",
       status: metricsSet ? "ready" : "empty",
       summary: metricsSet
@@ -350,7 +358,7 @@ export function buildLoopCards(overview: ProjectOverview): LoopCard[] {
       cta: "Set up metrics",
     },
     {
-      title: "3. Run an experiment",
+      title: "Run an experiment",
       measure: "Run your app on the test set and score every answer.",
       status: latest ? "ready" : "empty",
       summary: latest ? latest.name : "No experiments yet",
@@ -358,7 +366,7 @@ export function buildLoopCards(overview: ProjectOverview): LoopCard[] {
       cta: "New experiment",
     },
     {
-      title: "4. Run the quality gate",
+      title: "Run the quality gate",
       measure: "Compare against your baseline and decide if quality is good enough.",
       status: offline.release_ready ? "ready" : "empty",
       summary: offline.release_ready ? "Ready to check" : "Needs a finished experiment",

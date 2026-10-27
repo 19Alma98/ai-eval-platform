@@ -165,7 +165,7 @@ export function OverviewDashboard() {
 
       <div
         aria-busy={loading}
-        className={cn("flex flex-col gap-6", loading && "pointer-events-none opacity-90")}
+        className={cn("flex flex-col gap-10", loading && "pointer-events-none opacity-90")}
       >
         {loadFailed ? null : loading || !projectId || !releasePanel || !livePanel ? (
           <>
@@ -182,7 +182,7 @@ export function OverviewDashboard() {
           <>
             {setupIncomplete && loopCards ? (
               <section className="flex flex-col gap-2">
-                <h2 className="text-sm font-semibold text-foreground">Getting started</h2>
+                <h2 className="font-serif text-lg font-medium text-foreground">Getting started</h2>
                 <LoopProgress projectId={projectId} cards={loopCards} />
               </section>
             ) : null}
@@ -193,7 +193,7 @@ export function OverviewDashboard() {
               live={livePanel}
             />
 
-            <div className="grid gap-4 lg:grid-cols-2">
+            <div className="grid gap-x-12 gap-y-10 lg:grid-cols-2">
               <AttentionQueue projectId={projectId} rows={attentionRows} />
               <CompareBars projectId={projectId} overview={overview} />
             </div>

@@ -219,7 +219,7 @@ export function CreateExperimentDialog({
           </DialogHeader>
           <div className="flex flex-col gap-3 py-4">
             <div className="flex flex-col gap-2">
-              <label htmlFor="experiment-create-name" className="text-sm font-medium">
+              <label htmlFor="experiment-create-name" id="experiment-create-name-label" className="text-sm font-medium">
                 Name
               </label>
               <Input
@@ -231,7 +231,7 @@ export function CreateExperimentDialog({
               />
             </div>
             <div className="flex flex-col gap-2">
-              <label htmlFor="experiment-create-dataset" className="text-sm font-medium">
+              <label htmlFor="experiment-create-dataset" id="experiment-create-dataset-label" className="text-sm font-medium">
                 Test set
               </label>
               <Select
@@ -264,7 +264,7 @@ export function CreateExperimentDialog({
               ) : null}
             </div>
             <div className="flex flex-col gap-2">
-              <label htmlFor="experiment-create-app-pick" className="text-sm font-medium">
+              <label htmlFor="experiment-create-app-pick" id="experiment-create-app-pick-label" className="text-sm font-medium">
                 App version{" "}
                 <span className="font-normal text-muted-foreground">(optional)</span>
               </label>
@@ -300,7 +300,7 @@ export function CreateExperimentDialog({
             </div>
             {appConfigPick === "alias" ? (
               <div className="flex flex-col gap-2">
-                <label htmlFor="experiment-create-alias" className="text-sm font-medium">
+                <label htmlFor="experiment-create-alias" id="experiment-create-alias-label" className="text-sm font-medium">
                   Alias
                 </label>
                 <Select
@@ -324,7 +324,7 @@ export function CreateExperimentDialog({
             {appConfigPick === "family" ? (
               <>
                 <div className="flex flex-col gap-2">
-                  <label htmlFor="experiment-create-family" className="text-sm font-medium">
+                  <label htmlFor="experiment-create-family" id="experiment-create-family-label" className="text-sm font-medium">
                     App config
                   </label>
                   <Select
@@ -350,6 +350,7 @@ export function CreateExperimentDialog({
                 <div className="flex flex-col gap-2">
                   <label
                     htmlFor="experiment-create-config-version"
+                    id="experiment-create-config-version-label"
                     className="text-sm font-medium"
                   >
                     Version
@@ -374,7 +375,7 @@ export function CreateExperimentDialog({
               </>
             ) : null}
             <div className="flex flex-col gap-2">
-              <label htmlFor="experiment-create-metrics-set" className="text-sm font-medium">
+              <label htmlFor="experiment-create-metrics-set" id="experiment-create-metrics-set-label" className="text-sm font-medium">
                 Metrics
               </label>
               <Select
@@ -402,7 +403,7 @@ export function CreateExperimentDialog({
               <div className="rounded-md border border-border px-3 py-3">
                 <div className="flex flex-col gap-3">
                   <div className="flex flex-col gap-2">
-                    <label htmlFor="experiment-create-model" className="text-sm font-medium">
+                    <label htmlFor="experiment-create-model" id="experiment-create-model-label" className="text-sm font-medium">
                       Model{" "}
                       <span className="font-normal text-muted-foreground">(optional)</span>
                     </label>
@@ -414,7 +415,7 @@ export function CreateExperimentDialog({
                     />
                   </div>
                   <div className="flex flex-col gap-2">
-                    <label htmlFor="experiment-create-version" className="text-sm font-medium">
+                    <label htmlFor="experiment-create-version" id="experiment-create-version-label" className="text-sm font-medium">
                       Version label{" "}
                       <span className="font-normal text-muted-foreground">(optional)</span>
                     </label>

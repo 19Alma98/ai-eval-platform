@@ -34,6 +34,7 @@ import { useReleaseCheck } from "./use-release";
 
 const NO_BASELINE = "__none__";
 const DEFAULT_MIN = "0.7";
+const DEFAULT_LATENCY_S = "30";
 
 type ReleaseCheckFormProps = {
   projectId: string;
@@ -53,12 +54,10 @@ function Step({
 }) {
   return (
     <section className="flex flex-col gap-3 rounded-lg border border-border bg-surface p-5">
-      <div className="flex items-start gap-3">
-        <span className="flex size-6 shrink-0 items-center justify-center rounded-full bg-primary text-xs font-semibold text-primary-foreground">
-          {n}
-        </span>
-        <div className="flex flex-col">
-          <h2 className="text-sm font-semibold text-foreground">{title}</h2>
+      <div className="flex items-baseline gap-3">
+        <span className="w-6 shrink-0 font-serif text-lg text-muted-foreground">{n}.</span>
+        <div className="flex flex-col gap-0.5">
+          <h2 className="font-serif text-lg font-medium text-foreground">{title}</h2>
           <p className="text-sm text-muted-foreground">{description}</p>
         </div>
       </div>
@@ -84,7 +83,7 @@ export function ReleaseCheckForm({
     Record<string, { enabled?: boolean; min?: string }>
   >({});
   const [latencyEnabled, setLatencyEnabled] = useState(true);
-  const [latencySeconds, setLatencySeconds] = useState("30");
+  const [latencyEdit, setLatencySeconds] = useState<string | null>(null);
   const [regressionEnabled, setRegressionEnabled] = useState(true);
   const [regressionPoints, setRegressionPoints] = useState("5");
   const [yamlMode, setYamlMode] = useState(false);
@@ -117,6 +116,13 @@ export function ReleaseCheckForm({
     }
     return map;
   }, [defaultSetQuery.data]);
+  // Same budget the latency metric scores against, so the gate and the
+  // experiment page never disagree about what "fast enough" means.
+  const latencyBudgetMs = defaultSetQuery.data?.entries.find((e) => e.kind === "latency")?.config
+    .max_ms;
+  const latencySeconds =
+    latencyEdit ??
+    (typeof latencyBudgetMs === "number" ? String(latencyBudgetMs / 1000) : DEFAULT_LATENCY_S);
 
   const metricNames = useMemo(
     () =>
@@ -227,7 +233,7 @@ export function ReleaseCheckForm({
         >
           <div className="grid gap-3 sm:grid-cols-2">
             <div className="flex flex-col gap-1.5">
-              <label htmlFor="release-experiment" className="text-xs font-medium text-muted-foreground">
+              <label htmlFor="release-experiment" id="release-experiment-label" className="text-xs font-medium text-muted-foreground">
                 Candidate experiment
               </label>
               <Select
@@ -252,7 +258,7 @@ export function ReleaseCheckForm({
               </Select>
             </div>
             <div className="flex flex-col gap-1.5">
-              <label htmlFor="release-baseline" className="text-xs font-medium text-muted-foreground">
+              <label htmlFor="release-baseline" id="release-baseline-label" className="text-xs font-medium text-muted-foreground">
                 Baseline
               </label>
               <Select
@@ -304,7 +310,7 @@ export function ReleaseCheckForm({
             </p>
           ) : yamlMode ? (
             <div className="flex flex-col gap-1.5">
-              <label htmlFor="release-policy" className="text-xs font-medium text-muted-foreground">
+              <label htmlFor="release-policy" id="release-policy-label" className="text-xs font-medium text-muted-foreground">
                 Rules (YAML)
               </label>
               <Textarea

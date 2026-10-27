@@ -9,7 +9,7 @@ import { BellRing } from "lucide-react";
 import { EmptyState } from "@/components/empty-state";
 import { ErrorState } from "@/components/error-state";
 import { LoadingBlock } from "@/components/loading-block";
-import { PageHeader } from "@/components/page-header";
+import { ProductionHeader } from "@/components/production-header";
 import { RefreshControl } from "@/components/refresh-control";
 import { TimeRangePicker } from "@/components/time-range-picker";
 import { buttonVariants } from "@/components/ui/button";
@@ -228,7 +228,7 @@ function Dashboard({
                 href={withProjectQuery("/live-runs", projectId)}
                 className={buttonVariants({ variant: "default", size: "sm" })}
               >
-                Open live traffic
+                Open live answers
               </Link>
               <Link
                 href={withProjectQuery("/traces", projectId)}
@@ -377,9 +377,8 @@ export function MonitoringDashboard({ projectId }: { projectId: string }) {
 
   return (
     <div className="flex flex-col gap-4">
-      <PageHeader
-        title="Production"
-        description="Latency, cost and answer quality of live traffic over time, with alarms and a queue of answers waiting for a human review."
+      <ProductionHeader
+        active="health"
         actions={
           <>
             <TimeRangePicker preset={preset} onPresetChange={setPreset} />
@@ -395,7 +394,6 @@ export function MonitoringDashboard({ projectId }: { projectId: string }) {
             />
           </>
         }
-        className="mb-0"
       />
       {query.isLoading ? (
         <LoadingBlock className="min-h-[320px]" />

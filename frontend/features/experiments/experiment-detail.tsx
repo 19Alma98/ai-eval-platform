@@ -488,7 +488,7 @@ export function ExperimentDetailView({
       {scored ? (
         <section className="flex flex-col gap-3">
           <div className="flex flex-wrap items-baseline justify-between gap-2">
-            <h2 className="text-base font-semibold text-foreground">
+            <h2 className="font-serif text-lg font-medium text-foreground">
               <span
                 className={cn(
                   targets.missed > 0 ? "text-status-fail" : "text-status-ok",
@@ -536,7 +536,7 @@ export function ExperimentDetailView({
       <section className="flex flex-col gap-3">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex flex-wrap items-baseline gap-2">
-            <h2 className="text-base font-semibold text-foreground">Answers</h2>
+            <h2 className="font-serif text-lg font-medium text-foreground">Answers</h2>
             {scored ? (
               <span className="text-sm text-muted-foreground">
                 {nFailingCases === 0
@@ -776,9 +776,9 @@ function RunDetails({ entries }: { entries: [string, string][] }) {
   return (
     <section
       aria-label="Run details"
-      className="flex flex-wrap items-center gap-x-6 gap-y-2 rounded-lg border border-border bg-surface px-4 py-2.5 text-sm"
+      className="flex flex-wrap items-center gap-x-6 gap-y-2 border-y border-border py-2.5 text-sm"
     >
-      <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+      <h2 className="text-[13px] font-medium text-muted-foreground">
         Run details
       </h2>
       <dl className="flex flex-wrap items-center gap-x-5 gap-y-1">

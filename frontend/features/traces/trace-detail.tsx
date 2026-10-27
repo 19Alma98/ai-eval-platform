@@ -84,6 +84,7 @@ export function TraceDetailView({ projectId, traceId }: { projectId: string; tra
     <div className="flex flex-col gap-4">
       <PageHeader
         breadcrumbs={[
+          { label: "Production", href: withProjectQuery("/monitoring", projectId) },
           { label: "Traces", href: withProjectQuery("/traces", projectId) },
           { label: truncateId(trace.trace_id, 12) },
         ]}
@@ -156,14 +157,14 @@ export function TraceDetailView({ projectId, traceId }: { projectId: string; tra
         <p className="rounded-md border border-status-warn bg-status-warn-bg px-3 py-2 text-sm text-status-warn">
           {liveSkip === "no_content" ? (
             <>
-              This call is marked live but did not become a Live traffic answer: its input and
+              This call is marked live but did not become a live answer: its input and
               output were not stored. The server is running with{" "}
               <code>CONTENT_CAPTURE_ENABLED=false</code>, or the SDK&apos;s{" "}
               <code>capture_input</code> / <code>capture_output</code> are off.
             </>
           ) : (
             <>
-              This call is marked live but did not become a Live traffic answer: its question or
+              This call is marked live but did not become a live answer: its question or
               answer is empty. Call <code>opengrade.set_input(question)</code> and{" "}
               <code>opengrade.set_output(answer)</code> inside the traced function.
             </>

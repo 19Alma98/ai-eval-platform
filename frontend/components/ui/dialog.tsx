@@ -4,6 +4,7 @@ import * as React from "react"
 import {
   Dialog as RacDialog,
   DialogTrigger as RacDialogTrigger,
+  OverlayTriggerStateContext,
   Modal,
   ModalOverlay,
   Heading,
@@ -79,6 +80,28 @@ function Dialog({
       )
     }
   })
+
+  // No trigger (opened from a menu item or elsewhere): RAC's DialogTrigger needs a
+  // pressable child, so hand the modal its open state directly instead.
+  if (triggers.length === 0) {
+    const isOpen = open ?? false
+    const setOpen = (next: boolean) => onOpenChange?.(next)
+    return (
+      <OverlayTriggerStateContext.Provider
+        value={{
+          isOpen,
+          setOpen,
+          open: () => setOpen(true),
+          close: () => setOpen(false),
+          toggle: () => setOpen(!isOpen),
+          point: null,
+          setPoint: () => {},
+        }}
+      >
+        {rest}
+      </OverlayTriggerStateContext.Provider>
+    )
+  }
 
   return (
     <RacDialogTrigger

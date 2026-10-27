@@ -288,7 +288,7 @@ export function LiveRunDetail({ interactionId }: { interactionId: string }) {
           wrongProject
             ? "This answer belongs to another project."
             : notFound
-              ? "Check the link, or open the answer from the Live traffic list."
+              ? "Check the link, or open the answer from Production › Live answers."
               : formatErrorForUi(err)
         }
         onRetry={notFound ? undefined : () => void query.refetch()}
@@ -330,7 +330,8 @@ export function LiveRunDetail({ interactionId }: { interactionId: string }) {
     <div className="flex flex-col gap-6">
       <PageHeader
         breadcrumbs={[
-          { label: "Live traffic", href: withProjectQuery("/live-runs", projectId) },
+          { label: "Production", href: withProjectQuery("/monitoring", projectId) },
+          { label: "Live answers", href: withProjectQuery("/live-runs", projectId) },
           { label: "Answer" },
         ]}
         title={title}
@@ -408,7 +409,7 @@ export function LiveRunDetail({ interactionId }: { interactionId: string }) {
                   </DialogHeader>
                   <div className="flex flex-col gap-4 py-4">
                     <div className="flex flex-col gap-1.5">
-                      <label htmlFor="promote-dataset" className="text-sm font-medium">
+                      <label htmlFor="promote-dataset" id="promote-dataset-label" className="text-sm font-medium">
                         Test set
                       </label>
                       <Select value={datasetId} onValueChange={(v) => setDatasetId(v ?? "")}>
@@ -425,7 +426,7 @@ export function LiveRunDetail({ interactionId }: { interactionId: string }) {
                       </Select>
                     </div>
                     <div className="flex flex-col gap-1.5">
-                      <label htmlFor="promote-expected" className="text-sm font-medium">
+                      <label htmlFor="promote-expected" id="promote-expected-label" className="text-sm font-medium">
                         Correct answer
                       </label>
                       <Textarea
@@ -476,7 +477,7 @@ export function LiveRunDetail({ interactionId }: { interactionId: string }) {
         <div className="flex flex-col gap-4">
           {title !== row.question ? (
             <section className="flex flex-col gap-1.5">
-              <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+              <h2 className="text-[13px] font-medium text-muted-foreground">
                 Question
               </h2>
               <p className="rounded-md border border-border bg-surface px-3 py-2 text-sm whitespace-pre-wrap">
@@ -485,7 +486,7 @@ export function LiveRunDetail({ interactionId }: { interactionId: string }) {
             </section>
           ) : null}
           <section className="flex flex-col gap-1.5">
-            <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+            <h2 className="text-[13px] font-medium text-muted-foreground">
               App answer
             </h2>
             <p className="rounded-md border border-border bg-surface px-3 py-2 text-sm whitespace-pre-wrap">
@@ -493,7 +494,7 @@ export function LiveRunDetail({ interactionId }: { interactionId: string }) {
             </p>
           </section>
           <section className="flex flex-col gap-1.5">
-            <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+            <h2 className="text-[13px] font-medium text-muted-foreground">
               Retrieved documents
             </h2>
             {docPreview.length === 0 ? (
@@ -529,7 +530,7 @@ export function LiveRunDetail({ interactionId }: { interactionId: string }) {
 
         <div className="flex flex-col gap-6">
           <section className="flex flex-col gap-2">
-            <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+            <h2 className="text-[13px] font-medium text-muted-foreground">
               Judge verdicts
             </h2>
             {row.scores.length === 0 ? (
@@ -592,7 +593,7 @@ export function LiveRunDetail({ interactionId }: { interactionId: string }) {
 
           {(row.trace_scores ?? []).length > 0 ? (
             <section className="flex flex-col gap-2">
-              <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+              <h2 className="text-[13px] font-medium text-muted-foreground">
                 SDK scores &amp; feedback
               </h2>
               {(row.trace_scores ?? []).map((score) => (

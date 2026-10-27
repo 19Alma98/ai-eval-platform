@@ -117,7 +117,7 @@ export function CreateEvaluatorDialog({
           </DialogHeader>
           <div className="flex flex-col gap-3 py-4">
             <div className="flex flex-col gap-2">
-              <label htmlFor="evaluator-create-name" className="text-sm font-medium">
+              <label htmlFor="evaluator-create-name" id="evaluator-create-name-label" className="text-sm font-medium">
                 Name
               </label>
               <Input
@@ -129,7 +129,7 @@ export function CreateEvaluatorDialog({
               />
             </div>
             <div className="flex flex-col gap-2">
-              <label htmlFor="evaluator-create-preset" className="text-sm font-medium">
+              <label htmlFor="evaluator-create-preset" id="evaluator-create-preset-label" className="text-sm font-medium">
                 Preset
               </label>
               <Select value={presetIndex} onValueChange={(v) => setPresetIndex(v ?? "0")}>

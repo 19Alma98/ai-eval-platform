@@ -22,6 +22,24 @@ Reference principles:
 
 The UI should feel like a developer platform console, not an admin template or multi-tenant SaaS product shell.
 
+### Visual language
+
+OpenGrade grades AI apps, so the console reads like a report card, not a widget wall:
+
+- **Type: one family, three voices** (IBM Plex, self-hosted via `@fontsource`, no runtime
+  font requests). *Serif* for page titles, section titles and verdicts; *Sans* for the
+  interface; *Mono* for ids, code and raw values.
+- **Colour:** warm paper neutrals, one ink-blue accent for actions, sober green / red /
+  amber for status. Colour carries meaning only (status, the primary action), never decoration.
+- **Verdicts are sentences.** Headlines say what happened (“One metric got worse.”), the
+  line under it says why, numbers follow. Small counts are spelled out in headlines.
+- **Structure with rules, not boxes.** Overview sections and scorecards are separated by
+  hairlines and whitespace; bordered surfaces are kept for tables, inputs and detail panels.
+  No coloured top stripes, no icons inside headings, no arrows on buttons, no ALL-CAPS
+  eyebrows: section labels are sentence case.
+- **Brand:** the OpenGrade mark is a score dial three-quarters full with a tick
+  (`GradeMark` in `components/app-shell.tsx`).
+
 No login/signup screens are required for v0.1. The UI assumes a trusted local or privately deployed instance.
 
 ## UX principles
@@ -30,7 +48,8 @@ The console must be understandable by someone who has never read these docs:
 
 - **Plain language, one vocabulary.** UI copy is English only. Domain words are fixed:
   *Test set* (gold questions), *Experiment* (one app version run on a test set),
-  *Metrics* (what is scored + pass thresholds), *Quality gate*, *Live traffic*.
+  *Metrics* (what is scored + pass thresholds), *Quality gate*, *Production* (live traffic:
+  *Health*, *Live answers*, *Traces*).
 - **No technical identifiers on screen.** Never render UUIDs, content hashes or raw
   evaluator kinds. Metric kinds go through `lib/metrics-catalog.ts` (label, one-line
   description, category); unknown names are humanized. The only place an ID appears is
@@ -49,7 +68,9 @@ Sidebar groups (`components/app-shell.tsx`):
 
 - **Overview**
 - **Evaluate:** Test sets (`/datasets`) · Experiments (`/experiments`) · Quality gate (`/release`)
-- **Monitor:** Live traffic (`/live-runs`)
+- **Monitor:** Production — one item with three tabs (`components/production-header.tsx`):
+  Health (`/monitoring`) · Live answers (`/live-runs`) · Traces (`/traces`). Detail pages
+  use breadcrumbs (Production › Live answers › Answer).
 - **Configure:** Metrics (`/metrics`) · App configs (`/app-configs`)
 
 Projects are managed from the project switcher (`/projects`).
@@ -113,9 +134,11 @@ drop vs baseline. The same rules can be edited as YAML or copied for CI (`opengr
 The result reads “Ready to ship” / “Not ready to ship” with each rule, the actual value and
 the target; failed regression rules link to the comparison.
 
-### Live traffic
+### Production
 
-List with an overall verdict per answer, score chips per metric and review state; filters
+Three tabs under one header. **Health**: latency, cost, quality trends, alarms and the
+annotation queue (one empty state when the range has no production traffic; experiment
+runs are not counted). **Live answers**: list with an overall verdict per answer, score chips per metric and review state; filters
 All / Failing / Waiting for judge. Detail: answer, retrieved documents, judge verdicts with
 one-click *Correct* / *Wrong* review, *Re-run judge*, *Add to test set*. Judge reliability
 (human agreement) is in a collapsible section.

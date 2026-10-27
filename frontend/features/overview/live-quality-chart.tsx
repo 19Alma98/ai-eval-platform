@@ -38,9 +38,9 @@ export function LiveQualityChart({
     <section
       id="live-quality-chart"
       aria-label="Live quality over time"
-      className="flex flex-col gap-2 rounded-lg border border-border bg-surface p-4"
+      className="flex flex-col gap-2"
     >
-      <h2 className="text-sm font-semibold text-foreground">Live quality over time</h2>
+      <h2 className="font-serif text-lg font-medium text-foreground">Live quality over time</h2>
       {!showChart ? (
         <div className="flex flex-col items-start gap-2 py-6 text-sm text-muted-foreground">
           <p>Not enough live traffic in this time range to draw a trend.</p>
@@ -101,7 +101,7 @@ export function LiveQualityChart({
         href={withProjectQuery("/live-runs", projectId)}
         className={cn("text-xs text-primary hover:underline")}
       >
-        Open live traffic
+        Open live answers
       </Link>
     </section>
   );

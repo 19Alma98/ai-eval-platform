@@ -60,7 +60,7 @@ export function ConnectAppCard({
   return (
     <section className="grid gap-4 rounded-lg border border-primary/30 bg-surface p-5 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.4fr)]">
       <div className="flex flex-col gap-3">
-        <h2 className="text-base font-semibold text-foreground">
+        <h2 className="font-serif text-lg font-medium text-foreground">
           Next step: run your app on the test set
         </h2>
         <p className="text-sm text-muted-foreground">

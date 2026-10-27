@@ -22,8 +22,8 @@ export function ProductionScoresCard({
   return (
     <section
       aria-label="Production scores"
-      className="flex flex-col gap-2 rounded-lg border border-border bg-surface p-4">
-      <h2 className="text-sm font-semibold text-foreground">Production scores</h2>
+      className="flex flex-col gap-2">
+      <h2 className="font-serif text-lg font-medium text-foreground">Production scores</h2>
       {query.isPending ? (
         <div
           className="h-16 animate-pulse rounded-md border border-border bg-surface-2"

@@ -12,13 +12,12 @@ export function ThemeToggle() {
       variant="outline"
       size="icon-sm"
       onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
-      aria-label={theme === "dark" ? "Switch to light theme" : "Switch to dark theme"}
+      // The server can't know the theme, so the markup must not depend on it:
+      // both icons render and CSS shows the right one (no hydration mismatch).
+      aria-label="Toggle light or dark theme"
     >
-      {theme === "dark" ? (
-        <Sun className="size-3.5" />
-      ) : (
-        <Moon className="size-3.5" />
-      )}
+      <Moon className="size-3.5 dark:hidden" aria-hidden />
+      <Sun className="hidden size-3.5 dark:block" aria-hidden />
     </Button>
   );
 }

@@ -11,11 +11,10 @@ import {
   FlaskConical,
   Gauge,
   LayoutDashboard,
-  ListTree,
   Menu,
-  Radio,
   ShieldCheck,
 } from "lucide-react";
+import { PRODUCTION_PATHS } from "@/components/production-header";
 import { ProjectSwitcher } from "@/components/project-switcher";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { Button } from "@/components/ui/button";
@@ -29,6 +28,8 @@ type NavItem = {
   label: string;
   icon: typeof Database;
   hint: string;
+  /** Extra path prefixes that mark this item active (sections with several pages). */
+  match?: string[];
 };
 
 const NAV: { section: string | null; items: NavItem[] }[] = [
@@ -70,22 +71,11 @@ const NAV: { section: string | null; items: NavItem[] }[] = [
     section: "Monitor",
     items: [
       {
-        href: "/live-runs",
-        label: "Live traffic",
-        icon: Radio,
-        hint: "Real user questions scored by an LLM judge",
-      },
-      {
-        href: "/traces",
-        label: "Traces",
-        icon: ListTree,
-        hint: "Every call step by step: retrieval, prompt, answer",
-      },
-      {
         href: "/monitoring",
         label: "Production",
         icon: Activity,
-        hint: "Latency, cost and quality over time, alarms and review queue",
+        hint: "Health, live answers and traces from real traffic",
+        match: PRODUCTION_PATHS,
       },
     ],
   },
@@ -122,12 +112,14 @@ function SidebarNav({
       {NAV.map(({ section, items }) => (
         <div key={section ?? "root"} className="flex flex-col gap-0.5">
           {section ? (
-            <span className="px-2 pb-1 text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
+            <span className="px-2 pb-1 text-xs text-muted-foreground">
               {section}
             </span>
           ) : null}
-          {items.map(({ href, label, icon: Icon, hint }) => {
-            const active = pathname === href || pathname.startsWith(`${href}/`);
+          {items.map(({ href, label, icon: Icon, hint, match }) => {
+            const active = (match ?? [href]).some(
+              (p) => pathname === p || pathname.startsWith(`${p}/`),
+            );
             return (
               <Link
                 key={href}
@@ -136,8 +128,9 @@ function SidebarNav({
                 aria-current={active ? "page" : undefined}
                 onClick={onNavigate}
                 className={cn(
-                  "flex items-center gap-2.5 rounded-md px-2 py-1.5 text-sm text-muted-foreground transition-colors hover:bg-row-hover hover:text-foreground",
-                  active && "bg-row-selected font-medium text-foreground",
+                  "relative flex items-center gap-2.5 rounded-md px-2 py-1.5 text-sm text-muted-foreground transition-colors hover:bg-surface-2 hover:text-foreground",
+                  active &&
+                    "bg-surface-2 font-medium text-foreground before:absolute before:inset-y-1.5 before:-left-3 before:w-0.5 before:rounded-full before:bg-primary",
                 )}
               >
                 <Icon className="size-4 shrink-0" aria-hidden />
@@ -151,6 +144,22 @@ function SidebarNav({
   );
 }
 
+/** The mark: a score dial three-quarters full, the tick where the threshold sits. */
+function GradeMark({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" aria-hidden className={className}>
+      <circle cx="12" cy="12" r="9" stroke="currentColor" strokeOpacity="0.18" strokeWidth="2.5" />
+      <path
+        d="M12 3a9 9 0 1 1-9 9"
+        stroke="hsl(var(--accent))"
+        strokeWidth="2.5"
+        strokeLinecap="round"
+      />
+      <path d="M8.5 12.2l2.4 2.4 4.6-5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
 function Brand({ projectId, onNavigate }: { projectId: string | null; onNavigate?: () => void }) {
   return (
     <Link
@@ -158,13 +167,10 @@ function Brand({ projectId, onNavigate }: { projectId: string | null; onNavigate
       onClick={onNavigate}
       className="flex h-14 shrink-0 items-center gap-2 border-b border-border px-4"
     >
-      <span
-        aria-hidden
-        className="flex size-7 items-center justify-center rounded-lg bg-linear-to-br from-primary to-chart-2 text-primary-foreground shadow-sm"
-      >
-        <ShieldCheck className="size-4" strokeWidth={2.5} />
+      <GradeMark className="size-6 text-foreground" />
+      <span className="font-serif text-[17px] font-semibold tracking-tight text-foreground">
+        OpenGrade
       </span>
-      <span className="text-sm font-semibold tracking-tight text-foreground">OpenGrade</span>
     </Link>
   );
 }
@@ -179,7 +185,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     <div className="flex min-h-screen bg-background">
       {/* The aside stretches to the page height so its background never stops;
           the inner column sticks to the viewport while the page scrolls. */}
-      <aside className="hidden w-[220px] shrink-0 border-r border-border bg-surface md:block">
+      <aside className="hidden w-[220px] shrink-0 border-r border-border bg-background md:block">
         <div className="sticky top-0 flex h-screen flex-col">
           <Brand projectId={projectId} />
           <SidebarNav pathname={pathname} projectId={projectId} />
@@ -199,7 +205,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         </Modal>
       </ModalOverlay>
       <div className="flex min-w-0 flex-1 flex-col">
-        <header className="sticky top-0 z-20 flex h-14 shrink-0 items-center gap-2 border-b border-border bg-surface/95 px-4 backdrop-blur md:gap-3 md:px-6">
+        <header className="sticky top-0 z-20 flex h-14 shrink-0 items-center gap-2 border-b border-border bg-background/90 px-4 backdrop-blur md:gap-3 md:px-6">
           <Button
             variant="outline"
             size="icon-sm"
