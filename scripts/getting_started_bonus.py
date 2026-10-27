@@ -22,10 +22,12 @@ ROWS = [
     {
         "input": "What is the capital of France?",
         "expected_output": "Paris",
+        "expected_doc_ids": ["faq-capital"],
     },
     {
         "input": "What is 2 + 2?",
         "expected_output": "4",
+        "expected_doc_ids": ["faq-math"],
     },
 ]
 
@@ -42,6 +44,7 @@ def main() -> None:
     result = opengrade.evaluate(
         dataset=ROWS,
         task=task,
+        task_type="rag_qa",
         metrics=["correctness", "latency"],
         name="getting-started-bonus",
         params={"model": MODEL},
