@@ -252,14 +252,14 @@ Helpers: `opengrade.evaluation.outcomes` (`skip`, `fail_min`, `error`, `pass_`).
 - optional redaction
 - judge prompt version recorded
 
-## Future extension
+## Extension point
 
-Evaluator registry:
+Evaluator registry (`evaluation/registry.py`):
 
 ```python
 register_evaluator("my_business_rule", MyBusinessRuleEvaluator)
 ```
 
-Custom evaluators should be loadable without modifying the core engine.
+This registry is the primary open-source extension surface: contributors add evaluators here, not by forking API or UI code. How to write, register and test one: [`16-custom-evaluators.md`](16-custom-evaluators.md). App-specific checks that should not live in the server go in the SDK (`@opengrade.metric`).
 
-This registry is a primary open-source extension surface: contributors add evaluators as packages/adapters, not by forking API or UI code.
+Not yet: loading out-of-tree evaluator packages without modifying the core (e.g. Python entry points).

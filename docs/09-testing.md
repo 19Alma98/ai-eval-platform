@@ -50,6 +50,17 @@ Playwright:
 - run experiment
 - view failed quality gate
 
+Current smoke suite: `frontend/tests/e2e/smoke.spec.ts` (CI job `e2e`). It runs against the packaged UI served by `opengrade ui` on SQLite:
+
+```bash
+python scripts/package_ui.py
+opengrade ui --backend-store-uri "sqlite+aiosqlite:///./e2e.db" &
+cd frontend && npx playwright install chromium
+PLAYWRIGHT_BASE_URL=http://127.0.0.1:8000 API_ORIGIN=http://127.0.0.1:8000 npm run test:e2e
+```
+
+Unit tests for UI logic: `npm test` (Node test runner, `*.test.ts`).
+
 ## Load tests
 
 Use k6 or Locust for:

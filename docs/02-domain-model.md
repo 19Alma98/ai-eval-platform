@@ -212,6 +212,20 @@ Fields:
 
 On create, supply at most one of `app_config_id` or `app_config_alias`. When either is set, the API copies the referenced config into `model_config` (including `app_config_id`, `content_hash`, prompt/model/retrieval) and ignores a client-supplied `model_config`. Without app config fields, `model_config` remains free-form.
 
+### Versioning
+
+An experiment is an immutable record of *what was evaluated against what*. Every input it depends on is pinned to a version, so two experiments can be compared and an old result can be explained later:
+
+| Input | How it is pinned |
+| --- | --- |
+| Test set | `dataset_id` points at one dataset version. Once a version has a scored run it is frozen: adding, importing or promoting items forks the next version (`version + 1`) instead of changing it. |
+| App under test | `model_config` is a snapshot. With an app config it carries `app_config_id` and `content_hash`; app configs themselves are versioned per `name` (monotonic `version`). |
+| Parameters | Logged params are locked once the experiment has evaluation runs (or when they come from an app config snapshot). |
+| Grading | `metrics_set_id` pins a versioned metrics set. Each `EvaluationRun` is kept; LLM-judge results record `prompt_version` and `model` in their metadata. |
+| Label | `version` is an optional free-form label (git SHA, release tag) set by the caller, e.g. `opengrade.evaluate(..., version="v1.4.0")`. |
+
+Re-scoring an experiment adds a new `EvaluationRun`; it never overwrites earlier results. Compare and release checks read the latest *terminal* run with results.
+
 ## ReleasePolicy
 
 Machine-readable quality gate. Phase 4 evaluates it statelessly (YAML/file or inline API body); the reserved keys are `regression`, `latency`, `cost` and `experiment_metrics`; every other key binds to an evaluator entity name.
