@@ -13,17 +13,19 @@ test("overview, live traffic and quality gate render", async ({ page, request })
   await page.goto(`/overview?project=${id}&range=24h`);
   await expect(page.getByRole("heading", { name: "Overview" })).toBeVisible();
   await expect(page.getByRole("button", { name: /time range/i })).toBeVisible();
-  const keyMetrics = page.getByRole("region", { name: "Key metrics" });
+  // Empty project: Getting started replaces the "Before release" panel.
+  const live = page.getByRole("region", { name: "In production" });
+  await expect(live.getByRole("heading", { name: "No live traffic" })).toBeVisible();
+  await expect(page.getByRole("region", { name: "Before release" })).toHaveCount(0);
   await expect(
-    keyMetrics.getByRole("heading", { name: "Live", exact: true }),
+    page.getByRole("navigation", { name: "Main" }).getByRole("link", { name: "Production" }),
   ).toBeVisible();
-  await expect(
-    keyMetrics.getByRole("heading", { name: "Offline", exact: true }),
-  ).toBeVisible();
-  await expect(page.getByRole("link", { name: "Traces" })).toBeVisible();
 
   await page.goto(`/live-runs?project=${id}`);
-  await expect(page.getByRole("heading", { name: "Live traffic" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Production" })).toBeVisible();
+  await expect(
+    page.getByRole("navigation", { name: "Production views" }).getByRole("link", { name: "Live answers" }),
+  ).toHaveAttribute("aria-current", "page");
 
   await page.goto(`/release?project=${id}`);
   await expect(page.getByRole("heading", { name: "Quality gate" })).toBeVisible();
@@ -114,7 +116,9 @@ test("traces, production and experiment comparison render", async ({ page, reque
   expect(otlp.ok()).toBeTruthy();
 
   await page.goto(`/traces?project=${id}`);
-  await expect(page.getByRole("heading", { name: "Traces" })).toBeVisible();
+  await expect(
+    page.getByRole("navigation", { name: "Production views" }).getByRole("link", { name: "Traces" }),
+  ).toHaveAttribute("aria-current", "page");
   await page.getByRole("region", { name: "Traces" }).getByText("answer").click();
   await expect(page).toHaveURL(new RegExp(`/traces/${traceId}`));
   await expect(page.getByText("Retrieved chunks")).toBeVisible();

@@ -61,7 +61,7 @@ function Section({
   return (
     <section className="flex flex-col gap-2">
       <div className="flex items-baseline justify-between gap-2">
-        <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+        <h3 className="text-[13px] font-medium text-muted-foreground">
           {title}
         </h3>
         {aside}

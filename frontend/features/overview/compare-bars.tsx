@@ -36,10 +36,10 @@ export function CompareBars({
   return (
     <section
       aria-label="Latest experiment vs baseline"
-      className="flex flex-col gap-3 rounded-lg border border-border bg-surface p-4"
+      className="flex flex-col gap-3"
     >
       <div className="flex items-baseline justify-between gap-2">
-        <h2 className="text-sm font-semibold text-foreground">
+        <h2 className="font-serif text-lg font-medium text-foreground">
           Latest experiment vs baseline
         </h2>
         <span className="text-xs text-muted-foreground">Pass rate per metric</span>

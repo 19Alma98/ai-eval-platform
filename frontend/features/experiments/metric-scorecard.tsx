@@ -5,13 +5,7 @@ import type { EvaluatorSummary } from "@/lib/api/types";
 import { cn } from "@/lib/cn";
 import { formatPercent, formatScore } from "@/lib/format";
 import { groupByMetricCategory, metricInfo } from "@/lib/metrics-catalog";
-
-function targetState(status: string | null | undefined): "met" | "missed" | "unknown" {
-  const key = (status ?? "").toLowerCase();
-  if (key === "passed" || key === "pass" || key === "completed" || key === "ok") return "met";
-  if (key === "failed" || key === "fail") return "missed";
-  return "unknown";
-}
+import { targetState } from "./metric-target";
 
 /**
  * Metric results grouped by what they measure (answer quality, retrieval, performance).
@@ -29,14 +23,14 @@ export function MetricScorecard({
   const groups = groupByMetricCategory(evaluators, (row) => row.evaluator_name);
 
   return (
-    <div className="grid gap-4 lg:grid-cols-2 xl:grid-cols-3">
+    <div className="grid gap-x-8 gap-y-4 lg:grid-cols-2 xl:grid-cols-3">
       {groups.map((group) => (
         <section
           key={group.category}
           aria-label={group.label}
-          className="flex flex-col rounded-lg border border-border bg-surface"
+          className="flex flex-col border-t border-border pt-1"
         >
-          <h3 className="border-b border-border px-4 py-2.5 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+          <h3 className="px-2.5 py-2 text-[13px] font-medium text-muted-foreground">
             {group.label}
           </h3>
           <ul className="flex flex-col p-1.5">

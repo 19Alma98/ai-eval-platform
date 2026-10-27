@@ -378,7 +378,7 @@ export function DatasetDetailView({
       {items.length === 0 ? (
         <EmptyState
           title="This test set is empty"
-          description="Import a CSV or JSON file with your questions, or add failing answers from Live traffic."
+          description="Import a CSV or JSON file with your questions, or add failing live answers from Production."
           action={
             <div className="flex flex-wrap items-center justify-center gap-2">
               <Button type="button" size="sm" onClick={() => setImportOpen(true)}>
@@ -390,7 +390,7 @@ export function DatasetDetailView({
                 nativeButton={false}
                 render={<Link href={withProjectQuery("/live-runs", projectId)} />}
               >
-                Open live traffic
+                Open live answers
               </Button>
             </div>
           }

@@ -13,6 +13,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { formatErrorForUi } from "@/lib/api/client";
 import type { TraceSummary } from "@/lib/api/types";
+import { traceLabel } from "./trace-label";
 import { cn } from "@/lib/cn";
 import { formatDurationMs, formatScore } from "@/lib/format";
 import { liveRunHref, traceHref } from "@/lib/links";
@@ -75,6 +76,8 @@ export function TraceList({ projectId }: { projectId: string }) {
     since,
   });
   const rows = useMemo(() => query.data?.pages.flatMap((p) => p.items) ?? [], [query.data]);
+  const anyScores = rows.some((r) => r.scores.length > 0);
+  const anyJudged = rows.some((r) => r.live_interaction_id);
 
   const setParam = useCallback(
     (key: string, value: string | null) => {
@@ -104,16 +107,19 @@ export function TraceList({ projectId }: { projectId: string }) {
         id: "name",
         header: "Trace",
         wrap: true,
-        cell: (row) => (
-          <span className="flex min-w-0 flex-col">
-            <span className="line-clamp-1 font-medium text-foreground">{row.name}</span>
-            {row.input_preview ? (
-              <span className="line-clamp-1 text-xs text-muted-foreground">
-                {row.input_preview}
-              </span>
-            ) : null}
-          </span>
-        ),
+        cell: (row) => {
+          const label = traceLabel(row);
+          return (
+            <span className="flex min-w-0 flex-col">
+              <span className="line-clamp-1 font-medium text-foreground">{label.title}</span>
+              {label.subtitle ? (
+                <span className="line-clamp-1 text-xs text-muted-foreground">
+                  {label.subtitle}
+                </span>
+              ) : null}
+            </span>
+          );
+        },
       },
       {
         id: "status",
@@ -135,32 +141,41 @@ export function TraceList({ projectId }: { projectId: string }) {
         className: "tabular-nums",
         cell: (row) => String(row.span_count),
       },
-      {
-        id: "scores",
-        header: "Scores",
-        headerClassName: "w-[260px]",
-        wrap: true,
-        cell: (row) => <ScoreChips row={row} />,
-      },
-      {
-        id: "live",
-        header: "Judged",
-        headerClassName: "w-[90px]",
-        cell: (row) =>
-          row.live_interaction_id ? (
-            <Link
-              href={liveRunHref(projectId, row.live_interaction_id)}
-              onClick={(e) => e.stopPropagation()}
-              className="text-xs text-primary hover:underline"
-            >
-              Verdict
-            </Link>
-          ) : (
-            <span className="text-muted-foreground">—</span>
-          ),
-      },
+      // Columns empty for every row are noise (see docs/07-frontend.md: tables stay lean).
+      ...(anyScores
+        ? [
+            {
+              id: "scores",
+              header: "Scores",
+              headerClassName: "w-[260px]",
+              wrap: true,
+              cell: (row: TraceSummary) => <ScoreChips row={row} />,
+            },
+          ]
+        : []),
+      ...(anyJudged
+        ? [
+            {
+              id: "live",
+              header: "Judged",
+              headerClassName: "w-[90px]",
+              cell: (row: TraceSummary) =>
+                row.live_interaction_id ? (
+                  <Link
+                    href={liveRunHref(projectId, row.live_interaction_id)}
+                    onClick={(e) => e.stopPropagation()}
+                    className="text-xs text-primary hover:underline"
+                  >
+                    Verdict
+                  </Link>
+                ) : (
+                  <span className="text-muted-foreground">—</span>
+                ),
+            },
+          ]
+        : []),
     ],
-    [projectId],
+    [anyJudged, anyScores, projectId],
   );
 
   const filtersActive = status !== "all" || deferredSearch !== "";

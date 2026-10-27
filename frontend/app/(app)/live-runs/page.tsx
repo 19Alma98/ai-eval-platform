@@ -2,8 +2,8 @@
 
 import { Suspense } from "react";
 import { LoadingBlock } from "@/components/loading-block";
-import { PageIntro } from "@/components/page-intro";
 import { LiveRunList } from "@/features/live-runs/live-run-list";
+import { ProductionHeader } from "@/components/production-header";
 import { ProjectRequired } from "@/components/project-required";
 import { useProjectId } from "@/lib/project-store";
 
@@ -16,10 +16,7 @@ function LiveRunsPageContent() {
 
   return (
     <>
-      <PageIntro
-        title="Live traffic"
-        glossary="Real questions from production, scored automatically by an LLM judge. Review the verdicts and turn failures into test cases."
-      />
+      <ProductionHeader active="answers" />
       <LiveRunList />
     </>
   );

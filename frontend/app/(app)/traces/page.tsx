@@ -2,7 +2,7 @@
 
 import { Suspense } from "react";
 import { LoadingBlock } from "@/components/loading-block";
-import { PageIntro } from "@/components/page-intro";
+import { ProductionHeader } from "@/components/production-header";
 import { ProjectRequired } from "@/components/project-required";
 import { TraceList } from "@/features/traces/trace-list";
 import { useProjectId } from "@/lib/project-store";
@@ -16,10 +16,7 @@ function TracesPageContent() {
 
   return (
     <>
-      <PageIntro
-        title="Traces"
-        glossary="Every call your app made, step by step: what was retrieved, what the model saw and what it answered."
-      />
+      <ProductionHeader active="traces" />
       <TraceList projectId={projectId} />
     </>
   );

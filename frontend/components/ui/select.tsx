@@ -32,10 +32,25 @@ function Select({
   children,
   "aria-label": ariaLabel,
 }: SelectRootProps) {
+  // RAC names the select, not its button. Call sites label the trigger instead
+  // (aria-label, or a <label htmlFor> whose id is `${triggerId}-label`), so lift that up.
+  let triggerLabel: string | undefined
+  let labelledBy: string | undefined
+  React.Children.forEach(children, (child) => {
+    if (React.isValidElement(child) && child.type === SelectTrigger) {
+      const props = child.props as { "aria-label"?: string; id?: string }
+      triggerLabel = props["aria-label"]
+      labelledBy = props.id ? `${props.id}-label` : undefined
+    }
+  })
+  const name = ariaLabel ?? triggerLabel
   return (
     <RacSelect
-      aria-label={ariaLabel}
-      selectedKey={value || undefined}
+      aria-label={name}
+      aria-labelledby={name ? undefined : labelledBy}
+      // "" means "controlled, nothing picked" (null), not uncontrolled (undefined):
+      // otherwise picking a value flips RAC from uncontrolled to controlled.
+      selectedKey={value === undefined ? undefined : value || null}
       defaultSelectedKey={defaultValue || undefined}
       onSelectionChange={(key) => onValueChange?.(key == null ? null : String(key))}
       isDisabled={disabled}

@@ -59,7 +59,7 @@ function Step({
   return (
     <section className="flex flex-col gap-2">
       <div className="flex items-baseline gap-2">
-        <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+        <h2 className="text-[13px] font-medium text-muted-foreground">
           {title}
         </h2>
         {hint ? <span className="text-xs text-muted-foreground">{hint}</span> : null}
@@ -260,7 +260,7 @@ export function RagPipeline({
             <div className="mt-2 flex flex-col gap-2">
               {view.prompt.map((m, i) => (
                 <div key={i} className="flex flex-col gap-0.5">
-                  <span className="text-xs font-medium uppercase text-muted-foreground">
+                  <span className="text-[13px] font-medium text-muted-foreground">
                     {m.role}
                   </span>
                   <p className="max-h-64 overflow-auto whitespace-pre-wrap rounded bg-surface-2 px-2 py-1 font-mono text-xs">

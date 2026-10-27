@@ -2,6 +2,8 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import type { ProjectOverview } from "@/lib/api/types";
 import {
+  buildLivePanel,
+  buildReleasePanel,
   shouldShowLiveChart,
   mapPassRateBars,
   mergeAttentionItems,
@@ -157,5 +159,69 @@ describe("overviewWarningMessages", () => {
     assert.equal(messages.length, 2);
     assert.match(messages[0]!, /10,000/);
     assert.match(messages[1]!, /calibration/i);
+  });
+});
+
+describe("buildReleasePanel", () => {
+  it("asks for a test set first when nothing exists", () => {
+    const panel = buildReleasePanel(emptyOverview);
+    assert.equal(panel.headline, "No experiments yet.");
+    assert.equal(panel.tone, "neutral");
+    assert.deepEqual(panel.primary, { label: "Create test set", href: "/datasets" });
+  });
+
+  it("leads with regressions and links to the comparison", () => {
+    const panel = buildReleasePanel({
+      ...emptyOverview,
+      offline: {
+        ...emptyOverview.offline,
+        n_datasets: 1,
+        release_ready: true,
+        latest_experiment: {
+          id: "c1",
+          name: "candidate",
+          status: "finished",
+          created_at: "2026-01-01T00:00:00Z",
+          baseline_experiment_id: "b1",
+        },
+        compare: {
+          candidate_experiment_id: "c1",
+          baseline_experiment_id: "b1",
+          metrics: [
+            { name: "must_contain", metric: "pass_rate", candidate: 0.4, baseline: 1, delta: -0.6, status: "regressed" },
+            { name: "groundedness", metric: "pass_rate", candidate: 0.8, baseline: 0.5, delta: 0.3, status: "improved" },
+            { name: "groundedness", metric: "mean_score", candidate: 0.8, baseline: 0.5, delta: 0.3, status: "improved" },
+          ],
+        },
+        regressions: [{ name: "must_contain", delta: -0.6, status: "regressed" }],
+      },
+    });
+    assert.equal(panel.headline, "One metric got worse.");
+    assert.equal(panel.tone, "fail");
+    assert.equal(panel.detail, "candidate vs its baseline: 1 better, 1 worse, 0 unchanged.");
+    assert.equal(panel.primary?.href, "/experiments/c1/compare?baseline=b1");
+    assert.equal(panel.secondary?.href, "/release");
+    assert.equal(panel.stats[0].value, "60%");
+  });
+});
+
+describe("buildLivePanel", () => {
+  it("explains an empty range", () => {
+    const panel = buildLivePanel(emptyOverview, "24h");
+    assert.equal(panel.headline, "No live traffic.");
+    assert.match(panel.detail, /last 24 hours/);
+  });
+
+  it("reports the failing share", () => {
+    const panel = buildLivePanel(
+      {
+        ...emptyOverview,
+        live: { ...emptyOverview.live, n_interactions: 4, n_failed: 3, fail_rate: 0.75, mean_score: 0.5 },
+      },
+      "1h",
+    );
+    assert.equal(panel.headline, "75% of answers are failing.");
+    assert.equal(panel.tone, "fail");
+    assert.equal(panel.primary?.href, "/live-runs?failed=1");
   });
 });

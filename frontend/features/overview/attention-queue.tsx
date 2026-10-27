@@ -30,16 +30,16 @@ export function AttentionQueue({
     return (
       <section
         aria-label="Attention queue"
-        className="flex flex-col gap-2 rounded-lg border border-dashed border-border bg-surface p-4"
+        className="flex flex-col gap-2"
       >
-        <h2 className="text-sm font-semibold text-foreground">Needs attention</h2>
+        <h2 className="font-serif text-lg font-medium text-foreground">Needs attention</h2>
         <p className="text-sm text-muted-foreground">No issues in this range.</p>
         <div className="flex flex-wrap gap-3 text-xs">
           <Link
             href={withProjectQuery("/live-runs", projectId)}
             className="text-primary hover:underline"
           >
-            Open live traffic
+            Open live answers
           </Link>
           <Link
             href={withProjectQuery("/experiments", projectId)}
@@ -55,9 +55,9 @@ export function AttentionQueue({
   return (
     <section
       aria-label="Attention queue"
-      className="flex flex-col gap-2 rounded-lg border border-border bg-surface p-4"
+      className="flex flex-col gap-2"
     >
-      <h2 className="text-sm font-semibold text-foreground">Needs attention</h2>
+      <h2 className="font-serif text-lg font-medium text-foreground">Needs attention</h2>
       <ul className="divide-y divide-border">
         {rows.map((row) => {
           const content = (

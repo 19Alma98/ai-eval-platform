@@ -44,51 +44,53 @@
   --color-kind-retriever: hsl(var(--kind-retriever));
   --color-kind-tool: hsl(var(--kind-tool));
   --color-kind-other: hsl(var(--kind-other));
+  /* One type family in three voices: Sans for the interface, Serif for titles and
+     verdicts (the "report card" voice), Mono for ids, code and raw values. */
   --font-sans:
-    "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto,
-    "Helvetica Neue", Arial, "Noto Sans", sans-serif;
+    "IBM Plex Sans Variable", "IBM Plex Sans", ui-sans-serif, system-ui, -apple-system,
+    "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --font-serif: "IBM Plex Serif", ui-serif, Georgia, Cambria, "Times New Roman", serif;
   --font-mono:
-    ui-monospace, "SF Mono", "JetBrains Mono", Menlo, Consolas, "Liberation Mono",
-    monospace;
-  --font-heading: var(--font-sans);
+    "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+  --font-heading: var(--font-serif);
   --radius-sm: var(--radius-sm-token);
   --radius-md: var(--radius-md-token);
   --radius-lg: var(--radius-md-token);
 }
 
 :root {
-  /* Neutrals — light */
-  --background: 210 40% 98%;
-  --foreground: 222 47% 11%;
-  --surface: 0 0% 100%;
-  --surface-2: 210 40% 96%;
-  --border: 214 32% 91%;
-  --muted-foreground: 215 16% 47%;
-  --row-hover: 210 40% 96%;
-  --row-selected: 199 89% 94%;
-  /* Accent — cyan/teal (not purple/indigo) */
-  --accent: 191 91% 37%;
-  --accent-foreground: 210 40% 98%;
-  /* Status + tinted backgrounds */
-  --status-ok: 142 60% 35%;
-  --status-ok-bg: 142 60% 95%;
-  --status-warn: 38 90% 40%;
-  --status-warn-bg: 38 90% 94%;
-  --status-fail: 0 70% 45%;
-  --status-fail-bg: 0 70% 96%;
-  --status-unset: 215 14% 50%;
-  --status-unset-bg: 210 20% 96%;
+  /* Neutrals — light: warm paper, near-black ink */
+  --background: 40 20% 97%;
+  --foreground: 30 8% 12%;
+  --surface: 40 30% 99.5%;
+  --surface-2: 40 14% 94%;
+  --border: 35 12% 87%;
+  --muted-foreground: 30 5% 40%;
+  --row-hover: 40 16% 95%;
+  --row-selected: 215 45% 94%;
+  /* Accent — fountain-pen blue */
+  --accent: 215 65% 36%;
+  --accent-foreground: 40 30% 98%;
+  /* Status + tinted backgrounds: sober, still unmistakable */
+  --status-ok: 152 45% 29%;
+  --status-ok-bg: 145 35% 93%;
+  --status-warn: 33 85% 34%;
+  --status-warn-bg: 40 80% 92%;
+  --status-fail: 5 65% 43%;
+  --status-fail-bg: 8 70% 95%;
+  --status-unset: 30 5% 48%;
+  --status-unset-bg: 40 12% 93%;
   /* Chart series + span kinds */
-  --chart-1: 199 89% 40%;
-  --chart-2: 142 60% 35%;
-  --chart-3: 38 90% 40%;
-  --chart-4: 280 50% 45%;
-  --chart-5: 215 16% 47%;
-  --kind-llm: 199 89% 40%;
-  --kind-chain: 215 16% 47%;
-  --kind-retriever: 142 50% 38%;
-  --kind-tool: 38 80% 42%;
-  --kind-other: 215 14% 50%;
+  --chart-1: 215 65% 40%;
+  --chart-2: 152 40% 36%;
+  --chart-3: 33 80% 42%;
+  --chart-4: 345 45% 45%;
+  --chart-5: 30 6% 50%;
+  --kind-llm: 215 60% 42%;
+  --kind-chain: 30 6% 45%;
+  --kind-retriever: 152 40% 34%;
+  --kind-tool: 33 75% 40%;
+  --kind-other: 30 5% 50%;
   --radius-sm-token: 4px;
   --radius-md-token: 6px;
 
@@ -98,7 +100,7 @@
   --popover: var(--surface);
   --popover-foreground: var(--foreground);
   --primary: var(--accent);
-  --primary-foreground: 210 40% 98%;
+  --primary-foreground: 40 30% 98%;
   --secondary: var(--surface-2);
   --secondary-foreground: var(--foreground);
   --muted: var(--surface-2);
@@ -108,41 +110,42 @@
 }
 
 .dark {
-  --background: 222 47% 7%;
-  --foreground: 210 40% 98%;
-  --surface: 222 47% 11%;
-  --surface-2: 217 33% 17%;
-  --border: 215 19% 35%;
-  --muted-foreground: 215 20% 65%;
-  --row-hover: 217 33% 14%;
-  --row-selected: 199 50% 18%;
-  --accent: 189 94% 55%;
-  --accent-foreground: 222 47% 7%;
-  --status-ok: 142 60% 45%;
-  --status-ok-bg: 142 40% 14%;
-  --status-warn: 38 90% 50%;
-  --status-warn-bg: 38 50% 14%;
-  --status-fail: 0 70% 55%;
-  --status-fail-bg: 0 50% 14%;
-  --status-unset: 215 14% 60%;
-  --status-unset-bg: 217 20% 16%;
-  --chart-1: 189 94% 55%;
-  --chart-2: 142 60% 45%;
-  --chart-3: 38 90% 50%;
-  --chart-4: 280 50% 65%;
-  --chart-5: 215 20% 65%;
-  --kind-llm: 189 94% 55%;
-  --kind-chain: 215 20% 65%;
-  --kind-retriever: 142 50% 50%;
-  --kind-tool: 38 80% 55%;
-  --kind-other: 215 14% 60%;
+  /* Warm charcoal rather than blue-black */
+  --background: 30 6% 8%;
+  --foreground: 40 15% 92%;
+  --surface: 30 6% 11%;
+  --surface-2: 30 5% 16%;
+  --border: 30 5% 23%;
+  --muted-foreground: 35 8% 62%;
+  --row-hover: 30 5% 14%;
+  --row-selected: 215 30% 20%;
+  --accent: 212 75% 72%;
+  --accent-foreground: 30 6% 8%;
+  --status-ok: 150 45% 56%;
+  --status-ok-bg: 150 25% 13%;
+  --status-warn: 38 85% 60%;
+  --status-warn-bg: 38 40% 13%;
+  --status-fail: 5 75% 65%;
+  --status-fail-bg: 5 40% 14%;
+  --status-unset: 35 6% 60%;
+  --status-unset-bg: 30 5% 15%;
+  --chart-1: 212 75% 70%;
+  --chart-2: 150 45% 55%;
+  --chart-3: 38 85% 58%;
+  --chart-4: 345 55% 68%;
+  --chart-5: 35 8% 62%;
+  --kind-llm: 212 75% 70%;
+  --kind-chain: 35 8% 62%;
+  --kind-retriever: 150 45% 52%;
+  --kind-tool: 38 80% 58%;
+  --kind-other: 35 6% 60%;
 
   --card: var(--surface);
   --card-foreground: var(--foreground);
   --popover: var(--surface);
   --popover-foreground: var(--foreground);
   --primary: var(--accent);
-  --primary-foreground: 222 47% 7%;
+  --primary-foreground: 30 6% 8%;
   --secondary: var(--surface-2);
   --secondary-foreground: var(--foreground);
   --muted: var(--surface-2);
@@ -160,5 +163,12 @@
   }
   html {
     @apply font-sans;
+  }
+  /* Raw values read as data, not prose. */
+  code,
+  kbd,
+  samp,
+  pre {
+    @apply font-mono;
   }
 }

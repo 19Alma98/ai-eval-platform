@@ -4,6 +4,7 @@ import * as React from "react"
 import {
   Dialog as RacDialog,
   DialogTrigger as RacDialogTrigger,
+  OverlayTriggerStateContext,
   Modal,
   ModalOverlay,
   Heading,
@@ -62,13 +63,45 @@ function Dialog({
   const triggers: React.ReactNode[] = []
   const rest: React.ReactNode[] = []
 
+  // Children are collected into arrays, so each needs a key of its own.
   React.Children.forEach(children, (child) => {
     if (React.isValidElement(child) && child.type === DialogTrigger) {
-      triggers.push(resolveDialogTrigger(child.props as DialogTriggerProps))
+      const trigger = resolveDialogTrigger(child.props as DialogTriggerProps)
+      triggers.push(
+        React.isValidElement(trigger)
+          ? React.cloneElement(trigger, { key: `trigger-${triggers.length}` })
+          : trigger
+      )
     } else if (child != null && child !== false) {
-      rest.push(child)
+      rest.push(
+        React.isValidElement(child) && child.key == null
+          ? React.cloneElement(child, { key: `content-${rest.length}` })
+          : child
+      )
     }
   })
+
+  // No trigger (opened from a menu item or elsewhere): RAC's DialogTrigger needs a
+  // pressable child, so hand the modal its open state directly instead.
+  if (triggers.length === 0) {
+    const isOpen = open ?? false
+    const setOpen = (next: boolean) => onOpenChange?.(next)
+    return (
+      <OverlayTriggerStateContext.Provider
+        value={{
+          isOpen,
+          setOpen,
+          open: () => setOpen(true),
+          close: () => setOpen(false),
+          toggle: () => setOpen(!isOpen),
+          point: null,
+          setPoint: () => {},
+        }}
+      >
+        {rest}
+      </OverlayTriggerStateContext.Provider>
+    )
+  }
 
   return (
     <RacDialogTrigger

@@ -18,16 +18,17 @@ import { useAlarmThresholds } from "@/features/monitoring/use-alarm-thresholds";
 import { monitoringQueryKey, useMonitoring } from "@/features/monitoring/use-monitoring";
 import { parseOverviewRangeParam, OVERVIEW_DEFAULT_PRESET } from "./overview-range";
 import { useOverview, overviewQueryKey } from "./use-overview";
-import { DualKpi } from "./dual-kpi";
 import { LiveQualityChart } from "./live-quality-chart";
 import { CompareBars } from "./compare-bars";
 import { AttentionQueue } from "./attention-queue";
 import { LoopProgress } from "./loop-progress";
 import { ProductionScoresCard } from "./production-scores-card";
+import { StatusPanels } from "./status-panels";
 import { traceScoreSummaryQueryKey } from "./use-trace-score-summary";
 import {
+  buildLivePanel,
   buildLoopCards,
-  mapOverviewToDualKpi,
+  buildReleasePanel,
   mergeAttentionItems,
   overviewWarningMessages,
 } from "./map-overview";
@@ -111,7 +112,8 @@ export function OverviewDashboard() {
   const loading = overviewQuery.isLoading && !overview;
   const loadFailed = overviewQuery.isError && !overview;
 
-  const dualKpi = overview ? mapOverviewToDualKpi(overview) : null;
+  const releasePanel = overview ? buildReleasePanel(overview) : null;
+  const livePanel = overview ? buildLivePanel(overview, preset) : null;
   const loopCards = overview ? buildLoopCards(overview) : null;
   const attentionRows = overview
     ? mergeAttentionItems(overview, {
@@ -127,7 +129,7 @@ export function OverviewDashboard() {
     <div className="flex flex-col gap-6">
       <PageHeader
         title="Overview"
-        description="How your AI app is doing in production and how the next version scores before release."
+        description="Is the next version safe to ship, and is production healthy right now?"
         actions={
           <>
             <TimeRangePicker preset={preset} onPresetChange={setPreset} />
@@ -163,11 +165,14 @@ export function OverviewDashboard() {
 
       <div
         aria-busy={loading}
-        className={cn("flex flex-col gap-6", loading && "pointer-events-none opacity-90")}
+        className={cn("flex flex-col gap-10", loading && "pointer-events-none opacity-90")}
       >
-        {loadFailed ? null : loading || !projectId || !dualKpi ? (
+        {loadFailed ? null : loading || !projectId || !releasePanel || !livePanel ? (
           <>
-            <OverviewSkeleton className="h-40" />
+            <div className="grid gap-4 lg:grid-cols-2">
+              <OverviewSkeleton className="h-56" />
+              <OverviewSkeleton className="h-56" />
+            </div>
             <div className="grid gap-4 lg:grid-cols-2">
               <OverviewSkeleton className="h-64" />
               <OverviewSkeleton className="h-64" />
@@ -177,24 +182,30 @@ export function OverviewDashboard() {
           <>
             {setupIncomplete && loopCards ? (
               <section className="flex flex-col gap-2">
-                <h2 className="text-sm font-semibold text-foreground">Getting started</h2>
+                <h2 className="font-serif text-lg font-medium text-foreground">Getting started</h2>
                 <LoopProgress projectId={projectId} cards={loopCards} />
               </section>
             ) : null}
 
-            <DualKpi projectId={projectId} model={dualKpi} />
+            <StatusPanels
+              projectId={projectId}
+              release={overview.offline.latest_experiment ? releasePanel : null}
+              live={livePanel}
+            />
 
-            <div className="grid gap-4 lg:grid-cols-2">
+            <div className="grid gap-x-12 gap-y-10 lg:grid-cols-2">
               <AttentionQueue projectId={projectId} rows={attentionRows} />
               <CompareBars projectId={projectId} overview={overview} />
             </div>
 
-            <LiveQualityChart
-              projectId={projectId}
-              series={overview.live.series}
-              referenceThreshold={overview.offline.reference_threshold}
-              onWidenRange={widenRange}
-            />
+            {overview.live.n_interactions > 0 ? (
+              <LiveQualityChart
+                projectId={projectId}
+                series={overview.live.series}
+                referenceThreshold={overview.offline.reference_threshold}
+                onWidenRange={widenRange}
+              />
+            ) : null}
 
             <ProductionScoresCard projectId={projectId} since={since} until={until} />
           </>

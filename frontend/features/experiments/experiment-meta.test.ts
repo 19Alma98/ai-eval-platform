@@ -5,6 +5,7 @@ import {
   experimentAppConfigChip,
   experimentAppConfigSnapshot,
   metricsSetBoundLabel,
+  runMetricEntries,
 } from "./experiment-meta";
 
 function experiment(
@@ -106,5 +107,24 @@ describe("experimentAppConfigSnapshot", () => {
     assert.deepEqual(snap.model, { model_id: "gpt-demo" });
     assert.deepEqual(snap.retrieval, { top_k: 5 });
     assert.equal(snap.contentHash, "abcdef0123456789");
+  });
+});
+
+describe("runMetricEntries", () => {
+  it("labels SDK run metrics and keeps custom ones", () => {
+    assert.deepEqual(
+      runMetricEntries({
+        "opengrade.latency_p95_ms": 484.0394,
+        "opengrade.error_rate": 0,
+        "opengrade.latency_p50_ms": 25.0099,
+        cost_usd: 0.123456,
+      }),
+      [
+        ["Errors", "0%"],
+        ["Latency p50", "25ms"],
+        ["Latency p95", "484ms"],
+        ["cost_usd", "0.1235"],
+      ],
+    );
   });
 });

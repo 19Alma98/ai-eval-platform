@@ -310,7 +310,7 @@ function BaselineSelect({
 }) {
   return (
     <div className="flex flex-col gap-1">
-      <label htmlFor="compare-baseline" className="sr-only">
+      <label htmlFor="compare-baseline" id="compare-baseline-label" className="sr-only">
         Baseline experiment
       </label>
       <Select
@@ -383,7 +383,7 @@ function CompareHeader({
       />
       <div className="grid gap-3 md:grid-cols-[1fr_auto_1fr] md:items-stretch">
         <div className="flex flex-col gap-2 rounded-lg border border-border bg-surface p-4">
-          <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+          <span className="text-[13px] font-medium text-muted-foreground">
             Baseline
           </span>
           {baselinePicker}
@@ -393,7 +393,7 @@ function CompareHeader({
           <ArrowRight className="size-5" />
         </div>
         <div className="flex flex-col gap-2 rounded-lg border border-primary/40 bg-surface p-4">
-          <span className="text-xs font-semibold uppercase tracking-wider text-primary">
+          <span className="text-[13px] font-medium text-primary">
             Candidate
           </span>
           <Link href={detailHref} className="text-sm font-medium text-foreground hover:underline">

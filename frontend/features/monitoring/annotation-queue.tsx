@@ -320,7 +320,7 @@ export function AnnotationQueue({ projectId }: { projectId: string }) {
           href={withProjectQuery("/live-runs", projectId)}
           className="text-xs text-primary hover:underline"
         >
-          All live traffic
+          All live answers
         </Link>
         <span className="flex-1" />
         <Select value={datasetId} onValueChange={(v) => chooseDataset(v ?? "")}>

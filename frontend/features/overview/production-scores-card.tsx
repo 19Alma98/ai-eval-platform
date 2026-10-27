@@ -16,11 +16,14 @@ export function ProductionScoresCard({
 }) {
   const query = useTraceScoreSummary(projectId, since, until);
   const rows = productionScoreRows(query.data);
+  // Nothing logged yet: the live panel already says how to send traffic; an
+  // empty card here would only repeat it.
+  if (query.isSuccess && rows.length === 0) return null;
   return (
     <section
       aria-label="Production scores"
-      className="flex flex-col gap-2 rounded-lg border border-border bg-surface p-4">
-      <h2 className="text-sm font-semibold text-foreground">Production scores</h2>
+      className="flex flex-col gap-2">
+      <h2 className="font-serif text-lg font-medium text-foreground">Production scores</h2>
       {query.isPending ? (
         <div
           className="h-16 animate-pulse rounded-md border border-border bg-surface-2"
@@ -36,11 +39,6 @@ export function ProductionScoresCard({
             Try again
           </Button>
         </div>
-      ) : rows.length === 0 ? (
-        <p className="text-sm text-muted-foreground">
-          No scores in this range. Send them with <code>opengrade.log_score</code>,{" "}
-          <code>opengrade.log_feedback</code> or <code>@opengrade.trace(metrics=[...])</code>.
-        </p>
       ) : (
         <ul className="flex flex-col divide-y divide-border">
           {rows.map((row) => (
