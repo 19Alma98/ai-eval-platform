@@ -17,7 +17,7 @@ The platform MVP is complete when:
 - [ ] CLI returns correct exit codes.
 - [ ] GitHub Actions example can block a release.
 - [ ] Unit/integration/frontend smoke tests exist.
-- [ ] README contains architecture, quickstart and demo GIF/video.
+- [ ] README contains architecture, quickstart and demo GIF/video. (15-minute guide: [`getting-started.md`](getting-started.md); hero GIF lands in a follow-up task.)
 - [ ] Docs state the trusted-network deployment model and that public exposure needs an external auth layer.
 - [ ] Benchmark results are published.
 - [ ] Security/privacy limitations are documented.

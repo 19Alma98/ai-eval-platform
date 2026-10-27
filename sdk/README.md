@@ -5,6 +5,14 @@ Python SDK for **OpenGrade**: OTLP/HTTP export with optional OpenInference instr
 ## Install
 
 ```bash
+uv add opengrade-ai
+uv add 'opengrade-ai[openai]'
+uv add 'opengrade-ai[ui]'   # also installs opengrade-ai-server (API + packaged UI)
+```
+
+Pip remains supported:
+
+```bash
 pip install opengrade-ai
 pip install 'opengrade-ai[openai]'
 pip install 'opengrade-ai[ai]'   # all tier-1 OpenInference instrumentors
@@ -16,8 +24,8 @@ Individual extras: `openai`, `anthropic`, `langchain`, `llama-index`, `bedrock`,
 Import path remains `import opengrade`. Local platform (SQLite + UI):
 
 ```bash
-pip install 'opengrade-ai[ui]'
-opengrade ui   # http://127.0.0.1:8000 — creates ./opengrade.db
+uv add 'opengrade-ai[ui]'
+uv run opengrade ui   # http://127.0.0.1:8000 — creates ./opengrade.db
 ```
 
 The `opengrade` command ships with the SDK. Without the `[ui]` extra it exits with a hint to install it.

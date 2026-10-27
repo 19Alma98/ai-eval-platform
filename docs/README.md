@@ -15,10 +15,11 @@ Self-hosted AI evaluation & observability. Open-source, not a hosted SaaS.
 
 ## Start here (adopters)
 
-1. Root [`README.md`](../README.md) — quickstart (Compose or `pip install 'opengrade-ai[ui]'`)
-2. [`examples/sdk_hello/README.md`](../examples/sdk_hello/README.md) — instrument → see a trace
-3. [`examples/hr_it_assistant/README.md`](../examples/hr_it_assistant/README.md) — dataset → metrics → experiment → gate
-4. [`sdk/README.md`](../sdk/README.md) — SDK reference
+1. [`getting-started.md`](getting-started.md) — 15 minutes: `uv` + UI + first trace (+ optional experiment)
+2. Root [`README.md`](../README.md) — quickstart (Compose or `opengrade ui`) and ops notes
+3. [`examples/sdk_hello/README.md`](../examples/sdk_hello/README.md) — instrument → see a trace
+4. [`examples/hr_it_assistant/README.md`](../examples/hr_it_assistant/README.md) — dataset → metrics → experiment → gate
+5. [`sdk/README.md`](../sdk/README.md) — SDK reference
 
 ## Glossary
 

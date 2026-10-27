@@ -9,15 +9,20 @@ Open-source platform for AI quality engineering: turn production traces into dat
 
 **Deployment model (v0.1):** trusted network only (localhost / private Docker network). There is **no built-in authentication**. Do not expose the stack on a public network without an external auth layer (reverse proxy, VPN, or cluster network policy).
 
+![OpenGrade UI](docs/images/hero.gif)
+
+**[Get started in 15 minutes →](docs/getting-started.md)** — `uv` + `opengrade ui`, first trace, optional scored experiment.
+
 ## Quickstart (local UI)
 
 Zero external infra — SQLite file + packaged UI in one process:
 
 ```bash
-# from a built/release install, or after: python scripts/package_ui.py && pip install -e backend
-pip install 'opengrade-ai[ui]'   # SDK + opengrade-ai-server (includes UI)
-opengrade ui                       # http://127.0.0.1:8000  → creates ./opengrade.db
+uv add 'opengrade-ai[ui]'
+uv run opengrade ui   # http://127.0.0.1:8000 → ./opengrade.db
 ```
+
+Pip: `pip install 'opengrade-ai[ui]'` then `opengrade ui` (same URL and `./opengrade.db`).
 
 From a fresh clone (Node.js >= 22 required for the UI build): `python scripts/package_ui.py`, then install/sync the backend and run `opengrade ui`. The CLI fails if port 8000 is already in use (e.g. Docker); pass `--port` or stop the other process. It loads `.env` from the current working directory when present and prints judge / content-capture settings at startup. Schema upgrades run automatically via Alembic; see [`backend/README.md`](backend/README.md) for SQLite backup notes (WAL).
 
@@ -28,6 +33,8 @@ opengrade ui --backend-store-uri 'postgresql+asyncpg://opengrade:opengrade@local
 ```
 
 ## Quickstart (Docker Compose)
+
+Adopter-first path: follow [`docs/getting-started.md`](docs/getting-started.md) (`uv` + local UI, then optional experiment). Use Compose when you want Postgres and the full stack in containers.
 
 ```bash
 cp backend/.env.example backend/.env   # optional but recommended
