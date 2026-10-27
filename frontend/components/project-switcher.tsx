@@ -78,8 +78,7 @@ export function ProjectSwitcher() {
                 onClick={() => setProjectId(p.id)}
                 className={p.id === projectId ? "bg-row-selected" : undefined}
               >
-                <span className="text-xs text-muted-foreground">Project</span>
-          <span className="truncate font-medium">{p.name}</span>
+                <span className="truncate">{p.name}</span>
               </DropdownMenuItem>
             ))
           ) : (

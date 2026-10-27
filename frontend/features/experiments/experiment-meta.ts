@@ -1,4 +1,5 @@
 import type { Experiment, MetricsSetSummary } from "@/lib/api/types";
+import { formatDurationMs, formatPercent } from "@/lib/format";
 
 export function metricsSetBoundLabel(
   experiment: Pick<Experiment, "metrics_set_id">,
@@ -86,4 +87,24 @@ export function experimentAppConfigSnapshot(experiment: Experiment): {
     contentHash:
       typeof hashRaw === "string" && hashRaw.trim() ? hashRaw.trim() : null,
   };
+}
+
+const RUN_METRIC_LABELS: Record<string, { label: string; format: (v: number) => string }> = {
+  "opengrade.error_rate": { label: "Errors", format: (v) => formatPercent(v) },
+  "opengrade.latency_p50_ms": { label: "Latency p50", format: formatDurationMs },
+  "opengrade.latency_p95_ms": { label: "Latency p95", format: formatDurationMs },
+};
+
+/** Run metrics logged by the SDK, with readable labels for the built-in ones. */
+export function runMetricEntries(metrics: Record<string, number>): [string, string][] {
+  const builtIn: [string, string][] = [];
+  const custom: [string, string][] = [];
+  for (const [key, value] of Object.entries(metrics)) {
+    const known = RUN_METRIC_LABELS[key];
+    if (known) builtIn.push([known.label, known.format(value)]);
+    else custom.push([key, value.toLocaleString("en-US", { maximumFractionDigits: 4 })]);
+  }
+  builtIn.sort(([a], [b]) => a.localeCompare(b));
+  custom.sort(([a], [b]) => a.localeCompare(b));
+  return [...builtIn, ...custom];
 }

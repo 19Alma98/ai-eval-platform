@@ -62,11 +62,21 @@ function Dialog({
   const triggers: React.ReactNode[] = []
   const rest: React.ReactNode[] = []
 
+  // Children are collected into arrays, so each needs a key of its own.
   React.Children.forEach(children, (child) => {
     if (React.isValidElement(child) && child.type === DialogTrigger) {
-      triggers.push(resolveDialogTrigger(child.props as DialogTriggerProps))
+      const trigger = resolveDialogTrigger(child.props as DialogTriggerProps)
+      triggers.push(
+        React.isValidElement(trigger)
+          ? React.cloneElement(trigger, { key: `trigger-${triggers.length}` })
+          : trigger
+      )
     } else if (child != null && child !== false) {
-      rest.push(child)
+      rest.push(
+        React.isValidElement(child) && child.key == null
+          ? React.cloneElement(child, { key: `content-${rest.length}` })
+          : child
+      )
     }
   })
 

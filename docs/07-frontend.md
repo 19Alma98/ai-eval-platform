@@ -63,13 +63,18 @@ Projects are managed from the project switcher (`/projects`).
 
 - **Getting started** — four numbered steps (test set → metrics → experiment → quality gate),
   shown only while one is incomplete.
-- **KPIs** — Live (questions answered, failing answers, average quality, waiting for
-  judge) and Offline (test sets, metrics, latest experiment, quality gate). Failing
-  answers matches the Live "Failing" filter (judge FAIL, SDK metric FAIL, or thumbs-down);
-  average quality is still the mean judge score.
+- **Status panels** — the two questions the page answers first, each a verdict headline
+  (green / red / neutral), one sentence, a few supporting numbers and one primary action:
+  - *Before release*: latest experiment vs its baseline (“1 metric got worse” → link to the
+    comparison; otherwise → quality gate), average pass rate, test sets, metrics set.
+    Hidden while there is no experiment yet (Getting started covers it).
+  - *In production*: share of failing live answers in the range (same fail rule as the
+    Live "Failing" filter: judge FAIL, SDK metric FAIL, or thumbs-down), questions,
+    average judge score, waiting for judge.
 - **Needs attention** — failing live answers (same fail rule), regressions, unreliable judges.
 - **Latest experiment vs baseline** — pass rate per metric with the change in points.
-- **Live quality over time** chart.
+- **Live quality over time** chart, only once the range has live traffic.
+- **Production scores** (SDK scores / user feedback), only when some were logged.
 
 ### Test sets
 
@@ -80,11 +85,16 @@ experiments is shown as *Locked* (imports create a new version).
 
 ### Experiments
 
-- List: experiment, status, test set, model, baseline (“Compared with”).
+- List: experiment, **metrics meeting target** (“7 of 10” with one bar segment per
+  metric), status, test set, model, baseline (“Compared with”, hidden when no experiment
+  has one).
 - Detail:
   - *Connect your app* card with a ready SDK snippet while no answers have arrived.
-  - **Results by metric** grouped into Answer quality / Retrieval / Performance with pass
-    rate bars; clicking a metric filters the answers that failed it.
+  - **Results by metric** headed by the verdict (“4 of 10 metrics meet their target”),
+    grouped into Answer quality / Retrieval / Performance with pass rate bars; clicking a
+    metric filters the answers that failed it.
+  - **Run details** strip: SDK run metrics with readable labels (errors, latency p50/p95)
+    and parameters not already in the header.
   - **Answers**: every question with the metrics it failed; the side panel shows app
     answer vs expected answer, every metric verdict with the judge explanation and
     claims, retrieved documents as cards (expected ones marked, missing ones listed),
@@ -97,7 +107,7 @@ experiments is shown as *Locked* (imports create a new version).
 
 ### Quality gate
 
-Guided form: pick candidate + baseline, then a *quality bar* built from the experiment's
+Guided form: pick candidate + baseline (preselected: the newest finished experiment and its baseline), then a *quality bar* built from the experiment's
 metrics (defaults from the project metrics thresholds), latency budget and maximum allowed
 drop vs baseline. The same rules can be edited as YAML or copied for CI (`opengrade check`).
 The result reads “Ready to ship” / “Not ready to ship” with each rule, the actual value and

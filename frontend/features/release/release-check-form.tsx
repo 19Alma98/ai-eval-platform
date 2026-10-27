@@ -78,7 +78,7 @@ export function ReleaseCheckForm({
     (metricsSetsQuery.data ?? []).find((s) => s.is_project_default)?.id ?? null;
   const defaultSetQuery = useMetricsSet(defaultSetId);
 
-  const [experimentId, setExperimentId] = useState(initialExperimentId);
+  const [pickedExperimentId, setExperimentId] = useState(initialExperimentId);
   const [baselinePick, setBaselinePick] = useState<string | null>(null);
   const [ruleEdits, setRuleEdits] = useState<
     Record<string, { enabled?: boolean; min?: string }>
@@ -92,6 +92,16 @@ export function ReleaseCheckForm({
   const [parseError, setParseError] = useState<string | null>(null);
 
   const experiments = useMemo(() => experimentsQuery.data ?? [], [experimentsQuery.data]);
+  // Nothing picked yet: start from the newest finished experiment so the page
+  // opens on a real verdict-in-waiting instead of an empty form.
+  const latestFinished = useMemo(
+    () =>
+      [...experiments]
+        .filter((e) => e.status.toLowerCase() === "completed")
+        .sort((a, b) => b.created_at.localeCompare(a.created_at))[0],
+    [experiments],
+  );
+  const experimentId = pickedExperimentId || latestFinished?.id || "";
   const selectedExperiment = experiments.find((e) => e.id === experimentId);
   const summaryQuery = useExperimentSummary(experimentId || null);
 

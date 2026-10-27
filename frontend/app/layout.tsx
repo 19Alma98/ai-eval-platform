@@ -3,8 +3,8 @@ import { Providers } from "./providers";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "AI Eval Platform",
-  description: "Evaluation platform UI",
+  title: "OpenGrade",
+  description: "Evaluate, compare and monitor your AI app before and after release.",
 };
 
 export default function RootLayout({

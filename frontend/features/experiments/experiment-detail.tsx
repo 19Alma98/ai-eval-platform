@@ -84,7 +84,9 @@ import {
   experimentModel,
   experimentVersion,
   metricsSetBoundLabel,
+  runMetricEntries,
 } from "./experiment-meta";
+import { tallyTargets } from "./metric-target";
 
 function evaluatorKind(ev: { config: Record<string, unknown> }): string | null {
   const kind = ev.config?.kind;
@@ -338,9 +340,12 @@ export function ExperimentDetailView({
   const params = Object.entries(flattenParams(experiment.model_config ?? {})).sort(([a], [b]) =>
     a.localeCompare(b),
   );
-  const runMetrics = Object.entries(summaryQuery.data?.experiment_metrics ?? {}).sort(
-    ([a], [b]) => a.localeCompare(b),
-  );
+  // The model is already in the header; repeating it as a parameter is noise.
+  const runDetails: [string, string][] = [
+    ...runMetricEntries(summaryQuery.data?.experiment_metrics ?? {}),
+    ...params.filter(([key, value]) => !(key === "model" && value === modelLabel)),
+  ];
+  const targets = tallyTargets(evaluators);
 
   return (
     <div className="flex flex-col gap-6">
@@ -414,7 +419,7 @@ export function ExperimentDetailView({
                 render={<Link href={releaseHref} />}
               >
                 <ShieldCheck className="size-4" />
-                Release check
+                Quality gate
               </Button>
             ) : null}
             <div className="flex items-center">
@@ -483,9 +488,18 @@ export function ExperimentDetailView({
       {scored ? (
         <section className="flex flex-col gap-3">
           <div className="flex flex-wrap items-baseline justify-between gap-2">
-            <h2 className="text-base font-semibold text-foreground">Results by metric</h2>
+            <h2 className="text-base font-semibold text-foreground">
+              <span
+                className={cn(
+                  targets.missed > 0 ? "text-status-fail" : "text-status-ok",
+                )}
+              >
+                {targets.met} of {targets.total}
+              </span>{" "}
+              metrics meet their target
+            </h2>
             <p className="text-xs text-muted-foreground">
-              Share of answers that reach each metric&apos;s target. Click a metric to see
+              Bars show the share of answers that pass each metric. Click a metric to see
               the answers that failed it.
             </p>
           </div>
@@ -517,20 +531,7 @@ export function ExperimentDetailView({
         />
       ) : null}
 
-      {params.length > 0 || runMetrics.length > 0 ? (
-        <section aria-label="Parameters and run metrics" className="grid gap-4 md:grid-cols-2">
-          {params.length > 0 ? <KeyValueCard title="Parameters" entries={params} /> : null}
-          {runMetrics.length > 0 ? (
-            <KeyValueCard
-              title="Run metrics"
-              entries={runMetrics.map(([key, value]) => [
-                key,
-                value.toLocaleString("en-US", { maximumFractionDigits: 4 }),
-              ])}
-            />
-          ) : null}
-        </section>
-      ) : null}
+      {runDetails.length > 0 ? <RunDetails entries={runDetails} /> : null}
 
       <section className="flex flex-col gap-3">
         <div className="flex flex-wrap items-center justify-between gap-3">
@@ -770,23 +771,29 @@ function useScorePack(experimentId: string) {
   });
 }
 
-function KeyValueCard({ title, entries }: { title: string; entries: [string, string][] }) {
+/** One compact strip for run-level numbers and parameters, below the verdict. */
+function RunDetails({ entries }: { entries: [string, string][] }) {
   return (
-    <div className="flex flex-col gap-2 rounded-lg border border-border bg-surface px-4 py-3">
-      <h2 className="text-sm font-semibold text-foreground">{title}</h2>
-      <dl className="grid grid-cols-[minmax(0,auto)_minmax(0,1fr)] gap-x-4 gap-y-1 text-sm">
+    <section
+      aria-label="Run details"
+      className="flex flex-wrap items-center gap-x-6 gap-y-2 rounded-lg border border-border bg-surface px-4 py-2.5 text-sm"
+    >
+      <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+        Run details
+      </h2>
+      <dl className="flex flex-wrap items-center gap-x-5 gap-y-1">
         {entries.map(([key, value]) => (
-          <div key={key} className="contents">
-            <dt className="truncate font-mono text-xs leading-5 text-muted-foreground" title={key}>
+          <div key={key} className="flex min-w-0 items-baseline gap-1.5">
+            <dt className="truncate text-muted-foreground" title={key}>
               {key}
             </dt>
-            <dd className="truncate tabular-nums text-foreground" title={value}>
+            <dd className="max-w-[240px] truncate font-medium tabular-nums text-foreground" title={value}>
               {value}
             </dd>
           </div>
         ))}
       </dl>
-    </div>
+    </section>
   );
 }
 

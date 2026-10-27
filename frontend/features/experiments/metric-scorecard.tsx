@@ -5,13 +5,7 @@ import type { EvaluatorSummary } from "@/lib/api/types";
 import { cn } from "@/lib/cn";
 import { formatPercent, formatScore } from "@/lib/format";
 import { groupByMetricCategory, metricInfo } from "@/lib/metrics-catalog";
-
-function targetState(status: string | null | undefined): "met" | "missed" | "unknown" {
-  const key = (status ?? "").toLowerCase();
-  if (key === "passed" || key === "pass" || key === "completed" || key === "ok") return "met";
-  if (key === "failed" || key === "fail") return "missed";
-  return "unknown";
-}
+import { targetState } from "./metric-target";
 
 /**
  * Metric results grouped by what they measure (answer quality, retrieval, performance).

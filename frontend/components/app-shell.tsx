@@ -160,11 +160,11 @@ function Brand({ projectId, onNavigate }: { projectId: string | null; onNavigate
     >
       <span
         aria-hidden
-        className="flex size-7 items-center justify-center rounded-md bg-primary text-xs font-bold text-primary-foreground"
+        className="flex size-7 items-center justify-center rounded-lg bg-linear-to-br from-primary to-chart-2 text-primary-foreground shadow-sm"
       >
-        AE
+        <ShieldCheck className="size-4" strokeWidth={2.5} />
       </span>
-      <span className="text-sm font-semibold tracking-tight text-foreground">AI Eval</span>
+      <span className="text-sm font-semibold tracking-tight text-foreground">OpenGrade</span>
     </Link>
   );
 }

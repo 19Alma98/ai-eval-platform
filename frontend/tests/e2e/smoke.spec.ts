@@ -13,13 +13,10 @@ test("overview, live traffic and quality gate render", async ({ page, request })
   await page.goto(`/overview?project=${id}&range=24h`);
   await expect(page.getByRole("heading", { name: "Overview" })).toBeVisible();
   await expect(page.getByRole("button", { name: /time range/i })).toBeVisible();
-  const keyMetrics = page.getByRole("region", { name: "Key metrics" });
-  await expect(
-    keyMetrics.getByRole("heading", { name: "Live", exact: true }),
-  ).toBeVisible();
-  await expect(
-    keyMetrics.getByRole("heading", { name: "Offline", exact: true }),
-  ).toBeVisible();
+  // Empty project: Getting started replaces the "Before release" panel.
+  const live = page.getByRole("region", { name: "In production" });
+  await expect(live.getByRole("heading", { name: "No live traffic" })).toBeVisible();
+  await expect(page.getByRole("region", { name: "Before release" })).toHaveCount(0);
   await expect(page.getByRole("link", { name: "Traces" })).toBeVisible();
 
   await page.goto(`/live-runs?project=${id}`);

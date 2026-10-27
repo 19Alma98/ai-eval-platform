@@ -6,11 +6,13 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useQueryClient } from "@tanstack/react-query";
 import { BellRing } from "lucide-react";
+import { EmptyState } from "@/components/empty-state";
 import { ErrorState } from "@/components/error-state";
 import { LoadingBlock } from "@/components/loading-block";
 import { PageHeader } from "@/components/page-header";
 import { RefreshControl } from "@/components/refresh-control";
 import { TimeRangePicker } from "@/components/time-range-picker";
+import { buttonVariants } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { parseOverviewRangeParam } from "@/features/overview/overview-range";
 import { formatErrorForUi } from "@/lib/api/client";
@@ -212,6 +214,37 @@ function Dashboard({
   const [thresholds, setAlarm] = useAlarmThresholds(projectId);
   const firing = data.metrics.filter((m) => alarmState(m, thresholds).firing);
   const errorRate = data.n_traces ? data.n_errors / data.n_traces : null;
+
+  // No traffic at all: one clear next step instead of five zero KPIs and empty axes.
+  if (data.n_traces === 0 && data.metrics.length === 0) {
+    return (
+      <div className="flex flex-col gap-6">
+        <EmptyState
+          title="No production traffic in this range"
+          description="Once your app sends traces with the SDK, latency, cost and judge scores show up here over time. Experiment runs are not counted as production traffic."
+          action={
+            <>
+              <Link
+                href={withProjectQuery("/live-runs", projectId)}
+                className={buttonVariants({ variant: "default", size: "sm" })}
+              >
+                Open live traffic
+              </Link>
+              <Link
+                href={withProjectQuery("/traces", projectId)}
+                className={buttonVariants({ variant: "outline", size: "sm" })}
+              >
+                Browse all traces
+              </Link>
+            </>
+          }
+        />
+        <div id="annotation-queue">
+          <AnnotationQueue projectId={projectId} />
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="flex flex-col gap-6">
