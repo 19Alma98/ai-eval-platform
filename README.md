@@ -9,7 +9,7 @@ Open-source platform for AI quality engineering: turn production traces into dat
 
 **Deployment model (v0.1):** trusted network only (localhost / private Docker network). There is **no built-in authentication**. Do not expose the stack on a public network without an external auth layer (reverse proxy, VPN, or cluster network policy).
 
-![OpenGrade UI](docs/images/hero.gif)
+![OpenGrade walkthrough: overview, traces, experiments, baseline compare, quality gate, production judge](docs/images/hero.gif)
 
 **[Get started in 15 minutes →](docs/getting-started.md)** — `uv` + `opengrade ui`, first trace, optional scored experiment.
 
