@@ -1165,6 +1165,7 @@ def start_experiment(
     *,
     dataset: DatasetLike,
     metrics: Sequence[Metric] | None = None,
+    metrics_set_id: str | None = None,
     params: Mapping[str, Any] | None = None,
     baseline: str | ExperimentResponse | ExperimentResult | None = None,
     project: str | None = None,
@@ -1177,10 +1178,11 @@ def start_experiment(
     """Create an experiment and return it for a manual loop.
 
     ``metrics=None`` scores with the project's default metrics set; a list scores
-    with exactly those server kinds (plus local callables). ``baseline`` is an
-    experiment id, name (latest wins) or a previous result. With an app config the
-    server snapshots it as the experiment's params (``exp.params``), replacing
-    ``params``.
+    with exactly those server kinds (plus local callables). Pass ``metrics_set_id``
+    to reuse an existing set (e.g. cloned from another experiment) instead of
+    resolving kinds. ``baseline`` is an experiment id, name (latest wins) or a
+    previous result. With an app config the server snapshots it as the
+    experiment's params (``exp.params``), replacing ``params``.
     """
     explicit_client = client is not None
     client = client or get_client()
@@ -1191,10 +1193,16 @@ def start_experiment(
     local_metrics: list[LocalMetric] = []
     if metrics is not None:
         server_metrics, local_metrics = _split_metrics(metrics)
-    score_on_server = metrics is None or bool(server_metrics)
-    metrics_set_id = (
-        _resolve_metrics_set(client, project_id, server_metrics) if server_metrics else None
-    )
+    if metrics_set_id is not None:
+        if server_metrics:
+            raise ValueError("pass metrics kinds or metrics_set_id, not both")
+        resolved_metrics_set_id: str | None = metrics_set_id
+        score_on_server = True
+    else:
+        resolved_metrics_set_id = (
+            _resolve_metrics_set(client, project_id, server_metrics) if server_metrics else None
+        )
+        score_on_server = metrics is None or bool(server_metrics)
     baseline_id = _resolve_baseline(client, project_id, baseline, dataset_id=dataset_id)
 
     experiment = client.experiments.create(
@@ -1206,7 +1214,7 @@ def start_experiment(
         baseline_experiment_id=baseline_id,
         app_config_id=app_config_id,
         app_config_alias=app_config_alias,
-        metrics_set_id=metrics_set_id,
+        metrics_set_id=resolved_metrics_set_id,
     )
     items = client.datasets.get(dataset_id).items
     if not items:
@@ -1215,7 +1223,7 @@ def start_experiment(
         client=client,
         experiment=experiment,
         items=items,
-        metrics_set_id=metrics_set_id,
+        metrics_set_id=resolved_metrics_set_id,
         score_on_server=score_on_server,
         local_metrics=local_metrics,
         baseline_id=baseline_id,
@@ -1229,6 +1237,7 @@ def evaluate(
     dataset: DatasetLike,
     task: Callable[[DatasetItemResponse], Any],
     metrics: Sequence[Metric] | None = None,
+    metrics_set_id: str | None = None,
     name: str | None = None,
     params: Mapping[str, Any] | None = None,
     baseline: str | ExperimentResponse | ExperimentResult | None = None,
@@ -1255,6 +1264,7 @@ def evaluate(
         name or _default_name(task),
         dataset=dataset,
         metrics=metrics,
+        metrics_set_id=metrics_set_id,
         params=params,
         baseline=baseline,
         project=project,

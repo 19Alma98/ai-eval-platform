@@ -21,13 +21,39 @@ Defaults to SQLite at `sqlite+aiosqlite:///./opengrade.db`. Override with `--bac
 
 Loads `.env` from the process working directory when present (Pydantic Settings) and prints judge model / API key presence / `LLM_API_BASE` / content-capture at startup. Exits with code `2` if the bind port already accepts connections (e.g. Docker on `:8000`) — stop the other process or pass `--port`.
 
-### Quality gate
+### Evaluate (exam + optional gate)
+
+```text
+opengrade evaluate --config opengrade.yaml [flags…]
+```
+
+`--policy` is an alias for the same YAML path. Runs the gold exam (dataset + metrics + task), then applies policy blocks via release-check when present.
+
+| Mode | When |
+|------|------|
+| Embedded | No `api_base_url` / `--base-url` → temp SQLite + in-process API (pytest-like CI) |
+| Remote | `api_base_url` or `--base-url` set |
+
+Exam definition (XOR):
+
+- **`from_experiment`** (preferred): clone `dataset_id` + `metrics_set_id` from an existing experiment; baseline defaults to that id.
+- **Bootstrap:** `dataset` + `metrics` (path/name + kinds) for the first exam / embedded.
+
+Task wiring (XOR): `--task module.path:callable` or `--script path.py` (must define `task(item)`; optional `DATASET` / `METRICS` for bootstrap).
+
+Judge secrets: `evaluate.judge.api_key_env: LLM_API_KEY` reads the environment (set via CI secrets). Do not commit API keys in YAML.
+
+Flags override YAML: `--task`, `--script`, `--dataset`, `--metrics`, `--name`, `--baseline`, `--from-experiment`, `--base-url`, `--project`, `--backend-store-uri`, `--json`.
+
+Design: [`docs/superpowers/specs/2026-10-28-opengrade-evaluate-cli-design.md`](superpowers/specs/2026-10-28-opengrade-evaluate-cli-design.md).
+
+### Quality gate only
 
 ```text
 opengrade check --policy opengrade.yaml [--base-url URL] [--project-id ID] [--experiment-id ID] [--baseline-experiment-id ID]
 ```
 
-YAML may include meta fields (`api_base_url`, `project_id`, `experiment_id`, `baseline_experiment_id`) plus policy blocks. Flags override meta fields. The CLI strips meta keys and POSTs the remainder as `policy` to `POST /api/v1/projects/{project_id}/release-check`.
+YAML may include meta fields (`api_base_url`, `project` / `project_id`, `experiment_id`, `baseline_experiment_id`) plus policy blocks. The `evaluate:` block is ignored. Flags override meta fields. The CLI strips reserved keys and POSTs the remainder as `policy` to `POST /api/v1/projects/{project_id}/release-check`.
 
 Planned later:
 
@@ -82,13 +108,20 @@ opengrade ui
 
 See `.github/workflows/release-gate.yml.example` and `examples/opengrade.yaml`.
 
-Example:
+Preferred (evaluate + gate in one step):
+
+```yaml
+- name: RAG evaluate + quality gate
+  env:
+    LLM_API_KEY: ${{ secrets.LLM_API_KEY }}
+  run: opengrade evaluate --config opengrade.yaml --name "ci-${GITHUB_SHA::7}"
+```
+
+Standalone check against an experiment that already exists on a remote API:
 
 ```yaml
 - name: Run AI evaluation gate
-  run: |
-    # Assume experiment evaluation already completed against the API
-    opengrade check --policy opengrade.yaml
+  run: opengrade check --policy opengrade.yaml
 ```
 
 Exit codes:

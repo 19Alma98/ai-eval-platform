@@ -120,6 +120,7 @@ result = opengrade.evaluate(
     dataset="gold-v1",  # name/id, path, list/iterable of dicts, pandas/Polars DataFrame
     task=answer_question,
     metrics=["groundedness", "hit_at_k", short],
+    # metrics_set_id="…",  # reuse an existing set (e.g. from_experiment in the CLI); XOR with metrics kinds
     name="gemma-prompt-v2",
     params={"model": "gemma4"},  # stored as the experiment's model_config
     baseline="prod",  # experiment name (latest) or id

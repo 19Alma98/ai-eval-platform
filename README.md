@@ -129,7 +129,14 @@ curl "http://localhost:8000/api/v1/projects/<project-uuid>/traces/<otel-trace-id
 
 ## Quality gate (Phase 4)
 
-After evaluating an experiment, check a YAML policy:
+Run the gold exam and apply a YAML policy in one step (embedded API by default):
+
+```bash
+# opengrade.yaml: evaluate.task / dataset+metrics (or from_experiment) + policy blocks
+uv run opengrade evaluate --config examples/opengrade.yaml
+```
+
+Or gate an experiment that already exists on a remote API:
 
 ```bash
 cd backend && uv sync --all-extras
@@ -139,7 +146,7 @@ uv run opengrade check --policy ../examples/opengrade.yaml \
   --experiment-id <experiment-uuid>
 ```
 
-Exit codes: `0` pass, `1` gate failed, `2` config error, `3` infra error. Example workflow: [`.github/workflows/release-gate.yml.example`](.github/workflows/release-gate.yml.example).
+Exit codes: `0` pass, `1` gate failed, `2` config error, `3` infra error. Example workflow: [`.github/workflows/release-gate.yml.example`](.github/workflows/release-gate.yml.example). Details: [`docs/08-cli-ci.md`](docs/08-cli-ci.md).
 
 ## PyPI release
 

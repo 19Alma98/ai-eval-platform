@@ -1,32 +1,24 @@
-# Example workflow: fail the job when an OpenGrade quality gate fails.
+# Example workflow: run RAG exam + quality gate in one step (pytest-like).
 # This file is intentionally named *.yml.example so GitHub Actions does not run it.
 # Copy to release-gate.yml (or into a consumer repo) and adapt.
-# Requires a reachable OpenGrade API with evaluated experiment runs already available.
 #
-# Exit codes from `opengrade check`:
+# Exit codes from `opengrade evaluate` / `opengrade check`:
 #   0 pass | 1 gate failed | 2 config error | 3 infra error
+#
+# Prefer `from_experiment` in opengrade.yaml once a gold exam exists on a remote
+# OpenGrade server. For bootstrap / fully ephemeral CI, omit api_base_url so the
+# CLI starts embedded API+SQLite and use dataset + metrics in the YAML.
 
 name: Quality gate example
 
 on:
+  push:
+    branches: [main]
+  pull_request:
   workflow_dispatch:
-    inputs:
-      project_id:
-        description: OpenGrade project UUID
-        required: true
-      experiment_id:
-        description: Candidate experiment UUID
-        required: true
-      baseline_experiment_id:
-        description: Baseline experiment UUID (optional if set on experiment)
-        required: false
-      api_base_url:
-        description: OpenGrade API base URL
-        required: true
-        default: http://localhost:8000
 
 jobs:
-  release-gate:
+  rag-quality-gate:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -39,26 +31,20 @@ jobs:
       - name: Set up Python
         run: uv python install 3.12
 
-      - name: Install opengrade-ai-server (CLI)
-        working-directory: backend
-        run: uv sync
-
-      - name: Run release check
-        working-directory: backend
-        env:
-          OPENGRADE_BASE_URL: ${{ inputs.api_base_url }}
-          OPENGRADE_PROJECT_ID: ${{ inputs.project_id }}
-          OPENGRADE_EXPERIMENT_ID: ${{ inputs.experiment_id }}
-          OPENGRADE_BASELINE_ID: ${{ inputs.baseline_experiment_id }}
+      - name: Install app + OpenGrade CLI
         run: |
-          ARGS=(
-            check
-            --policy ../examples/opengrade.yaml
-            --base-url "$OPENGRADE_BASE_URL"
-            --project-id "$OPENGRADE_PROJECT_ID"
-            --experiment-id "$OPENGRADE_EXPERIMENT_ID"
-          )
-          if [ -n "${OPENGRADE_BASELINE_ID:-}" ]; then
-            ARGS+=(--baseline-experiment-id "$OPENGRADE_BASELINE_ID")
-          fi
-          uv run opengrade "${ARGS[@]}"
+          uv sync
+          # Consumer repos: uv add 'opengrade-ai[ui]'  (or pip install)
+
+      - name: Run evaluate + gate
+        env:
+          LLM_API_KEY: ${{ secrets.LLM_API_KEY }}
+          # Optional remote server (otherwise embedded SQLite):
+          # OPENGRADE uses api_base_url from opengrade.yaml when set
+        run: |
+          uv run opengrade evaluate \
+            --config opengrade.yaml \
+            --name "ci-${GITHUB_SHA::7}"
+
+      # Standalone check against an existing experiment (optional second job):
+      # - run: opengrade check --policy opengrade.yaml --base-url … --project-id … --experiment-id …

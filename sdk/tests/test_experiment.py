@@ -302,6 +302,25 @@ def test_evaluate_reuses_inline_dataset_and_metrics_set(server: FakeServer) -> N
     assert len(server.metrics_sets) == 2  # default + one sdk set
 
 
+def test_evaluate_metrics_set_id_reuses_existing_set(server: FakeServer) -> None:
+    first = opengrade.evaluate(dataset=ROWS, task=_task, metrics=["hit_at_k"], name="seed")
+    ms_id = server.experiments[first.id]["metrics_set_id"]
+    before = len(server.metrics_sets)
+    second = opengrade.evaluate(
+        dataset=first.experiment.dataset_id,
+        task=_task,
+        metrics_set_id=ms_id,
+        name="clone",
+        baseline=first.id,
+    )
+    assert server.experiments[second.id]["metrics_set_id"] == ms_id
+    assert len(server.metrics_sets) == before
+    with pytest.raises(ValueError, match="not both"):
+        opengrade.evaluate(
+            dataset=ROWS, task=_task, metrics=["hit_at_k"], metrics_set_id=ms_id, name="bad"
+        )
+
+
 def test_inline_dataset_resumes_partial_create(server: FakeServer) -> None:
     rows = [{"input": f"q{i}"} for i in range(5)]
     # First call creates the dataset then fails mid-upload.

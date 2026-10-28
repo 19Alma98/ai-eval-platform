@@ -1,4 +1,4 @@
-"""Console entry point: ``opengrade ui`` and ``opengrade check``."""
+"""Console entry point: ``opengrade ui``, ``opengrade check``, ``opengrade evaluate``."""
 
 from __future__ import annotations
 
@@ -16,6 +16,17 @@ import yaml
 from rich.console import Console
 from rich.table import Table
 
+from opengrade_server.cli_evaluate import (
+    EVALUATE_KEY,
+    RESERVED_TOP_LEVEL,
+    EmbeddedServer,
+    EvaluateConfigError,
+    apply_judge_env,
+    emit_json,
+    post_release_check,
+    resolve_evaluate_config,
+    resolve_task,
+)
 from opengrade_server.config import DEFAULT_SQLITE_URL, Settings, get_settings
 from opengrade_server.ui import ui_root
 
@@ -29,8 +40,10 @@ META_KEYS = frozenset(
         "api_base_url",
         "base_url",
         "project_id",
+        "project",
         "experiment_id",
         "baseline_experiment_id",
+        EVALUATE_KEY,
     }
 )
 
@@ -137,8 +150,13 @@ def load_policy_file(path: Path) -> dict[str, Any]:
 
 
 def split_meta(raw: dict[str, Any]) -> tuple[dict[str, Any], dict[str, Any]]:
-    meta = {k: v for k, v in raw.items() if k in META_KEYS}
-    policy = {k: v for k, v in raw.items() if k not in META_KEYS}
+    """Split meta/evaluate reserved keys from policy rule blocks.
+
+    ``evaluate`` is stripped so ``opengrade check`` ignores it when sharing YAML
+    with ``opengrade evaluate``.
+    """
+    meta = {k: v for k, v in raw.items() if k in META_KEYS and k != EVALUATE_KEY}
+    policy = {k: v for k, v in raw.items() if k not in RESERVED_TOP_LEVEL}
     return meta, policy
 
 
@@ -239,7 +257,7 @@ def check(
         raw = load_policy_file(policy)
         meta, policy_body = split_meta(raw)
         resolved_base = resolve_str(base_url, meta, "api_base_url", "base_url")
-        resolved_project = resolve_str(project_id, meta, "project_id")
+        resolved_project = resolve_str(project_id, meta, "project_id", "project")
         resolved_experiment = resolve_str(experiment_id, meta, "experiment_id")
         resolved_baseline = resolve_str(baseline_experiment_id, meta, "baseline_experiment_id")
 
@@ -252,34 +270,32 @@ def check(
         if not policy_body:
             raise typer.BadParameter("policy file has no rule blocks")
 
-        project_uuid = _parse_uuid(resolved_project, "project_id")
-        experiment_uuid = _parse_uuid(resolved_experiment, "experiment_id")
-        payload: dict[str, Any] = {
-            "experiment_id": str(experiment_uuid),
-            "policy": policy_body,
-        }
-        if resolved_baseline:
-            payload["baseline_experiment_id"] = str(
-                _parse_uuid(resolved_baseline, "baseline_experiment_id")
-            )
-
-        url = f"{resolved_base.rstrip('/')}/api/v1/projects/{project_uuid}/release-check"
+        # project must be a UUID for release-check URL (slug not accepted here)
+        project_uuid = str(_parse_uuid(resolved_project, "project_id"))
+        experiment_uuid = str(_parse_uuid(resolved_experiment, "experiment_id"))
+        baseline_uuid = (
+            str(_parse_uuid(resolved_baseline, "baseline_experiment_id"))
+            if resolved_baseline
+            else None
+        )
         try:
-            response = httpx2.post(url, json=payload, timeout=60.0)
+            body = post_release_check(
+                base_url=resolved_base,
+                project_id=project_uuid,
+                experiment_id=experiment_uuid,
+                policy=policy_body,
+                baseline_experiment_id=baseline_uuid,
+            )
+        except EvaluateConfigError as exc:
+            console.print(f"[red]Configuration/API error:[/red] {exc}")
+            raise typer.Exit(EXIT_CONFIG) from exc
         except httpx2.HTTPError as exc:
             console.print(f"[red]Infrastructure error:[/red] {exc}")
             raise typer.Exit(EXIT_INFRA) from exc
+        except RuntimeError as exc:
+            console.print(f"[red]Infrastructure error:[/red] {exc}")
+            raise typer.Exit(EXIT_INFRA) from exc
 
-        if response.status_code >= 500:
-            console.print(f"[red]Infrastructure error:[/red] HTTP {response.status_code}")
-            console.print(response.text)
-            raise typer.Exit(EXIT_INFRA)
-        if response.status_code >= 400:
-            console.print(f"[red]Configuration/API error:[/red] HTTP {response.status_code}")
-            console.print(response.text)
-            raise typer.Exit(EXIT_CONFIG)
-
-        body = response.json()
         _print_checks(body)
         if body.get("status") == "passed":
             console.print("[green]Result: PASSED[/green]")
@@ -310,6 +326,202 @@ def _print_checks(body: dict[str, Any]) -> None:
             str(check.get("status", "")),
         )
     console.print(table)
+
+
+@app.command("evaluate")
+def evaluate_cmd(
+    config: Annotated[
+        Path | None,
+        typer.Option("--config", exists=True, dir_okay=False, readable=True),
+    ] = None,
+    policy: Annotated[
+        Path | None,
+        typer.Option(
+            "--policy",
+            exists=True,
+            dir_okay=False,
+            readable=True,
+            help="Alias for --config (same YAML: evaluate + policy)",
+        ),
+    ] = None,
+    base_url: Annotated[str | None, typer.Option("--base-url")] = None,
+    project: Annotated[str | None, typer.Option("--project")] = None,
+    task: Annotated[str | None, typer.Option("--task", help="module.path:callable")] = None,
+    script: Annotated[
+        Path | None,
+        typer.Option("--script", exists=True, dir_okay=False, readable=True),
+    ] = None,
+    dataset: Annotated[str | None, typer.Option("--dataset")] = None,
+    metrics: Annotated[
+        str | None,
+        typer.Option("--metrics", help="Comma-separated metric kinds"),
+    ] = None,
+    name: Annotated[str | None, typer.Option("--name")] = None,
+    baseline: Annotated[str | None, typer.Option("--baseline")] = None,
+    from_experiment: Annotated[
+        str | None,
+        typer.Option("--from-experiment", help="Clone dataset + metrics_set from experiment"),
+    ] = None,
+    backend_store_uri: Annotated[
+        str | None,
+        typer.Option("--backend-store-uri", help="Embedded DB URL (default: temp SQLite)"),
+    ] = None,
+    as_json: Annotated[bool, typer.Option("--json", help="Emit machine-readable JSON")] = False,
+) -> None:
+    """Run a dataset exam (evaluate) and optionally apply a release policy gate."""
+    config_path = config or policy
+    if config_path is None:
+        console.print("[red]Configuration error:[/red] --config or --policy is required")
+        raise typer.Exit(EXIT_CONFIG)
+
+    embedded: EmbeddedServer | None = None
+    try:
+        raw = load_policy_file(config_path)
+        cfg = resolve_evaluate_config(
+            raw,
+            base_url=base_url,
+            project=project,
+            task=task,
+            script=script,
+            dataset=dataset,
+            metrics=metrics,
+            name=name,
+            baseline=baseline,
+            from_experiment=from_experiment,
+            backend_store_uri=backend_store_uri,
+            as_json=as_json,
+        )
+        task_fn = resolve_task(cfg)
+
+        tracking_uri = cfg.base_url
+        if not tracking_uri:
+            apply_judge_env(cfg)
+            embedded = EmbeddedServer(database_url=cfg.backend_store_uri)
+            tracking_uri = embedded.start()
+            console.print(f"Embedded OpenGrade API: [cyan]{tracking_uri}[/cyan]")
+        else:
+            # Judge env still useful if the remote server reads the same process env (rare);
+            # for remote, keys usually live on the server. Only apply when keys are set.
+            if cfg.judge_model or cfg.judge_api_base or cfg.judge_api_key_env:
+                apply_judge_env(cfg)
+
+        import opengrade
+
+        opengrade.set_tracking_uri(tracking_uri)
+        project_name = cfg.project or "demo"
+        project_resp = opengrade.set_project(project_name)
+        if project_resp is None:
+            raise RuntimeError(
+                f"could not resolve or create project {project_name!r} at {tracking_uri}"
+            )
+        project_id = project_resp.id
+
+        if cfg.init_tracing:
+            opengrade.init(service_name=cfg.name or "opengrade-evaluate")
+
+        metrics_set_id: str | None = None
+        dataset_arg: Any = cfg.dataset
+        baseline_arg = cfg.baseline
+        metrics_arg = cfg.metrics
+
+        if cfg.from_experiment:
+            client = opengrade.get_client()
+            template = client.experiments.get(cfg.from_experiment)
+            if not template.dataset_id:
+                raise EvaluateConfigError(
+                    f"from_experiment {cfg.from_experiment} has no dataset_id"
+                )
+            if not template.metrics_set_id:
+                raise EvaluateConfigError(
+                    f"from_experiment {cfg.from_experiment} has no metrics_set_id"
+                )
+            dataset_arg = template.dataset_id
+            metrics_set_id = template.metrics_set_id
+            metrics_arg = None
+            if baseline_arg is None:
+                baseline_arg = cfg.from_experiment
+
+        assert dataset_arg is not None
+
+        result = opengrade.evaluate(
+            dataset=dataset_arg,
+            task=task_fn,
+            metrics=metrics_arg,
+            metrics_set_id=metrics_set_id,
+            name=cfg.name,
+            params=cfg.params or None,
+            baseline=baseline_arg,
+            max_concurrency=cfg.max_concurrency,
+            project=project_id,
+            task_type=cfg.task_type,
+            client=opengrade.get_client(),
+        )
+
+        payload: dict[str, Any] = {
+            "experiment_id": result.id,
+            "url": result.url,
+            "project_id": project_id,
+            "baseline_id": result.baseline_id,
+            "metrics": result.metrics,
+            "status": "evaluated",
+        }
+        if not cfg.as_json:
+            console.print(result.summary())
+            console.print(f"Experiment: [cyan]{result.url}[/cyan]")
+
+        if not cfg.policy:
+            payload["gate"] = None
+            if cfg.as_json:
+                emit_json(payload)
+            raise typer.Exit(EXIT_PASS)
+
+        try:
+            body = post_release_check(
+                base_url=tracking_uri,
+                project_id=project_id,
+                experiment_id=result.id,
+                policy=cfg.policy,
+                baseline_experiment_id=result.baseline_id,
+            )
+        except EvaluateConfigError as exc:
+            console.print(f"[red]Configuration/API error:[/red] {exc}")
+            raise typer.Exit(EXIT_CONFIG) from exc
+        except httpx2.HTTPError as exc:
+            console.print(f"[red]Infrastructure error:[/red] {exc}")
+            raise typer.Exit(EXIT_INFRA) from exc
+        except RuntimeError as exc:
+            console.print(f"[red]Infrastructure error:[/red] {exc}")
+            raise typer.Exit(EXIT_INFRA) from exc
+
+        payload["gate"] = body.get("status")
+        payload["checks"] = body.get("checks")
+        if cfg.as_json:
+            emit_json(payload)
+        else:
+            _print_checks(body)
+
+        if body.get("status") == "passed":
+            if not cfg.as_json:
+                console.print("[green]Result: PASSED[/green]")
+            raise typer.Exit(EXIT_PASS)
+        if not cfg.as_json:
+            console.print("[red]Result: FAILED[/red]")
+        raise typer.Exit(EXIT_GATE_FAILED)
+
+    except EvaluateConfigError as exc:
+        console.print(f"[red]Configuration error:[/red] {exc}")
+        raise typer.Exit(EXIT_CONFIG) from exc
+    except typer.BadParameter as exc:
+        console.print(f"[red]Configuration error:[/red] {exc}")
+        raise typer.Exit(EXIT_CONFIG) from exc
+    except typer.Exit:
+        raise
+    except Exception as exc:
+        console.print(f"[red]Infrastructure error:[/red] {exc}")
+        raise typer.Exit(EXIT_INFRA) from exc
+    finally:
+        if embedded is not None:
+            embedded.stop()
 
 
 if __name__ == "__main__":
