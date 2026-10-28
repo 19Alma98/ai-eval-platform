@@ -211,7 +211,6 @@ class ItemRun:
         self.documents = documents
 
 
-
 @dataclass
 class ExperimentResult:
     """Outcome of a finished experiment: server scores, local scores, baseline delta."""
@@ -371,7 +370,6 @@ def _fmt_delta(row: MetricComparisonResponse | None) -> str:
     status = row.status or ""
     label = _STATUS_LABELS.get(status, status.replace("_", " ") if status else "")
     return f"{row.delta:+.3f} {label}".rstrip()
-
 
 
 class Experiment:
@@ -1136,7 +1134,6 @@ def log_params(**params: Any) -> dict[str, Any]:
 def log_metrics(metrics: Mapping[str, float]) -> dict[str, float]:
     """``Experiment.log_metrics`` on the active experiment."""
     return _active_experiment().log_metrics(metrics)
-
 
 
 def start_experiment(
