@@ -13,7 +13,7 @@ import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 from uuid import UUID
 
 import httpx2
@@ -120,8 +120,12 @@ def resolve_evaluate_config(
     as_json: bool = False,
 ) -> EvaluateConfig:
     meta, block, policy = split_config(raw)
-    judge = block.get("judge") or {}
-    if judge is not None and not isinstance(judge, dict):
+    judge_raw = block.get("judge")
+    if judge_raw is None:
+        judge: dict[str, Any] = {}
+    elif isinstance(judge_raw, dict):
+        judge = cast(dict[str, Any], judge_raw)
+    else:
         raise EvaluateConfigError("evaluate.judge must be a mapping")
 
     yaml_metrics = block.get("metrics")
@@ -217,7 +221,7 @@ def load_task_from_ref(ref: str) -> Callable[..., Any]:
         raise EvaluateConfigError(f"task attribute {attr!r} not found on {module_name}") from exc
     if not callable(target):
         raise EvaluateConfigError(f"task {ref!r} is not callable")
-    return target  # type: ignore[return-value]
+    return cast(Callable[..., Any], target)
 
 
 def load_task_from_script(path: Path) -> tuple[Callable[..., Any], dict[str, Any]]:
@@ -361,7 +365,10 @@ def post_release_check(
         raise RuntimeError(f"release-check HTTP {response.status_code}: {response.text}")
     if response.status_code >= 400:
         raise EvaluateConfigError(f"release-check HTTP {response.status_code}: {response.text}")
-    return response.json()
+    body = response.json()
+    if not isinstance(body, dict):
+        raise RuntimeError(f"release-check returned non-object JSON: {type(body).__name__}")
+    return cast(dict[str, Any], body)
 
 
 def emit_json(payload: dict[str, Any]) -> None:
