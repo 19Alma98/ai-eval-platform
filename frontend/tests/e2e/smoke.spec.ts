@@ -212,7 +212,6 @@ test("LLM, tool and retrieval spans can be inspected", async ({ page, request })
   const io = page.getByRole("tabpanel", { name: "Input / Output" });
 
   await open("chat_completion");
-  // Header facts: kind and total tokens.
   await expect(page.getByRole("definition").filter({ hasText: /^LLM$/ })).toBeVisible();
   await expect(page.getByRole("definition").filter({ hasText: /^42$/ })).toBeVisible();
   await expect(attributes.getByText("demo-model-1")).toBeVisible();

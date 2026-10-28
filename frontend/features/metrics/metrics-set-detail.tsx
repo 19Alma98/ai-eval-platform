@@ -36,7 +36,6 @@ import {
 
 type EntryRow = MetricsSetEntry;
 
-/** Plain-language summary of the evaluator settings people actually tune. */
 function settingsSummary(entry: MetricsSetEntry): string | null {
   const config = entry.config ?? {};
   const parts: string[] = [];

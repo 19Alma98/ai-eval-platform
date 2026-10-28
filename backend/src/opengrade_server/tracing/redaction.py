@@ -18,9 +18,7 @@ DOCUMENT_ATTRIBUTE_KEYS = (
     "documents",
 )
 _DOCUMENT_TEXT_FIELDS = frozenset({"text", "content", "page_content"})
-# OpenInference flattened document text: retrieval.documents.0.document.content
 _FLAT_DOCUMENT_TEXT = re.compile(r"^\d+\.document\.content$")
-# OpenInference flattened embedding input text: embedding.embeddings.0.embedding.text
 _FLAT_EMBEDDING_TEXT = re.compile(r"^embedding\.embeddings\.\d+\.embedding\.text$")
 
 

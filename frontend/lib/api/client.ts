@@ -1,7 +1,6 @@
 /** Build-time sub-path (see next.config.ts); "" when served at the root. */
 export const BASE_PATH = (process.env.NEXT_PUBLIC_BASE_PATH ?? "").replace(/\/+$/, "");
 
-/** Prefix an absolute app path ("/api/v1/…", "/traces/…") with the sub-path. */
 export function withBasePath(path: string): string {
   return path.startsWith("/") ? `${BASE_PATH}${path}` : path;
 }
@@ -75,7 +74,7 @@ export function parseApiErrorBody(status: number, body: string): string {
       }
     }
   } catch {
-    // non-JSON body
+    // ignore parse errors
   }
 
   if (trimmed.startsWith("<") || trimmed.startsWith("<!")) {

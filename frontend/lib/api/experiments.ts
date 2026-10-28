@@ -72,7 +72,6 @@ export function summarizeExperiment(id: string) {
   return apiGet<ExperimentSummary>(`/api/v1/experiments/${id}/summary`);
 }
 
-/** Summaries of many experiments at once (N-way comparison table). */
 export function summarizeProjectExperiments(
   projectId: string,
   experimentIds?: string[],

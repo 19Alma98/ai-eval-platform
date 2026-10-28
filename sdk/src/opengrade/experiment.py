@@ -161,11 +161,6 @@ def _digest(value: Any) -> str:
     return hashlib.sha256(raw).hexdigest()
 
 
-# ---------------------------------------------------------------------------
-# Per-item run
-# ---------------------------------------------------------------------------
-
-
 @dataclass
 class ItemRun:
     """One dataset item executed inside ``Experiment.run()``."""
@@ -215,10 +210,6 @@ class ItemRun:
         # Last retrieval stage wins (retriever → reranker), as on the server.
         self.documents = documents
 
-
-# ---------------------------------------------------------------------------
-# Result
-# ---------------------------------------------------------------------------
 
 
 @dataclass
@@ -381,10 +372,6 @@ def _fmt_delta(row: MetricComparisonResponse | None) -> str:
     label = _STATUS_LABELS.get(status, status.replace("_", " ") if status else "")
     return f"{row.delta:+.3f} {label}".rstrip()
 
-
-# ---------------------------------------------------------------------------
-# Experiment
-# ---------------------------------------------------------------------------
 
 
 class Experiment:
@@ -817,10 +804,6 @@ def _output_entry(record: ItemRun, stored: ExperimentItemOutputResponse | None) 
     return entry
 
 
-# ---------------------------------------------------------------------------
-# Resolution helpers
-# ---------------------------------------------------------------------------
-
 DatasetLike = (
     str | Path | DatasetResponse | Sequence[Mapping[str, Any]] | Iterable[Mapping[str, Any]] | Any
 )
@@ -1154,10 +1137,6 @@ def log_metrics(metrics: Mapping[str, float]) -> dict[str, float]:
     """``Experiment.log_metrics`` on the active experiment."""
     return _active_experiment().log_metrics(metrics)
 
-
-# ---------------------------------------------------------------------------
-# Public entry points
-# ---------------------------------------------------------------------------
 
 
 def start_experiment(

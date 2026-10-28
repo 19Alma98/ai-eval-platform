@@ -36,7 +36,6 @@ def test_module_available_uses_find_spec_not_import(monkeypatch: pytest.MonkeyPa
 
 
 def test_activates_when_both_present(monkeypatch: pytest.MonkeyPatch) -> None:
-    # Fake target library
     sys.modules["openai"] = types.ModuleType("openai")
 
     fake_mod = types.ModuleType("openinference.instrumentation.openai")
@@ -44,7 +43,6 @@ def test_activates_when_both_present(monkeypatch: pytest.MonkeyPatch) -> None:
     fake_cls = MagicMock(return_value=instrumentor_instance)
     fake_mod.OpenAIInstrumentor = fake_cls
 
-    # Ensure parent packages exist for import machinery
     oi = types.ModuleType("openinference")
     oi_inst = types.ModuleType("openinference.instrumentation")
     sys.modules["openinference"] = oi
@@ -63,7 +61,6 @@ def test_activates_when_both_present(monkeypatch: pytest.MonkeyPatch) -> None:
     instrumentor_instance.uninstrument.assert_called_once_with()
     assert instrumentation._ACTIVE == []
 
-    # cleanup
     for key in list(sys.modules):
         if key == "openai" or key.startswith("openinference"):
             sys.modules.pop(key, None)

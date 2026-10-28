@@ -1,4 +1,3 @@
-/** Render registry config blobs as plain text (not JSON). */
 export function formatConfigValue(value: unknown): string {
   if (value === null || value === undefined) return "—";
   if (typeof value === "string") {

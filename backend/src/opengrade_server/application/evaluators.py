@@ -57,7 +57,6 @@ class CreateEvaluator:
         except KeyError as exc:
             raise UnknownEvaluatorKindError(kind) from exc
 
-        # Validate config by instantiating
         factory = get_evaluator_factory(kind)
         factory(command.config)
 

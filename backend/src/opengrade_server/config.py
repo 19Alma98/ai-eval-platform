@@ -35,7 +35,6 @@ class Settings(BaseSettings):
         default=DEFAULT_JUDGE_PROMPT_SNAPSHOTS,
         validation_alias=AliasChoices("OPENGRADE_JUDGE_PROMPT_SNAPSHOTS", "judge_prompt_snapshots"),
     )
-    # Container / reverse-proxy (uvicorn entrypoint also reads env directly)
     forwarded_allow_ips: str = "*"
     shutdown_grace_seconds: int = 30
     # OTLP ingest backpressure (per process; assume single API replica)

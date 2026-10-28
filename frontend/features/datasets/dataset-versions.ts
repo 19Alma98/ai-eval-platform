@@ -1,9 +1,7 @@
 import type { Dataset } from "@/lib/api/types";
 
 export type DatasetRow = Dataset & {
-  /** Newest version of its test set (older versions are listed right under it). */
   latest: boolean;
-  /** Number of versions sharing this name. */
   versionCount: number;
 };
 

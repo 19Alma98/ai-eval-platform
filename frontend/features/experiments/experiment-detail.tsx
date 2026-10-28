@@ -771,7 +771,6 @@ function useScorePack(experimentId: string) {
   });
 }
 
-/** One compact strip for run-level numbers and parameters, below the verdict. */
 function RunDetails({ entries }: { entries: [string, string][] }) {
   return (
     <section

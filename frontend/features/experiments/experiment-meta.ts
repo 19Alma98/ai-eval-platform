@@ -13,7 +13,6 @@ export function metricsSetBoundLabel(
   return "Unknown metrics set";
 }
 
-/** User-declared model label from experiment.model_config.model */
 export function experimentModel(experiment: Experiment): string | null {
   const nested = experiment.model_config?.model;
   if (
@@ -45,7 +44,6 @@ function snapshotAppConfigVersion(raw: unknown): number | null {
   return null;
 }
 
-/** App config registry chip when bound via app_config_id or snapshot name+version. */
 export function experimentAppConfigChip(
   experiment: Experiment,
 ): { familyName: string; label: string } | null {
@@ -70,7 +68,6 @@ function asRecord(value: unknown): Record<string, unknown> | null {
   return null;
 }
 
-/** Frozen app-config snapshot fields from experiment.model_config when registry-bound. */
 export function experimentAppConfigSnapshot(experiment: Experiment): {
   prompt: Record<string, unknown>;
   model: Record<string, unknown>;
@@ -95,7 +92,6 @@ const RUN_METRIC_LABELS: Record<string, { label: string; format: (v: number) => 
   "opengrade.latency_p95_ms": { label: "Latency p95", format: formatDurationMs },
 };
 
-/** Run metrics logged by the SDK, with readable labels for the built-in ones. */
 export function runMetricEntries(metrics: Record<string, number>): [string, string][] {
   const builtIn: [string, string][] = [];
   const custom: [string, string][] = [];

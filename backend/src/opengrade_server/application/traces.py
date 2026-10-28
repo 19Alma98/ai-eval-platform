@@ -172,7 +172,6 @@ class ResolveProject:
         project_slug: str | None,
     ) -> uuid.UUID:
         if bool(project_id) == bool(project_slug):
-            # both missing or both set
             raise ValueError("Provide exactly one of X-Project-Id or X-Project-Slug")
         if project_id:
             try:

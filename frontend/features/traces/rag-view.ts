@@ -225,7 +225,6 @@ function spanAnswer(span: Span): string | null {
 const byStart = (a: Span, b: Span) =>
   new Date(a.start_time).getTime() - new Date(b.start_time).getTime();
 
-/** Reconstruct query → retrieved chunks → prompt → answer from a trace's spans. */
 export function buildRagView(trace: TraceDetail): RagView {
   const spans = [...trace.spans].sort(byStart);
   const stages: RagStage[] = [];
@@ -300,7 +299,6 @@ export function highlightQuotes(
   return parts;
 }
 
-/** Claims that cite a chunk by id or quote text from it. */
 export function claimsForChunk(chunk: RagChunk, claims: JudgeClaim[]): number[] {
   const lower = chunk.text?.toLowerCase() ?? "";
   const out: number[] = [];

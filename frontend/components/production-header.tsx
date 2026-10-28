@@ -9,7 +9,6 @@ import { useProjectId } from "@/lib/project-store";
 
 export type ProductionTab = "health" | "answers" | "traces";
 
-/** The three views of production traffic, from the aggregate down to a single call. */
 export const PRODUCTION_TABS: { id: ProductionTab; href: string; label: string; blurb: string }[] = [
   {
     id: "health",
@@ -31,7 +30,6 @@ export const PRODUCTION_TABS: { id: ProductionTab; href: string; label: string; 
   },
 ];
 
-/** Paths owned by the Production section (list and detail pages). */
 export const PRODUCTION_PATHS = PRODUCTION_TABS.map((t) => t.href);
 
 export function ProductionHeader({ active, actions }: { active: ProductionTab; actions?: ReactNode }) {

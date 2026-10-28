@@ -38,7 +38,6 @@ export type RetrievedDocument = {
   text: string;
 };
 
-/** Map an evaluator label (PASS / FAIL / SKIPPED / ERROR) to a display outcome. */
 export function outcomeOf(label: string | null | undefined, score: number | null): Outcome {
   const key = (label ?? "").trim().toLowerCase();
   if (key === "pass" || key === "passed") return "pass";

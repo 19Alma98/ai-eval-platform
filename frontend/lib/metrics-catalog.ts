@@ -123,7 +123,6 @@ export function humanizeIdentifier(value: string): string {
   return spaced.charAt(0).toUpperCase() + spaced.slice(1);
 }
 
-/** Look up a metric by kind or evaluator name; unknown names are humanized. */
 export function metricInfo(nameOrKind: string | null | undefined): MetricInfo {
   const key = (nameOrKind ?? "").trim().toLowerCase();
   const known = CATALOG[key];
@@ -162,7 +161,6 @@ export function metricsSetDisplayName(name: string): string {
   return `From code: ${labels.join(", ")}`;
 }
 
-/** Stable sort key: category order first, then label. */
 export function compareMetrics(a: string, b: string): number {
   const ia = metricInfo(a);
   const ib = metricInfo(b);
@@ -172,7 +170,6 @@ export function compareMetrics(a: string, b: string): number {
   return ia.label.localeCompare(ib.label);
 }
 
-/** Group rows by metric category, in display order, dropping empty groups. */
 export function groupByMetricCategory<T>(
   rows: T[],
   nameOf: (row: T) => string | null | undefined,

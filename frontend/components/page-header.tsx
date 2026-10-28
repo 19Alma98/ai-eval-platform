@@ -71,7 +71,6 @@ export function PageHeader({
   );
 }
 
-/** "Label value" pair for the meta row under a page title. */
 export function MetaItem({ label, children }: { label: string; children: ReactNode }) {
   return (
     <span className="inline-flex min-w-0 items-center gap-1.5">

@@ -22,7 +22,6 @@ function StatusPanel({ panel, projectId }: { panel: StatusPanelModel; projectId:
           />
           {panel.eyebrow}
         </p>
-        {/* The verdict, written like a line in a report. */}
         <h2
           className={cn(
             "font-serif text-[1.9rem] leading-[1.15] font-medium tracking-tight",

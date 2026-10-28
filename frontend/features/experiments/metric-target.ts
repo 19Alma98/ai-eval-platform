@@ -2,7 +2,6 @@ import type { EvaluatorSummary } from "@/lib/api/types";
 
 export type TargetState = "met" | "missed" | "unknown";
 
-/** Whether a metric's run reached its pass threshold, from the summary status. */
 export function targetState(status: string | null | undefined): TargetState {
   const key = (status ?? "").toLowerCase();
   if (key === "passed" || key === "pass" || key === "completed" || key === "ok") return "met";
@@ -12,7 +11,6 @@ export function targetState(status: string | null | undefined): TargetState {
 
 export type TargetTally = { met: number; missed: number; total: number };
 
-/** How many of an experiment's metrics meet their target (unknown ones count in total only). */
 export function tallyTargets(evaluators: EvaluatorSummary[]): TargetTally {
   let met = 0;
   let missed = 0;

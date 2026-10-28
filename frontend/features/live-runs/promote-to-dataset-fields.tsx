@@ -34,7 +34,6 @@ export function docsFromLiveInteraction(
   })).filter((d) => d.id);
 }
 
-/** Document pickers for promote-to-dataset (checkboxes + manual IDs). */
 export function PromoteExpectedDocFields({
   documents,
   selectedIds,

@@ -47,7 +47,6 @@ function capitalizeWord(value: string): string {
   return value.charAt(0).toUpperCase() + value.slice(1).toLowerCase();
 }
 
-/** Human-readable English label for known API status strings. */
 export function formatStatusLabel(
   status: string,
   kind: StatusLabelKind = "default",

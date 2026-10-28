@@ -22,7 +22,6 @@ export function classifyEvaluateResponse(data: EvaluateResponse): {
   return { kind: "success", errorCount: 0 };
 }
 
-/** Toast success or warning based on evaluate / evaluate-pack response body. */
 export function toastEvaluateOutcome(
   data: EvaluateResponse,
   copy: { success: string; withErrors: string },

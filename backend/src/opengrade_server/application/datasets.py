@@ -203,7 +203,6 @@ class CreateDataset:
         try:
             created = await self._datasets.add(dataset)
         except Exception as exc:
-            # Repository may raise IntegrityError; map in infra or re-raise as conflict
             if _is_unique_violation(exc):
                 raise DatasetConflictError(dataset.name, dataset.version) from exc
             raise

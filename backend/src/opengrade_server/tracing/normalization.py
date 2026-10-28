@@ -121,7 +121,6 @@ def normalize_raw_spans(
         for domain_span in domain_spans:
             metadata.update(extract_model_provider(domain_span.attributes))
 
-        # Optional resource-ish fields from first span attributes
         first_attrs = spans_raw[0].get("attributes") or {}
         environment = first_attrs.get("deployment.environment") or first_attrs.get(
             "opengrade.environment"

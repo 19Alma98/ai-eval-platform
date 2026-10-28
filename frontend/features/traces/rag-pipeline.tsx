@@ -34,7 +34,6 @@ const TONE_MARK: Record<VerdictTone, string> = {
 
 type LabeledClaim = JudgeClaim & { metric: string };
 
-/** Claims the live judge extracted from the answer, across all its metrics. */
 export function claimsFromInteraction(interaction: LiveInteraction | undefined): LabeledClaim[] {
   if (!interaction) return [];
   return interaction.scores.flatMap((score) =>

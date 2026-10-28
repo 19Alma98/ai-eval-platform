@@ -177,7 +177,6 @@ export function varyingParams(rows: MatrixRow[]): Record<string, string[]> {
   return out;
 }
 
-/** Trend points in creation order (oldest first), one value per metric column. */
 export function trendSeries(
   rows: MatrixRow[],
   columns: MetricColumn[],

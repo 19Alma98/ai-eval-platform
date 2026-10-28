@@ -1,4 +1,3 @@
-# sdk/tests/test_rename_contract.py
 from __future__ import annotations
 
 import importlib.metadata

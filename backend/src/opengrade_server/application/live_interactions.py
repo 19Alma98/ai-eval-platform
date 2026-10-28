@@ -70,7 +70,6 @@ class ListLiveInteractionsResult:
         ]
     ]
     judge_warnings: list[LiveJudgeWarning]
-    # Trace scores (SDK metrics, user feedback) per interaction id, joined on source_trace_id.
     trace_scores: dict[uuid.UUID, list[TraceScore]] = field(default_factory=dict)
 
 
@@ -482,7 +481,6 @@ class ListLiveInteractions:
                 score_reviews = await self._live.list_score_reviews_by_score_ids(
                     [s.id for s in scores]
                 )
-                # Annotation queue: judged answers no human has looked at yet.
                 if unreviewed_only and (not scores or score_reviews):
                     continue
                 out.append((item, scores, score_reviews))
