@@ -78,6 +78,7 @@ def _project_to_domain(row: ProjectModel) -> Project:
         name=row.name,
         slug=row.slug,
         created_at=row.created_at,
+        retention_days=row.retention_days,
     )
 
 
@@ -147,6 +148,15 @@ class SqlAlchemyProjectRepository:
             select(ProjectModel).order_by(ProjectModel.created_at.desc())
         )
         return [_project_to_domain(row) for row in result.scalars().all()]
+
+    async def set_retention_days(self, project_id: uuid.UUID, days: int | None) -> Project | None:
+        row = await self._session.get(ProjectModel, project_id)
+        if row is None:
+            return None
+        row.retention_days = days
+        await self._session.commit()
+        await self._session.refresh(row)
+        return _project_to_domain(row)
 
     async def delete(self, project_id: uuid.UUID) -> bool:
         row = await self._session.get(ProjectModel, project_id)
@@ -2036,3 +2046,81 @@ class SqlAlchemyAlertRepository:
             query.order_by(AlertEventModel.created_at.desc()).limit(limit)
         )
         return [_alert_event_to_domain(row) for row in result.scalars().all()]
+
+
+class SqlAlchemyRetentionRepository:
+    """Bulk reads/deletes for purging old production data of one project."""
+
+    def __init__(self, session: AsyncSession) -> None:
+        self._session = session
+
+    async def old_traces(
+        self,
+        project_id: uuid.UUID,
+        *,
+        before: datetime,
+        after: tuple[datetime, uuid.UUID] | None = None,
+        limit: int = 500,
+    ) -> list[Trace]:
+        """Traces started before ``before``, oldest first, with spans; keyset after ``after``."""
+        stmt = select(TraceModel).where(
+            TraceModel.project_id == project_id, TraceModel.start_time < before
+        )
+        if after is not None:
+            start, trace_pk = after
+            stmt = stmt.where(
+                (TraceModel.start_time > start)
+                | ((TraceModel.start_time == start) & (TraceModel.id > trace_pk))
+            )
+        result = await self._session.execute(
+            stmt.options(selectinload(TraceModel.spans))
+            .order_by(TraceModel.start_time.asc(), TraceModel.id.asc())
+            .limit(limit)
+        )
+        return [_trace_to_domain(row) for row in result.scalars().all()]
+
+    async def dataset_trace_ids(self, project_id: uuid.UUID) -> set[str]:
+        """Trace ids test cases were built from (kept so their source link still works)."""
+        result = await self._session.execute(
+            select(DatasetItemModel.source_trace_id)
+            .join(DatasetModel, DatasetModel.id == DatasetItemModel.dataset_id)
+            .where(
+                DatasetModel.project_id == project_id,
+                DatasetItemModel.source_trace_id.is_not(None),
+            )
+            .distinct()
+        )
+        return {str(v) for v in result.scalars().all()}
+
+    async def delete_traces(self, trace_pks: list[uuid.UUID]) -> int:
+        if not trace_pks:
+            return 0
+        # Spans cascade (FK ON DELETE CASCADE; SQLite runs with foreign_keys=ON).
+        result = await self._session.execute(delete(TraceModel).where(TraceModel.id.in_(trace_pks)))
+        await self._session.commit()
+        return int(cast(CursorResult[Any], result).rowcount or 0)
+
+    async def purge_rows(
+        self, project_id: uuid.UUID, *, before: datetime, dry_run: bool
+    ) -> dict[str, int]:
+        """Live interactions (with their scores/reviews), trace scores and alert events."""
+        targets = (
+            ("live_interactions", LiveInteractionModel, LiveInteractionModel.created_at),
+            ("trace_scores", TraceScoreModel, TraceScoreModel.updated_at),
+            ("alert_events", AlertEventModel, AlertEventModel.created_at),
+        )
+        counts: dict[str, int] = {}
+        for name, model, column in targets:
+            condition = (model.project_id == project_id) & (column < before)
+            if dry_run:
+                counts[name] = int(
+                    (
+                        await self._session.execute(select(func.count()).where(condition))
+                    ).scalar_one()
+                )
+            else:
+                result = await self._session.execute(delete(model).where(condition))
+                counts[name] = int(cast(CursorResult[Any], result).rowcount or 0)
+        if not dry_run:
+            await self._session.commit()
+        return counts

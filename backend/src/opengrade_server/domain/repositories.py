@@ -34,6 +34,10 @@ class ProjectRepository(Protocol):
 
     async def list_all(self) -> list[Project]: ...
 
+    async def set_retention_days(
+        self, project_id: uuid.UUID, days: int | None
+    ) -> Project | None: ...
+
     async def delete(self, project_id: uuid.UUID) -> bool: ...
 
 

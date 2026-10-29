@@ -67,6 +67,7 @@ class ProjectModel(Base):
         nullable=False,
         server_default=func.now(),
     )
+    retention_days: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
 
 class TraceModel(Base):

@@ -1,7 +1,7 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Trash2 } from "lucide-react";
+import { History, Trash2 } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 import { EmptyState } from "@/components/empty-state";
@@ -28,6 +28,7 @@ import {
   projectsQueryOptions,
 } from "@/lib/queries/projects";
 import { CreateProjectDialog } from "./create-project-dialog";
+import { RetentionDialog } from "./retention-dialog";
 
 export const PROJECTS_PANEL_ID = "projects-panel";
 
@@ -42,6 +43,7 @@ export function ProjectsPanel({
   const query = useQuery(projectsQueryOptions());
   const [createOpen, setCreateOpen] = useState(false);
   const [pendingDelete, setPendingDelete] = useState<Project | null>(null);
+  const [retentionFor, setRetentionFor] = useState<Project | null>(null);
 
   const remove = useMutation({
     mutationFn: (id: string) => deleteProject(id),
@@ -133,8 +135,22 @@ export function ProjectsPanel({
                   </span>
                   <span className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-muted-foreground">
                     <span>Created <RelativeTime date={p.created_at} /></span>
+                    {p.retention_days != null ? (
+                      <span>Keeps {p.retention_days} days of production data</span>
+                    ) : null}
                   </span>
                 </button>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="shrink-0 text-muted-foreground"
+                  aria-label={`Data retention for ${p.name}`}
+                  title="Data retention"
+                  onClick={() => setRetentionFor(p)}
+                >
+                  <History className="size-4" />
+                </Button>
                 <Button
                   type="button"
                   variant="ghost"
@@ -151,6 +167,14 @@ export function ProjectsPanel({
           })}
         </ul>
       )}
+
+      <RetentionDialog
+        key={retentionFor?.id ?? "none"}
+        project={retentionFor}
+        onOpenChange={(open) => {
+          if (!open) setRetentionFor(null);
+        }}
+      />
 
       <Dialog
         open={pendingDelete != null}

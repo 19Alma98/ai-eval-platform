@@ -50,6 +50,7 @@ class ProjectResponse(BaseModel):
     name: str
     slug: str
     created_at: datetime
+    retention_days: int | None = None
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -1217,3 +1218,29 @@ class VersionSummaryResponse(BaseModel):
     cost_per_trace_usd: float | None
     traces_truncated: bool
     metrics: list[VersionMetricResponse]
+
+
+class SetRetentionRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    retention_days: int | None = Field(ge=1, le=36500)
+
+
+class PurgeReportResponse(BaseModel):
+    retention_days: int | None
+    cutoff: datetime | None
+    dry_run: bool
+    traces: int
+    traces_kept: int
+    live_interactions: int = 0
+    trace_scores: int = 0
+    alert_events: int = 0
+
+
+class RetentionResponse(BaseModel):
+    project_id: uuid.UUID
+    retention_days: int | None
+    default_days: int | None
+    effective_days: int | None
+    # What a purge would delete right now (dry run).
+    pending: PurgeReportResponse

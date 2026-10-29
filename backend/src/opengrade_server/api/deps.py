@@ -101,6 +101,7 @@ from opengrade_server.application.projects import (
     ListProjects,
 )
 from opengrade_server.application.release_check import ReleaseCheck
+from opengrade_server.application.retention import PurgeProductionData, SetProjectRetention
 from opengrade_server.application.scoring_inputs import CurrentScoringFingerprint
 from opengrade_server.application.trace_scores import (
     ListTraceScores,
@@ -130,6 +131,7 @@ from opengrade_server.infrastructure.repositories import (
     SqlAlchemyLiveInteractionRepository,
     SqlAlchemyMetricsSetRepository,
     SqlAlchemyProjectRepository,
+    SqlAlchemyRetentionRepository,
     SqlAlchemyTraceRepository,
     SqlAlchemyTraceScoreRepository,
 )
@@ -912,3 +914,20 @@ def get_evaluate_alert_rules(
     dispatcher: AlertDispatcher = Depends(get_alert_dispatcher),
 ) -> EvaluateAlertRules:
     return EvaluateAlertRules(alerts, projects, monitoring, dispatcher)
+
+
+def get_purge_production_data(
+    projects: SqlAlchemyProjectRepository = Depends(get_project_repository),
+    session: AsyncSession = Depends(get_db_session),
+) -> PurgeProductionData:
+    return PurgeProductionData(
+        projects,
+        SqlAlchemyRetentionRepository(session),
+        default_days=get_settings().retention_days,
+    )
+
+
+def get_set_project_retention(
+    projects: SqlAlchemyProjectRepository = Depends(get_project_repository),
+) -> SetProjectRetention:
+    return SetProjectRetention(projects)

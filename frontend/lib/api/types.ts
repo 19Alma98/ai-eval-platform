@@ -3,6 +3,26 @@ export type Project = {
   name: string;
   slug: string;
   created_at: string;
+  retention_days?: number | null;
+};
+
+export type PurgeReport = {
+  retention_days: number | null;
+  cutoff: string | null;
+  dry_run: boolean;
+  traces: number;
+  traces_kept: number;
+  live_interactions: number;
+  trace_scores: number;
+  alert_events: number;
+};
+
+export type ProjectRetention = {
+  project_id: string;
+  retention_days: number | null;
+  default_days: number | null;
+  effective_days: number | null;
+  pending: PurgeReport;
 };
 
 export type Span = {

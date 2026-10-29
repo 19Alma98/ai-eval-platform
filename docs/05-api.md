@@ -404,6 +404,18 @@ State: `ok`, `firing`, or `no_data` (fewer than `min_samples`). Becoming `firing
 
 Single API replica only: several replicas would each evaluate and notify.
 
+## Retention
+
+Production data older than the project's retention period is deleted every `RETENTION_INTERVAL_HOURS` (default 24; first run a minute after start): production traces (with spans), live interactions (with judge scores and reviews), trace scores and alert events. Traces bound to an experiment run and traces a test case was built from (`source_trace_id`) are kept; test sets, experiments and results are never touched.
+
+```http
+GET  /projects/{project_id}/retention             # setting + what a purge would delete now
+PUT  /projects/{project_id}/retention             # {"retention_days": 30 | null}
+POST /projects/{project_id}/retention/purge?dry_run=false
+```
+
+`retention_days` null falls back to the server's `RETENTION_DAYS` (unset: keep forever). Also in the UI (Projects → retention icon) and the SDK (`client.projects.set_retention(30)`).
+
 ## Comparison
 
 ```http

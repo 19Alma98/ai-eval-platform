@@ -21,6 +21,7 @@ class ProjectResponse(_ApiModel):
     name: str
     slug: str
     created_at: datetime | str
+    retention_days: int | None = None
 
 
 class DatasetResponse(_ApiModel):

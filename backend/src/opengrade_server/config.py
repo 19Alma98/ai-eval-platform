@@ -50,6 +50,10 @@ class Settings(BaseSettings):
     alert_webhook_timeout_seconds: float = 10.0
     # Where the UI is reachable from outside, for links in alert notifications.
     public_base_url: str | None = None
+    # Production data retention: default days for projects without their own setting
+    # (unset = keep forever) and how often the purge runs.
+    retention_days: int | None = Field(default=None, ge=1)
+    retention_interval_hours: float = 24.0
 
 
 @lru_cache

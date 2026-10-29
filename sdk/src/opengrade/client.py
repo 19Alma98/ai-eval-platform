@@ -66,6 +66,16 @@ class _ProjectsResource:
             response_model=ProjectResponse,
         )
 
+    def set_retention(self, retention_days: int | None, project_id: str | None = None) -> None:
+        """Keep ``retention_days`` of production data (traces, live answers, scores, alert
+        events); ``None`` falls back to the server's ``RETENTION_DAYS``."""
+        project_id = resolve_project_id(project_id)
+        self._http.request(
+            "PUT",
+            f"/api/v1/projects/{project_id}/retention",
+            body={"retention_days": retention_days},
+        )
+
 
 class _DatasetsResource:
     def __init__(self, http: _HttpTransport) -> None:

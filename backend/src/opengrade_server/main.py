@@ -38,6 +38,7 @@ def _ensure_evaluators_registered() -> None:
 @asynccontextmanager
 async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
     from opengrade_server.application.alerts import run_alert_loop
+    from opengrade_server.application.retention import run_retention_loop
     from opengrade_server.application.scoring_recovery import recover_scoring_after_restart
 
     init_db()
@@ -50,11 +51,19 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
         if settings.alerts_enabled
         else None
     )
+    retention_loop = (
+        asyncio.create_task(
+            run_retention_loop(settings.retention_interval_hours), name="retention-loop"
+        )
+        if settings.retention_interval_hours > 0
+        else None
+    )
     yield
-    if alert_loop is not None:
-        alert_loop.cancel()
-        with suppress(asyncio.CancelledError):
-            await alert_loop
+    for task in (alert_loop, retention_loop):
+        if task is not None:
+            task.cancel()
+            with suppress(asyncio.CancelledError):
+                await task
     await dispose_db()
 
 
