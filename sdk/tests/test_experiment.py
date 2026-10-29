@@ -38,6 +38,7 @@ class FakeServer:
         self.scored_on_server: set[str] = set()
         self.reject_client_results = False
         self.experiment_metrics: dict[str, dict[str, float]] = {}
+        self.aliases: dict[str, str] = {}
         self.fail_metrics = False
         self.calls: list[tuple[str, str, Any]] = []
         self.add_metrics_set(
@@ -121,6 +122,14 @@ class FakeServer:
             )
         if m := re.fullmatch(r"/api/v1/metrics-sets/([^/]+)", path):
             return httpx2.Response(200, json=self.metrics_sets[m[1]])
+        if m := re.fullmatch(r"/api/v1/projects/[^/]+/experiment-aliases/([^/]+)", path):
+            if m[1] not in self.aliases:
+                return httpx2.Response(404, json={"detail": "Experiment alias not found"})
+            target = self.experiments[self.aliases[m[1]]]
+            return httpx2.Response(
+                200,
+                json={"name": m[1], "experiment_id": target["id"], "experiment": target},
+            )
         if re.fullmatch(r"/api/v1/projects/[^/]+/experiments", path):
             if method == "GET":
                 return httpx2.Response(200, json=list(self.experiments.values()))
@@ -381,6 +390,26 @@ def test_evaluate_by_dataset_name_with_baseline_by_name(server: FakeServer) -> N
     assert result.baseline_id == newest
     assert result.comparison is not None
     assert "-0.250 regressed" in result.summary()
+
+
+def test_baseline_by_alias_uses_promoted_experiment(server: FakeServer) -> None:
+    ds_id = server.add_dataset("gold-v1", [{"input": "q1"}])
+    promoted = server.add_experiment("ci", ds_id, "2026-01-01T00:00:00Z")
+    server.add_experiment("ci", ds_id, "2026-02-01T00:00:00Z")  # newer, never promoted
+    server.aliases["main"] = promoted
+
+    result = opengrade.evaluate(dataset="gold-v1", task=lambda item: "x", baseline="alias:main")
+
+    assert result.baseline_id == promoted
+    assert server.experiments[result.id]["baseline_experiment_id"] == promoted
+
+
+def test_baseline_by_missing_alias_is_a_clear_error(server: FakeServer) -> None:
+    server.add_dataset("gold-v1", [{"input": "q1"}])
+    with pytest.raises(ValueError, match="no experiment alias 'main'"):
+        opengrade.evaluate(dataset="gold-v1", task=lambda item: "x", baseline="alias:main")
+    with pytest.raises(ValueError, match="empty alias"):
+        opengrade.evaluate(dataset="gold-v1", task=lambda item: "x", baseline="alias: ")
 
 
 def test_metrics_none_uses_project_default_pack(server: FakeServer) -> None:

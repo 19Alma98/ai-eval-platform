@@ -313,6 +313,64 @@ class ExperimentModel(Base):
     )
 
 
+class ExperimentAliasModel(Base):
+    __tablename__ = "experiment_aliases"
+    __table_args__ = (Index("ix_experiment_aliases_experiment_id", "experiment_id"),)
+
+    project_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey("projects.id", ondelete="CASCADE"),
+        primary_key=True,
+    )
+    name: Mapped[str] = mapped_column(String(200), primary_key=True)
+    experiment_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey("experiments.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        UtcDateTime(),
+        nullable=False,
+        server_default=func.now(),
+    )
+
+
+class ExperimentAliasEventModel(Base):
+    __tablename__ = "experiment_alias_events"
+    __table_args__ = (
+        Index(
+            "ix_experiment_alias_events_project_name_created_at",
+            "project_id",
+            "name",
+            "created_at",
+        ),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True)
+    project_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey("projects.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    name: Mapped[str] = mapped_column(String(200), nullable=False)
+    experiment_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey("experiments.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    previous_experiment_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey("experiments.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    note: Mapped[str | None] = mapped_column(String(2000), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        UtcDateTime(),
+        nullable=False,
+        server_default=func.now(),
+    )
+
+
 class EvaluationRunModel(Base):
     __tablename__ = "evaluation_runs"
     __table_args__ = (Index("ix_evaluation_runs_experiment_id", "experiment_id"),)

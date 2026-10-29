@@ -485,6 +485,42 @@ class ExperimentResponse(BaseModel):
     created_at: datetime
 
 
+class SetExperimentAliasRequest(BaseModel):
+    experiment_id: uuid.UUID
+    note: str | None = Field(default=None, max_length=2000)
+    # Move the alias even when the candidate ran a different dataset / metrics set.
+    force: bool = False
+
+
+class ExperimentAliasTargetResponse(BaseModel):
+    id: uuid.UUID
+    name: str
+    version: str | None
+    dataset_id: uuid.UUID
+    metrics_set_id: uuid.UUID | None
+    status: str
+    created_at: datetime
+
+
+class ExperimentAliasResponse(BaseModel):
+    name: str
+    experiment_id: uuid.UUID
+    updated_at: datetime
+    experiment: ExperimentAliasTargetResponse
+    previous_experiment_id: uuid.UUID | None = None
+    # False when the alias already pointed to this experiment (no history entry).
+    changed: bool | None = None
+
+
+class ExperimentAliasEventResponse(BaseModel):
+    id: uuid.UUID
+    name: str
+    experiment_id: uuid.UUID
+    previous_experiment_id: uuid.UUID | None
+    note: str | None
+    created_at: datetime
+
+
 class EvaluateRequest(BaseModel):
     evaluator_ids: list[uuid.UUID] = Field(min_length=1)
 
@@ -636,6 +672,7 @@ class RegressionRuleBody(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     max_delta: float
+    allow_insufficient_n: bool = False
 
 
 class ExperimentMetricRuleBody(BaseModel):

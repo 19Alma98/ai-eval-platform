@@ -103,6 +103,19 @@ class DatasetColumnError(ValueError):
         )
 
 
+ALIAS_PREFIX = "alias:"
+
+
+def alias_name(ref: str) -> str | None:
+    """``"alias:main"`` → ``"main"``; ``None`` for ids and experiment names."""
+    if not ref.startswith(ALIAS_PREFIX):
+        return None
+    name = ref[len(ALIAS_PREFIX) :].strip()
+    if not name:
+        raise ValueError(f"empty alias name in {ref!r}")
+    return name
+
+
 def _is_uuid(value: str) -> bool:
     return bool(_UUID_RE.match(value.strip()))
 
@@ -1101,6 +1114,17 @@ def _resolve_baseline(
         return baseline.id
     if _is_uuid(baseline):
         return baseline
+    alias = alias_name(baseline)
+    if alias is not None:
+        try:
+            return client.experiments.get_alias(alias, project_id=project_id).experiment_id
+        except OpengradeAPIError as exc:
+            if exc.status != 404:
+                raise
+            raise ValueError(
+                f"no experiment alias {alias!r} in project {project_id}; "
+                "promote a baseline first (Client.experiments.set_alias)"
+            ) from exc
     matches = [e for e in client.experiments.list(project_id) if e.name == baseline]
     if not matches:
         raise ValueError(f"no baseline experiment named {baseline!r} in project {project_id}")
@@ -1156,9 +1180,10 @@ def start_experiment(
     ``metrics=None`` scores with the project's default metrics set; a list scores
     with exactly those server kinds (plus local callables). Pass ``metrics_set_id``
     to reuse an existing set (e.g. cloned from another experiment) instead of
-    resolving kinds. ``baseline`` is an experiment id, name (latest wins) or a
-    previous result. With an app config the server snapshots it as the
-    experiment's params (``exp.params``), replacing ``params``.
+    resolving kinds. ``baseline`` is an experiment id, ``"alias:<name>"`` (the
+    experiment a promoted alias points to), a name (latest wins) or a previous
+    result. With an app config the server snapshots it as the experiment's params
+    (``exp.params``), replacing ``params``.
     """
     explicit_client = client is not None
     client = client or get_client()

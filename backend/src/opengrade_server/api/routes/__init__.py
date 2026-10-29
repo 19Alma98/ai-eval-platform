@@ -3,6 +3,7 @@ from fastapi import APIRouter
 from opengrade_server.api.routes.app_configs import router as app_configs_router
 from opengrade_server.api.routes.datasets import router as datasets_router
 from opengrade_server.api.routes.evaluators import router as evaluators_router
+from opengrade_server.api.routes.experiment_aliases import router as experiment_aliases_router
 from opengrade_server.api.routes.experiments import router as experiments_router
 from opengrade_server.api.routes.live_interactions import router as live_interactions_router
 from opengrade_server.api.routes.metrics_packs import router as metrics_packs_router
@@ -25,6 +26,7 @@ api_router.include_router(evaluators_router)
 api_router.include_router(metrics_packs_router)
 api_router.include_router(metrics_sets_router)
 api_router.include_router(experiments_router)
+api_router.include_router(experiment_aliases_router)
 api_router.include_router(live_interactions_router)
 api_router.include_router(overview_router)
 api_router.include_router(monitoring_router)

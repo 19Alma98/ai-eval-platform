@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
+from typing import Any
 
 import pytest
 from typer.testing import CliRunner
@@ -208,3 +210,114 @@ def test_evaluate_embedded_bootstrap_and_gate(
     )
     failed = runner.invoke(app, ["evaluate", "--config", str(fail_config)])
     assert failed.exit_code == EXIT_GATE_FAILED, failed.output
+
+
+def _json_tail(output: str) -> dict[str, Any]:
+    start = output.index("{\n")
+    parsed, _ = json.JSONDecoder().raw_decode(output[start:])
+    assert isinstance(parsed, dict)
+    return parsed
+
+
+def test_resolve_promote_requires_policy_and_reads_yaml() -> None:
+    block = {"task": "pkg:fn", "dataset": "x.csv", "metrics": ["hit_at_k"]}
+    with pytest.raises(EvaluateConfigError, match="promote needs policy"):
+        resolve_evaluate_config({"evaluate": {**block, "promote": "main"}})
+    with pytest.raises(EvaluateConfigError, match="empty alias"):
+        resolve_evaluate_config({"evaluate": {**block, "baseline": "alias: "}})
+    cfg = resolve_evaluate_config(
+        {
+            "evaluate": {**block, "promote": "main", "version": "abc123"},
+            "hit_at_k": {"min": 0.1},
+        },
+        version="def456",
+    )
+    assert cfg.promote == "main"
+    assert cfg.version == "def456"  # flag wins over YAML
+
+
+def test_evaluate_promotes_alias_and_compares_against_it(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """First run bootstraps the alias, later runs gate against it; a failed gate keeps it."""
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.syspath_prepend(str(tmp_path))
+    config, _ = _write_bootstrap_files(tmp_path)
+    # Five questions: regression needs n >= 5 paired items to produce a check.
+    rows = [
+        {"input": f"q{i}", "expected_output": "a", "expected_doc_ids": ["d1"]} for i in range(5)
+    ]
+    (tmp_path / "gold.json").write_text(json.dumps(rows), encoding="utf-8")
+    config.write_text(
+        config.read_text(encoding="utf-8").replace(
+            "  max_concurrency: 1\n",
+            "  max_concurrency: 1\n  baseline: alias:main\n  promote: main\n",
+        )
+        + "regression:\n  max_delta: -0.05\n",
+        encoding="utf-8",
+    )
+    store = f"sqlite+aiosqlite:///{(tmp_path / 'store.db').as_posix()}"
+    common = ["evaluate", "--config", str(config), "--backend-store-uri", store, "--json"]
+
+    first = runner.invoke(app, [*common, "--version", "sha-1"])
+    assert first.exit_code == EXIT_PASS, first.output
+    assert "No baseline yet" in first.output
+    one = _json_tail(first.output)
+    assert one["baseline_id"] is None
+    assert one["version"] == "sha-1"
+    assert one["promoted"]["experiment_id"] == one["experiment_id"]
+    assert one["promoted"]["previous_experiment_id"] is None
+
+    second = runner.invoke(app, [*common, "--version", "sha-2"])
+    assert second.exit_code == EXIT_PASS, second.output
+    two = _json_tail(second.output)
+    assert two["baseline_id"] == one["experiment_id"]
+    assert any(c["metric"].startswith("regression.") for c in two["checks"]), two["checks"]
+    assert two["promoted"]["previous_experiment_id"] == one["experiment_id"]
+
+    failing = tmp_path / "failing.yaml"
+    failing.write_text(
+        config.read_text(encoding="utf-8").replace("min: 0.4", "min: 1.1"), encoding="utf-8"
+    )
+    third = runner.invoke(
+        app,
+        ["evaluate", "--config", str(failing), "--backend-store-uri", store, "--json"],
+    )
+    assert third.exit_code == EXIT_GATE_FAILED, third.output
+    three = _json_tail(third.output)
+    assert three["baseline_id"] == two["experiment_id"]
+    assert three["promoted"] is None
+
+    # The alias still points at the last run that passed: reuse its exam and compare.
+    task_py = tmp_path / "rag_task.py"
+    reuse = tmp_path / "reuse.yaml"
+    reuse.write_text(
+        f"""project: ci-demo
+evaluate:
+  script: {task_py.as_posix()}
+  from_experiment: alias:main
+hit_at_k:
+  min: 0.4
+regression:
+  max_delta: -0.05
+""",
+        encoding="utf-8",
+    )
+    reread = runner.invoke(
+        app, ["evaluate", "--config", str(reuse), "--backend-store-uri", store, "--json"]
+    )
+    assert reread.exit_code == EXIT_PASS, reread.output
+    assert _json_tail(reread.output)["baseline_id"] == two["experiment_id"]
+
+    # A new gold set is a new exam: no regression against the old one, and the
+    # passing run becomes the new baseline.
+    rows.append({"input": "q-new", "expected_output": "a", "expected_doc_ids": ["d1"]})
+    (tmp_path / "gold.json").write_text(json.dumps(rows), encoding="utf-8")
+    changed = runner.invoke(app, [*common, "--version", "sha-3"])
+    assert changed.exit_code == EXIT_PASS, changed.output
+    assert "Exam changed" in changed.output
+    four = _json_tail(changed.output)
+    assert four["baseline_id"] is None
+    assert not any(c["metric"].startswith("regression.") for c in four["checks"])
+    assert four["promoted"]["exam_changed"] is True
+    assert four["promoted"]["previous_experiment_id"] == two["experiment_id"]

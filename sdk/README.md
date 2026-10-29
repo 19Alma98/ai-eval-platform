@@ -123,10 +123,14 @@ result = opengrade.evaluate(
     # metrics_set_id="…",  # reuse an existing set (e.g. from_experiment in the CLI); XOR with metrics kinds
     name="gemma-prompt-v2",
     params={"model": "gemma4"},  # stored as the experiment's model_config
-    baseline="prod",  # experiment name (latest) or id
+    baseline="prod",  # experiment name (latest), id, or "alias:main" (promoted baseline)
+    version="1a2b3c4",  # e.g. the git SHA of the code under test
     max_concurrency=8,
 )
 print(result.summary(), result.url)
+
+# Promote the run as the new baseline (the CLI does this with --promote when the gate passes):
+opengrade.get_client().experiments.set_alias("main", result.id, note="accepted")
 ```
 
 Manual loop, same plumbing (binding, flush, output upload, scoring on exit):

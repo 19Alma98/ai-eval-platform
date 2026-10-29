@@ -5,7 +5,7 @@ import time
 from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
-from urllib.parse import urlencode
+from urllib.parse import quote, urlencode
 
 import httpx2
 
@@ -17,6 +17,8 @@ from opengrade.models import (
     DatasetResponse,
     EvaluateResponse,
     EvaluationRunResponse,
+    ExperimentAliasEventResponse,
+    ExperimentAliasResponse,
     ExperimentCompareResponse,
     ExperimentItemOutputResponse,
     ExperimentMetricsResponse,
@@ -268,6 +270,68 @@ class _ExperimentsResource:
             "GET",
             f"/api/v1/experiments/{experiment_id}",
             response_model=ExperimentResponse,
+        )
+
+    def set_alias(
+        self,
+        alias: str,
+        experiment_id: str,
+        *,
+        project_id: str | None = None,
+        note: str | None = None,
+        force: bool = False,
+    ) -> ExperimentAliasResponse:
+        """Point ``alias`` (e.g. ``"main"``) at a completed experiment: promote a baseline.
+
+        The server answers 409 when the experiment is not completed, or when it ran a
+        different dataset / metrics set than the current target (unless ``force``).
+        """
+        project_id = resolve_project_id(project_id)
+        body: dict[str, Any] = {"experiment_id": experiment_id}
+        if note is not None:
+            body["note"] = note
+        if force:
+            body["force"] = True
+        return self._http.request_model(
+            "PUT",
+            f"/api/v1/projects/{project_id}/experiment-aliases/{quote(alias, safe='')}",
+            body=body,
+            response_model=ExperimentAliasResponse,
+        )
+
+    def get_alias(self, alias: str, *, project_id: str | None = None) -> ExperimentAliasResponse:
+        project_id = resolve_project_id(project_id)
+        return self._http.request_model(
+            "GET",
+            f"/api/v1/projects/{project_id}/experiment-aliases/{quote(alias, safe='')}",
+            response_model=ExperimentAliasResponse,
+        )
+
+    def list_aliases(self, project_id: str | None = None) -> builtins.list[ExperimentAliasResponse]:
+        project_id = resolve_project_id(project_id)
+        return self._http.request_model_list(
+            "GET",
+            f"/api/v1/projects/{project_id}/experiment-aliases",
+            response_model=ExperimentAliasResponse,
+        )
+
+    def alias_history(
+        self, alias: str, *, project_id: str | None = None, limit: int = 50
+    ) -> builtins.list[ExperimentAliasEventResponse]:
+        """Promotions of ``alias``, newest first."""
+        project_id = resolve_project_id(project_id)
+        return self._http.request_model_list(
+            "GET",
+            f"/api/v1/projects/{project_id}/experiment-aliases/{quote(alias, safe='')}/history",
+            response_model=ExperimentAliasEventResponse,
+            query={"limit": str(limit)},
+        )
+
+    def delete_alias(self, alias: str, *, project_id: str | None = None) -> None:
+        project_id = resolve_project_id(project_id)
+        self._http.request(
+            "DELETE",
+            f"/api/v1/projects/{project_id}/experiment-aliases/{quote(alias, safe='')}",
         )
 
     def list_outputs(self, experiment_id: str) -> builtins.list[ExperimentItemOutputResponse]:
