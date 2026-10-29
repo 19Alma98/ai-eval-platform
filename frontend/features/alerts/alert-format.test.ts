@@ -45,5 +45,18 @@ describe("alert thresholds", () => {
       }),
       "traces (traffic) < 1 over 15 minutes",
     );
+    assert.equal(
+      describeRule({
+        metric: "error_rate",
+        operator: "gt",
+        threshold: 0.05,
+        window_minutes: 60,
+        score_name: null,
+        score_source: null,
+        environment: "prod",
+        version: "v2",
+      }),
+      "error rate > 5.0% over 1 hour (env prod, version v2)",
+    );
   });
 });

@@ -46,6 +46,8 @@ def _rule_response(rule: AlertRule) -> AlertRuleResponse:
         last_notified_at=rule.last_notified_at,
         created_at=rule.created_at,
         updated_at=rule.updated_at,
+        environment=rule.environment,
+        version=rule.version,
     )
 
 

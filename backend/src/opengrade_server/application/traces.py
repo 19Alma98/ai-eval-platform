@@ -130,6 +130,8 @@ class ListTraces:
         until: datetime | None = None,
         cursor: str | None = None,
         limit: int = 50,
+        environment: str | None = None,
+        version: str | None = None,
     ) -> TraceListPage:
         if await self._projects.get_by_id(project_id) is None:
             raise ProjectMissingError(project_id=project_id)
@@ -144,6 +146,8 @@ class ListTraces:
             cursor_start_time=cursor_start,
             cursor_id=cursor_id,
             limit=limit + 1,
+            environment=environment,
+            version=version,
         )
         page = rows[:limit]
         next_cursor = encode_trace_cursor(page[-1]) if len(rows) > limit and page else None

@@ -68,11 +68,21 @@ function windowLabel(minutes: number): string {
 }
 
 /** "groundedness (judge) fail rate > 20.0% over 1 hour" */
-export function describeRule(rule: Pick<AlertRule, "metric" | "operator" | "threshold" | "window_minutes" | "score_name" | "score_source">): string {
+export function describeRule(
+  rule: Pick<
+    AlertRule,
+    "metric" | "operator" | "threshold" | "window_minutes" | "score_name" | "score_source"
+  > &
+    Partial<Pick<AlertRule, "environment" | "version">>,
+): string {
   const option = metricOption(rule.metric);
   const subject = option.needsScore
     ? `${rule.score_name ?? "?"}${rule.score_source ? ` (${rule.score_source})` : ""} ${option.unit === "percent" ? "fail rate" : "mean"}`
     : option.label.toLowerCase();
   const op = rule.operator === "gt" ? ">" : "<";
-  return `${subject} ${op} ${formatAlertValue(rule.metric, rule.threshold)} over ${windowLabel(rule.window_minutes)}`;
+  const scope = [
+    rule.environment ? `env ${rule.environment}` : null,
+    rule.version ? `version ${rule.version}` : null,
+  ].filter(Boolean);
+  return `${subject} ${op} ${formatAlertValue(rule.metric, rule.threshold)} over ${windowLabel(rule.window_minutes)}${scope.length ? ` (${scope.join(", ")})` : ""}`;
 }

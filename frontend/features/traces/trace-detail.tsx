@@ -108,6 +108,7 @@ export function TraceDetailView({ projectId, traceId }: { projectId: string; tra
             {trace.environment ? (
               <MetaItem label="Environment">{trace.environment}</MetaItem>
             ) : null}
+            {trace.version ? <MetaItem label="Version">{trace.version}</MetaItem> : null}
             {trace.session_id ? (
               <MetaItem label="Session">
                 <Link

@@ -73,8 +73,16 @@ class InMemoryTraceRepository:
         cursor_start_time: datetime | None = None,
         cursor_id: uuid.UUID | None = None,
         limit: int = 50,
+        environment: str | None = None,
+        version: str | None = None,
     ) -> list[Trace]:
-        items = [t for (pid, _), t in self._traces.items() if pid == project_id]
+        items = [
+            t
+            for (pid, _), t in self._traces.items()
+            if pid == project_id
+            and environment in (None, t.environment)
+            and version in (None, t.version)
+        ]
         if status is not None:
             items = [t for t in items if t.status == status]
         if search:

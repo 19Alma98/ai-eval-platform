@@ -2,7 +2,7 @@
 
 import dynamic from "next/dynamic";
 import Link from "next/link";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useQueryClient } from "@tanstack/react-query";
 import { BellRing } from "lucide-react";
@@ -25,7 +25,14 @@ import { rangeFromPreset } from "@/lib/time-range";
 import { alarmState, DEFAULT_ALARM_FAIL_RATE, metricKey, type AlarmThresholds } from "./alarms";
 import { AnnotationQueue, annotationQueueQueryKey } from "./annotation-queue";
 import { useAlarmThresholds } from "./use-alarm-thresholds";
-import { monitoringQueryKey, useMonitoring } from "./use-monitoring";
+import { ReleaseFilterControls, useReleaseFilter } from "./release-filter";
+import { VersionsSection } from "./versions-section";
+import {
+  monitoringQueryKey,
+  useMonitoring,
+  useReleaseFacets,
+  useVersionSummaries,
+} from "./use-monitoring";
 
 const chartLoading = () => (
   <div className="h-[160px] animate-pulse rounded-md bg-surface-2" aria-hidden />
@@ -207,9 +214,11 @@ function MetricCard({
 function Dashboard({
   projectId,
   data,
+  versions,
 }: {
   projectId: string;
   data: ProductionMonitoring;
+  versions: ReactNode;
 }) {
   const [thresholds, setAlarm] = useAlarmThresholds(projectId);
   const firing = data.metrics.filter((m) => alarmState(m, thresholds).firing);
@@ -308,6 +317,8 @@ function Dashboard({
         />
       </section>
 
+      {versions}
+
       <div className="grid gap-4 lg:grid-cols-3">
         <ChartCard title="Latency percentiles">
           <LatencyChart traffic={data.traffic} />
@@ -355,7 +366,18 @@ export function MonitoringDashboard({ projectId }: { projectId: string }) {
   const { start, end } = useMemo(() => rangeFromPreset(preset, anchor), [preset, anchor]);
   const since = start.toISOString();
   const until = end.toISOString();
-  const query = useMonitoring(projectId, since, until);
+  const [release, setRelease] = useReleaseFilter();
+  const query = useMonitoring(projectId, since, until, release);
+  const facets = useReleaseFacets(projectId, since, until);
+  // Several releases in range and none picked: show them side by side.
+  const showVersions = !release.version && (facets.data?.versions.length ?? 0) > 0;
+  const versions = useVersionSummaries(
+    projectId,
+    since,
+    until,
+    release.environment ?? null,
+    showVersions,
+  );
   const queryClient = useQueryClient();
 
   useEffect(() => {
@@ -381,9 +403,10 @@ export function MonitoringDashboard({ projectId }: { projectId: string }) {
         active="health"
         actions={
           <>
+            <ReleaseFilterControls facets={facets.data} filter={release} onChange={setRelease} />
             <TimeRangePicker preset={preset} onPresetChange={setPreset} />
             <RefreshControl
-              queryKey={monitoringQueryKey(projectId, since, until)}
+              queryKey={monitoringQueryKey(projectId, since, until, release)}
               dataUpdatedAt={query.dataUpdatedAt}
               onRefresh={async () => {
                 setAnchor(new Date());
@@ -405,7 +428,19 @@ export function MonitoringDashboard({ projectId }: { projectId: string }) {
         />
       ) : (
         // key: reset alarm thresholds and field drafts when the project changes.
-        <Dashboard key={projectId} projectId={projectId} data={query.data} />
+        <Dashboard
+          key={projectId}
+          projectId={projectId}
+          data={query.data}
+          versions={
+            showVersions && versions.data ? (
+              <VersionsSection
+                rows={versions.data}
+                onSelect={(v) => setRelease("version", v)}
+              />
+            ) : null
+          }
+        />
       )}
     </div>
   );

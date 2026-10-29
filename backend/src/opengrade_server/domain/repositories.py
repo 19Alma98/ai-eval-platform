@@ -53,6 +53,8 @@ class TraceRepository(Protocol):
         cursor_start_time: datetime | None = None,
         cursor_id: uuid.UUID | None = None,
         limit: int = 50,
+        environment: str | None = None,
+        version: str | None = None,
     ) -> list[Trace]: ...
 
     async def list_with_spans_in_range(
@@ -62,7 +64,13 @@ class TraceRepository(Protocol):
         since: datetime,
         until: datetime,
         limit: int = 5000,
+        environment: str | None = None,
+        version: str | None = None,
     ) -> list[Trace]: ...
+
+    async def release_facets(
+        self, project_id: uuid.UUID, *, since: datetime, until: datetime
+    ) -> dict[str, list[tuple[str, int]]]: ...
 
 
 class DatasetRepository(Protocol):

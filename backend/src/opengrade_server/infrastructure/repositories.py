@@ -6,7 +6,7 @@ from collections.abc import Collection
 from datetime import UTC, datetime
 from typing import Any, cast
 
-from sqlalchemy import case, delete, func, select, update
+from sqlalchemy import Select, case, delete, func, select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.engine import CursorResult
@@ -113,6 +113,7 @@ def _trace_to_domain(row: TraceModel, *, include_spans: bool = True) -> Trace:
         user_id=row.user_id,
         session_id=row.session_id,
         spans=spans,
+        version=row.version,
     )
 
 
@@ -173,6 +174,16 @@ class SqlAlchemyProjectRepository:
         return True
 
 
+def _filter_release(
+    stmt: Select[TraceModel], environment: str | None, version: str | None
+) -> Select[TraceModel]:
+    if environment is not None:
+        stmt = stmt.where(TraceModel.environment == environment)
+    if version is not None:
+        stmt = stmt.where(TraceModel.version == version)
+    return stmt
+
+
 class SqlAlchemyTraceRepository:
     def __init__(self, session: AsyncSession) -> None:
         self._session = session
@@ -194,6 +205,7 @@ class SqlAlchemyTraceRepository:
             environment=trace.environment,
             user_id=trace.user_id,
             session_id=trace.session_id,
+            version=trace.version,
         )
         stmt = stmt.on_conflict_do_nothing(index_elements=["project_id", "trace_id"])
         await self._session.execute(stmt)
@@ -238,6 +250,8 @@ class SqlAlchemyTraceRepository:
             existing.user_id = trace.user_id
         if trace.session_id is not None:
             existing.session_id = trace.session_id
+        if trace.version is not None:
+            existing.version = trace.version
 
         by_span_id = {span.span_id: span for span in existing.spans}
         for span in trace.spans:
@@ -298,8 +312,12 @@ class SqlAlchemyTraceRepository:
         cursor_start_time: datetime | None = None,
         cursor_id: uuid.UUID | None = None,
         limit: int = 50,
+        environment: str | None = None,
+        version: str | None = None,
     ) -> list[Trace]:
-        stmt = select(TraceModel).where(TraceModel.project_id == project_id)
+        stmt = _filter_release(
+            select(TraceModel).where(TraceModel.project_id == project_id), environment, version
+        )
         if status is not None:
             stmt = stmt.where(TraceModel.status == status)
         if search and search.strip():
@@ -350,6 +368,7 @@ class SqlAlchemyTraceRepository:
                 user_id=t.user_id,
                 session_id=t.session_id,
                 spans=(),
+                version=t.version,
             )
             for t in traces
         ]
@@ -361,19 +380,45 @@ class SqlAlchemyTraceRepository:
         since: datetime,
         until: datetime,
         limit: int = 5000,
+        environment: str | None = None,
+        version: str | None = None,
     ) -> list[Trace]:
+        stmt = select(TraceModel).where(
+            TraceModel.project_id == project_id,
+            TraceModel.start_time >= since,
+            TraceModel.start_time <= until,
+        )
         result = await self._session.execute(
-            select(TraceModel)
+            _filter_release(stmt, environment, version)
             .options(selectinload(TraceModel.spans))
-            .where(
-                TraceModel.project_id == project_id,
-                TraceModel.start_time >= since,
-                TraceModel.start_time <= until,
-            )
             .order_by(TraceModel.start_time.desc(), TraceModel.id.desc())
             .limit(limit)
         )
         return [_trace_to_domain(row) for row in result.scalars().all()]
+
+    async def release_facets(
+        self, project_id: uuid.UUID, *, since: datetime, until: datetime
+    ) -> dict[str, list[tuple[str, int]]]:
+        """Distinct environments and versions in the range, most traces first."""
+        facets: dict[str, list[tuple[str, int]]] = {}
+        for name, column in (
+            ("environment", TraceModel.environment),
+            ("version", TraceModel.version),
+        ):
+            result = await self._session.execute(
+                select(column, func.count())
+                .where(
+                    TraceModel.project_id == project_id,
+                    TraceModel.start_time >= since,
+                    TraceModel.start_time <= until,
+                    column.is_not(None),
+                )
+                .group_by(column)
+                .order_by(func.count().desc(), column)
+                .limit(100)
+            )
+            facets[name] = [(str(value), int(count)) for value, count in result.all()]
+        return facets
 
 
 def _dataset_to_domain(row: DatasetModel) -> Dataset:
@@ -1866,6 +1911,8 @@ def _alert_rule_to_domain(row: AlertRuleModel) -> AlertRule:
         last_notified_at=row.last_notified_at,
         created_at=row.created_at,
         updated_at=row.updated_at,
+        environment=row.environment,
+        version=row.version,
     )
 
 
@@ -1903,6 +1950,8 @@ _ALERT_RULE_FIELDS = (
     "last_notified_at",
     "created_at",
     "updated_at",
+    "environment",
+    "version",
 )
 
 

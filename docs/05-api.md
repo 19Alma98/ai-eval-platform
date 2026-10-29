@@ -370,6 +370,19 @@ Default window: the last 24 hours (`until` defaults to now). Naive datetimes are
 - `GET /api/v1/projects/{project_id}/traces/{trace_id}` includes `scores`.
 - `GET /api/v1/projects/{project_id}/live-interactions` and `GET /api/v1/live-interactions/{id}` include `trace_scores`, joined on `metadata.source_trace_id`. `failed_only=true` also keeps interactions with any trace score whose stored label is `FAIL`, whatever its source (e.g. an SDK metric under its threshold, or a thumbs-down); `ERROR` does not count. Judge calibration ignores trace scores.
 
+## Production releases (version / environment)
+
+Traces store `version` (OTel resource `service.version`, or span attribute `opengrade.version`) and `environment` (`deployment.environment`, `deployment.environment.name` or `opengrade.environment`).
+
+```http
+GET /projects/{project_id}/monitoring?since=&until=&environment=&version=   # filtered health
+GET /projects/{project_id}/monitoring/facets?since=&until=                  # environments + versions seen, with trace counts
+GET /projects/{project_id}/monitoring/versions?since=&until=&environment=   # health per version (top 10 by traffic)
+GET /projects/{project_id}/traces?environment=&version=                     # trace list filters
+```
+
+With a filter, live-judge scores only count for answers whose source trace matches it. Alert rules accept `environment` and `version` to watch one deployment or release.
+
 ## Alerts (server-side)
 
 Rules on production monitoring metrics, evaluated by the API process every `ALERTS_INTERVAL_SECONDS` (default 60; `ALERTS_ENABLED=false` turns the loop off). Same numbers as the Production page (experiment-bound traces excluded).

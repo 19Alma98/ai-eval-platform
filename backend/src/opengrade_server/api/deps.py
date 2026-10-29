@@ -88,7 +88,11 @@ from opengrade_server.application.metrics_sets import (
     ResolveMetricsSetForScore,
     VersionMetricsSet,
 )
-from opengrade_server.application.monitoring import GetProductionMonitoring
+from opengrade_server.application.monitoring import (
+    GetProductionMonitoring,
+    GetProductionVersions,
+    GetReleaseFacets,
+)
 from opengrade_server.application.project_overview import GetProjectOverview
 from opengrade_server.application.projects import (
     CreateProject,
@@ -846,6 +850,21 @@ def get_production_monitoring(
     trace_scores: SqlAlchemyTraceScoreRepository = Depends(get_trace_score_repository),
 ) -> GetProductionMonitoring:
     return GetProductionMonitoring(projects, traces, live, trace_scores)
+
+
+def get_production_versions(
+    projects: SqlAlchemyProjectRepository = Depends(get_project_repository),
+    traces: SqlAlchemyTraceRepository = Depends(get_trace_repository),
+    monitoring: GetProductionMonitoring = Depends(get_production_monitoring),
+) -> GetProductionVersions:
+    return GetProductionVersions(projects, traces, monitoring)
+
+
+def get_release_facets(
+    projects: SqlAlchemyProjectRepository = Depends(get_project_repository),
+    traces: SqlAlchemyTraceRepository = Depends(get_trace_repository),
+) -> GetReleaseFacets:
+    return GetReleaseFacets(projects, traces)
 
 
 def get_summarize_experiments(

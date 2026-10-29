@@ -47,6 +47,8 @@ type Draft = {
   webhookUrl: string;
   webhookFormat: "json" | "slack";
   repeatMinutes: string;
+  environment: string;
+  version: string;
 };
 
 function draftFrom(rule: AlertRule | null, preset?: Partial<AlertRuleInput>): Draft {
@@ -63,6 +65,8 @@ function draftFrom(rule: AlertRule | null, preset?: Partial<AlertRuleInput>): Dr
     webhookUrl: rule?.webhook_url ?? "",
     webhookFormat: rule?.webhook_format ?? "json",
     repeatMinutes: rule?.repeat_minutes != null ? String(rule.repeat_minutes) : "",
+    environment: rule?.environment ?? preset?.environment ?? "",
+    version: rule?.version ?? preset?.version ?? "",
   };
 }
 
@@ -73,6 +77,8 @@ export function AlertRuleDialog({
   rule,
   preset,
   scores,
+  environments = [],
+  versions = [],
 }: {
   projectId: string;
   open: boolean;
@@ -82,6 +88,9 @@ export function AlertRuleDialog({
   preset?: Partial<AlertRuleInput>;
   /** Production scores seen recently, offered for score_* metrics. */
   scores: ScoreChoice[];
+  /** Environments / versions seen recently, suggested for the rule's scope. */
+  environments?: string[];
+  versions?: string[];
 }) {
   const queryClient = useQueryClient();
   const [draft, setDraft] = useState<Draft>(() => draftFrom(rule, preset));
@@ -127,6 +136,8 @@ export function AlertRuleDialog({
         webhook_url: draft.webhookUrl.trim() || null,
         webhook_format: draft.webhookFormat,
         repeat_minutes: draft.repeatMinutes.trim() ? Number(draft.repeatMinutes) : null,
+        environment: draft.environment.trim() || null,
+        version: draft.version.trim() || null,
       };
       if (!rule) return createAlertRule(projectId, body);
       // A metric switch resets min_samples to that metric's default on the server.
@@ -264,6 +275,36 @@ export function AlertRuleDialog({
                   onChange={(e) => set("threshold", e.target.value)}
                   required
                 />
+              </Field>
+            </div>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <Field label="Environment (optional)" htmlFor="alert-environment">
+                <Input
+                  id="alert-environment"
+                  list="alert-environments"
+                  value={draft.environment}
+                  onChange={(e) => set("environment", e.target.value)}
+                  placeholder="All environments"
+                />
+                <datalist id="alert-environments">
+                  {environments.map((v) => (
+                    <option key={v} value={v} />
+                  ))}
+                </datalist>
+              </Field>
+              <Field label="Version (optional)" htmlFor="alert-version">
+                <Input
+                  id="alert-version"
+                  list="alert-versions"
+                  value={draft.version}
+                  onChange={(e) => set("version", e.target.value)}
+                  placeholder="All versions"
+                />
+                <datalist id="alert-versions">
+                  {versions.map((v) => (
+                    <option key={v} value={v} />
+                  ))}
+                </datalist>
               </Field>
             </div>
             <Field label="Webhook URL (optional)" htmlFor="alert-webhook">

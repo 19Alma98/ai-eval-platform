@@ -29,6 +29,7 @@ export type TraceDetail = {
   output: unknown;
   metadata: Record<string, unknown>;
   environment: string | null;
+  version?: string | null;
   user_id: string | null;
   session_id: string | null;
   spans: Span[];
@@ -46,6 +47,7 @@ export type TraceSummary = {
   duration_ms: number | null;
   span_count: number;
   environment: string | null;
+  version?: string | null;
   user_id: string | null;
   session_id: string | null;
   input_preview: string | null;
@@ -643,6 +645,8 @@ export type AlertRule = {
   last_notified_at: string | null;
   created_at: string;
   updated_at: string;
+  environment?: string | null;
+  version?: string | null;
 };
 
 export type AlertRuleInput = {
@@ -658,6 +662,8 @@ export type AlertRuleInput = {
   webhook_format: "json" | "slack";
   repeat_minutes?: number | null;
   enabled?: boolean;
+  environment?: string | null;
+  version?: string | null;
 };
 
 export type AlertEvent = {
@@ -678,4 +684,26 @@ export type AlertEvaluation = {
   value: number | null;
   samples: number;
   event: AlertEvent | null;
+};
+
+export type ReleaseFacetValue = { value: string; n_traces: number };
+
+export type ReleaseFacets = {
+  environments: ReleaseFacetValue[];
+  versions: ReleaseFacetValue[];
+};
+
+export type ReleaseFilter = { environment?: string | null; version?: string | null };
+
+export type VersionSummary = {
+  version: string | null;
+  n_traces: number;
+  n_errors: number;
+  error_rate: number | null;
+  latency: { p50_ms: number | null; p90_ms: number | null; p99_ms: number | null };
+  total_tokens: number;
+  cost_usd: number;
+  cost_per_trace_usd: number | null;
+  traces_truncated: boolean;
+  metrics: { name: string; source: string; n: number; mean: number | null; fail_rate: number | null }[];
 };

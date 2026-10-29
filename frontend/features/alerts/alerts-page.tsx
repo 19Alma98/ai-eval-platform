@@ -10,7 +10,7 @@ import { LoadingBlock } from "@/components/loading-block";
 import { ProductionHeader } from "@/components/production-header";
 import { RelativeTime } from "@/components/relative-time";
 import { Button } from "@/components/ui/button";
-import { useMonitoring } from "@/features/monitoring/use-monitoring";
+import { useMonitoring, useReleaseFacets } from "@/features/monitoring/use-monitoring";
 import {
   deleteAlertRule,
   evaluateAlertRules,
@@ -48,7 +48,11 @@ const EVENT_LABELS: Record<AlertEvent["kind"], string> = {
   test: "Test",
 };
 
-function useRecentScores(projectId: string): ScoreChoice[] {
+function useRecentScores(projectId: string): {
+  scores: ScoreChoice[];
+  environments: string[];
+  versions: string[];
+} {
   // Anchor once per mount: score names for the dialog do not need a moving window.
   const [range] = useState(() => {
     const until = new Date();
@@ -58,17 +62,23 @@ function useRecentScores(projectId: string): ScoreChoice[] {
     };
   });
   const monitoring = useMonitoring(projectId, range.since, range.until);
-  return useMemo(
+  const facets = useReleaseFacets(projectId, range.since, range.until);
+  const scores = useMemo(
     () => (monitoring.data?.metrics ?? []).map((m) => ({ name: m.name, source: m.source })),
     [monitoring.data],
   );
+  return {
+    scores,
+    environments: (facets.data?.environments ?? []).map((f) => f.value),
+    versions: (facets.data?.versions ?? []).map((f) => f.value),
+  };
 }
 
 export function AlertsPage({ projectId }: { projectId: string }) {
   const queryClient = useQueryClient();
   const rules = useAlertRules(projectId);
   const events = useAlertEvents(projectId);
-  const scores = useRecentScores(projectId);
+  const recent = useRecentScores(projectId);
   const [editing, setEditing] = useState<AlertRule | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
 
@@ -197,7 +207,9 @@ export function AlertsPage({ projectId }: { projectId: string }) {
         open={dialogOpen}
         onOpenChange={setDialogOpen}
         rule={editing}
-        scores={scores}
+        scores={recent.scores}
+        environments={recent.environments}
+        versions={recent.versions}
       />
     </div>
   );

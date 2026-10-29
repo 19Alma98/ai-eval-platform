@@ -75,6 +75,7 @@ class TraceModel(Base):
         UniqueConstraint("project_id", "trace_id", name="uq_traces_project_trace_id"),
         Index("ix_traces_project_start_time", "project_id", "start_time"),
         Index("ix_traces_project_status", "project_id", "status"),
+        Index("ix_traces_project_version_start_time", "project_id", "version", "start_time"),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True)
@@ -96,6 +97,7 @@ class TraceModel(Base):
     environment: Mapped[str | None] = mapped_column(String(200), nullable=True)
     user_id: Mapped[str | None] = mapped_column(String(200), nullable=True)
     session_id: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    version: Mapped[str | None] = mapped_column(String(200), nullable=True)
 
     spans: Mapped[list[SpanModel]] = relationship(
         "SpanModel",
@@ -770,6 +772,8 @@ class AlertRuleModel(Base):
     last_value: Mapped[float | None] = mapped_column(Float, nullable=True)
     last_evaluated_at: Mapped[datetime | None] = mapped_column(UtcDateTime(), nullable=True)
     last_notified_at: Mapped[datetime | None] = mapped_column(UtcDateTime(), nullable=True)
+    environment: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    version: Mapped[str | None] = mapped_column(String(200), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         UtcDateTime(), nullable=False, server_default=func.now()
     )

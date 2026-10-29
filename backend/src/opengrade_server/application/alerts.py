@@ -133,8 +133,14 @@ def alert_message(rule: AlertRule, kind: str, value: float | None, project_name:
         "resolved": "RESOLVED",
         "test": "TEST",
     }.get(kind, kind.upper())
+    scope = ", ".join(
+        f"{label} {value}"
+        for label, value in (("env", rule.environment), ("version", rule.version))
+        if value
+    )
+    where = f" [{scope}]" if scope else ""
     return (
-        f"[OpenGrade] {head} {project_name} / {rule.name}: {metric_label(rule)} "
+        f"[OpenGrade] {head} {project_name}{where} / {rule.name}: {metric_label(rule)} "
         f"{format_value(rule, value)} (alert when {op} {format_value(rule, rule.threshold)}, "
         f"last {_window(rule.window_minutes)})"
     )
@@ -243,6 +249,8 @@ class AlertDispatcher:
                 "operator": rule.operator,
                 "threshold": rule.threshold,
                 "window_minutes": rule.window_minutes,
+                "environment": rule.environment,
+                "version": rule.version,
             },
             "value": value,
             "samples": samples,
@@ -277,16 +285,18 @@ class EvaluateAlertRules:
             rules = await self._alerts.list_enabled_rules()
         out: list[RuleEvaluation] = []
         # One monitoring pass per (project, window): rules on the same window share it.
-        cache: dict[tuple[uuid.UUID, int], ProductionMonitoring | None] = {}
+        cache: dict[tuple[uuid.UUID, int, str | None, str | None], ProductionMonitoring | None] = {}
         names: dict[uuid.UUID, str] = {}
         for rule in rules:
-            key = (rule.project_id, rule.window_minutes)
+            key = (rule.project_id, rule.window_minutes, rule.environment, rule.version)
             if key not in cache:
                 try:
                     cache[key] = await self._monitoring.execute(
                         rule.project_id,
                         since=now - timedelta(minutes=rule.window_minutes),
                         until=now,
+                        environment=rule.environment,
+                        version=rule.version,
                     )
                 except ProjectNotFoundError:
                     cache[key] = None
@@ -349,10 +359,14 @@ class AlertRuleFields:
     webhook_format: str | None = None
     repeat_minutes: int | None = None
     enabled: bool | None = None
+    environment: str | None = None
+    version: str | None = None
     clear: frozenset[str] = frozenset()
 
 
-_CLEARABLE = frozenset({"score_name", "score_source", "webhook_url", "repeat_minutes"})
+_CLEARABLE = frozenset(
+    {"score_name", "score_source", "webhook_url", "repeat_minutes", "environment", "version"}
+)
 _CONDITION_FIELDS = frozenset(
     {
         "metric",
@@ -362,6 +376,8 @@ _CONDITION_FIELDS = frozenset(
         "min_samples",
         "score_name",
         "score_source",
+        "environment",
+        "version",
     }
 )
 
@@ -396,6 +412,8 @@ class ManageAlertRules:
             webhook_format=fields.webhook_format or "json",
             repeat_minutes=fields.repeat_minutes,
             enabled=True if fields.enabled is None else fields.enabled,
+            environment=fields.environment,
+            version=fields.version,
         )
         return await self._alerts.add_rule(rule)
 
@@ -430,6 +448,8 @@ class ManageAlertRules:
                 "webhook_format",
                 "repeat_minutes",
                 "enabled",
+                "environment",
+                "version",
             )
             if (value := getattr(fields, name)) is not None
         }

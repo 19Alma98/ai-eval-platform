@@ -264,6 +264,16 @@ async def answer(q: str) -> str:
 
 Or manage the client yourself: `async with AsyncClient(...) as client: ...`. Changing `set_tracking_uri` resets both shared clients; if an event loop is already running, `aclose` the async client before changing the URI (otherwise the shared async client is dropped with a warning).
 
+### Releases and environments
+
+Tag production traffic with the release and deployment that served it, so a deploy can be compared with the previous one:
+
+```python
+opengrade.init(version=os.environ["GIT_SHA"], environment="prod")  # or OPENGRADE_VERSION / OPENGRADE_ENVIRONMENT
+```
+
+They become the OTel resource attributes `service.version` / `deployment.environment` (when opengrade attaches to a host TracerProvider, they are stamped on each span as `opengrade.version` / `opengrade.environment`). Production → Health then filters by environment and version and shows a **By version** table (error rate, latency, cost per trace, failing scores side by side); the Traces list filters the same way, and alert rules can be scoped to an `environment` / `version`. API: `GET /projects/{id}/monitoring?environment=&version=`, `/monitoring/versions`, `/monitoring/facets`, `GET /projects/{id}/traces?environment=&version=`.
+
 ### Live runs from tracing (production)
 
 With `live=True`, the outermost `@opengrade.trace` call outside an experiment becomes a live interaction at OTLP ingestion; no separate `live_runs.submit` call is needed.
@@ -434,6 +444,8 @@ Install the extra for the providers you use, then `init(instrument="auto")` acti
 | `OPENGRADE_SERVICE_NAME` | OpenTelemetry `service.name` (default `opengrade-app`) |
 | `OPENGRADE_OTLP_ENDPOINT` | Optional override of the derived OTLP URL (e.g. a separate collector) |
 | `OPENGRADE_DISABLED` | `1` / `true` / `yes` / `on` turns `init()` into a no-op and skips score/feedback HTTP (`log_score`, `log_feedback`, production metrics); decorators keep working |
+| `OPENGRADE_VERSION` | Release of your app (`service.version`); production views, traces and alerts can be filtered and compared per version. `init(version=...)` wins |
+| `OPENGRADE_ENVIRONMENT` | Deployment environment (`deployment.environment`, e.g. `prod`, `staging`). `init(environment=...)` wins |
 | `OPENGRADE_METRICS_WORKERS` | Size of the `@opengrade.trace(metrics=...)` background pool (default `2`, range 1–64); `init(metrics_workers=...)` wins |
 
 Project precedence for `init()`: arguments > `set_project()` > env. If both `OPENGRADE_PROJECT_ID` and `OPENGRADE_PROJECT_SLUG` are set, id wins. `init(project_slug=…)` also wires control-plane calls (`log_score`, production metrics) via lazy slug→id resolution.

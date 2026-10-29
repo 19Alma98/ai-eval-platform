@@ -122,6 +122,8 @@ class ResolvedConfig:
     service_name: str
     project_id: str | None
     project_slug: str | None
+    version: str | None = None
+    environment: str | None = None
 
 
 def resolve_config(
@@ -130,6 +132,8 @@ def resolve_config(
     project_slug: str | None = None,
     endpoint: str | None = None,
     service_name: str | None = None,
+    version: str | None = None,
+    environment: str | None = None,
 ) -> ResolvedConfig:
     explicit_both = project_id is not None and project_slug is not None
     if explicit_both:
@@ -169,6 +173,8 @@ def resolve_config(
         service_name=service_name or os.getenv("OPENGRADE_SERVICE_NAME") or DEFAULT_SERVICE_NAME,
         project_id=pid,
         project_slug=pslug,
+        version=version or os.getenv("OPENGRADE_VERSION") or None,
+        environment=environment or os.getenv("OPENGRADE_ENVIRONMENT") or None,
     )
 
 

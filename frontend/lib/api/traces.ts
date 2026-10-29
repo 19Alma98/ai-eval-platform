@@ -15,9 +15,13 @@ export function listTraces(
     since?: string;
     cursor?: string;
     limit?: number;
+    environment?: string | null;
+    version?: string | null;
   },
 ) {
   const params = new URLSearchParams();
+  if (opts?.environment) params.set("environment", opts.environment);
+  if (opts?.version) params.set("version", opts.version);
   if (opts?.status) params.set("status", opts.status);
   if (opts?.search) params.set("search", opts.search);
   if (opts?.since) params.set("since", opts.since);

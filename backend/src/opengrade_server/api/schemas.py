@@ -151,6 +151,7 @@ class TraceDetailResponse(BaseModel):
     output: Any | None = None
     metadata: dict[str, Any]
     environment: str | None = None
+    version: str | None = None
     user_id: str | None = None
     session_id: str | None = None
     spans: list[SpanResponse]
@@ -168,6 +169,7 @@ class TraceSummaryResponse(BaseModel):
     duration_ms: float | None
     span_count: int
     environment: str | None = None
+    version: str | None = None
     user_id: str | None = None
     session_id: str | None = None
     input_preview: str | None = None
@@ -1116,6 +1118,8 @@ class CreateAlertRuleRequest(BaseModel):
     webhook_format: Literal["json", "slack"] = "json"
     repeat_minutes: int | None = Field(default=None, ge=5)
     enabled: bool = True
+    environment: str | None = Field(default=None, max_length=200)
+    version: str | None = Field(default=None, max_length=200)
 
 
 class UpdateAlertRuleRequest(BaseModel):
@@ -1135,6 +1139,8 @@ class UpdateAlertRuleRequest(BaseModel):
     webhook_format: Literal["json", "slack"] | None = None
     repeat_minutes: int | None = Field(default=None, ge=5)
     enabled: bool | None = None
+    environment: str | None = Field(default=None, max_length=200)
+    version: str | None = Field(default=None, max_length=200)
 
 
 class AlertRuleResponse(BaseModel):
@@ -1158,6 +1164,8 @@ class AlertRuleResponse(BaseModel):
     last_notified_at: datetime | None
     created_at: datetime
     updated_at: datetime
+    environment: str | None = None
+    version: str | None = None
 
 
 class AlertEventResponse(BaseModel):
@@ -1178,3 +1186,34 @@ class AlertEvaluationResponse(BaseModel):
     value: float | None
     samples: int
     event: AlertEventResponse | None
+
+
+class ReleaseFacetValueResponse(BaseModel):
+    value: str
+    n_traces: int
+
+
+class ReleaseFacetsResponse(BaseModel):
+    environments: list[ReleaseFacetValueResponse]
+    versions: list[ReleaseFacetValueResponse]
+
+
+class VersionMetricResponse(BaseModel):
+    name: str
+    source: str
+    n: int
+    mean: float | None
+    fail_rate: float | None
+
+
+class VersionSummaryResponse(BaseModel):
+    version: str | None
+    n_traces: int
+    n_errors: int
+    error_rate: float | None
+    latency: LatencyPercentilesResponse
+    total_tokens: float
+    cost_usd: float
+    cost_per_trace_usd: float | None
+    traces_truncated: bool
+    metrics: list[VersionMetricResponse]

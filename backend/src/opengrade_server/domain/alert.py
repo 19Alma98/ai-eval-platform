@@ -99,6 +99,9 @@ class AlertRule:
     last_notified_at: datetime | None
     created_at: datetime
     updated_at: datetime
+    # Only traces of this deployment environment / release count (None = all).
+    environment: str | None = None
+    version: str | None = None
 
     @classmethod
     def create(
@@ -117,6 +120,8 @@ class AlertRule:
         webhook_format: str = "json",
         repeat_minutes: int | None = None,
         enabled: bool = True,
+        environment: str | None = None,
+        version: str | None = None,
     ) -> AlertRule:
         now = datetime.now(UTC)
         rule = cls(
@@ -144,6 +149,8 @@ class AlertRule:
             last_notified_at=None,
             created_at=now,
             updated_at=now,
+            environment=environment,
+            version=version,
         )
         return rule.validated()
 
@@ -175,12 +182,19 @@ class AlertRule:
             raise AlertRuleValidationError("webhook_format must be 'json' or 'slack'")
         if self.repeat_minutes is not None and self.repeat_minutes < MIN_WINDOW_MINUTES:
             raise AlertRuleValidationError(f"repeat_minutes must be >= {MIN_WINDOW_MINUTES}")
+        environment = (self.environment or "").strip() or None
+        version = (self.version or "").strip() or None
+        for label, value in (("environment", environment), ("version", version)):
+            if value is not None and len(value) > NAME_MAX_LENGTH:
+                raise AlertRuleValidationError(f"{label} must be at most {NAME_MAX_LENGTH} chars")
         return replace(
             self,
             name=name,
             score_name=score_name,
             score_source=score_source,
             webhook_url=validate_webhook_url(self.webhook_url),
+            environment=environment,
+            version=version,
         )
 
     def breached(self, value: float) -> bool:
