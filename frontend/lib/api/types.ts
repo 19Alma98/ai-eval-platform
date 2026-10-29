@@ -219,6 +219,35 @@ export type Experiment = {
   created_at: string;
 };
 
+export type ExperimentAliasTarget = {
+  id: string;
+  name: string;
+  version: string | null;
+  git?: GitInfo | null;
+  dataset_id: string;
+  metrics_set_id: string | null;
+  status: string;
+  created_at: string;
+};
+
+export type ExperimentAlias = {
+  name: string;
+  experiment_id: string;
+  updated_at: string;
+  experiment: ExperimentAliasTarget;
+  previous_experiment_id?: string | null;
+  changed?: boolean | null;
+};
+
+export type ExperimentAliasEvent = {
+  id: string;
+  name: string;
+  experiment_id: string;
+  previous_experiment_id: string | null;
+  note: string | null;
+  created_at: string;
+};
+
 export type Evaluator = {
   id: string;
   project_id: string;

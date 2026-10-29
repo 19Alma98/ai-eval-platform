@@ -24,8 +24,11 @@ import { withProjectQuery } from "@/lib/project-href";
 import { useProjectId } from "@/lib/project-store";
 import { useDatasets } from "@/features/datasets/use-datasets";
 import { CreateExperimentDialog } from "./create-experiment-dialog";
+import { ExperimentAliasBadges } from "./experiment-alias-actions";
+import { aliasesByExperimentId } from "./experiment-aliases";
 import { experimentModel, experimentVersion } from "./experiment-meta";
 import { tallyTargets } from "./metric-target";
+import { useExperimentAliases } from "./use-experiment-aliases";
 import {
   experimentsQueryOptions,
   useExperiments,
@@ -36,6 +39,7 @@ export function ExperimentList() {
   const { projectId } = useProjectId();
   const query = useExperiments(projectId);
   const datasetsQuery = useDatasets(projectId);
+  const aliasesQuery = useExperimentAliases(projectId);
   const queryOpts = projectId ? experimentsQueryOptions(projectId) : null;
   const [selectedIndex, setSelectedIndex] = useState(0);
   const searchParams = useSearchParams();
@@ -45,6 +49,10 @@ export function ExperimentList() {
   );
 
   const rows = useMemo(() => query.data ?? [], [query.data]);
+  const aliasNamesByExperiment = useMemo(
+    () => aliasesByExperimentId(aliasesQuery.data ?? []),
+    [aliasesQuery.data],
+  );
   // Same key as the "Compare all" matrix with nothing pinned, so both share the cache.
   const summariesQuery = useQuery({
     queryKey: ["experiment-summaries", projectId, ""],
@@ -92,12 +100,14 @@ export function ExperimentList() {
         header: "Experiment",
         cell: (row) => {
           const version = experimentVersion(row);
+          const aliasNames = aliasNamesByExperiment.get(row.id) ?? [];
           return (
             <span className="flex min-w-0 flex-col">
               <span className="truncate font-medium text-foreground">{row.name}</span>
               {version && version !== row.name ? (
                 <span className="truncate text-xs text-muted-foreground">{version}</span>
               ) : null}
+              <ExperimentAliasBadges names={aliasNames} />
             </span>
           );
         },
@@ -182,6 +192,7 @@ export function ExperimentList() {
       },
     ],
     [
+      aliasNamesByExperiment,
       anyBaseline,
       datasetNameById,
       experimentNameById,

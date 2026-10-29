@@ -36,6 +36,13 @@ import {
   useExperimentCompare,
   useExperiments,
 } from "./use-experiments";
+import {
+  aliasesByExperimentId,
+  aliasTargetId,
+  defaultBaselineFromMainAlias,
+  MAIN_ALIAS,
+} from "./experiment-aliases";
+import { useExperimentAliases } from "./use-experiment-aliases";
 import { CommitLabel } from "./commit-label";
 import {
   codeChange,
@@ -71,6 +78,7 @@ export function ExperimentCompareView({
 
   const experimentQuery = useExperiment(experimentId);
   const experimentsQuery = useExperiments(projectId);
+  const aliasesQuery = useExperimentAliases(projectId);
   const experiment = experimentQuery.data;
 
   const baselineCandidates = useMemo(() => {
@@ -79,10 +87,28 @@ export function ExperimentCompareView({
     );
   }, [experimentsQuery.data, experimentId]);
 
-  const baselineId =
-    baselineFromQuery?.trim() ||
-    experiment?.baseline_experiment_id ||
-    null;
+  const aliasNamesByExperiment = useMemo(
+    () => aliasesByExperimentId(aliasesQuery.data ?? []),
+    [aliasesQuery.data],
+  );
+  const mainAlias = useMemo(() => {
+    const id = aliasTargetId(aliasesQuery.data ?? [], MAIN_ALIAS);
+    if (!id) return null;
+    const row = (aliasesQuery.data ?? []).find((a) => a.name === MAIN_ALIAS);
+    return {
+      id,
+      datasetId: row?.experiment.dataset_id ?? null,
+    };
+  }, [aliasesQuery.data]);
+
+  const baselineId = defaultBaselineFromMainAlias({
+    baselineFromQuery,
+    baselineExperimentId: experiment?.baseline_experiment_id,
+    mainTargetId:
+      mainAlias && mainAlias.id !== experimentId ? mainAlias.id : null,
+    candidateDatasetId: experiment?.dataset_id,
+    mainDatasetId: mainAlias?.datasetId,
+  });
 
   const baselineExperiment = useMemo(() => {
     if (!baselineId) return null;
@@ -145,7 +171,8 @@ export function ExperimentCompareView({
       candidates={baselineCandidates}
       value={baselineId}
       onValueChange={setBaselineId}
-      loading={experimentsQuery.isLoading}
+      loading={experimentsQuery.isLoading || aliasesQuery.isLoading}
+      aliasNamesByExperiment={aliasNamesByExperiment}
     />
   );
 
@@ -325,11 +352,13 @@ function BaselineSelect({
   value,
   onValueChange,
   loading,
+  aliasNamesByExperiment,
 }: {
   candidates: Experiment[];
   value: string | null;
   onValueChange: (id: string) => void;
   loading: boolean;
+  aliasNamesByExperiment: Map<string, string[]>;
 }) {
   return (
     <div className="flex flex-col gap-1">
@@ -355,11 +384,17 @@ function BaselineSelect({
           />
         </SelectTrigger>
         <SelectContent>
-          {candidates.map((exp) => (
-            <SelectItem key={exp.id} value={exp.id}>
-              {exp.name}
-            </SelectItem>
-          ))}
+          {candidates.map((exp) => {
+            const names = aliasNamesByExperiment.get(exp.id) ?? [];
+            const aliasSuffix =
+              names.length > 0 ? ` · ${names.join(", ")}` : "";
+            return (
+              <SelectItem key={exp.id} value={exp.id}>
+                {exp.name}
+                {aliasSuffix}
+              </SelectItem>
+            );
+          })}
         </SelectContent>
       </Select>
     </div>

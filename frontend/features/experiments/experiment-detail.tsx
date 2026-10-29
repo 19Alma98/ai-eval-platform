@@ -77,6 +77,7 @@ import { buildCaseViews, type CaseView } from "./case-results";
 import { flattenParams } from "./experiment-matrix";
 import { CaseDetail } from "./case-detail";
 import { ConnectAppCard } from "./connect-app-card";
+import { ExperimentAliasActions } from "./experiment-alias-actions";
 import { MetricScorecard } from "./metric-scorecard";
 import { CommitLabel } from "./commit-label";
 import {
@@ -407,6 +408,11 @@ export function ExperimentDetailView({
               queryKey={summaryOpts.queryKey}
               dataUpdatedAt={summaryQuery.dataUpdatedAt}
               onRefresh={refreshAll}
+            />
+            <ExperimentAliasActions
+              projectId={projectId}
+              experiment={experiment}
+              experimentNames={experimentNames}
             />
             {otherExperiments.length > 0 ? (
               <Button
