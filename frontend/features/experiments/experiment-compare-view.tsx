@@ -35,7 +35,13 @@ import {
   useExperimentCompare,
   useExperiments,
 } from "./use-experiments";
-import { experimentModel, experimentVersion } from "./experiment-meta";
+import { CommitLabel } from "./commit-label";
+import {
+  codeChange,
+  experimentCommit,
+  experimentModel,
+  experimentVersion,
+} from "./experiment-meta";
 
 function judgeWarningsFromRuns(runs: CompareRunRef[] | undefined): string[] {
   if (!runs?.length) return [];
@@ -346,12 +352,49 @@ function BaselineSelect({
 function ExperimentMetaLine({ experiment }: { experiment: Experiment }) {
   const model = experimentModel(experiment);
   const version = experimentVersion(experiment);
+  const commit = experimentCommit(experiment);
   const parts = [
     model ? `Model ${model}` : null,
     version && version !== experiment.name ? `Version ${version}` : null,
   ].filter(Boolean);
-  if (parts.length === 0) return null;
-  return <span className="text-xs text-muted-foreground">{parts.join(" · ")}</span>;
+  if (parts.length === 0 && !commit) return null;
+  return (
+    <span className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
+      {parts.length > 0 ? <span>{parts.join(" · ")}</span> : null}
+      {commit ? <CommitLabel commit={commit} /> : <span>Commit not recorded</span>}
+    </span>
+  );
+}
+
+function CodeChangeNote({
+  baseline,
+  candidate,
+}: {
+  baseline: Experiment;
+  candidate: Experiment;
+}) {
+  const change = codeChange(baseline.git, candidate.git);
+  if (change.kind === "unknown") return null;
+  if (change.kind === "same") {
+    return (
+      <p className="text-xs text-status-warn">
+        Both experiments ran the same commit
+        {change.dirty ? " (with uncommitted changes)" : ""}: differences come from
+        config, model or data, not from committed code.
+      </p>
+    );
+  }
+  if (!change.diffHref) return null;
+  return (
+    <a
+      href={change.diffHref}
+      target="_blank"
+      rel="noreferrer"
+      className="self-start text-xs text-primary hover:underline"
+    >
+      View code changes between baseline and candidate
+    </a>
+  );
 }
 
 function CompareHeader({
@@ -402,6 +445,9 @@ function CompareHeader({
           <ExperimentMetaLine experiment={experiment} />
         </div>
       </div>
+      {baselineExperiment ? (
+        <CodeChangeNote baseline={baselineExperiment} candidate={experiment} />
+      ) : null}
     </>
   );
 }

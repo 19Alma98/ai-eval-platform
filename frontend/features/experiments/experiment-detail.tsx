@@ -78,9 +78,11 @@ import { flattenParams } from "./experiment-matrix";
 import { CaseDetail } from "./case-detail";
 import { ConnectAppCard } from "./connect-app-card";
 import { MetricScorecard } from "./metric-scorecard";
+import { CommitLabel } from "./commit-label";
 import {
   experimentAppConfigChip,
   experimentAppConfigSnapshot,
+  experimentCommit,
   experimentModel,
   experimentVersion,
   metricsSetBoundLabel,
@@ -318,6 +320,7 @@ export function ExperimentDetailView({
   );
   const modelLabel = experimentModel(experiment);
   const versionLabel = experimentVersion(experiment);
+  const commit = experimentCommit(experiment);
   const appConfigChip = experimentAppConfigChip(experiment);
   const appConfigSnapshot = experimentAppConfigSnapshot(experiment);
   const metricsSetLabel = metricsSetBoundLabel(
@@ -376,6 +379,11 @@ export function ExperimentDetailView({
             {modelLabel ? <MetaItem label="Model">{modelLabel}</MetaItem> : null}
             {versionLabel && versionLabel !== experiment.name ? (
               <MetaItem label="Version">{versionLabel}</MetaItem>
+            ) : null}
+            {commit ? (
+              <MetaItem label="Commit">
+                <CommitLabel commit={commit} />
+              </MetaItem>
             ) : null}
             <MetaItem label="Metrics">{metricsSetLabel}</MetaItem>
             {baselineId ? (

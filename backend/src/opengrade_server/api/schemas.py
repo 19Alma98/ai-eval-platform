@@ -456,6 +456,15 @@ class MetricsSetResponse(MetricsSetSummaryResponse):
     entries: list[MetricsSetEntryResponse]
 
 
+class GitInfo(BaseModel):
+    """Code revision an experiment ran at (auto-detected by the SDK from git or CI env)."""
+
+    commit: str = Field(min_length=4, max_length=64, pattern=r"^[0-9a-fA-F]+$")
+    branch: str | None = Field(default=None, max_length=255)
+    dirty: bool | None = None
+    remote_url: str | None = Field(default=None, max_length=500)
+
+
 class CreateExperimentRequest(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
 
@@ -463,6 +472,7 @@ class CreateExperimentRequest(BaseModel):
     dataset_id: uuid.UUID
     experiment_model_config: dict[str, Any] = Field(default_factory=dict, alias="model_config")
     version: str | None = Field(default=None, max_length=200)
+    git: GitInfo | None = None
     baseline_experiment_id: uuid.UUID | None = None
     app_config_id: uuid.UUID | None = None
     app_config_alias: str | None = None
@@ -478,6 +488,7 @@ class ExperimentResponse(BaseModel):
     dataset_id: uuid.UUID
     experiment_model_config: dict[str, Any] = Field(alias="model_config")
     version: str | None
+    git: GitInfo | None = None
     baseline_experiment_id: uuid.UUID | None
     app_config_id: uuid.UUID | None = None
     metrics_set_id: uuid.UUID | None = None
@@ -495,6 +506,7 @@ class ExperimentAliasTargetResponse(BaseModel):
     id: uuid.UUID
     name: str
     version: str | None
+    git: GitInfo | None = None
     dataset_id: uuid.UUID
     metrics_set_id: uuid.UUID | None
     status: str
@@ -646,6 +658,8 @@ class ExperimentCompareResponse(BaseModel):
     candidate_runs: list[CompareRunRefResponse] = []
     baseline_runs: list[CompareRunRefResponse] = []
     experiment_metrics: list[ExperimentMetricComparisonResponse] = Field(default_factory=list)
+    candidate_git: GitInfo | None = None
+    baseline_git: GitInfo | None = None
 
 
 class AbsoluteMinRuleBody(BaseModel):

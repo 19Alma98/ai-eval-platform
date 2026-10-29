@@ -333,6 +333,55 @@ def _print_checks(body: dict[str, Any]) -> None:
     console.print(table)
 
 
+def _git_dict(git: Any) -> dict[str, Any] | None:
+    if git is None:
+        return None
+    return git.model_dump(exclude_none=True) if hasattr(git, "model_dump") else dict(git)
+
+
+def _describe_revision(git: dict[str, Any] | None) -> str:
+    if not git:
+        return "unknown commit"
+    text = str(git["commit"])[:12]
+    if git.get("branch"):
+        text += f" ({git['branch']})"
+    if git.get("dirty"):
+        text += " + uncommitted changes"
+    return text
+
+
+def _print_code_revisions(
+    candidate: dict[str, Any] | None, baseline: dict[str, Any] | None, *, has_baseline: bool
+) -> None:
+    console.print(f"Candidate code: [cyan]{_describe_revision(candidate)}[/cyan]")
+    if not has_baseline:
+        return
+    console.print(f"Baseline code:  [cyan]{_describe_revision(baseline)}[/cyan]")
+    if candidate and baseline and candidate["commit"] == baseline["commit"]:
+        note = "same commit"
+        if candidate.get("dirty") or baseline.get("dirty"):
+            note += " (uncommitted changes on at least one side)"
+        console.print(f"[yellow]Note:[/yellow] candidate and baseline ran the {note}")
+    diff = _compare_url(candidate, baseline)
+    if diff:
+        console.print(f"Code diff: {diff}", soft_wrap=True)
+
+
+def _compare_url(candidate: dict[str, Any] | None, baseline: dict[str, Any] | None) -> str | None:
+    """GitHub / GitLab compare page from the baseline to the candidate commit."""
+    if not candidate or not baseline or candidate["commit"] == baseline["commit"]:
+        return None
+    remote = candidate.get("remote_url")
+    if not remote or remote != baseline.get("remote_url"):
+        return None
+    span = f"{baseline['commit']}...{candidate['commit']}"
+    if "github" in remote:
+        return f"{remote}/compare/{span}"
+    if "gitlab" in remote:
+        return f"{remote}/-/compare/{span}"
+    return None
+
+
 def _promote(
     client: Any,
     *,
@@ -547,18 +596,25 @@ def evaluate_cmd(
             )
             gate_baseline_id = None
 
+        candidate_git = _git_dict(result.experiment.git)
+        baseline_git = (
+            _git_dict(client.experiments.get(gate_baseline_id).git) if gate_baseline_id else None
+        )
         payload: dict[str, Any] = {
             "experiment_id": result.id,
             "url": result.url,
             "project_id": project_id,
-            "version": cfg.version,
+            "version": result.experiment.version,
+            "git": candidate_git,
             "baseline_id": gate_baseline_id,
+            "baseline_git": baseline_git,
             "metrics": result.metrics,
             "status": "evaluated",
         }
         if not cfg.as_json:
             console.print(result.summary())
             console.print(f"Experiment: [cyan]{result.url}[/cyan]")
+            _print_code_revisions(candidate_git, baseline_git, has_baseline=bool(gate_baseline_id))
 
         if not cfg.policy:
             payload["gate"] = None
@@ -601,7 +657,7 @@ def evaluate_cmd(
                 experiment_id=result.id,
                 dataset_id=run_dataset_id,
                 metrics_set_id=run_metrics_set_id,
-                version=cfg.version,
+                version=result.experiment.version,
                 quiet=cfg.as_json,
             )
         if cfg.as_json:

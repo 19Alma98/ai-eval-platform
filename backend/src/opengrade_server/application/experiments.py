@@ -32,6 +32,7 @@ class CreateExperimentCommand:
     dataset_id: uuid.UUID
     model_config: dict[str, Any] | None = None
     version: str | None = None
+    git: dict[str, Any] | None = None
     baseline_experiment_id: uuid.UUID | None = None
     app_config_id: uuid.UUID | None = None
     app_config_alias: str | None = None
@@ -107,6 +108,7 @@ class CreateExperiment:
             baseline_experiment_id=command.baseline_experiment_id,
             app_config_id=app_config_id,
             metrics_set_id=metrics_set_id,
+            git=command.git,
         )
         return await self._experiments.add(experiment)
 

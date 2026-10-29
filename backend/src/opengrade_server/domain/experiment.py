@@ -21,6 +21,8 @@ class Experiment:
     created_at: datetime
     app_config_id: uuid.UUID | None = None
     metrics_set_id: uuid.UUID | None = None
+    # Code revision the candidate ran at: {commit, branch, dirty, remote_url}.
+    git: dict[str, Any] | None = None
 
     @classmethod
     def create(
@@ -34,6 +36,7 @@ class Experiment:
         baseline_experiment_id: uuid.UUID | None = None,
         app_config_id: uuid.UUID | None = None,
         metrics_set_id: uuid.UUID | None = None,
+        git: dict[str, Any] | None = None,
         status: str = "created",
     ) -> Experiment:
         cleaned = name.strip()
@@ -53,6 +56,7 @@ class Experiment:
             created_at=datetime.now(UTC),
             app_config_id=app_config_id,
             metrics_set_id=metrics_set_id,
+            git=dict(git) if git else None,
         )
 
     def with_metrics_set_id(self, metrics_set_id: uuid.UUID | None) -> Experiment:

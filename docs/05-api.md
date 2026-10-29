@@ -389,6 +389,7 @@ Response includes:
 - `regressions`, `improved`, `unchanged`, `config_mismatches`, `insufficient_n` subsets
 - `candidate_runs` / `baseline_runs`: per shared evaluator `{ evaluator_id, run_id, metadata }` (includes run-level `warnings` / `warning_detail` when the judge model was unsuitable)
 - `experiment_metrics`: one row per key on either side `{ key, candidate, baseline, delta }` — `delta = candidate − baseline` when both exist; no status, since the better direction is unknown
+- `candidate_git` / `baseline_git`: the code revision each experiment ran at (`{ commit, branch, dirty, remote_url }`) or `null` when none was recorded
 
 Classification is higher-is-better. Aggregate `delta = candidate − baseline` is always populated when both means exist. Status uses a paired bootstrap 95% CI on per-item differences (same `dataset_item_id`, both sides applicable / non-`SKIPPED`):
 

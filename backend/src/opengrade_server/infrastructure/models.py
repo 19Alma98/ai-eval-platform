@@ -290,6 +290,7 @@ class ExperimentModel(Base):
         "model_config", PortableJSON, nullable=False, server_default="{}"
     )
     version: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    git: Mapped[dict[str, Any] | None] = mapped_column(PortableJSON, nullable=True)
     baseline_experiment_id: Mapped[uuid.UUID | None] = mapped_column(
         Uuid(as_uuid=True),
         ForeignKey("experiments.id", ondelete="SET NULL"),

@@ -45,7 +45,9 @@ Judge secrets: `evaluate.judge.api_key_env: LLM_API_KEY` reads the environment (
 
 Flags override YAML: `--task`, `--script`, `--dataset`, `--metrics`, `--name`, `--baseline`, `--from-experiment`, `--version`, `--promote`, `--base-url`, `--project`, `--backend-store-uri`, `--json`.
 
-`--version` / `evaluate.version` is stored on the experiment (`experiments.version`, max 200 chars); in CI pass the commit SHA so every run says which code it measured.
+`--version` / `evaluate.version` is stored on the experiment (`experiments.version`, max 200 chars). Every run also records the git revision it measured (`experiments.git`: commit, branch, uncommitted changes, remote) from the checkout in the working directory, or from CI env vars (`GITHUB_SHA`, `CI_COMMIT_SHA`, …) when there is no `.git`; without `--version` the short SHA becomes the version. The output prints the candidate and baseline commits and, for GitHub / GitLab remotes, a link to the code diff between them; it warns when both ran the same commit. Set `OPENGRADE_DISABLE_GIT=1` to skip detection.
+
+On GitHub `pull_request` events `actions/checkout` checks out a temporary merge commit; check out `${{ github.event.pull_request.head.sha }}` if runs should point at the PR's own commit.
 
 #### Moving baseline (`alias:` + `--promote`)
 
@@ -74,7 +76,7 @@ opengrade evaluate --config opengrade.yaml --version "$GITHUB_SHA" --baseline al
 
 The alias lives in the server's database: use a persistent server (`api_base_url`) or `--backend-store-uri` pointing at a durable DB. The default embedded temp SQLite is discarded after each run.
 
-`--json` output adds `version`, the `baseline_id` actually used by the gate, and `promoted` (`{alias, experiment_id, previous_experiment_id, exam_changed}` or `null`). Aliases and their history are also available over the API (`/projects/{id}/experiment-aliases`, see `docs/05-api.md`) and the SDK (`client.experiments.set_alias / get_alias / alias_history`, `baseline="alias:main"`).
+`--json` output adds `version`, `git` / `baseline_git` (code revisions of the run and its baseline), the `baseline_id` actually used by the gate, and `promoted` (`{alias, experiment_id, previous_experiment_id, exam_changed}` or `null`). Aliases and their history are also available over the API (`/projects/{id}/experiment-aliases`, see `docs/05-api.md`) and the SDK (`client.experiments.set_alias / get_alias / alias_history`, `baseline="alias:main"`).
 
 Design: [`docs/superpowers/specs/2026-10-28-opengrade-evaluate-cli-design.md`](superpowers/specs/2026-10-28-opengrade-evaluate-cli-design.md).
 

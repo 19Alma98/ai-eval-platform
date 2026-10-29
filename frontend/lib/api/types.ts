@@ -174,6 +174,14 @@ export type PatchMetricsSetBody = {
   entries?: MetricsSetEntryInput[];
 };
 
+/** Code revision an experiment ran at (auto-detected by the SDK). */
+export type GitInfo = {
+  commit: string;
+  branch?: string | null;
+  dirty?: boolean | null;
+  remote_url?: string | null;
+};
+
 export type Experiment = {
   id: string;
   project_id: string;
@@ -182,6 +190,7 @@ export type Experiment = {
   model_config: Record<string, unknown>;
   app_config_id: string | null;
   version: string | null;
+  git?: GitInfo | null;
   baseline_experiment_id: string | null;
   metrics_set_id: string | null;
   status: string;
@@ -246,6 +255,8 @@ export type ExperimentCompareResponse = {
   insufficient_n?: MetricComparison[];
   candidate_runs?: CompareRunRef[];
   baseline_runs?: CompareRunRef[];
+  candidate_git?: GitInfo | null;
+  baseline_git?: GitInfo | null;
 };
 
 export type ItemSide = {

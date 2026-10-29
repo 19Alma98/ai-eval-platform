@@ -229,6 +229,7 @@ class _ExperimentsResource:
         dataset_id: str,
         model_config: dict[str, Any] | None = None,
         version: str | None = None,
+        git: dict[str, Any] | None = None,
         baseline_experiment_id: str | None = None,
         app_config_id: str | None = None,
         app_config_alias: str | None = None,
@@ -242,6 +243,8 @@ class _ExperimentsResource:
         }
         if version is not None:
             body["version"] = version
+        if git:
+            body["git"] = git
         if baseline_experiment_id is not None:
             body["baseline_experiment_id"] = baseline_experiment_id
         if app_config_id is not None:

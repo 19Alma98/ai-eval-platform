@@ -44,6 +44,7 @@ from opengrade_server.api.schemas import (
     ExperimentMetricsResponse,
     ExperimentResponse,
     ExperimentSummaryResponse,
+    GitInfo,
     ItemComparisonRowResponse,
     ItemSideResponse,
     MetricComparisonResponse,
@@ -134,6 +135,7 @@ def _experiment_response(experiment: Experiment) -> ExperimentResponse:
             "dataset_id": experiment.dataset_id,
             "model_config": dict(experiment.model_config),
             "version": experiment.version,
+            "git": experiment.git,
             "baseline_experiment_id": experiment.baseline_experiment_id,
             "app_config_id": experiment.app_config_id,
             "metrics_set_id": experiment.metrics_set_id,
@@ -256,6 +258,12 @@ def _compare_response(comparison: ExperimentComparison) -> ExperimentCompareResp
             )
             for m in comparison.experiment_metrics
         ],
+        candidate_git=GitInfo.model_validate(comparison.candidate_git)
+        if comparison.candidate_git
+        else None,
+        baseline_git=GitInfo.model_validate(comparison.baseline_git)
+        if comparison.baseline_git
+        else None,
     )
 
 
@@ -312,6 +320,7 @@ async def create_experiment(
                 dataset_id=body.dataset_id,
                 model_config=body.experiment_model_config,
                 version=body.version,
+                git=body.git.model_dump(exclude_none=True) if body.git else None,
                 baseline_experiment_id=body.baseline_experiment_id,
                 app_config_id=body.app_config_id,
                 app_config_alias=body.app_config_alias,

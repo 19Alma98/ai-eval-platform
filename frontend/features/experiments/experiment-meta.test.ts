@@ -2,8 +2,11 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import type { Experiment } from "@/lib/api/types";
 import {
+  codeChange,
   experimentAppConfigChip,
   experimentAppConfigSnapshot,
+  experimentCommit,
+  experimentVersion,
   metricsSetBoundLabel,
   runMetricEntries,
 } from "./experiment-meta";
@@ -126,5 +129,48 @@ describe("runMetricEntries", () => {
         ["cost_usd", "0.1235"],
       ],
     );
+  });
+});
+
+describe("experimentCommit / codeChange", () => {
+  const sha = (c: string) => c.repeat(40);
+
+  it("links GitHub commits and hides the SDK's default SHA version", () => {
+    const exp = experiment({
+      version: `${sha("a").slice(0, 12)}-dirty`,
+      git: { commit: sha("a"), branch: "main", dirty: true, remote_url: "https://github.com/acme/app" },
+    });
+    assert.deepEqual(experimentCommit(exp), {
+      sha: sha("a"),
+      short: "aaaaaaa",
+      branch: "main",
+      dirty: true,
+      href: `https://github.com/acme/app/commit/${sha("a")}`,
+    });
+    assert.equal(experimentVersion(exp), null);
+    assert.equal(experimentVersion(experiment({ version: "1.4.0", git: exp.git })), "1.4.0");
+  });
+
+  it("has no commit link for unknown hosts", () => {
+    const exp = experiment({ git: { commit: sha("a"), remote_url: "https://git.example.com/app" } });
+    assert.equal(experimentCommit(exp)?.href, null);
+    assert.equal(experimentCommit(experiment({})), null);
+  });
+
+  it("describes how code moved from baseline to candidate", () => {
+    const remote = "https://gitlab.com/grp/app";
+    assert.deepEqual(codeChange(null, { commit: sha("b") }), { kind: "unknown" });
+    assert.deepEqual(codeChange({ commit: sha("a") }, { commit: sha("a"), dirty: true }), {
+      kind: "same",
+      dirty: true,
+    });
+    assert.deepEqual(
+      codeChange({ commit: sha("a"), remote_url: remote }, { commit: sha("b"), remote_url: remote }),
+      { kind: "changed", diffHref: `${remote}/-/compare/${sha("a")}...${sha("b")}` },
+    );
+    assert.deepEqual(codeChange({ commit: sha("a") }, { commit: sha("b") }), {
+      kind: "changed",
+      diffHref: null,
+    });
   });
 });
