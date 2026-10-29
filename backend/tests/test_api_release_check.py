@@ -199,25 +199,25 @@ class InMemoryEvaluationRunRepository:
 
 class InMemoryExperimentItemOutputRepository:
     def __init__(self) -> None:
-        self._outputs: dict[tuple[uuid.UUID, uuid.UUID], ExperimentItemOutput] = {}
+        self._outputs: dict[tuple[uuid.UUID, uuid.UUID, int], ExperimentItemOutput] = {}
 
     async def get(
-        self, experiment_id: uuid.UUID, dataset_item_id: uuid.UUID
+        self, experiment_id: uuid.UUID, dataset_item_id: uuid.UUID, repeat: int = 0
     ) -> ExperimentItemOutput | None:
-        return self._outputs.get((experiment_id, dataset_item_id))
+        return self._outputs.get((experiment_id, dataset_item_id, repeat))
 
     async def upsert(self, output: ExperimentItemOutput) -> ExperimentItemOutput:
-        self._outputs[(output.experiment_id, output.dataset_item_id)] = output
+        self._outputs[(output.experiment_id, output.dataset_item_id, output.repeat)] = output
         return output
 
     async def upsert_many(self, outputs: list[ExperimentItemOutput]) -> list[ExperimentItemOutput]:
         for output in outputs:
-            self._outputs[(output.experiment_id, output.dataset_item_id)] = output
+            self._outputs[(output.experiment_id, output.dataset_item_id, output.repeat)] = output
         return outputs
 
     async def list_by_experiment(self, experiment_id: uuid.UUID) -> list[ExperimentItemOutput]:
         return sorted(
-            (o for (eid, _), o in self._outputs.items() if eid == experiment_id),
+            (o for (eid, _, _), o in self._outputs.items() if eid == experiment_id),
             key=lambda o: o.dataset_item_id,
         )
 

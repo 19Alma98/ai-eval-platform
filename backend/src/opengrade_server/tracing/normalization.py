@@ -122,9 +122,12 @@ def normalize_raw_spans(
             metadata.update(extract_model_provider(domain_span.attributes))
 
         first_attrs = spans_raw[0].get("attributes") or {}
-        environment = first_attrs.get("deployment.environment") or first_attrs.get(
-            "opengrade.environment"
+        environment = (
+            first_attrs.get("deployment.environment")
+            or first_attrs.get("deployment.environment.name")
+            or first_attrs.get("opengrade.environment")
         )
+        version = first_attrs.get("service.version") or first_attrs.get("opengrade.version")
         user_id = first_attrs.get("user.id") or first_attrs.get("enduser.id")
         session_id = first_attrs.get("session.id")
         input_value, output_value = _extract_trace_io(domain_spans)
@@ -145,6 +148,7 @@ def normalize_raw_spans(
                 user_id=str(user_id) if user_id is not None else None,
                 session_id=str(session_id) if session_id is not None else None,
                 spans=tuple(domain_spans),
+                version=str(version)[:200] if version is not None else None,
             )
         )
     return traces

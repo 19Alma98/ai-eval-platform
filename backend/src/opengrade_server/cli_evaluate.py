@@ -20,6 +20,7 @@ import httpx2
 import uvicorn
 
 from opengrade_server.config import get_settings
+from opengrade_server.domain.experiment_output import MAX_REPEATS
 
 EVALUATE_KEY = "evaluate"
 ALIAS_PREFIX = "alias:"
@@ -53,6 +54,7 @@ class EvaluateConfig:
     task_type: str = "rag_qa"
     params: dict[str, Any] = field(default_factory=dict)
     max_concurrency: int = 1
+    repeats: int = 1
     init_tracing: bool = False
     judge_model: str | None = None
     judge_api_base: str | None = None
@@ -156,6 +158,7 @@ def resolve_evaluate_config(
         task_type=_as_opt_str(block.get("task_type")) or "rag_qa",
         params=dict(block.get("params") or {}),
         max_concurrency=int(block.get("max_concurrency") or 1),
+        repeats=int(block.get("repeats") or 1),
         init_tracing=bool(block.get("init") or False),
         judge_model=_as_opt_str(judge.get("model")),
         judge_api_base=_as_opt_str(judge.get("api_base")),
@@ -192,6 +195,8 @@ def validate_evaluate_config(cfg: EvaluateConfig, *, require_exam: bool = True) 
             )
     if cfg.max_concurrency < 1:
         raise EvaluateConfigError("max_concurrency must be >= 1")
+    if not 1 <= cfg.repeats <= MAX_REPEATS:
+        raise EvaluateConfigError(f"repeats must be between 1 and {MAX_REPEATS}")
     if cfg.promote and not cfg.policy:
         raise EvaluateConfigError("promote needs policy blocks: only a passing gate promotes")
     if cfg.version is not None and len(cfg.version) > 200:

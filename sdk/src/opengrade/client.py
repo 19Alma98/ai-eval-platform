@@ -12,6 +12,8 @@ import httpx2
 from opengrade._config import resolve_project_id
 from opengrade._http import _HttpTransport, read_upload, resolve_api_base_url
 from opengrade.models import (
+    AlertEventResponse,
+    AlertRuleResponse,
     DatasetDetailResponse,
     DatasetItemResponse,
     DatasetResponse,
@@ -62,6 +64,16 @@ class _ProjectsResource:
             "GET",
             f"/api/v1/projects/{project_id}",
             response_model=ProjectResponse,
+        )
+
+    def set_retention(self, retention_days: int | None, project_id: str | None = None) -> None:
+        """Keep ``retention_days`` of production data (traces, live answers, scores, alert
+        events); ``None`` falls back to the server's ``RETENTION_DAYS``."""
+        project_id = resolve_project_id(project_id)
+        self._http.request(
+            "PUT",
+            f"/api/v1/projects/{project_id}/retention",
+            body={"retention_days": retention_days},
         )
 
 
@@ -462,13 +474,17 @@ class _ExperimentsResource:
         *,
         run_ids: builtins.list[str] | None = None,
         evaluator_ids: builtins.list[str] | None = None,
+        group_by: str | None = None,
     ) -> ExperimentSummaryResponse:
+        """Aggregates per evaluator; ``group_by`` (item metadata key) adds per-group rows."""
         path = f"/api/v1/experiments/{experiment_id}/summary"
         pairs: builtins.list[tuple[str, str]] = []
         for rid in run_ids or []:
             pairs.append(("run_ids", rid))
         for eid in evaluator_ids or []:
             pairs.append(("evaluator_ids", eid))
+        if group_by:
+            pairs.append(("group_by", group_by))
         if pairs:
             path = f"{path}?{urlencode(pairs)}"
         return self._http.request_model("GET", path, response_model=ExperimentSummaryResponse)
@@ -481,7 +497,9 @@ class _ExperimentsResource:
         evaluator_ids: builtins.list[str] | None = None,
         candidate_run_ids: builtins.list[str] | None = None,
         baseline_run_ids: builtins.list[str] | None = None,
+        group_by: str | None = None,
     ) -> ExperimentCompareResponse:
+        """Candidate vs baseline; ``group_by`` (item metadata key) adds per-group deltas."""
         path = f"/api/v1/experiments/{experiment_id}/compare/{baseline_id}"
         pairs: builtins.list[tuple[str, str]] = []
         for eid in evaluator_ids or []:
@@ -490,6 +508,8 @@ class _ExperimentsResource:
             pairs.append(("candidate_run_ids", rid))
         for rid in baseline_run_ids or []:
             pairs.append(("baseline_run_ids", rid))
+        if group_by:
+            pairs.append(("group_by", group_by))
         if pairs:
             path = f"{path}?{urlencode(pairs)}"
         return self._http.request_model("GET", path, response_model=ExperimentCompareResponse)
@@ -553,6 +573,115 @@ class _MetricsSetsResource:
             f"/api/v1/projects/{project_id}/metrics-sets",
             body=body,
             response_model=MetricsSetResponse,
+        )
+
+
+_ALERT_FIELDS = (
+    "name",
+    "metric",
+    "operator",
+    "threshold",
+    "window_minutes",
+    "min_samples",
+    "score_name",
+    "score_source",
+    "webhook_url",
+    "webhook_format",
+    "repeat_minutes",
+    "enabled",
+)
+
+
+class _AlertsResource:
+    """Server-side alert rules on production metrics (checked every minute by the server)."""
+
+    def __init__(self, http: _HttpTransport) -> None:
+        self._http = http
+
+    def list(self, project_id: str | None = None) -> builtins.list[AlertRuleResponse]:
+        project_id = resolve_project_id(project_id)
+        return self._http.request_model_list(
+            "GET", f"/api/v1/projects/{project_id}/alert-rules", response_model=AlertRuleResponse
+        )
+
+    def create(
+        self,
+        project_id: str | None = None,
+        *,
+        name: str,
+        metric: str,
+        threshold: float,
+        operator: str = "gt",
+        window_minutes: int = 60,
+        min_samples: int | None = None,
+        score_name: str | None = None,
+        score_source: str | None = None,
+        webhook_url: str | None = None,
+        webhook_format: str = "json",
+        repeat_minutes: int | None = None,
+        enabled: bool = True,
+    ) -> AlertRuleResponse:
+        """``metric``: error_rate, latency_p50_ms/p90/p99, traffic, cost_usd, total_tokens,
+        needs_review, score_mean or score_fail_rate (with ``score_name``)."""
+        project_id = resolve_project_id(project_id)
+        fields: dict[str, Any] = {
+            "name": name,
+            "metric": metric,
+            "operator": operator,
+            "threshold": threshold,
+            "window_minutes": window_minutes,
+            "min_samples": min_samples,
+            "score_name": score_name,
+            "score_source": score_source,
+            "webhook_url": webhook_url,
+            "webhook_format": webhook_format,
+            "repeat_minutes": repeat_minutes,
+            "enabled": enabled,
+        }
+        body = {k: v for k, v in fields.items() if v is not None}
+        return self._http.request_model(
+            "POST",
+            f"/api/v1/projects/{project_id}/alert-rules",
+            body=body,
+            response_model=AlertRuleResponse,
+        )
+
+    def get(self, rule_id: str) -> AlertRuleResponse:
+        return self._http.request_model(
+            "GET", f"/api/v1/alert-rules/{rule_id}", response_model=AlertRuleResponse
+        )
+
+    def update(self, rule_id: str, **fields: Any) -> AlertRuleResponse:
+        """Change the given fields; ``None`` clears score_name/score_source/webhook_url/
+        repeat_minutes."""
+        unknown = set(fields) - set(_ALERT_FIELDS)
+        if unknown:
+            raise ValueError(f"unknown alert rule fields: {sorted(unknown)}")
+        return self._http.request_model(
+            "PATCH", f"/api/v1/alert-rules/{rule_id}", body=fields, response_model=AlertRuleResponse
+        )
+
+    def delete(self, rule_id: str) -> None:
+        self._http.request("DELETE", f"/api/v1/alert-rules/{rule_id}")
+
+    def test(self, rule_id: str) -> AlertEventResponse:
+        """Send a test notification to the rule's webhook."""
+        return self._http.request_model(
+            "POST",
+            f"/api/v1/alert-rules/{rule_id}/test",
+            body={},
+            response_model=AlertEventResponse,
+        )
+
+    def events(
+        self, project_id: str | None = None, *, limit: int = 50
+    ) -> builtins.list[AlertEventResponse]:
+        project_id = resolve_project_id(project_id)
+        return self._http.request_model_list(
+            "GET",
+            f"/api/v1/projects/{project_id}/alert-events",
+            response_model=AlertEventResponse,
+            query={"limit": str(limit)},
         )
 
 
@@ -683,6 +812,7 @@ class Client:
         self.metrics_packs = _MetricsPacksResource(self._http)
         self.metrics_sets = _MetricsSetsResource(self._http)
         self.live_runs = _LiveRunsResource(self._http)
+        self.alerts = _AlertsResource(self._http)
         self.trace_scores = _TraceScoresResource(self._http)
         self.app_configs = AppConfigClient.from_transport(self._http)
 

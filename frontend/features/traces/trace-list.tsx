@@ -18,6 +18,11 @@ import { cn } from "@/lib/cn";
 import { formatDurationMs, formatScore } from "@/lib/format";
 import { liveRunHref, traceHref } from "@/lib/links";
 import { PRESETS, rangeFromPreset, type Preset } from "@/lib/time-range";
+import {
+  ReleaseFilterControls,
+  useReleaseFilter,
+} from "@/features/monitoring/release-filter";
+import { useReleaseFacets } from "@/features/monitoring/use-monitoring";
 import { useTraces } from "./use-traces";
 
 type StatusFilter = "all" | "error";
@@ -70,14 +75,24 @@ export function TraceList({ projectId }: { projectId: string }) {
     [range],
   );
 
+  const [release, setRelease] = useReleaseFilter();
+  // Facets need a range: "all time" offers the releases of the last 30 days.
+  const [last30Days] = useState(() =>
+    new Date(Date.now() - 30 * 24 * 3600 * 1000).toISOString(),
+  );
+  const facetsSince = since ?? last30Days;
+  const facets = useReleaseFacets(projectId, facetsSince);
   const query = useTraces(projectId, {
     status: status === "error" ? "error" : undefined,
     search: deferredSearch || undefined,
     since,
+    environment: release.environment,
+    version: release.version,
   });
   const rows = useMemo(() => query.data?.pages.flatMap((p) => p.items) ?? [], [query.data]);
   const anyScores = rows.some((r) => r.scores.length > 0);
   const anyJudged = rows.some((r) => r.live_interaction_id);
+  const anyVersion = rows.some((r) => r.version);
 
   const setParam = useCallback(
     (key: string, value: string | null) => {
@@ -142,6 +157,17 @@ export function TraceList({ projectId }: { projectId: string }) {
         cell: (row) => String(row.span_count),
       },
       // Columns empty for every row are noise (see docs/07-frontend.md: tables stay lean).
+      ...(anyVersion
+        ? [
+            {
+              id: "version",
+              header: "Version",
+              headerClassName: "w-[110px]",
+              className: "text-xs text-muted-foreground",
+              cell: (row: TraceSummary) => row.version ?? "—",
+            },
+          ]
+        : []),
       ...(anyScores
         ? [
             {
@@ -175,10 +201,11 @@ export function TraceList({ projectId }: { projectId: string }) {
           ]
         : []),
     ],
-    [anyJudged, anyScores, projectId],
+    [anyJudged, anyScores, anyVersion, projectId],
   );
 
-  const filtersActive = status !== "all" || deferredSearch !== "";
+  const filtersActive =
+    status !== "all" || deferredSearch !== "" || Boolean(release.environment || release.version);
 
   return (
     <div className="flex flex-col gap-4">
@@ -238,6 +265,7 @@ export function TraceList({ projectId }: { projectId: string }) {
           className="h-8 max-w-xs"
           aria-label="Search traces"
         />
+        <ReleaseFilterControls facets={facets.data} filter={release} onChange={setRelease} />
       </div>
 
       {query.isLoading ? (

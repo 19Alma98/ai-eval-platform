@@ -6,7 +6,7 @@ from collections.abc import Collection
 from datetime import UTC, datetime
 from typing import Any, cast
 
-from sqlalchemy import case, delete, func, select, update
+from sqlalchemy import Select, case, delete, func, select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.engine import CursorResult
@@ -14,6 +14,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from opengrade_server.domain.alert import AlertEvent, AlertRule
 from opengrade_server.domain.app_config import AppConfig, AppConfigAlias
 from opengrade_server.domain.dataset import Dataset, DatasetItem
 from opengrade_server.domain.evaluation import EvaluationResultRecord, EvaluationRun
@@ -33,6 +34,8 @@ from opengrade_server.domain.project import Project
 from opengrade_server.domain.trace import Span, Trace
 from opengrade_server.domain.trace_score import TraceScore, TraceScoreSummaryRow
 from opengrade_server.infrastructure.models import (
+    AlertEventModel,
+    AlertRuleModel,
     AppConfigAliasModel,
     AppConfigModel,
     DatasetItemModel,
@@ -75,6 +78,7 @@ def _project_to_domain(row: ProjectModel) -> Project:
         name=row.name,
         slug=row.slug,
         created_at=row.created_at,
+        retention_days=row.retention_days,
     )
 
 
@@ -110,6 +114,7 @@ def _trace_to_domain(row: TraceModel, *, include_spans: bool = True) -> Trace:
         user_id=row.user_id,
         session_id=row.session_id,
         spans=spans,
+        version=row.version,
     )
 
 
@@ -144,6 +149,15 @@ class SqlAlchemyProjectRepository:
         )
         return [_project_to_domain(row) for row in result.scalars().all()]
 
+    async def set_retention_days(self, project_id: uuid.UUID, days: int | None) -> Project | None:
+        row = await self._session.get(ProjectModel, project_id)
+        if row is None:
+            return None
+        row.retention_days = days
+        await self._session.commit()
+        await self._session.refresh(row)
+        return _project_to_domain(row)
+
     async def delete(self, project_id: uuid.UUID) -> bool:
         row = await self._session.get(ProjectModel, project_id)
         if row is None:
@@ -170,6 +184,16 @@ class SqlAlchemyProjectRepository:
         return True
 
 
+def _filter_release(
+    stmt: Select[TraceModel], environment: str | None, version: str | None
+) -> Select[TraceModel]:
+    if environment is not None:
+        stmt = stmt.where(TraceModel.environment == environment)
+    if version is not None:
+        stmt = stmt.where(TraceModel.version == version)
+    return stmt
+
+
 class SqlAlchemyTraceRepository:
     def __init__(self, session: AsyncSession) -> None:
         self._session = session
@@ -191,6 +215,7 @@ class SqlAlchemyTraceRepository:
             environment=trace.environment,
             user_id=trace.user_id,
             session_id=trace.session_id,
+            version=trace.version,
         )
         stmt = stmt.on_conflict_do_nothing(index_elements=["project_id", "trace_id"])
         await self._session.execute(stmt)
@@ -235,6 +260,8 @@ class SqlAlchemyTraceRepository:
             existing.user_id = trace.user_id
         if trace.session_id is not None:
             existing.session_id = trace.session_id
+        if trace.version is not None:
+            existing.version = trace.version
 
         by_span_id = {span.span_id: span for span in existing.spans}
         for span in trace.spans:
@@ -295,8 +322,12 @@ class SqlAlchemyTraceRepository:
         cursor_start_time: datetime | None = None,
         cursor_id: uuid.UUID | None = None,
         limit: int = 50,
+        environment: str | None = None,
+        version: str | None = None,
     ) -> list[Trace]:
-        stmt = select(TraceModel).where(TraceModel.project_id == project_id)
+        stmt = _filter_release(
+            select(TraceModel).where(TraceModel.project_id == project_id), environment, version
+        )
         if status is not None:
             stmt = stmt.where(TraceModel.status == status)
         if search and search.strip():
@@ -347,6 +378,7 @@ class SqlAlchemyTraceRepository:
                 user_id=t.user_id,
                 session_id=t.session_id,
                 spans=(),
+                version=t.version,
             )
             for t in traces
         ]
@@ -358,19 +390,45 @@ class SqlAlchemyTraceRepository:
         since: datetime,
         until: datetime,
         limit: int = 5000,
+        environment: str | None = None,
+        version: str | None = None,
     ) -> list[Trace]:
+        stmt = select(TraceModel).where(
+            TraceModel.project_id == project_id,
+            TraceModel.start_time >= since,
+            TraceModel.start_time <= until,
+        )
         result = await self._session.execute(
-            select(TraceModel)
+            _filter_release(stmt, environment, version)
             .options(selectinload(TraceModel.spans))
-            .where(
-                TraceModel.project_id == project_id,
-                TraceModel.start_time >= since,
-                TraceModel.start_time <= until,
-            )
             .order_by(TraceModel.start_time.desc(), TraceModel.id.desc())
             .limit(limit)
         )
         return [_trace_to_domain(row) for row in result.scalars().all()]
+
+    async def release_facets(
+        self, project_id: uuid.UUID, *, since: datetime, until: datetime
+    ) -> dict[str, list[tuple[str, int]]]:
+        """Distinct environments and versions in the range, most traces first."""
+        facets: dict[str, list[tuple[str, int]]] = {}
+        for name, column in (
+            ("environment", TraceModel.environment),
+            ("version", TraceModel.version),
+        ):
+            result = await self._session.execute(
+                select(column, func.count())
+                .where(
+                    TraceModel.project_id == project_id,
+                    TraceModel.start_time >= since,
+                    TraceModel.start_time <= until,
+                    column.is_not(None),
+                )
+                .group_by(column)
+                .order_by(func.count().desc(), column)
+                .limit(100)
+            )
+            facets[name] = [(str(value), int(count)) for value, count in result.all()]
+        return facets
 
 
 def _dataset_to_domain(row: DatasetModel) -> Dataset:
@@ -494,6 +552,7 @@ def _result_to_domain(row: EvaluationResultModel) -> EvaluationResultRecord:
         explanation=row.explanation,
         metadata=dict(row.metadata_json or {}),
         duration_ms=row.duration_ms,
+        repeat=row.repeat,
     )
 
 
@@ -506,6 +565,7 @@ def _experiment_item_output_to_domain(row: ExperimentItemOutputModel) -> Experim
         context=row.context,
         metadata=dict(row.metadata_json or {}),
         updated_at=row.updated_at,
+        repeat=row.repeat,
     )
 
 
@@ -518,6 +578,7 @@ def _experiment_item_output_to_model(output: ExperimentItemOutput) -> Experiment
         context=output.context,
         metadata_json=dict(output.metadata),
         updated_at=output.updated_at,
+        repeat=output.repeat,
     )
 
 
@@ -985,6 +1046,7 @@ class SqlAlchemyEvaluationRunRepository:
             explanation=result.explanation,
             metadata_json=dict(result.metadata),
             duration_ms=result.duration_ms,
+            repeat=result.repeat,
         )
         self._session.add(row)
         await self._session.commit()
@@ -1010,6 +1072,7 @@ class SqlAlchemyEvaluationRunRepository:
                 explanation=r.explanation,
                 metadata_json=dict(r.metadata),
                 duration_ms=r.duration_ms,
+                repeat=r.repeat,
             )
             for r in results
         ]
@@ -1196,6 +1259,7 @@ class SqlAlchemyExperimentItemOutputRepository:
             select(ExperimentItemOutputModel).where(
                 ExperimentItemOutputModel.experiment_id == output.experiment_id,
                 ExperimentItemOutputModel.dataset_item_id == output.dataset_item_id,
+                ExperimentItemOutputModel.repeat == output.repeat,
             )
         )
         existing = result.scalar_one_or_none()
@@ -1222,17 +1286,18 @@ class SqlAlchemyExperimentItemOutputRepository:
         result = await self._session.execute(
             select(ExperimentItemOutputModel)
             .where(ExperimentItemOutputModel.experiment_id == experiment_id)
-            .order_by(ExperimentItemOutputModel.dataset_item_id)
+            .order_by(ExperimentItemOutputModel.dataset_item_id, ExperimentItemOutputModel.repeat)
         )
         return [_experiment_item_output_to_domain(row) for row in result.scalars().all()]
 
     async def get(
-        self, experiment_id: uuid.UUID, dataset_item_id: uuid.UUID
+        self, experiment_id: uuid.UUID, dataset_item_id: uuid.UUID, repeat: int = 0
     ) -> ExperimentItemOutput | None:
         result = await self._session.execute(
             select(ExperimentItemOutputModel).where(
                 ExperimentItemOutputModel.experiment_id == experiment_id,
                 ExperimentItemOutputModel.dataset_item_id == dataset_item_id,
+                ExperimentItemOutputModel.repeat == repeat,
             )
         )
         row = result.scalar_one_or_none()
@@ -1832,3 +1897,230 @@ class SqlJudgeClaimCache:
                 await session.commit()
         except Exception:  # noqa: BLE001
             _cache_logger.warning("judge claim cache write failed", exc_info=True)
+
+
+def _alert_rule_to_domain(row: AlertRuleModel) -> AlertRule:
+    return AlertRule(
+        id=row.id,
+        project_id=row.project_id,
+        name=row.name,
+        metric=row.metric,
+        operator=row.operator,
+        threshold=row.threshold,
+        window_minutes=row.window_minutes,
+        min_samples=row.min_samples,
+        score_name=row.score_name,
+        score_source=row.score_source,
+        webhook_url=row.webhook_url,
+        webhook_format=row.webhook_format,
+        repeat_minutes=row.repeat_minutes,
+        enabled=row.enabled,
+        state=row.state,
+        last_value=row.last_value,
+        last_evaluated_at=row.last_evaluated_at,
+        last_notified_at=row.last_notified_at,
+        created_at=row.created_at,
+        updated_at=row.updated_at,
+        environment=row.environment,
+        version=row.version,
+    )
+
+
+def _alert_event_to_domain(row: AlertEventModel) -> AlertEvent:
+    return AlertEvent(
+        id=row.id,
+        rule_id=row.rule_id,
+        project_id=row.project_id,
+        kind=row.kind,
+        value=row.value,
+        threshold=row.threshold,
+        message=row.message,
+        delivery_status=row.delivery_status,
+        delivery_error=row.delivery_error,
+        created_at=row.created_at,
+    )
+
+
+_ALERT_RULE_FIELDS = (
+    "name",
+    "metric",
+    "operator",
+    "threshold",
+    "window_minutes",
+    "min_samples",
+    "score_name",
+    "score_source",
+    "webhook_url",
+    "webhook_format",
+    "repeat_minutes",
+    "enabled",
+    "state",
+    "last_value",
+    "last_evaluated_at",
+    "last_notified_at",
+    "created_at",
+    "updated_at",
+    "environment",
+    "version",
+)
+
+
+class SqlAlchemyAlertRepository:
+    def __init__(self, session: AsyncSession) -> None:
+        self._session = session
+
+    async def add_rule(self, rule: AlertRule) -> AlertRule:
+        row = AlertRuleModel(
+            id=rule.id,
+            project_id=rule.project_id,
+            **{field: getattr(rule, field) for field in _ALERT_RULE_FIELDS},
+        )
+        self._session.add(row)
+        await self._session.commit()
+        await self._session.refresh(row)
+        return _alert_rule_to_domain(row)
+
+    async def update_rule(self, rule: AlertRule) -> AlertRule:
+        row = await self._session.get(AlertRuleModel, rule.id)
+        if row is None:
+            raise LookupError(f"alert rule {rule.id} not found")
+        for field in _ALERT_RULE_FIELDS:
+            setattr(row, field, getattr(rule, field))
+        await self._session.commit()
+        await self._session.refresh(row)
+        return _alert_rule_to_domain(row)
+
+    async def get_rule(self, rule_id: uuid.UUID) -> AlertRule | None:
+        row = await self._session.get(AlertRuleModel, rule_id)
+        return _alert_rule_to_domain(row) if row is not None else None
+
+    async def list_rules(self, project_id: uuid.UUID) -> list[AlertRule]:
+        result = await self._session.execute(
+            select(AlertRuleModel)
+            .where(AlertRuleModel.project_id == project_id)
+            .order_by(AlertRuleModel.created_at.asc())
+        )
+        return [_alert_rule_to_domain(row) for row in result.scalars().all()]
+
+    async def list_enabled_rules(self) -> list[AlertRule]:
+        result = await self._session.execute(
+            select(AlertRuleModel)
+            .where(AlertRuleModel.enabled.is_(True))
+            .order_by(AlertRuleModel.project_id, AlertRuleModel.created_at)
+        )
+        return [_alert_rule_to_domain(row) for row in result.scalars().all()]
+
+    async def delete_rule(self, rule_id: uuid.UUID) -> bool:
+        row = await self._session.get(AlertRuleModel, rule_id)
+        if row is None:
+            return False
+        await self._session.delete(row)
+        await self._session.commit()
+        return True
+
+    async def add_event(self, event: AlertEvent) -> AlertEvent:
+        row = AlertEventModel(
+            id=event.id,
+            rule_id=event.rule_id,
+            project_id=event.project_id,
+            kind=event.kind,
+            value=event.value,
+            threshold=event.threshold,
+            message=event.message[:2000],
+            delivery_status=event.delivery_status,
+            delivery_error=(event.delivery_error or None) and event.delivery_error[:2000],
+            created_at=event.created_at,
+        )
+        self._session.add(row)
+        await self._session.commit()
+        await self._session.refresh(row)
+        return _alert_event_to_domain(row)
+
+    async def list_events(
+        self, project_id: uuid.UUID, *, rule_id: uuid.UUID | None = None, limit: int = 50
+    ) -> list[AlertEvent]:
+        query = select(AlertEventModel).where(AlertEventModel.project_id == project_id)
+        if rule_id is not None:
+            query = query.where(AlertEventModel.rule_id == rule_id)
+        result = await self._session.execute(
+            query.order_by(AlertEventModel.created_at.desc()).limit(limit)
+        )
+        return [_alert_event_to_domain(row) for row in result.scalars().all()]
+
+
+class SqlAlchemyRetentionRepository:
+    """Bulk reads/deletes for purging old production data of one project."""
+
+    def __init__(self, session: AsyncSession) -> None:
+        self._session = session
+
+    async def old_traces(
+        self,
+        project_id: uuid.UUID,
+        *,
+        before: datetime,
+        after: tuple[datetime, uuid.UUID] | None = None,
+        limit: int = 500,
+    ) -> list[Trace]:
+        """Traces started before ``before``, oldest first, with spans; keyset after ``after``."""
+        stmt = select(TraceModel).where(
+            TraceModel.project_id == project_id, TraceModel.start_time < before
+        )
+        if after is not None:
+            start, trace_pk = after
+            stmt = stmt.where(
+                (TraceModel.start_time > start)
+                | ((TraceModel.start_time == start) & (TraceModel.id > trace_pk))
+            )
+        result = await self._session.execute(
+            stmt.options(selectinload(TraceModel.spans))
+            .order_by(TraceModel.start_time.asc(), TraceModel.id.asc())
+            .limit(limit)
+        )
+        return [_trace_to_domain(row) for row in result.scalars().all()]
+
+    async def dataset_trace_ids(self, project_id: uuid.UUID) -> set[str]:
+        """Trace ids test cases were built from (kept so their source link still works)."""
+        result = await self._session.execute(
+            select(DatasetItemModel.source_trace_id)
+            .join(DatasetModel, DatasetModel.id == DatasetItemModel.dataset_id)
+            .where(
+                DatasetModel.project_id == project_id,
+                DatasetItemModel.source_trace_id.is_not(None),
+            )
+            .distinct()
+        )
+        return {str(v) for v in result.scalars().all()}
+
+    async def delete_traces(self, trace_pks: list[uuid.UUID]) -> int:
+        if not trace_pks:
+            return 0
+        # Spans cascade (FK ON DELETE CASCADE; SQLite runs with foreign_keys=ON).
+        result = await self._session.execute(delete(TraceModel).where(TraceModel.id.in_(trace_pks)))
+        await self._session.commit()
+        return int(cast(CursorResult[Any], result).rowcount or 0)
+
+    async def purge_rows(
+        self, project_id: uuid.UUID, *, before: datetime, dry_run: bool
+    ) -> dict[str, int]:
+        """Live interactions (with their scores/reviews), trace scores and alert events."""
+        targets = (
+            ("live_interactions", LiveInteractionModel, LiveInteractionModel.created_at),
+            ("trace_scores", TraceScoreModel, TraceScoreModel.updated_at),
+            ("alert_events", AlertEventModel, AlertEventModel.created_at),
+        )
+        counts: dict[str, int] = {}
+        for name, model, column in targets:
+            condition = (model.project_id == project_id) & (column < before)
+            if dry_run:
+                counts[name] = int(
+                    (
+                        await self._session.execute(select(func.count()).where(condition))
+                    ).scalar_one()
+                )
+            else:
+                result = await self._session.execute(delete(model).where(condition))
+                counts[name] = int(cast(CursorResult[Any], result).rowcount or 0)
+        if not dry_run:
+            await self._session.commit()
+        return counts

@@ -105,6 +105,7 @@ def redact_trace(trace: Trace, *, content_capture_enabled: bool) -> Trace:
         output=output_value,
         metadata=dict(trace.metadata),
         environment=trace.environment,
+        version=trace.version,
         user_id=trace.user_id,
         session_id=trace.session_id,
         spans=spans,

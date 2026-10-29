@@ -36,3 +36,5 @@ class Trace:
     user_id: str | None = None
     session_id: str | None = None
     spans: tuple[Span, ...] = ()
+    # Release of the app that produced the trace (OTel resource ``service.version``).
+    version: str | None = None

@@ -3,6 +3,12 @@ from collections.abc import AsyncGenerator, Awaitable, Callable
 from fastapi import Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from opengrade_server.application.alerts import (
+    AlertDispatcher,
+    AlertNotifier,
+    EvaluateAlertRules,
+    ManageAlertRules,
+)
 from opengrade_server.application.app_configs import (
     CreateAppConfig,
     DeleteAppConfigAlias,
@@ -82,7 +88,11 @@ from opengrade_server.application.metrics_sets import (
     ResolveMetricsSetForScore,
     VersionMetricsSet,
 )
-from opengrade_server.application.monitoring import GetProductionMonitoring
+from opengrade_server.application.monitoring import (
+    GetProductionMonitoring,
+    GetProductionVersions,
+    GetReleaseFacets,
+)
 from opengrade_server.application.project_overview import GetProjectOverview
 from opengrade_server.application.projects import (
     CreateProject,
@@ -91,6 +101,7 @@ from opengrade_server.application.projects import (
     ListProjects,
 )
 from opengrade_server.application.release_check import ReleaseCheck
+from opengrade_server.application.retention import PurgeProductionData, SetProjectRetention
 from opengrade_server.application.scoring_inputs import CurrentScoringFingerprint
 from opengrade_server.application.trace_scores import (
     ListTraceScores,
@@ -108,6 +119,7 @@ from opengrade_server.config import Settings, get_settings
 from opengrade_server.evaluation.runner import EvaluationRunner
 from opengrade_server.infrastructure.db import get_session
 from opengrade_server.infrastructure.repositories import (
+    SqlAlchemyAlertRepository,
     SqlAlchemyAppConfigRepository,
     SqlAlchemyDatasetRepository,
     SqlAlchemyEvaluationRunRepository,
@@ -119,9 +131,11 @@ from opengrade_server.infrastructure.repositories import (
     SqlAlchemyLiveInteractionRepository,
     SqlAlchemyMetricsSetRepository,
     SqlAlchemyProjectRepository,
+    SqlAlchemyRetentionRepository,
     SqlAlchemyTraceRepository,
     SqlAlchemyTraceScoreRepository,
 )
+from opengrade_server.infrastructure.webhooks import HttpWebhookNotifier
 from opengrade_server.tracing.live_binding import CreateLiveInteractionsFromTraces
 from opengrade_server.tracing.run_binding import BindOtlpTracesToExperimentOutputs
 
@@ -634,8 +648,9 @@ def get_summarize_experiment(
     evaluators: SqlAlchemyEvaluatorRepository = Depends(get_evaluator_repository),
     fingerprints: CurrentScoringFingerprint = Depends(get_current_scoring_fingerprint),
     metrics: SqlAlchemyExperimentMetricRepository = Depends(get_experiment_metric_repository),
+    datasets: SqlAlchemyDatasetRepository = Depends(get_dataset_repository),
 ) -> SummarizeExperiment:
-    return SummarizeExperiment(experiments, runs, evaluators, fingerprints, metrics)
+    return SummarizeExperiment(experiments, runs, evaluators, fingerprints, metrics, datasets)
 
 
 def get_compare_experiments(
@@ -644,8 +659,9 @@ def get_compare_experiments(
     evaluators: SqlAlchemyEvaluatorRepository = Depends(get_evaluator_repository),
     fingerprints: CurrentScoringFingerprint = Depends(get_current_scoring_fingerprint),
     metrics: SqlAlchemyExperimentMetricRepository = Depends(get_experiment_metric_repository),
+    datasets: SqlAlchemyDatasetRepository = Depends(get_dataset_repository),
 ) -> CompareExperiments:
-    return CompareExperiments(experiments, runs, evaluators, fingerprints, metrics)
+    return CompareExperiments(experiments, runs, evaluators, fingerprints, metrics, datasets)
 
 
 def get_compare_experiment_items(
@@ -719,8 +735,9 @@ def get_release_check(
     compare: CompareExperiments = Depends(get_compare_experiments),
     fingerprints: CurrentScoringFingerprint = Depends(get_current_scoring_fingerprint),
     metrics: SqlAlchemyExperimentMetricRepository = Depends(get_experiment_metric_repository),
+    datasets: SqlAlchemyDatasetRepository = Depends(get_dataset_repository),
 ) -> ReleaseCheck:
-    return ReleaseCheck(projects, experiments, runs, compare, fingerprints, metrics)
+    return ReleaseCheck(projects, experiments, runs, compare, fingerprints, metrics, datasets)
 
 
 def get_live_interaction_repository(
@@ -837,8 +854,80 @@ def get_production_monitoring(
     return GetProductionMonitoring(projects, traces, live, trace_scores)
 
 
+def get_production_versions(
+    projects: SqlAlchemyProjectRepository = Depends(get_project_repository),
+    traces: SqlAlchemyTraceRepository = Depends(get_trace_repository),
+    monitoring: GetProductionMonitoring = Depends(get_production_monitoring),
+) -> GetProductionVersions:
+    return GetProductionVersions(projects, traces, monitoring)
+
+
+def get_release_facets(
+    projects: SqlAlchemyProjectRepository = Depends(get_project_repository),
+    traces: SqlAlchemyTraceRepository = Depends(get_trace_repository),
+) -> GetReleaseFacets:
+    return GetReleaseFacets(projects, traces)
+
+
 def get_summarize_experiments(
     experiments: SqlAlchemyExperimentRepository = Depends(get_experiment_repository),
     summarize: SummarizeExperiment = Depends(get_summarize_experiment),
 ) -> SummarizeExperiments:
     return SummarizeExperiments(experiments, summarize)
+
+
+def get_alert_repository(
+    session: AsyncSession = Depends(get_db_session),
+) -> SqlAlchemyAlertRepository:
+    return SqlAlchemyAlertRepository(session)
+
+
+def get_alert_notifier() -> AlertNotifier:
+    return HttpWebhookNotifier()
+
+
+def get_alert_dispatcher(
+    alerts: SqlAlchemyAlertRepository = Depends(get_alert_repository),
+    notifier: AlertNotifier = Depends(get_alert_notifier),
+) -> AlertDispatcher:
+    settings = get_settings()
+    return AlertDispatcher(
+        alerts,
+        notifier,
+        default_webhook_url=settings.alert_webhook_url,
+        public_base_url=settings.public_base_url,
+    )
+
+
+def get_manage_alert_rules(
+    alerts: SqlAlchemyAlertRepository = Depends(get_alert_repository),
+    projects: SqlAlchemyProjectRepository = Depends(get_project_repository),
+    dispatcher: AlertDispatcher = Depends(get_alert_dispatcher),
+) -> ManageAlertRules:
+    return ManageAlertRules(alerts, projects, dispatcher)
+
+
+def get_evaluate_alert_rules(
+    alerts: SqlAlchemyAlertRepository = Depends(get_alert_repository),
+    projects: SqlAlchemyProjectRepository = Depends(get_project_repository),
+    monitoring: GetProductionMonitoring = Depends(get_production_monitoring),
+    dispatcher: AlertDispatcher = Depends(get_alert_dispatcher),
+) -> EvaluateAlertRules:
+    return EvaluateAlertRules(alerts, projects, monitoring, dispatcher)
+
+
+def get_purge_production_data(
+    projects: SqlAlchemyProjectRepository = Depends(get_project_repository),
+    session: AsyncSession = Depends(get_db_session),
+) -> PurgeProductionData:
+    return PurgeProductionData(
+        projects,
+        SqlAlchemyRetentionRepository(session),
+        default_days=get_settings().retention_days,
+    )
+
+
+def get_set_project_retention(
+    projects: SqlAlchemyProjectRepository = Depends(get_project_repository),
+) -> SetProjectRetention:
+    return SetProjectRetention(projects)

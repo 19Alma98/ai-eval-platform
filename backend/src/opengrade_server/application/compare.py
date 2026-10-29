@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import uuid
 from collections.abc import Mapping
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import Any
 
 from opengrade_server.application.experiments import ExperimentNotFoundError
@@ -10,8 +10,9 @@ from opengrade_server.application.scoring_inputs import (
     CurrentScoringFingerprint,
     current_fingerprint,
 )
-from opengrade_server.domain.evaluation import EvaluationRun
+from opengrade_server.domain.evaluation import EvaluationResultRecord, EvaluationRun
 from opengrade_server.domain.repositories import (
+    DatasetRepository,
     EvaluationRunRepository,
     EvaluatorRepository,
     ExperimentMetricRepository,
@@ -25,6 +26,7 @@ from opengrade_server.regression.aggregate import (
     runs_config_mismatch,
     select_runs,
 )
+from opengrade_server.regression.groups import InvalidGroupKeyError, item_groups, results_in
 
 
 class InvalidCompareSelectionError(Exception):
@@ -41,10 +43,19 @@ class EvaluatorSummary:
 
 
 @dataclass(frozen=True, slots=True)
+class GroupSummary:
+    value: str
+    n_items: int
+    evaluators: list[EvaluatorSummary]
+
+
+@dataclass(frozen=True, slots=True)
 class ExperimentSummary:
     experiment_id: uuid.UUID
     evaluators: list[EvaluatorSummary]
     experiment_metrics: dict[str, float] = field(default_factory=dict)
+    group_by: str | None = None
+    groups: list[GroupSummary] = field(default_factory=list)
 
 
 @dataclass(frozen=True, slots=True)
@@ -76,6 +87,17 @@ def compare_experiment_metrics(
 
 
 @dataclass(frozen=True, slots=True)
+class GroupComparison:
+    value: str
+    n_items: int
+    metrics: list[MetricComparison]
+
+    @property
+    def regressions(self) -> list[MetricComparison]:
+        return [m for m in self.metrics if m.status == "regression"]
+
+
+@dataclass(frozen=True, slots=True)
 class ExperimentComparison:
     experiment_id: uuid.UUID
     baseline_experiment_id: uuid.UUID
@@ -90,6 +112,8 @@ class ExperimentComparison:
     experiment_metrics: list[ExperimentMetricComparison] = field(default_factory=list)
     candidate_git: dict[str, Any] | None = None
     baseline_git: dict[str, Any] | None = None
+    group_by: str | None = None
+    groups: list[GroupComparison] = field(default_factory=list)
 
 
 def _metadata_evaluator_name(run: EvaluationRun) -> str | None:
@@ -98,6 +122,17 @@ def _metadata_evaluator_name(run: EvaluationRun) -> str | None:
         return None
     cleaned = str(name).strip()
     return cleaned or None
+
+
+async def load_item_groups(
+    datasets: DatasetRepository | None, dataset_id: uuid.UUID, group_by: str
+) -> dict[str, set[uuid.UUID]]:
+    if datasets is None:
+        raise InvalidCompareSelectionError("group_by is not available here")
+    try:
+        return item_groups(await datasets.list_items(dataset_id), group_by)
+    except InvalidGroupKeyError as exc:
+        raise InvalidCompareSelectionError(str(exc)) from exc
 
 
 async def _resolve_evaluator_names(
@@ -121,12 +156,14 @@ class SummarizeExperiment:
         evaluators: EvaluatorRepository,
         fingerprints: CurrentScoringFingerprint | None = None,
         metrics: ExperimentMetricRepository | None = None,
+        datasets: DatasetRepository | None = None,
     ) -> None:
         self._experiments = experiments
         self._runs = runs
         self._evaluators = evaluators
         self._fingerprints = fingerprints
         self._metrics = metrics
+        self._datasets = datasets
 
     async def execute(
         self,
@@ -134,6 +171,7 @@ class SummarizeExperiment:
         *,
         run_ids: list[uuid.UUID] | None = None,
         evaluator_ids: list[uuid.UUID] | None = None,
+        group_by: str | None = None,
     ) -> ExperimentSummary:
         experiment = await self._experiments.get_by_id(experiment_id)
         if experiment is None:
@@ -163,8 +201,11 @@ class SummarizeExperiment:
 
         names = await _resolve_evaluator_names(self._evaluators, selected)
         summaries: list[EvaluatorSummary] = []
-        for run in sorted(selected, key=lambda r: str(r.evaluator_id)):
+        results_by_run: dict[uuid.UUID, list[EvaluationResultRecord]] = {}
+        ordered = sorted(selected, key=lambda r: str(r.evaluator_id))
+        for run in ordered:
             results = await self._runs.list_results(run.id)
+            results_by_run[run.id] = results
             summaries.append(
                 EvaluatorSummary(
                     evaluator_id=run.evaluator_id,
@@ -174,10 +215,32 @@ class SummarizeExperiment:
                     aggregates=aggregate_results(results),
                 )
             )
+        groups: list[GroupSummary] = []
+        if group_by is not None:
+            for value, item_ids in (
+                await load_item_groups(self._datasets, experiment.dataset_id, group_by)
+            ).items():
+                groups.append(
+                    GroupSummary(
+                        value=value,
+                        n_items=len(item_ids),
+                        evaluators=[
+                            replace(
+                                summary,
+                                aggregates=aggregate_results(
+                                    results_in(results_by_run[summary.run_id], item_ids)
+                                ),
+                            )
+                            for summary in summaries
+                        ],
+                    )
+                )
         return ExperimentSummary(
             experiment_id=experiment_id,
             evaluators=summaries,
             experiment_metrics=experiment_metrics,
+            group_by=group_by,
+            groups=groups,
         )
 
 
@@ -216,12 +279,14 @@ class CompareExperiments:
         evaluators: EvaluatorRepository,
         fingerprints: CurrentScoringFingerprint | None = None,
         metrics: ExperimentMetricRepository | None = None,
+        datasets: DatasetRepository | None = None,
     ) -> None:
         self._experiments = experiments
         self._runs = runs
         self._evaluators = evaluators
         self._fingerprints = fingerprints
         self._metrics = metrics
+        self._datasets = datasets
 
     async def execute(
         self,
@@ -231,6 +296,7 @@ class CompareExperiments:
         evaluator_ids: list[uuid.UUID] | None = None,
         candidate_run_ids: list[uuid.UUID] | None = None,
         baseline_run_ids: list[uuid.UUID] | None = None,
+        group_by: str | None = None,
     ) -> ExperimentComparison:
         experiment = await self._experiments.get_by_id(experiment_id)
         if experiment is None:
@@ -291,6 +357,12 @@ class CompareExperiments:
             self._evaluators,
             [*selected_candidate, *selected_baseline],
         )
+        item_groups_by_value = (
+            await load_item_groups(self._datasets, experiment.dataset_id, group_by)
+            if group_by is not None
+            else {}
+        )
+        group_metrics: dict[str, list[MetricComparison]] = {v: [] for v in item_groups_by_value}
         metrics: list[MetricComparison] = []
         candidate_run_refs: list[CompareRunRef] = []
         baseline_run_refs: list[CompareRunRef] = []
@@ -299,6 +371,23 @@ class CompareExperiments:
             base_run = baseline_by_eval[evaluator_id]
             cand_results = await self._runs.list_results(cand_run.id)
             base_results = await self._runs.list_results(base_run.id)
+            mismatch = runs_config_mismatch(cand_run, base_run)
+            for value, item_ids in item_groups_by_value.items():
+                cand_group = results_in(cand_results, item_ids)
+                base_group = results_in(base_results, item_ids)
+                group_metrics[value].extend(
+                    compare_evaluator_metrics(
+                        evaluator_id=evaluator_id,
+                        evaluator_name=names.get(evaluator_id),
+                        candidate=aggregate_results(cand_group),
+                        baseline=aggregate_results(base_group),
+                        candidate_results=cand_group,
+                        baseline_results=base_group,
+                        candidate_run_id=cand_run.id,
+                        baseline_run_id=base_run.id,
+                        config_mismatch=mismatch,
+                    )
+                )
             cand_agg = aggregate_results(cand_results)
             base_agg = aggregate_results(base_results)
             name = names.get(evaluator_id)
@@ -312,7 +401,7 @@ class CompareExperiments:
                     baseline_results=base_results,
                     candidate_run_id=cand_run.id,
                     baseline_run_id=base_run.id,
-                    config_mismatch=runs_config_mismatch(cand_run, base_run),
+                    config_mismatch=mismatch,
                 )
             )
             candidate_run_refs.append(
@@ -355,4 +444,9 @@ class CompareExperiments:
             experiment_metrics=experiment_metrics,
             candidate_git=experiment.git,
             baseline_git=baseline.git,
+            group_by=group_by,
+            groups=[
+                GroupComparison(value=value, n_items=len(item_ids), metrics=group_metrics[value])
+                for value, item_ids in item_groups_by_value.items()
+            ],
         )

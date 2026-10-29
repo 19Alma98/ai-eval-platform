@@ -29,6 +29,8 @@ class _StubMonitoring:
         *,
         since: datetime,
         until: datetime | None = None,
+        environment: str | None = None,
+        version: str | None = None,
     ) -> ProductionMonitoring:
         end = until or datetime.now(tz=UTC)
         empty_latency = LatencyPercentiles(p50_ms=None, p90_ms=None, p99_ms=None)

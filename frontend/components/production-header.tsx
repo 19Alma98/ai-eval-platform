@@ -7,7 +7,7 @@ import { cn } from "@/lib/cn";
 import { withProjectQuery } from "@/lib/project-href";
 import { useProjectId } from "@/lib/project-store";
 
-export type ProductionTab = "health" | "answers" | "traces";
+export type ProductionTab = "health" | "answers" | "traces" | "alerts";
 
 export const PRODUCTION_TABS: { id: ProductionTab; href: string; label: string; blurb: string }[] = [
   {
@@ -27,6 +27,12 @@ export const PRODUCTION_TABS: { id: ProductionTab; href: string; label: string; 
     href: "/traces",
     label: "Traces",
     blurb: "Every call step by step: what was retrieved, what the model saw and what it answered.",
+  },
+  {
+    id: "alerts",
+    href: "/alerts",
+    label: "Alerts",
+    blurb: "Rules the server checks every minute; it notifies a webhook (Slack or any URL) when one fires.",
   },
 ];
 

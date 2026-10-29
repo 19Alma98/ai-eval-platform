@@ -8,7 +8,7 @@ from collections import defaultdict
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 
-from opengrade_server.application.live_interactions import score_is_failed
+from opengrade_server.application.live_interactions import score_is_failed, source_trace_id
 from opengrade_server.application.project_overview import bucket_size_for_range
 from opengrade_server.application.projects import ProjectNotFoundError
 from opengrade_server.domain.live_overview import LiveInteractionInRange
@@ -224,7 +224,11 @@ class GetProductionMonitoring:
         *,
         since: datetime,
         until: datetime | None = None,
+        environment: str | None = None,
+        version: str | None = None,
     ) -> ProductionMonitoring:
+        """Metrics over production traces in the range; ``environment`` / ``version`` keep
+        only traces of that deployment / release (and the judge scores of their answers)."""
         since = _utc(since)
         until = _utc(until or datetime.now(tz=UTC))
         if await self._projects.get_by_id(project_id) is None:
@@ -233,7 +237,12 @@ class GetProductionMonitoring:
         starts = _bucket_starts(since, until, bucket)
 
         traces = await self._traces.list_with_spans_in_range(
-            project_id, since=since, until=until, limit=TRACE_LIMIT + 1
+            project_id,
+            since=since,
+            until=until,
+            limit=TRACE_LIMIT + 1,
+            environment=environment,
+            version=version,
         )
         truncated = len(traces) > TRACE_LIMIT
         traces = traces[:TRACE_LIMIT]
@@ -242,6 +251,10 @@ class GetProductionMonitoring:
         usages = [(trace, _usage(trace)) for trace in traces]
         traffic = self._traffic(usages, since=since, bucket=bucket, starts=starts)
         live_rows = (await self._live.list_in_range(project_id, since=since, until=until)).items
+        if environment is not None or version is not None:
+            # Judge verdicts carry no release of their own: keep those of the kept traces.
+            kept = {t.trace_id for t in traces}
+            live_rows = [r for r in live_rows if source_trace_id(r.interaction) in kept]
         metrics = self._judge_metrics(live_rows, since, bucket, starts)
         metrics += await self._trace_score_metrics(project_id, traces, since, bucket, starts)
         n_needs_review = await self._count_needs_review(live_rows)
@@ -360,4 +373,73 @@ class GetProductionMonitoring:
             reviewed.update(await self._live.list_score_reviews_by_score_ids(chunk))
         return sum(
             1 for row in live_rows if row.scores and not any(s.id in reviewed for s in row.scores)
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class VersionSummary:
+    version: str | None
+    monitoring: ProductionMonitoring
+
+
+MAX_VERSIONS = 10
+
+
+class GetProductionVersions:
+    """Side-by-side production health of the releases seen in a range (most traffic first)."""
+
+    def __init__(
+        self,
+        projects: ProjectRepository,
+        traces: TraceRepository,
+        monitoring: GetProductionMonitoring,
+    ) -> None:
+        self._projects = projects
+        self._traces = traces
+        self._monitoring = monitoring
+
+    async def execute(
+        self,
+        project_id: uuid.UUID,
+        *,
+        since: datetime,
+        until: datetime | None = None,
+        environment: str | None = None,
+    ) -> list[VersionSummary]:
+        if await self._projects.get_by_id(project_id) is None:
+            raise ProjectNotFoundError(project_id)
+        since = _utc(since)
+        until = _utc(until or datetime.now(tz=UTC))
+        facets = await self._traces.release_facets(project_id, since=since, until=until)
+        out: list[VersionSummary] = []
+        for value, _count in facets.get("version", [])[:MAX_VERSIONS]:
+            out.append(
+                VersionSummary(
+                    version=value,
+                    monitoring=await self._monitoring.execute(
+                        project_id,
+                        since=since,
+                        until=until,
+                        environment=environment,
+                        version=value,
+                    ),
+                )
+            )
+        return out
+
+
+class GetReleaseFacets:
+    """Environments and versions seen in a range, for filter pickers."""
+
+    def __init__(self, projects: ProjectRepository, traces: TraceRepository) -> None:
+        self._projects = projects
+        self._traces = traces
+
+    async def execute(
+        self, project_id: uuid.UUID, *, since: datetime, until: datetime | None = None
+    ) -> dict[str, list[tuple[str, int]]]:
+        if await self._projects.get_by_id(project_id) is None:
+            raise ProjectNotFoundError(project_id)
+        return await self._traces.release_facets(
+            project_id, since=_utc(since), until=_utc(until or datetime.now(tz=UTC))
         )

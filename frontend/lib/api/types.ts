@@ -3,6 +3,26 @@ export type Project = {
   name: string;
   slug: string;
   created_at: string;
+  retention_days?: number | null;
+};
+
+export type PurgeReport = {
+  retention_days: number | null;
+  cutoff: string | null;
+  dry_run: boolean;
+  traces: number;
+  traces_kept: number;
+  live_interactions: number;
+  trace_scores: number;
+  alert_events: number;
+};
+
+export type ProjectRetention = {
+  project_id: string;
+  retention_days: number | null;
+  default_days: number | null;
+  effective_days: number | null;
+  pending: PurgeReport;
 };
 
 export type Span = {
@@ -29,6 +49,7 @@ export type TraceDetail = {
   output: unknown;
   metadata: Record<string, unknown>;
   environment: string | null;
+  version?: string | null;
   user_id: string | null;
   session_id: string | null;
   spans: Span[];
@@ -46,6 +67,7 @@ export type TraceSummary = {
   duration_ms: number | null;
   span_count: number;
   environment: string | null;
+  version?: string | null;
   user_id: string | null;
   session_id: string | null;
   input_preview: string | null;
@@ -217,6 +239,10 @@ export type EvaluatorSummary = {
   n_skipped: number;
   mean_score: number | null;
   pass_rate: number | null;
+  /** Most runs of one item (1 without repeats). */
+  n_repeats?: number;
+  /** Items whose verdict changed between repeats. */
+  n_flaky?: number;
 };
 
 export type ExperimentSummary = {
@@ -244,6 +270,13 @@ export type CompareRunRef = {
   metadata: Record<string, unknown>;
 };
 
+export type GroupCompare = {
+  value: string;
+  n_items: number;
+  metrics: MetricComparison[];
+  n_regressions: number;
+};
+
 export type ExperimentCompareResponse = {
   experiment_id: string;
   baseline_experiment_id: string;
@@ -257,6 +290,8 @@ export type ExperimentCompareResponse = {
   baseline_runs?: CompareRunRef[];
   candidate_git?: GitInfo | null;
   baseline_git?: GitInfo | null;
+  group_by?: string | null;
+  groups?: GroupCompare[];
 };
 
 export type ItemSide = {
@@ -295,6 +330,7 @@ export type EvaluationResult = {
   explanation: string | null;
   metadata: Record<string, unknown>;
   duration_ms: number | null;
+  repeat?: number;
 };
 
 export type EvaluationRun = {
@@ -316,6 +352,7 @@ export type ExperimentItemOutput = {
   context: unknown | null;
   metadata: Record<string, unknown>;
   updated_at: string;
+  repeat?: number;
 };
 
 export type EvaluateResponse = {
@@ -593,4 +630,100 @@ export type ProductionMonitoring = {
   n_needs_review: number;
   traffic: TrafficBucket[];
   metrics: MetricMonitor[];
+};
+
+export type AlertMetric =
+  | "error_rate"
+  | "latency_p50_ms"
+  | "latency_p90_ms"
+  | "latency_p99_ms"
+  | "traffic"
+  | "cost_usd"
+  | "total_tokens"
+  | "needs_review"
+  | "score_mean"
+  | "score_fail_rate";
+
+export type AlertRule = {
+  id: string;
+  project_id: string;
+  name: string;
+  metric: AlertMetric;
+  operator: "gt" | "lt";
+  threshold: number;
+  window_minutes: number;
+  min_samples: number;
+  score_name: string | null;
+  score_source: string | null;
+  webhook_url: string | null;
+  webhook_format: "json" | "slack";
+  repeat_minutes: number | null;
+  enabled: boolean;
+  state: "ok" | "firing" | "no_data";
+  last_value: number | null;
+  last_evaluated_at: string | null;
+  last_notified_at: string | null;
+  created_at: string;
+  updated_at: string;
+  environment?: string | null;
+  version?: string | null;
+};
+
+export type AlertRuleInput = {
+  name: string;
+  metric: AlertMetric;
+  operator: "gt" | "lt";
+  threshold: number;
+  window_minutes: number;
+  min_samples?: number | null;
+  score_name?: string | null;
+  score_source?: string | null;
+  webhook_url?: string | null;
+  webhook_format: "json" | "slack";
+  repeat_minutes?: number | null;
+  enabled?: boolean;
+  environment?: string | null;
+  version?: string | null;
+};
+
+export type AlertEvent = {
+  id: string;
+  rule_id: string;
+  project_id: string;
+  kind: "firing" | "resolved" | "repeat" | "test";
+  value: number | null;
+  threshold: number;
+  message: string;
+  delivery_status: "sent" | "failed" | "skipped";
+  delivery_error: string | null;
+  created_at: string;
+};
+
+export type AlertEvaluation = {
+  rule: AlertRule;
+  value: number | null;
+  samples: number;
+  event: AlertEvent | null;
+};
+
+export type ReleaseFacetValue = { value: string; n_traces: number };
+
+export type ReleaseFacets = {
+  environments: ReleaseFacetValue[];
+  versions: ReleaseFacetValue[];
+};
+
+export type ReleaseFilter = { environment?: string | null; version?: string | null };
+
+export type VersionSummary = {
+  version: string | null;
+  n_traces: number;
+  n_errors: number;
+  error_rate: number | null;
+  latency: { p50_ms: number | null; p90_ms: number | null; p99_ms: number | null };
+  total_tokens: number;
+  cost_usd: number;
+  cost_per_trace_usd: number | null;
+  traces_truncated: boolean;
+  metrics: { name: string; source: string; n: number; mean: number | null; fail_rate: number | null }[];
 };

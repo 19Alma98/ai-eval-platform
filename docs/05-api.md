@@ -158,6 +158,8 @@ Request body:
 
 Omitted fields in each item are left unchanged on update; `"context": null` clears context.
 
+Optional `"repeat": 0..99` (default `0`) stores repeated runs of the same item separately (unique per experiment, item and repeat). Every repeat is scored; results carry the same `repeat`, and `POST .../client-results` accepts it per result. Aggregates weigh each item once (mean over its applicable repeats): summary rows add `n_repeats` and `n_flaky` (items whose PASS changed between repeats), compare pairs item means, and compare-items shows the item mean with `metadata.repeats` (`n`, `pass_rate`, `std`, `flaky`, per-repeat `scores` / `labels`). OTLP binding reads `opengrade.repeat` next to `opengrade.dataset_item_id`.
+
 Response: `{ "upserted": N, "items": [ ExperimentItemOutput ] }`.
 
 ```http
@@ -367,6 +369,52 @@ Default window: the last 24 hours (`until` defaults to now). Naive datetimes are
 
 - `GET /api/v1/projects/{project_id}/traces/{trace_id}` includes `scores`.
 - `GET /api/v1/projects/{project_id}/live-interactions` and `GET /api/v1/live-interactions/{id}` include `trace_scores`, joined on `metadata.source_trace_id`. `failed_only=true` also keeps interactions with any trace score whose stored label is `FAIL`, whatever its source (e.g. an SDK metric under its threshold, or a thumbs-down); `ERROR` does not count. Judge calibration ignores trace scores.
+
+## Production releases (version / environment)
+
+Traces store `version` (OTel resource `service.version`, or span attribute `opengrade.version`) and `environment` (`deployment.environment`, `deployment.environment.name` or `opengrade.environment`).
+
+```http
+GET /projects/{project_id}/monitoring?since=&until=&environment=&version=   # filtered health
+GET /projects/{project_id}/monitoring/facets?since=&until=                  # environments + versions seen, with trace counts
+GET /projects/{project_id}/monitoring/versions?since=&until=&environment=   # health per version (top 10 by traffic)
+GET /projects/{project_id}/traces?environment=&version=                     # trace list filters
+```
+
+With a filter, live-judge scores only count for answers whose source trace matches it. Alert rules accept `environment` and `version` to watch one deployment or release.
+
+## Alerts (server-side)
+
+Rules on production monitoring metrics, evaluated by the API process every `ALERTS_INTERVAL_SECONDS` (default 60; `ALERTS_ENABLED=false` turns the loop off). Same numbers as the Production page (experiment-bound traces excluded).
+
+```http
+POST   /projects/{project_id}/alert-rules            # create
+GET    /projects/{project_id}/alert-rules            # list with current state
+POST   /projects/{project_id}/alert-rules/evaluate   # evaluate now
+GET    /projects/{project_id}/alert-events?rule_id=&limit=
+GET    /alert-rules/{rule_id}
+PATCH  /alert-rules/{rule_id}                         # omitted = unchanged, null clears optional fields
+DELETE /alert-rules/{rule_id}
+POST   /alert-rules/{rule_id}/test                    # send a test notification
+```
+
+Body: `name`, `metric` (`error_rate`, `latency_p50_ms` / `latency_p90_ms` / `latency_p99_ms`, `traffic`, `cost_usd`, `total_tokens`, `needs_review`, `score_mean`, `score_fail_rate`), `operator` (`gt` / `lt`), `threshold` (rates are 0–1), `window_minutes` (5–10080, default 60), `min_samples` (default 10 for rates/percentiles/scores, else 0), `score_name` + optional `score_source` (`judge`, `sdk`, `human`) for `score_*`, `webhook_url`, `webhook_format` (`json` or `slack`), `repeat_minutes`, `enabled`.
+
+State: `ok`, `firing`, or `no_data` (fewer than `min_samples`). Becoming `firing` notifies once, going back to `ok` sends `resolved`; `repeat_minutes` re-sends while firing. Changing the condition resets the state. Every notification is logged as an alert event with its delivery status (`sent`, `failed`, `skipped` when no webhook). Webhook: the rule's URL, else `ALERT_WEBHOOK_URL`. The `json` payload has `text` (Slack-compatible), `event`, `project`, `rule`, `value`, `samples`, `url`, `at`; `slack` sends only `text`. Set `PUBLIC_BASE_URL` to include a link to the Production page.
+
+Single API replica only: several replicas would each evaluate and notify.
+
+## Retention
+
+Production data older than the project's retention period is deleted every `RETENTION_INTERVAL_HOURS` (default 24; first run a minute after start): production traces (with spans), live interactions (with judge scores and reviews), trace scores and alert events. Traces bound to an experiment run and traces a test case was built from (`source_trace_id`) are kept; test sets, experiments and results are never touched.
+
+```http
+GET  /projects/{project_id}/retention             # setting + what a purge would delete now
+PUT  /projects/{project_id}/retention             # {"retention_days": 30 | null}
+POST /projects/{project_id}/retention/purge?dry_run=false
+```
+
+`retention_days` null falls back to the server's `RETENTION_DAYS` (unset: keep forever). Also in the UI (Projects → retention icon) and the SDK (`client.projects.set_retention(30)`).
 
 ## Comparison
 

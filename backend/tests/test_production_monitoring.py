@@ -50,9 +50,22 @@ class _Traces:
         self._traces = traces
 
     async def list_with_spans_in_range(
-        self, project_id: uuid.UUID, *, since: datetime, until: datetime, limit: int = 5000
+        self,
+        project_id: uuid.UUID,
+        *,
+        since: datetime,
+        until: datetime,
+        limit: int = 5000,
+        environment: str | None = None,
+        version: str | None = None,
     ) -> list[Trace]:
-        rows = [t for t in self._traces if since <= t.start_time <= until]
+        rows = [
+            t
+            for t in self._traces
+            if since <= t.start_time <= until
+            and environment in (None, t.environment)
+            and version in (None, t.version)
+        ]
         return rows[:limit]
 
 

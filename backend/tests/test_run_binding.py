@@ -42,7 +42,7 @@ def test_extract_run_binding_from_chain_span() -> None:
         output="answer",
         spans=(chain,),
     )
-    assert extract_run_binding(trace) == (exp_id, item_id)
+    assert extract_run_binding(trace) == (exp_id, item_id, 0)
 
 
 def test_merge_bind_context_keeps_documents_when_trace_has_no_retrieval() -> None:

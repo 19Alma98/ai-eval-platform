@@ -67,6 +67,7 @@ class ProjectModel(Base):
         nullable=False,
         server_default=func.now(),
     )
+    retention_days: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
 
 class TraceModel(Base):
@@ -75,6 +76,7 @@ class TraceModel(Base):
         UniqueConstraint("project_id", "trace_id", name="uq_traces_project_trace_id"),
         Index("ix_traces_project_start_time", "project_id", "start_time"),
         Index("ix_traces_project_status", "project_id", "status"),
+        Index("ix_traces_project_version_start_time", "project_id", "version", "start_time"),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True)
@@ -96,6 +98,7 @@ class TraceModel(Base):
     environment: Mapped[str | None] = mapped_column(String(200), nullable=True)
     user_id: Mapped[str | None] = mapped_column(String(200), nullable=True)
     session_id: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    version: Mapped[str | None] = mapped_column(String(200), nullable=True)
 
     spans: Mapped[list[SpanModel]] = relationship(
         "SpanModel",
@@ -424,6 +427,7 @@ class EvaluationResultModel(Base):
         "metadata", PortableJSON, nullable=False, server_default="{}"
     )
     duration_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    repeat: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0", default=0)
 
     run: Mapped[EvaluationRunModel] = relationship("EvaluationRunModel", back_populates="results")
 
@@ -529,7 +533,8 @@ class ExperimentItemOutputModel(Base):
         UniqueConstraint(
             "experiment_id",
             "dataset_item_id",
-            name="uq_experiment_item_outputs_exp_item",
+            "repeat",
+            name="uq_experiment_item_outputs_exp_item_repeat",
         ),
         Index("ix_experiment_item_outputs_experiment_id", "experiment_id"),
     )
@@ -555,6 +560,7 @@ class ExperimentItemOutputModel(Base):
         nullable=False,
         server_default=func.now(),
     )
+    repeat: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0", default=0)
 
 
 class ExperimentMetricModel(Base):
@@ -738,4 +744,69 @@ class JudgeClaimCacheModel(Base):
         UtcDateTime(),
         nullable=False,
         server_default=func.now(),
+    )
+
+
+class AlertRuleModel(Base):
+    __tablename__ = "alert_rules"
+    __table_args__ = (Index("ix_alert_rules_project_id", "project_id"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True)
+    project_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey("projects.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    name: Mapped[str] = mapped_column(String(200), nullable=False)
+    metric: Mapped[str] = mapped_column(String(64), nullable=False)
+    operator: Mapped[str] = mapped_column(String(8), nullable=False)
+    threshold: Mapped[float] = mapped_column(Float, nullable=False)
+    window_minutes: Mapped[int] = mapped_column(Integer, nullable=False)
+    min_samples: Mapped[int] = mapped_column(Integer, nullable=False)
+    score_name: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    score_source: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    webhook_url: Mapped[str | None] = mapped_column(String(2000), nullable=True)
+    webhook_format: Mapped[str] = mapped_column(String(16), nullable=False, server_default="json")
+    repeat_minutes: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("true"))
+    state: Mapped[str] = mapped_column(String(16), nullable=False, server_default="no_data")
+    last_value: Mapped[float | None] = mapped_column(Float, nullable=True)
+    last_evaluated_at: Mapped[datetime | None] = mapped_column(UtcDateTime(), nullable=True)
+    last_notified_at: Mapped[datetime | None] = mapped_column(UtcDateTime(), nullable=True)
+    environment: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    version: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        UtcDateTime(), nullable=False, server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        UtcDateTime(), nullable=False, server_default=func.now()
+    )
+
+
+class AlertEventModel(Base):
+    __tablename__ = "alert_events"
+    __table_args__ = (
+        Index("ix_alert_events_project_created_at", "project_id", "created_at"),
+        Index("ix_alert_events_rule_id", "rule_id"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True)
+    rule_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey("alert_rules.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    project_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey("projects.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    kind: Mapped[str] = mapped_column(String(16), nullable=False)
+    value: Mapped[float | None] = mapped_column(Float, nullable=True)
+    threshold: Mapped[float] = mapped_column(Float, nullable=False)
+    message: Mapped[str] = mapped_column(String(2000), nullable=False)
+    delivery_status: Mapped[str] = mapped_column(String(16), nullable=False)
+    delivery_error: Mapped[str | None] = mapped_column(String(2000), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        UtcDateTime(), nullable=False, server_default=func.now()
     )

@@ -76,6 +76,7 @@ _COLUMN_HELP = (
 )
 _UPSERT_CHUNK = 100
 _MISSING: Any = object()
+MAX_REPEATS = 100  # server limit on repeats of one item
 
 
 class DatasetColumnError(ValueError):
@@ -179,6 +180,7 @@ class ItemRun:
     """One dataset item executed inside ``Experiment.run()``."""
 
     item: DatasetItemResponse
+    repeat: int = 0
     output: Any = None
     has_output: bool = False
     error: str | None = None
@@ -251,7 +253,13 @@ class ExperimentResult:
         return [run for run in self.items if run.error is not None]
 
     @property
+    def repeats(self) -> int:
+        """Runs per item (``evaluate(repeats=...)``)."""
+        return max((run.repeat for run in self.items), default=0) + 1
+
+    @property
     def local_metrics(self) -> dict[str, float | None]:
+        """In-process mean per local metric; with repeats each item weighs once."""
         names: list[str] = []
         for run in self.items:
             for name in run.scores:
@@ -259,7 +267,11 @@ class ExperimentResult:
                     names.append(name)
         means: dict[str, float | None] = {}
         for name in names:
-            values = [v for run in self.items if (v := run.scores.get(name)) is not None]
+            per_item: dict[str, list[float]] = {}
+            for run in self.items:
+                if (v := run.scores.get(name)) is not None:
+                    per_item.setdefault(run.item.id, []).append(v)
+            values = [sum(vs) / len(vs) for vs in per_item.values()]
             means[name] = sum(values) / len(values) if values else None
         return means
 
@@ -301,6 +313,46 @@ class ExperimentResult:
             lines.append(f"    {key.ljust(width)}  {_fmt(value)}{suffix}")
         return lines
 
+    @property
+    def groups(self) -> dict[str, dict[str, float | None]]:
+        """Mean score per group value and metric (``evaluate(group_by=...)``)."""
+        if self.server_summary is None:
+            return {}
+        return {
+            group.value: {
+                row.evaluator_name or row.evaluator_id or "?": row.mean_score
+                for row in group.evaluators
+            }
+            for group in self.server_summary.groups
+        }
+
+    def _group_lines(self) -> list[str]:
+        if self.server_summary is None or not self.server_summary.groups:
+            return []
+        deltas: dict[tuple[str, str], MetricComparisonResponse] = {}
+        for compared in self.comparison.groups if self.comparison else []:
+            for metric in compared.metrics:
+                if metric.metric == "mean_score":
+                    key = (compared.value, metric.evaluator_name or metric.evaluator_id or "")
+                    deltas[key] = metric
+        rows: list[tuple[str, ...]] = []
+        for group in self.server_summary.groups:
+            for ev in group.evaluators:
+                name = ev.evaluator_name or ev.evaluator_id or "?"
+                rows.append(
+                    (
+                        f"{group.value} (n={group.n_items})",
+                        name,
+                        _fmt(ev.mean_score),
+                        _fmt_delta(deltas.get((group.value, name))),
+                    )
+                )
+        widths = [max(len(r[i]) for r in rows) for i in range(4)]
+        lines = [f"  by {self.server_summary.group_by}:"]
+        for cells in rows:
+            lines.append("    " + "  ".join(c.ljust(w) for c, w in zip(cells, widths, strict=True)))
+        return lines
+
     def _comparison_by_name(self) -> dict[str, MetricComparisonResponse]:
         if self.comparison is None:
             return {}
@@ -310,40 +362,54 @@ class ExperimentResult:
             rows.setdefault(key, row)
         return rows
 
+    @property
+    def flaky(self) -> dict[str, int]:
+        """Per metric: items whose verdict changed between repeats (empty without repeats)."""
+        if self.server_summary is None or self.repeats < 2:
+            return {}
+        return {
+            row.evaluator_name or row.evaluator_id or "?": row.n_flaky
+            for row in self.server_summary.evaluators
+        }
+
     def summary(self) -> str:
         """Plain-text table: one row per metric with the baseline delta, then experiment metrics."""
-        n = len(self.items)
+        n = len({run.item.id for run in self.items})
+        repeats = self.repeats
+        runs = f" x {repeats} repeats" if repeats > 1 else ""
         head = (
             f"Experiment {self.experiment.name} ({self.id}): "
-            f"{n} item{'s' if n != 1 else ''}, {len(self.errors)} errors, "
+            f"{n} item{'s' if n != 1 else ''}{runs}, {len(self.errors)} errors, "
             f"status={self.status}"
         )
         compared = self._comparison_by_name()
-        rows: list[tuple[str, str, str, str]] = []
+        flaky = self.flaky
+        rows: list[tuple[str, ...]] = []
         seen: set[str] = set()
         if self.server_summary is not None:
             for ev in self.server_summary.evaluators:
                 name = ev.evaluator_name or ev.evaluator_id or "?"
                 seen.add(name)
-                rows.append(
-                    (
-                        name,
-                        _fmt(ev.mean_score),
-                        _fmt(ev.pass_rate),
-                        _fmt_delta(compared.get(name)),
-                    )
-                )
+                row: tuple[str, ...] = (name, _fmt(ev.mean_score), _fmt(ev.pass_rate))
+                if flaky:
+                    row += (str(flaky.get(name, 0)),)
+                rows.append((*row, _fmt_delta(compared.get(name))))
         for name, mean in self.local_metrics.items():
             if name not in seen:  # submission failed: show the in-process mean
-                rows.append((f"{name} (local only)", _fmt(mean), "-", ""))
+                local_row: tuple[str, ...] = (f"{name} (local only)", _fmt(mean), "-")
+                rows.append((*local_row, *(("-",) if flaky else ()), ""))
         lines = [head]
         if rows:
-            header = ("metric", "mean", "pass_rate", "vs baseline" if compared else "")
-            widths = [max(len(r[i]) for r in [header, *rows]) for i in range(4)]
+            header: tuple[str, ...] = ("metric", "mean", "pass_rate")
+            if flaky:
+                header += ("flaky",)
+            header += ("vs baseline" if compared else "",)
+            widths = [max(len(r[i]) for r in [header, *rows]) for i in range(len(header))]
             for row in [header, *rows]:
                 lines.append("  " + "  ".join(c.ljust(w) for c, w in zip(row, widths, strict=True)))
         else:
             lines.append("  (no metrics scored)")
+        lines.extend(self._group_lines())
         lines.extend(self._experiment_metric_lines())
         lines.append(f"  view: {self.url}")
         for run in self.errors[:_MAX_ERROR_LINKS]:
@@ -402,7 +468,13 @@ class Experiment:
         score_on_server: bool,
         local_metrics: list[LocalMetric],
         baseline_id: str | None,
+        repeats: int = 1,
+        group_by: str | None = None,
     ) -> None:
+        if not 1 <= repeats <= MAX_REPEATS:
+            raise ValueError(f"repeats must be between 1 and {MAX_REPEATS}")
+        self.repeats = repeats
+        self.group_by = group_by
         self._client = client
         self.experiment = experiment
         self._items = items
@@ -411,7 +483,7 @@ class Experiment:
         self._score_on_server = score_on_server
         self._local_metrics = local_metrics
         self.baseline_id = baseline_id
-        self._records: dict[str, ItemRun] = {}
+        self._records: dict[tuple[str, int], ItemRun] = {}
         self._lock = threading.Lock()
         self.result: ExperimentResult | None = None
         self._metrics_logged = False
@@ -482,13 +554,16 @@ class Experiment:
         max_concurrency: int = 1,
         raise_on_error: bool = False,
     ) -> None:
-        """Run ``task(item)`` on every item inside ``run(item)``, logging its return value."""
+        """Run ``task(item)`` on every item inside ``run(item)``, logging its return value.
+
+        With ``repeats`` > 1 every item runs that many times (one trace and output each).
+        """
         if max_concurrency < 1:
             raise ValueError("max_concurrency must be >= 1")
 
-        def work(item: DatasetItemResponse) -> None:
+        def work(item: DatasetItemResponse, repeat: int) -> None:
             try:
-                with self.run(item) as run:
+                with self.run(item, repeat=repeat) as run:
                     output = task(item)
                     if inspect.isawaitable(output):
                         output = run_sync(output)
@@ -499,12 +574,13 @@ class Experiment:
                     raise
                 logger.warning("opengrade: task failed on item %s: %s", item.id, exc)
 
+        jobs = [(item, repeat) for item in self._items for repeat in range(self.repeats)]
         if max_concurrency == 1:
-            for item in self._items:
-                work(item)
+            for item, repeat in jobs:
+                work(item, repeat)
             return
         with ThreadPoolExecutor(max_workers=max_concurrency) as pool:
-            for future in [pool.submit(work, item) for item in self._items]:
+            for future in [pool.submit(work, item, repeat) for item, repeat in jobs]:
                 future.result()
 
     def __enter__(self) -> Experiment:
@@ -525,14 +601,17 @@ class Experiment:
             self.finish()
 
     @contextmanager
-    def run(self, item: DatasetItemResponse | str) -> Iterator[ItemRun]:
+    def run(self, item: DatasetItemResponse | str, *, repeat: int = 0) -> Iterator[ItemRun]:
         """Run one item: opens a root span bound to (experiment, item) and records output.
 
         Inside the block call ``run.log(output)`` or ``opengrade.set_output(...)``;
-        ``opengrade.set_retrieval_documents`` is captured too.
+        ``opengrade.set_retrieval_documents`` is captured too. ``repeat`` (0-based) tells
+        repeated runs of the same item apart; running the same pair again replaces it.
         """
         resolved = self._resolve_item(item)
-        record = ItemRun(item=resolved)
+        if not 0 <= repeat < MAX_REPEATS:
+            raise ValueError(f"repeat must be between 0 and {MAX_REPEATS - 1}")
+        record = ItemRun(item=resolved, repeat=repeat)
         tracer = otel_trace.get_tracer("opengrade")
         token = ACTIVE_RUN.set(record)
         experiment_token = ACTIVE_EXPERIMENT.set(self)
@@ -542,7 +621,7 @@ class Experiment:
                 f"opengrade.eval {self.name}", record_exception=False, set_status_on_exception=False
             ) as span:
                 span.set_attribute("openinference.span.kind", "CHAIN")
-                bind_evaluation(experiment_id=self.id, dataset_item_id=resolved.id)
+                bind_evaluation(experiment_id=self.id, dataset_item_id=resolved.id, repeat=repeat)
                 span.set_attribute("input.value", truncate_value(resolved.input))
                 record.trace_id = current_trace_id() if span.is_recording() else None
                 try:
@@ -562,7 +641,7 @@ class Experiment:
             if record.error is None:
                 self._score_locally(record)
             with self._lock:
-                self._records[resolved.id] = record
+                self._records[(resolved.id, repeat)] = record
 
     def _resolve_item(self, item: DatasetItemResponse | str) -> DatasetItemResponse:
         item_id = item if isinstance(item, str) else item.id
@@ -597,6 +676,8 @@ class Experiment:
             results = []
             for record in records:
                 result: dict[str, Any] = {"dataset_item_id": record.item.id}
+                if record.repeat:
+                    result["repeat"] = record.repeat
                 if record.error is not None:
                     # Same rule as server metrics for a missing output: a failure, not N/A.
                     result.update(
@@ -661,7 +742,9 @@ class Experiment:
             raise RuntimeError(f"experiment {self.id}: no items were run")
 
         stored = self._await_trace_binding(records, bind_timeout, poll_interval)
-        payload = [_output_entry(record, stored.get(record.item.id)) for record in records]
+        payload = [
+            _output_entry(record, stored.get((record.item.id, record.repeat))) for record in records
+        ]
         for chunk in _chunk_by_bytes(payload, max_count=_UPSERT_CHUNK, max_bytes=_UPSERT_MAX_BYTES):
             try:
                 self._client.experiments.upsert_outputs(self.id, chunk)
@@ -686,7 +769,7 @@ class Experiment:
             )
         scored = evaluation is not None or submitted
         if scored:
-            server_summary = self._client.experiments.summary(self.id)
+            server_summary = self._summary_with_groups()
         elif self._metrics_logged:
             try:
                 server_summary = self._client.experiments.summary(self.id)
@@ -697,7 +780,9 @@ class Experiment:
         # Compare needs evaluator runs on both sides; experiment metrics ride along.
         if scored and self.baseline_id is not None:
             try:
-                comparison = self._client.experiments.compare(self.id, self.baseline_id)
+                comparison = self._client.experiments.compare(
+                    self.id, self.baseline_id, group_by=self.group_by
+                )
             except OpengradeError as exc:
                 logger.warning(
                     "opengrade: compare with baseline %s failed: %s", self.baseline_id, exc
@@ -721,11 +806,23 @@ class Experiment:
         announce(self.result)
         return self.result
 
+    def _summary_with_groups(self) -> ExperimentSummaryResponse:
+        if self.group_by is None:
+            return self._client.experiments.summary(self.id)
+        try:
+            return self._client.experiments.summary(self.id, group_by=self.group_by)
+        except OpengradeAPIError as exc:
+            if exc.status != 400:
+                raise
+            # A bad group key must not lose the run's scores.
+            logger.warning("opengrade: group_by %r rejected: %s", self.group_by, exc)
+            return self._client.experiments.summary(self.id)
+
     def _await_trace_binding(
         self, records: list[ItemRun], bind_timeout: float, poll_interval: float
-    ) -> dict[str, ExperimentItemOutputResponse]:
+    ) -> dict[tuple[str, int], ExperimentItemOutputResponse]:
         """Wait until OTLP-ingested traces are bound, so our PUT lands last."""
-        traced = {r.item.id: r.trace_id for r in records if r.trace_id}
+        traced = {(r.item.id, r.repeat): r.trace_id for r in records if r.trace_id}
         if traced and _otel._INITIALIZED:
             _otel.flush()
         else:
@@ -733,13 +830,13 @@ class Experiment:
         deadline = time.monotonic() + bind_timeout
         while True:
             stored = {
-                str(o.dataset_item_id): o for o in self._client.experiments.list_outputs(self.id)
+                (str(o.dataset_item_id), o.repeat): o
+                for o in self._client.experiments.list_outputs(self.id)
             }
             pending = [
-                item_id
-                for item_id, trace_id in traced.items()
-                if (o := stored.get(item_id)) is None
-                or o.metadata.get("source_trace_id") != trace_id
+                key
+                for key, trace_id in traced.items()
+                if (o := stored.get(key)) is None or o.metadata.get("source_trace_id") != trace_id
             ]
             if not pending:
                 return stored
@@ -790,6 +887,8 @@ def _auto_metrics(records: list[ItemRun]) -> dict[str, float]:
 
 def _output_entry(record: ItemRun, stored: ExperimentItemOutputResponse | None) -> dict[str, Any]:
     entry: dict[str, Any] = {"dataset_item_id": record.item.id}
+    if record.repeat:
+        entry["repeat"] = record.repeat
     if record.has_output:
         entry["actual_output"] = _jsonable(record.output)
 
@@ -1182,6 +1281,8 @@ def start_experiment(
     task_type: str = "rag_qa",
     app_config_id: str | None = None,
     app_config_alias: str | None = None,
+    repeats: int = 1,
+    group_by: str | None = None,
     client: Client | None = None,
 ) -> Experiment:
     """Create an experiment and return it for a manual loop.
@@ -1198,7 +1299,17 @@ def start_experiment(
     so a compare shows which revisions candidate and baseline came from; it also
     becomes ``version`` (short SHA) when none is given. Pass a dict to set it
     explicitly, or ``False`` to skip.
+
+    ``repeats`` runs every item that many times in ``run_task`` (pass ``repeat=`` to
+    ``exp.run`` in a manual loop). Scores average per item, so the comparison with the
+    baseline still pairs items, and items whose verdict changes between repeats are
+    counted as flaky.
+
+    ``group_by`` names a dataset-item metadata field (``"category"``, ``"meta.lang"``):
+    the result then also reports means and baseline deltas per group value.
     """
+    if not 1 <= repeats <= MAX_REPEATS:
+        raise ValueError(f"repeats must be between 1 and {MAX_REPEATS}")
     explicit_client = client is not None
     client = client or get_client()
     project_id = _resolve_project(project, client, activate=not explicit_client)
@@ -1246,6 +1357,8 @@ def start_experiment(
         score_on_server=score_on_server,
         local_metrics=local_metrics,
         baseline_id=baseline_id,
+        repeats=repeats,
+        group_by=group_by,
     )
     logger.info("opengrade experiment %s started: %s", experiment.name, exp.url)
     return exp
@@ -1269,6 +1382,8 @@ def evaluate(
     app_config_alias: str | None = None,
     raise_on_error: bool = False,
     timeout: float = 600.0,
+    repeats: int = 1,
+    group_by: str | None = None,
     client: Client | None = None,
 ) -> ExperimentResult:
     """Run ``task`` on every dataset item, score it and return the result.
@@ -1277,6 +1392,10 @@ def evaluate(
     ``item.expected_output``, ``item.metadata``) and returns the output. Calls to
     ``opengrade.set_retrieval_documents`` inside it feed retrieval metrics. A task that
     raises is recorded as an item error (unless ``raise_on_error``).
+
+    ``repeats`` runs the task that many times per item, to measure non-deterministic
+    pipelines: scores are averaged per item and flaky items are reported. ``group_by``
+    (an item metadata field) adds per-group means and baseline deltas to the result.
     """
     if max_concurrency < 1:
         raise ValueError("max_concurrency must be >= 1")
@@ -1293,6 +1412,8 @@ def evaluate(
         task_type=task_type,
         app_config_id=app_config_id,
         app_config_alias=app_config_alias,
+        repeats=repeats,
+        group_by=group_by,
         client=client,
     )
     exp.run_task(task, max_concurrency=max_concurrency, raise_on_error=raise_on_error)

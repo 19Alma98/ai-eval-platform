@@ -127,6 +127,8 @@ result = opengrade.evaluate(
     # version="v1.4.0",  # default: short git SHA of the code under test
     # git=False,  # the commit/branch/dirty state is recorded automatically; False skips it
     max_concurrency=8,
+    # repeats=3,  # run each item 3 times: per-item mean, flaky items counted
+    # group_by="category",  # also report means / baseline deltas per metadata value
 )
 print(result.summary(), result.url)
 
@@ -149,6 +151,8 @@ How it behaves:
 - **Metrics**: a string is a server metric kind (`hit_at_k`, `recall_at_k`, `mrr`, `must_contain`, `groundedness`, `correctness`, `answer_relevance`, `context_precision`, `context_recall`, `latency`). A dict sets threshold/config, for example `{"kind": "hit_at_k", "config": {"k": 3}}`. The SDK finds or creates a metrics set that holds exactly those kinds, using the project's defaults for anything you leave out. `metrics=None` uses the project default set. A Python metric runs locally (see *Custom metrics* below), and its scores are submitted to the platform (`POST /experiments/{id}/client-results`). From there they are aggregated, shown in the UI and compared with the baseline like server metrics.
 - **Datasets**: pass a registered name/id, a path to CSV/JSON/JSONL, a list or iterable of dicts, a pandas DataFrame, or a Polars DataFrame. Rows need an `input` column (or `question`). `expected_output` (or `expected_answer`), `context` and `metadata` map to item fields; any other column goes into `metadata` (so `expected_doc_ids` and `must_contain` work). A missing `input`/`question` raises `opengrade.DatasetColumnError` (CSV headers are checked up front). Inline rows are hashed into a dataset name, so re-running on the same rows reuses the same dataset. Generators are materialised before upload (no lazy streaming).
 - **Outputs** are uploaded with `PUT /experiments/{id}/outputs`, so this works without `opengrade.init()`. With tracing on, `finish()` waits for the OTLP traces to be bound (up to 30s) and merges their context in. Your explicit output always wins.
+- **Repeats**: `repeats=N` runs the task N times per item (each run is its own trace and output, `repeat` 0..N-1). Scores are averaged per item before aggregating, so every item weighs once and the baseline comparison still pairs items; the bootstrap CI then reflects run-to-run noise less. Items whose PASS/FAIL changes between repeats count as flaky (`result.flaky`, the `flaky` column in `summary()`, the UI scorecard). In a manual loop pass `exp.run(item, repeat=i)`. Max 100.
+- **Groups**: `group_by="category"` (a dataset-item metadata key, dotted paths allowed) adds per-group means and baseline deltas: `result.groups` and a `by category:` block in `summary()`. A drop on one kind of question shows up even when the overall mean holds. `client.experiments.summary(id, group_by=...)` / `compare(..., group_by=...)` return the same data; the release gate can enforce it with a `groups` policy block (see `docs/08-cli-ci.md`).
 - **Errors**: when a task raises, `evaluate` records it on the item (`result.errors`, `metadata.error`) and moves on. Pass `raise_on_error=True` to stop instead. When the `with` block raises, nothing is scored. Bad dataset columns raise `DatasetColumnError` before the run starts.
 
 ### Custom metrics
@@ -260,6 +264,16 @@ async def answer(q: str) -> str:
 
 Or manage the client yourself: `async with AsyncClient(...) as client: ...`. Changing `set_tracking_uri` resets both shared clients; if an event loop is already running, `aclose` the async client before changing the URI (otherwise the shared async client is dropped with a warning).
 
+### Releases and environments
+
+Tag production traffic with the release and deployment that served it, so a deploy can be compared with the previous one:
+
+```python
+opengrade.init(version=os.environ["GIT_SHA"], environment="prod")  # or OPENGRADE_VERSION / OPENGRADE_ENVIRONMENT
+```
+
+They become the OTel resource attributes `service.version` / `deployment.environment` (when opengrade attaches to a host TracerProvider, they are stamped on each span as `opengrade.version` / `opengrade.environment`). Production → Health then filters by environment and version and shows a **By version** table (error rate, latency, cost per trace, failing scores side by side); the Traces list filters the same way, and alert rules can be scoped to an `environment` / `version`. API: `GET /projects/{id}/monitoring?environment=&version=`, `/monitoring/versions`, `/monitoring/facets`, `GET /projects/{id}/traces?environment=&version=`.
+
 ### Live runs from tracing (production)
 
 With `live=True`, the outermost `@opengrade.trace` call outside an experiment becomes a live interaction at OTLP ingestion; no separate `live_runs.submit` call is needed.
@@ -328,6 +342,25 @@ opengrade.log_feedback(True, trace_id=trace_id, user_id="user-42", comment="grea
 - These calls never raise. `log_score`, `log_feedback` and `trace(metrics=...)` never block the caller; `score_trace()` blocks for as long as the metric takes. Invalid input (bad value, label or trace id, or metadata over 16 KB serialized) logs a warning and returns `False`; setup problems (no project id, no active trace) warn at most once a minute.
 - Scores are sent in the background (batches every 2 s, 100 scores or about 512 KB). A 413 (body over the server's 1 MiB limit) splits the batch in half and resends, dropping only a single score that is still too large. A batch rejected with 400/422 is resent item by item so only the bad scores are dropped; 401/403/404 and other 4xx drop the batch at once; only network errors and 5xx are retried once after a 1 s backoff, then dropped with a warning.
 - `opengrade.flush(timeout_millis)` is one total budget: spans, then pending metrics, then scores. At exit, spans, pending metrics, and scores share one ~5 s budget (span flush is capped at ~2 s of that).
+
+### Alerts
+
+The server checks alert rules every minute on production data and notifies a webhook (Slack or any URL) when one fires or resolves. Create them in the UI (Production → Alerts) or as code:
+
+```python
+client = opengrade.get_client()
+client.alerts.create(
+    name="Groundedness failing",
+    metric="score_fail_rate",  # also error_rate, latency_p90_ms, traffic, cost_usd, ...
+    score_name="groundedness",
+    threshold=0.2,  # rates are 0-1
+    window_minutes=60,
+    webhook_url="https://hooks.slack.com/services/...",
+    webhook_format="slack",
+)
+client.alerts.list()  # with state: ok / firing / no_data
+client.alerts.events()  # notification log
+```
 
 ### Live runs → TestSet loop
 
@@ -411,6 +444,8 @@ Install the extra for the providers you use, then `init(instrument="auto")` acti
 | `OPENGRADE_SERVICE_NAME` | OpenTelemetry `service.name` (default `opengrade-app`) |
 | `OPENGRADE_OTLP_ENDPOINT` | Optional override of the derived OTLP URL (e.g. a separate collector) |
 | `OPENGRADE_DISABLED` | `1` / `true` / `yes` / `on` turns `init()` into a no-op and skips score/feedback HTTP (`log_score`, `log_feedback`, production metrics); decorators keep working |
+| `OPENGRADE_VERSION` | Release of your app (`service.version`); production views, traces and alerts can be filtered and compared per version. `init(version=...)` wins |
+| `OPENGRADE_ENVIRONMENT` | Deployment environment (`deployment.environment`, e.g. `prod`, `staging`). `init(environment=...)` wins |
 | `OPENGRADE_METRICS_WORKERS` | Size of the `@opengrade.trace(metrics=...)` background pool (default `2`, range 1–64); `init(metrics_workers=...)` wins |
 
 Project precedence for `init()`: arguments > `set_project()` > env. If both `OPENGRADE_PROJECT_ID` and `OPENGRADE_PROJECT_SLUG` are set, id wins. `init(project_slug=…)` also wires control-plane calls (`log_score`, production metrics) via lazy slug→id resolution.

@@ -69,6 +69,7 @@ def _to_summary(
         duration_ms=_duration_ms(trace),
         span_count=span_count if isinstance(span_count, int) else len(trace.spans),
         environment=trace.environment,
+        version=trace.version,
         user_id=trace.user_id,
         session_id=trace.session_id,
         # `@opengrade.trace` records {"args", "kwargs"}: show the question, not the envelope.
@@ -94,6 +95,7 @@ def _to_detail(
         output=trace.output,
         metadata=dict(trace.metadata),
         environment=trace.environment,
+        version=trace.version,
         user_id=trace.user_id,
         session_id=trace.session_id,
         spans=[
@@ -124,6 +126,8 @@ async def list_traces(
     until: datetime | None = Query(default=None),
     cursor: str | None = Query(default=None, max_length=200),
     limit: int = Query(default=50, ge=1, le=200),
+    environment: str | None = Query(default=None, max_length=200),
+    version: str | None = Query(default=None, max_length=200),
     use_case: ListTraces = Depends(get_list_traces),
 ) -> TraceListResponse:
     if status_filter is not None and status_filter not in _TRACE_STATUSES:
@@ -140,6 +144,8 @@ async def list_traces(
             until=until,
             cursor=cursor,
             limit=limit,
+            environment=environment,
+            version=version,
         )
     except ProjectMissingError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc

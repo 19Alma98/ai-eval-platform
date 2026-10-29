@@ -15,6 +15,7 @@ from pydantic import (
     model_validator,
 )
 
+from opengrade_server.domain.experiment_output import MAX_REPEATS
 from opengrade_server.domain.trace_score import (
     MAX_TRACE_SCORE_BATCH,
     MAX_TRACE_SCORE_METADATA_BYTES,
@@ -49,6 +50,7 @@ class ProjectResponse(BaseModel):
     name: str
     slug: str
     created_at: datetime
+    retention_days: int | None = None
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -150,6 +152,7 @@ class TraceDetailResponse(BaseModel):
     output: Any | None = None
     metadata: dict[str, Any]
     environment: str | None = None
+    version: str | None = None
     user_id: str | None = None
     session_id: str | None = None
     spans: list[SpanResponse]
@@ -167,6 +170,7 @@ class TraceSummaryResponse(BaseModel):
     duration_ms: float | None
     span_count: int
     environment: str | None = None
+    version: str | None = None
     user_id: str | None = None
     session_id: str | None = None
     input_preview: str | None = None
@@ -542,6 +546,7 @@ class EvaluatePackRequest(BaseModel):
 
 class ClientResultItemRequest(BaseModel):
     dataset_item_id: uuid.UUID
+    repeat: int = Field(default=0, ge=0, lt=MAX_REPEATS)
     score: float | None = None
     label: str | None = Field(default=None, max_length=32)
     explanation: str | None = Field(default=None, max_length=4000)
@@ -582,6 +587,7 @@ class EvaluationResultResponse(BaseModel):
     explanation: str | None
     metadata: dict[str, Any]
     duration_ms: int | None
+    repeat: int = 0
 
 
 class EvaluationRunResponse(BaseModel):
@@ -611,12 +617,22 @@ class EvaluatorSummaryResponse(BaseModel):
     n_skipped: int
     mean_score: float | None
     pass_rate: float | None
+    n_repeats: int = 1
+    n_flaky: int = 0
+
+
+class GroupSummaryResponse(BaseModel):
+    value: str
+    n_items: int
+    evaluators: list[EvaluatorSummaryResponse]
 
 
 class ExperimentSummaryResponse(BaseModel):
     experiment_id: uuid.UUID
     evaluators: list[EvaluatorSummaryResponse]
     experiment_metrics: dict[str, float] = Field(default_factory=dict)
+    group_by: str | None = None
+    groups: list[GroupSummaryResponse] = Field(default_factory=list)
 
 
 class MetricComparisonResponse(BaseModel):
@@ -645,6 +661,13 @@ class ExperimentMetricComparisonResponse(BaseModel):
     delta: float | None
 
 
+class GroupCompareResponse(BaseModel):
+    value: str
+    n_items: int
+    metrics: list[MetricComparisonResponse]
+    n_regressions: int
+
+
 class ExperimentCompareResponse(BaseModel):
     experiment_id: uuid.UUID
     baseline_experiment_id: uuid.UUID
@@ -660,6 +683,8 @@ class ExperimentCompareResponse(BaseModel):
     experiment_metrics: list[ExperimentMetricComparisonResponse] = Field(default_factory=list)
     candidate_git: GitInfo | None = None
     baseline_git: GitInfo | None = None
+    group_by: str | None = None
+    groups: list[GroupCompareResponse] = Field(default_factory=list)
 
 
 class AbsoluteMinRuleBody(BaseModel):
@@ -700,6 +725,15 @@ class ExperimentMetricRuleBody(BaseModel):
         return self
 
 
+class GroupRuleBody(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    by: str = Field(min_length=1, max_length=200)
+    min_items: int = Field(default=5, ge=1)
+    metrics: list[str] | None = Field(default=None, min_length=1)
+    max_delta: float | None = None
+
+
 class ReleasePolicyBody(BaseModel):
     """Quality gate policy.
 
@@ -713,6 +747,7 @@ class ReleasePolicyBody(BaseModel):
     cost: CostRuleBody | None = None
     regression: RegressionRuleBody | None = None
     experiment_metrics: dict[str, ExperimentMetricRuleBody] | None = None
+    groups: GroupRuleBody | None = None
     # Optional meta keys (stripped before evaluation); accepted so they are not
     # treated as absolute-min evaluator rules.
     api_base_url: str | None = None
@@ -765,6 +800,7 @@ class ReleaseCheckResponse(BaseModel):
 
 class UpsertExperimentOutputItemRequest(BaseModel):
     dataset_item_id: uuid.UUID
+    repeat: int = Field(default=0, ge=0, lt=MAX_REPEATS)
     actual_output: Any | None = None
     context: Any | None = None
     metadata: dict[str, Any] | None = None
@@ -782,6 +818,7 @@ class ExperimentItemOutputResponse(BaseModel):
     context: Any | None
     metadata: dict[str, Any]
     updated_at: datetime
+    repeat: int = 0
 
 
 class UpsertExperimentOutputsResponse(BaseModel):
@@ -1051,3 +1088,159 @@ class ProjectOverviewResponse(BaseModel):
     offline: OfflineOverviewResponse
     calibration_alerts: list[CalibrationAlertResponse]
     warnings: list[str] = Field(default_factory=list)
+
+
+AlertMetricName = Literal[
+    "error_rate",
+    "latency_p50_ms",
+    "latency_p90_ms",
+    "latency_p99_ms",
+    "traffic",
+    "cost_usd",
+    "total_tokens",
+    "needs_review",
+    "score_mean",
+    "score_fail_rate",
+]
+
+
+class CreateAlertRuleRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    name: str = Field(min_length=1, max_length=200)
+    metric: AlertMetricName
+    operator: Literal["gt", "lt"] = "gt"
+    threshold: float
+    window_minutes: int = Field(default=60, ge=5, le=7 * 24 * 60)
+    min_samples: int | None = Field(default=None, ge=0)
+    score_name: str | None = Field(default=None, max_length=200)
+    score_source: str | None = Field(default=None, max_length=64)
+    webhook_url: str | None = Field(default=None, max_length=2000)
+    webhook_format: Literal["json", "slack"] = "json"
+    repeat_minutes: int | None = Field(default=None, ge=5)
+    enabled: bool = True
+    environment: str | None = Field(default=None, max_length=200)
+    version: str | None = Field(default=None, max_length=200)
+
+
+class UpdateAlertRuleRequest(BaseModel):
+    """Omitted fields stay as they are; ``null`` clears score/webhook/repeat fields."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    name: str | None = Field(default=None, min_length=1, max_length=200)
+    metric: AlertMetricName | None = None
+    operator: Literal["gt", "lt"] | None = None
+    threshold: float | None = None
+    window_minutes: int | None = Field(default=None, ge=5, le=7 * 24 * 60)
+    min_samples: int | None = Field(default=None, ge=0)
+    score_name: str | None = Field(default=None, max_length=200)
+    score_source: str | None = Field(default=None, max_length=64)
+    webhook_url: str | None = Field(default=None, max_length=2000)
+    webhook_format: Literal["json", "slack"] | None = None
+    repeat_minutes: int | None = Field(default=None, ge=5)
+    enabled: bool | None = None
+    environment: str | None = Field(default=None, max_length=200)
+    version: str | None = Field(default=None, max_length=200)
+
+
+class AlertRuleResponse(BaseModel):
+    id: uuid.UUID
+    project_id: uuid.UUID
+    name: str
+    metric: str
+    operator: str
+    threshold: float
+    window_minutes: int
+    min_samples: int
+    score_name: str | None
+    score_source: str | None
+    webhook_url: str | None
+    webhook_format: str
+    repeat_minutes: int | None
+    enabled: bool
+    state: str
+    last_value: float | None
+    last_evaluated_at: datetime | None
+    last_notified_at: datetime | None
+    created_at: datetime
+    updated_at: datetime
+    environment: str | None = None
+    version: str | None = None
+
+
+class AlertEventResponse(BaseModel):
+    id: uuid.UUID
+    rule_id: uuid.UUID
+    project_id: uuid.UUID
+    kind: str
+    value: float | None
+    threshold: float
+    message: str
+    delivery_status: str
+    delivery_error: str | None
+    created_at: datetime
+
+
+class AlertEvaluationResponse(BaseModel):
+    rule: AlertRuleResponse
+    value: float | None
+    samples: int
+    event: AlertEventResponse | None
+
+
+class ReleaseFacetValueResponse(BaseModel):
+    value: str
+    n_traces: int
+
+
+class ReleaseFacetsResponse(BaseModel):
+    environments: list[ReleaseFacetValueResponse]
+    versions: list[ReleaseFacetValueResponse]
+
+
+class VersionMetricResponse(BaseModel):
+    name: str
+    source: str
+    n: int
+    mean: float | None
+    fail_rate: float | None
+
+
+class VersionSummaryResponse(BaseModel):
+    version: str | None
+    n_traces: int
+    n_errors: int
+    error_rate: float | None
+    latency: LatencyPercentilesResponse
+    total_tokens: float
+    cost_usd: float
+    cost_per_trace_usd: float | None
+    traces_truncated: bool
+    metrics: list[VersionMetricResponse]
+
+
+class SetRetentionRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    retention_days: int | None = Field(ge=1, le=36500)
+
+
+class PurgeReportResponse(BaseModel):
+    retention_days: int | None
+    cutoff: datetime | None
+    dry_run: bool
+    traces: int
+    traces_kept: int
+    live_interactions: int = 0
+    trace_scores: int = 0
+    alert_events: int = 0
+
+
+class RetentionResponse(BaseModel):
+    project_id: uuid.UUID
+    retention_days: int | None
+    default_days: int | None
+    effective_days: int | None
+    # What a purge would delete right now (dry run).
+    pending: PurgeReportResponse

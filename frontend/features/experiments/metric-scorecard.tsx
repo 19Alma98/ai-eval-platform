@@ -39,9 +39,12 @@ export function MetricScorecard({
               const state = targetState(row.status);
               const focused = focusedRunId === row.run_id;
               const passPct = Math.round((row.pass_rate ?? 0) * 100);
+              const repeats = row.n_repeats ?? 1;
+              const flaky = row.n_flaky ?? 0;
               const issues = [
                 row.n_error > 0 ? `${row.n_error} error${row.n_error === 1 ? "" : "s"}` : null,
                 row.n_skipped > 0 ? `${row.n_skipped} skipped` : null,
+                flaky > 0 ? `${flaky} flaky` : null,
               ].filter(Boolean);
               return (
                 <li key={row.run_id}>
@@ -96,8 +99,10 @@ export function MetricScorecard({
                     </div>
                     <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground">
                       <span>
-                        Avg. score {formatScore(row.mean_score)} · {row.n_scored} of{" "}
-                        {row.n_items} answers scored
+                        Avg. score {formatScore(row.mean_score)} ·{" "}
+                        {repeats > 1
+                          ? `${row.n_items} cases × ${repeats} runs`
+                          : `${row.n_scored} of ${row.n_items} answers scored`}
                       </span>
                       {issues.length > 0 ? (
                         <span className="font-medium text-status-warn">

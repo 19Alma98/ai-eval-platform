@@ -21,6 +21,7 @@ class ProjectResponse(_ApiModel):
     name: str
     slug: str
     created_at: datetime | str
+    retention_days: int | None = None
 
 
 class DatasetResponse(_ApiModel):
@@ -122,6 +123,7 @@ class ExperimentItemOutputResponse(_ApiModel):
     context: Any | None = None
     metadata: dict[str, Any] = Field(default_factory=dict)
     updated_at: datetime | str | None = None
+    repeat: int = 0
 
 
 class EvaluationResultResponse(_ApiModel):
@@ -162,12 +164,22 @@ class EvaluatorSummaryResponse(_ApiModel):
     n_skipped: int | None = None
     mean_score: float | None = None
     pass_rate: float | None = None
+    n_repeats: int = 1
+    n_flaky: int = 0
+
+
+class GroupSummaryResponse(_ApiModel):
+    value: str
+    n_items: int = 0
+    evaluators: list[EvaluatorSummaryResponse] = Field(default_factory=list)
 
 
 class ExperimentSummaryResponse(_ApiModel):
     experiment_id: str
     evaluators: list[EvaluatorSummaryResponse] = Field(default_factory=list)
     experiment_metrics: dict[str, float] = Field(default_factory=dict)
+    group_by: str | None = None
+    groups: list[GroupSummaryResponse] = Field(default_factory=list)
 
 
 class MetricComparisonResponse(_ApiModel):
@@ -192,6 +204,13 @@ class ExperimentMetricsResponse(_ApiModel):
     metrics: dict[str, float] = Field(default_factory=dict)
 
 
+class GroupCompareResponse(_ApiModel):
+    value: str
+    n_items: int = 0
+    metrics: list[MetricComparisonResponse] = Field(default_factory=list)
+    n_regressions: int = 0
+
+
 class ExperimentCompareResponse(_ApiModel):
     experiment_id: str | None = None
     baseline_experiment_id: str | None = None
@@ -204,6 +223,8 @@ class ExperimentCompareResponse(_ApiModel):
     experiment_metrics: list[ExperimentMetricComparisonResponse] = Field(default_factory=list)
     candidate_git: GitInfo | None = None
     baseline_git: GitInfo | None = None
+    group_by: str | None = None
+    groups: list[GroupCompareResponse] = Field(default_factory=list)
 
 
 class MetricsPackEntryResponse(_ApiModel):
@@ -329,3 +350,36 @@ class ListLiveInteractionsResponse(_ApiModel):
 
 class TraceScoresAccepted(_ApiModel):
     accepted: int
+
+
+class AlertRuleResponse(_ApiModel):
+    id: str
+    project_id: str | None = None
+    name: str
+    metric: str
+    operator: str = "gt"
+    threshold: float
+    window_minutes: int = 60
+    min_samples: int = 0
+    score_name: str | None = None
+    score_source: str | None = None
+    webhook_url: str | None = None
+    webhook_format: str = "json"
+    repeat_minutes: int | None = None
+    enabled: bool = True
+    state: str = "no_data"
+    last_value: float | None = None
+    last_evaluated_at: datetime | str | None = None
+    last_notified_at: datetime | str | None = None
+
+
+class AlertEventResponse(_ApiModel):
+    id: str
+    rule_id: str
+    kind: str
+    value: float | None = None
+    threshold: float | None = None
+    message: str = ""
+    delivery_status: str = "skipped"
+    delivery_error: str | None = None
+    created_at: datetime | str | None = None

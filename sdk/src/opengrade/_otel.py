@@ -9,7 +9,8 @@ from collections.abc import Sequence
 from typing import Literal
 
 from opentelemetry import trace
-from opentelemetry.sdk.trace import ReadableSpan, TracerProvider
+from opentelemetry.context import Context
+from opentelemetry.sdk.trace import ReadableSpan, Span, SpanProcessor, TracerProvider
 from opentelemetry.sdk.trace.export import BatchSpanProcessor, SpanExporter, SpanExportResult
 from opentelemetry.util._once import Once
 
@@ -33,7 +34,7 @@ OTLP_MAX_REQUEST_BYTES = 2 * 1024 * 1024
 OTLP_MAX_EXPORT_BATCH_SIZE = 64
 
 _PROVIDER: TracerProvider | None = None
-_PROCESSOR: BatchSpanProcessor | None = None
+_PROCESSOR: SpanProcessor | None = None
 _EXPORTER: _SafeSpanExporter | None = None
 _OWNS_PROVIDER: bool = False
 _INITIALIZED: bool = False
@@ -163,7 +164,7 @@ def _teardown_opengrade_tracing(*, reset_global: bool) -> None:
         exporter.close()
     if processor is not None:
         try:
-            processor.shutdown()  # type: ignore[no-untyped-call]
+            processor.shutdown()
         except Exception:  # noqa: BLE001
             logger.debug("opengrade: span processor shutdown raised", exc_info=True)
 
@@ -217,6 +218,37 @@ def _at_exit() -> None:
     _teardown_opengrade_tracing(reset_global=_OWNS_PROVIDER)
 
 
+def release_attributes(version: str | None, environment: str | None) -> dict[str, str]:
+    """Resource keys (``service.version`` …) plus ``opengrade.*`` span-level twins."""
+    attrs: dict[str, str] = {}
+    if version:
+        attrs["service.version"] = attrs["opengrade.version"] = version
+    if environment:
+        attrs["deployment.environment"] = attrs["opengrade.environment"] = environment
+    return attrs
+
+
+class _ReleaseAttributesProcessor(SpanProcessor):
+    """Sets release attributes on span start, then delegates to ``inner``."""
+
+    def __init__(self, inner: SpanProcessor, attributes: dict[str, str]) -> None:
+        self._inner = inner
+        self._attributes = attributes
+
+    def on_start(self, span: Span, parent_context: Context | None = None) -> None:
+        span.set_attributes(self._attributes)
+        self._inner.on_start(span, parent_context=parent_context)
+
+    def on_end(self, span: ReadableSpan) -> None:
+        self._inner.on_end(span)
+
+    def shutdown(self) -> None:
+        self._inner.shutdown()
+
+    def force_flush(self, timeout_millis: int = 30000) -> bool:
+        return self._inner.force_flush(timeout_millis)
+
+
 def init(
     *,
     project_id: str | None = None,
@@ -228,8 +260,15 @@ def init(
     live: bool | None = None,
     live_sample_rate: float | None = None,
     metrics_workers: int | None = None,
+    version: str | None = None,
+    environment: str | None = None,
 ) -> None:
     """Configure OTLP export. Never raises: on bad config it warns and stays a no-op.
+
+    ``version`` (or ``OPENGRADE_VERSION``) is the release of the app, ``environment``
+    (or ``OPENGRADE_ENVIRONMENT``) its deployment (``prod``, ``staging``). They become
+    the OTel resource attributes ``service.version`` / ``deployment.environment``, so
+    production metrics, traces and alerts can be filtered and compared per release.
 
     ``live=True`` (or ``OPENGRADE_LIVE=1``) turns each outermost ``@opengrade.trace`` call
     outside an experiment into a platform live interaction; ``live_sample_rate``
@@ -276,9 +315,17 @@ def init(
             project_slug=project_slug,
             endpoint=endpoint,
             service_name=service_name,
+            version=version,
+            environment=environment,
         )
         headers = project_headers(config)
-        resource = Resource.create({"service.name": config.service_name})
+        release = release_attributes(config.version, config.environment)
+        resource = Resource.create(
+            {
+                "service.name": config.service_name,
+                **{k: v for k, v in release.items() if not k.startswith("opengrade.")},
+            }
+        )
         exporter = _SafeSpanExporter(
             OTLPSpanExporter(
                 endpoint=config.endpoint,
@@ -288,8 +335,15 @@ def init(
                 max_request_size=OTLP_MAX_REQUEST_BYTES,
             )
         )
-        processor = BatchSpanProcessor(exporter, max_export_batch_size=OTLP_MAX_EXPORT_BATCH_SIZE)
+        processor: SpanProcessor = BatchSpanProcessor(
+            exporter, max_export_batch_size=OTLP_MAX_EXPORT_BATCH_SIZE
+        )
         existing = trace.get_tracer_provider()
+        if isinstance(existing, TracerProvider) and release:
+            # The host's resource lacks our release: stamp it on each span instead.
+            processor = _ReleaseAttributesProcessor(
+                processor, {k: v for k, v in release.items() if k.startswith("opengrade.")}
+            )
         if isinstance(existing, TracerProvider):
             # Host already has OTel (Datadog, Honeycomb, …): attach, do not replace.
             existing.add_span_processor(processor)

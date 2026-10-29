@@ -12,6 +12,7 @@ from opengrade_server.application.scoring_inputs import (
     current_fingerprint,
 )
 from opengrade_server.domain.evaluation import EvaluationResultRecord
+from opengrade_server.domain.experiment_output import ExperimentItemOutput
 from opengrade_server.domain.repositories import (
     DatasetRepository,
     EvaluationRunRepository,
@@ -21,6 +22,8 @@ from opengrade_server.domain.repositories import (
 from opengrade_server.regression.aggregate import (
     MetricStatus,
     classify_delta,
+    collapse_repeats,
+    group_by_item,
     runs_config_mismatch,
     select_runs,
 )
@@ -97,7 +100,14 @@ def _resolve_evaluator_id(
 def _result_by_item(
     results: list[EvaluationResultRecord],
 ) -> dict[uuid.UUID, EvaluationResultRecord]:
-    return {r.dataset_item_id: r for r in results}
+    return {item_id: collapse_repeats(rows) for item_id, rows in group_by_item(results).items()}
+
+
+def _first_repeat(outputs: list[ExperimentItemOutput]) -> dict[uuid.UUID, ExperimentItemOutput]:
+    by_item: dict[uuid.UUID, ExperimentItemOutput] = {}
+    for output in sorted(outputs, key=lambda o: o.repeat):
+        by_item.setdefault(output.dataset_item_id, output)
+    return by_item
 
 
 def _build_side(
@@ -203,12 +213,9 @@ class CompareExperimentItems:
             await self._runs.list_results(base_run.id) if base_run else []
         )
 
-        cand_outputs = {
-            o.dataset_item_id: o for o in await self._outputs.list_by_experiment(experiment_id)
-        }
-        base_outputs = {
-            o.dataset_item_id: o for o in await self._outputs.list_by_experiment(baseline_id)
-        }
+        # With repeats the row shows the first repeat's output; scores are the item mean.
+        cand_outputs = _first_repeat(await self._outputs.list_by_experiment(experiment_id))
+        base_outputs = _first_repeat(await self._outputs.list_by_experiment(baseline_id))
 
         config_mismatch = runs_config_mismatch(cand_run, base_run)
         dataset_items = await self._datasets.list_items(experiment.dataset_id)

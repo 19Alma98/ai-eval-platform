@@ -7,6 +7,7 @@ from typing import Any
 from opengrade_server.application.compare import (
     CompareExperiments,
     InvalidCompareSelectionError,
+    load_item_groups,
 )
 from opengrade_server.application.experiments import ExperimentNotFoundError
 from opengrade_server.application.projects import ProjectNotFoundError
@@ -16,14 +17,17 @@ from opengrade_server.application.scoring_inputs import (
 )
 from opengrade_server.domain.evaluation import EvaluationRun
 from opengrade_server.domain.repositories import (
+    DatasetRepository,
     EvaluationRunRepository,
     ExperimentMetricRepository,
     ExperimentRepository,
     ProjectRepository,
 )
 from opengrade_server.regression.aggregate import aggregate_results, select_runs
+from opengrade_server.regression.groups import results_in
 from opengrade_server.regression.policy import (
     EvaluatorMetricInput,
+    GroupInput,
     InvalidPolicyError,
     PolicyCheck,
     PolicyEvaluation,
@@ -69,6 +73,7 @@ class ReleaseCheck:
         compare: CompareExperiments,
         fingerprints: CurrentScoringFingerprint | None = None,
         metrics: ExperimentMetricRepository | None = None,
+        datasets: DatasetRepository | None = None,
     ) -> None:
         self._projects = projects
         self._experiments = experiments
@@ -76,6 +81,7 @@ class ReleaseCheck:
         self._compare = compare
         self._fingerprints = fingerprints
         self._metrics = metrics
+        self._datasets = datasets
 
     async def execute(self, command: ReleaseCheckCommand) -> ReleaseCheckResult:
         project = await self._projects.get_by_id(command.project_id)
@@ -122,6 +128,7 @@ class ReleaseCheck:
             )
 
         baseline_id: uuid.UUID | None = None
+        group_deltas: dict[str, dict[str, float | None]] = {}
         regression_deltas: list[RegressionDeltaInput] = []
         saw_insufficient_n = False
         allow_insufficient_n = (
@@ -134,7 +141,19 @@ class ReleaseCheck:
             baseline = await self._experiments.get_by_id(baseline_id)
             if baseline is None or baseline.project_id != command.project_id:
                 raise ExperimentNotFoundError(baseline_id)
-            comparison = await self._compare.execute(command.experiment_id, baseline_id)
+            comparison = await self._compare.execute(
+                command.experiment_id,
+                baseline_id,
+                group_by=policy.groups.by if policy.groups is not None else None,
+            )
+            group_deltas = {
+                group.value: {
+                    m.evaluator_name or str(m.evaluator_id): m.delta
+                    for m in group.metrics
+                    if m.metric == "mean_score"
+                }
+                for group in comparison.groups
+            }
             for metric in comparison.metrics:
                 if metric.metric != "mean_score":
                     continue
@@ -171,11 +190,34 @@ class ReleaseCheck:
         experiment_metrics: dict[str, float] = {}
         if policy.experiment_metrics and self._metrics is not None:
             experiment_metrics = await self._metrics.get(command.experiment_id)
+        groups: list[GroupInput] = []
+        if policy.groups is not None:
+            try:
+                by_value = await load_item_groups(
+                    self._datasets, experiment.dataset_id, policy.groups.by
+                )
+            except InvalidCompareSelectionError as exc:
+                raise InvalidPolicyError(f"policy.groups: {exc}") from exc
+            groups = [
+                GroupInput(
+                    value=value,
+                    n_items=len(item_ids),
+                    mean_scores={
+                        metric.evaluator_name: aggregate_results(
+                            results_in(metric.results, item_ids)
+                        ).mean_score
+                        for metric in candidate
+                    },
+                    deltas=group_deltas.get(value, {}),
+                )
+                for value, item_ids in by_value.items()
+            ]
         evaluation = evaluate_policy(
             policy_for_eval,
             candidate=candidate,
             regression_deltas=regression_deltas,
             experiment_metrics=experiment_metrics,
+            groups=groups,
         )
         if (
             policy.regression is not None

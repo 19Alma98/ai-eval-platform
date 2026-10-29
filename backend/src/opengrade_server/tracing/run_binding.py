@@ -4,7 +4,7 @@ import uuid
 from dataclasses import dataclass
 from typing import Any
 
-from opengrade_server.domain.experiment_output import ExperimentItemOutput
+from opengrade_server.domain.experiment_output import MAX_REPEATS, ExperimentItemOutput
 from opengrade_server.domain.repositories import (
     DatasetRepository,
     ExperimentItemOutputRepository,
@@ -23,15 +23,23 @@ def _parse_uuid(value: Any) -> uuid.UUID | None:
         return None
 
 
-def _binding_from_attributes(attributes: dict[str, Any]) -> tuple[uuid.UUID, uuid.UUID] | None:
+def _parse_repeat(value: Any) -> int:
+    try:
+        repeat = int(value)
+    except (TypeError, ValueError):
+        return 0
+    return repeat if 0 <= repeat < MAX_REPEATS else 0
+
+
+def _binding_from_attributes(attributes: dict[str, Any]) -> tuple[uuid.UUID, uuid.UUID, int] | None:
     experiment_id = _parse_uuid(attributes.get("opengrade.experiment_id"))
     dataset_item_id = _parse_uuid(attributes.get("opengrade.dataset_item_id"))
     if experiment_id is None or dataset_item_id is None:
         return None
-    return experiment_id, dataset_item_id
+    return experiment_id, dataset_item_id, _parse_repeat(attributes.get("opengrade.repeat"))
 
 
-def extract_run_binding(trace: Trace) -> tuple[uuid.UUID, uuid.UUID] | None:
+def extract_run_binding(trace: Trace) -> tuple[uuid.UUID, uuid.UUID, int] | None:
     """Read experiment/dataset-item bind attrs from root or CHAIN spans."""
     spans = list(trace.spans)
     roots = [span for span in spans if not span.parent_span_id]
@@ -109,7 +117,7 @@ class BindOtlpTracesToExperimentOutputs:
         binding = extract_run_binding(trace)
         if binding is None:
             return
-        experiment_id, dataset_item_id = binding
+        experiment_id, dataset_item_id, repeat = binding
 
         experiment = await self.experiments.get_by_id(experiment_id)
         if experiment is None:
@@ -122,9 +130,9 @@ class BindOtlpTracesToExperimentOutputs:
             return
 
         payload = build_output_from_trace(trace)
-        existing = await self.outputs.get(experiment_id, dataset_item_id)
+        existing = await self.outputs.get(experiment_id, dataset_item_id, repeat)
         if existing is None:
-            existing = ExperimentItemOutput.create(experiment_id, dataset_item_id)
+            existing = ExperimentItemOutput.create(experiment_id, dataset_item_id, repeat=repeat)
         merged_metadata = dict(existing.metadata)
         merged_metadata.update(payload["metadata"])
         actual_output = payload["actual_output"]

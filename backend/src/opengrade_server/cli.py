@@ -578,6 +578,7 @@ def evaluate_cmd(
             params=cfg.params or None,
             baseline=baseline_arg,
             max_concurrency=cfg.max_concurrency,
+            repeats=cfg.repeats,
             project=project_id,
             version=cfg.version,
             task_type=cfg.task_type,

@@ -5,6 +5,7 @@ from collections.abc import Collection
 from datetime import datetime
 from typing import Protocol
 
+from opengrade_server.domain.alert import AlertEvent, AlertRule
 from opengrade_server.domain.app_config import AppConfig, AppConfigAlias
 from opengrade_server.domain.dataset import Dataset, DatasetItem
 from opengrade_server.domain.evaluation import EvaluationResultRecord, EvaluationRun
@@ -33,6 +34,10 @@ class ProjectRepository(Protocol):
 
     async def list_all(self) -> list[Project]: ...
 
+    async def set_retention_days(
+        self, project_id: uuid.UUID, days: int | None
+    ) -> Project | None: ...
+
     async def delete(self, project_id: uuid.UUID) -> bool: ...
 
 
@@ -52,6 +57,8 @@ class TraceRepository(Protocol):
         cursor_start_time: datetime | None = None,
         cursor_id: uuid.UUID | None = None,
         limit: int = 50,
+        environment: str | None = None,
+        version: str | None = None,
     ) -> list[Trace]: ...
 
     async def list_with_spans_in_range(
@@ -61,7 +68,13 @@ class TraceRepository(Protocol):
         since: datetime,
         until: datetime,
         limit: int = 5000,
+        environment: str | None = None,
+        version: str | None = None,
     ) -> list[Trace]: ...
+
+    async def release_facets(
+        self, project_id: uuid.UUID, *, since: datetime, until: datetime
+    ) -> dict[str, list[tuple[str, int]]]: ...
 
 
 class DatasetRepository(Protocol):
@@ -149,6 +162,26 @@ class ExperimentAliasRepository(Protocol):
     ) -> list[ExperimentAliasEvent]: ...
 
 
+class AlertRepository(Protocol):
+    async def add_rule(self, rule: AlertRule) -> AlertRule: ...
+
+    async def update_rule(self, rule: AlertRule) -> AlertRule: ...
+
+    async def get_rule(self, rule_id: uuid.UUID) -> AlertRule | None: ...
+
+    async def list_rules(self, project_id: uuid.UUID) -> list[AlertRule]: ...
+
+    async def list_enabled_rules(self) -> list[AlertRule]: ...
+
+    async def delete_rule(self, rule_id: uuid.UUID) -> bool: ...
+
+    async def add_event(self, event: AlertEvent) -> AlertEvent: ...
+
+    async def list_events(
+        self, project_id: uuid.UUID, *, rule_id: uuid.UUID | None = None, limit: int = 50
+    ) -> list[AlertEvent]: ...
+
+
 class ExperimentMetricRepository(Protocol):
     """Experiment-level scalars: one value per (experiment, key), last write wins."""
 
@@ -219,7 +252,7 @@ class ExperimentItemOutputRepository(Protocol):
     async def list_by_experiment(self, experiment_id: uuid.UUID) -> list[ExperimentItemOutput]: ...
 
     async def get(
-        self, experiment_id: uuid.UUID, dataset_item_id: uuid.UUID
+        self, experiment_id: uuid.UUID, dataset_item_id: uuid.UUID, repeat: int = 0
     ) -> ExperimentItemOutput | None: ...
 
 

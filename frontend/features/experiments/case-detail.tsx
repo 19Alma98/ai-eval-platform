@@ -12,6 +12,7 @@ import { withBasePath } from "@/lib/api/client";
 import { cn } from "@/lib/cn";
 import { formatScore } from "@/lib/format";
 import { experimentItemHref, traceHref } from "@/lib/links";
+import { repeatStatsOf } from "./repeats";
 import {
   contextStats,
   parseRetrievedDocuments,
@@ -89,6 +90,7 @@ function MetricResultRow({ result }: { result: CaseMetricResult }) {
   const hasClaims =
     Array.isArray(result.metadata?.claims) || Array.isArray(result.metadata?.answer_claims);
   const expandable = Boolean(result.explanation?.trim()) || hasClaims;
+  const repeats = repeatStatsOf(result.metadata);
 
   return (
     <li className="rounded-md border border-border bg-surface">
@@ -111,6 +113,18 @@ function MetricResultRow({ result }: { result: CaseMetricResult }) {
         <span className="min-w-0 flex-1 truncate text-sm text-foreground" title={result.metric.description}>
           {result.metric.label}
         </span>
+        {repeats ? (
+          <span
+            className={cn(
+              "shrink-0 text-xs tabular-nums",
+              repeats.flaky ? "font-medium text-status-warn" : "text-muted-foreground",
+            )}
+            title="Share of repeated runs that passed"
+          >
+            {Math.round(repeats.passRate * repeats.n)}/{repeats.n} runs passed
+            {repeats.flaky ? " · flaky" : ""}
+          </span>
+        ) : null}
         <span className="shrink-0 text-xs tabular-nums text-muted-foreground">
           {formatScore(result.score)}
         </span>

@@ -4,7 +4,13 @@ import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
 import { getLiveInteraction } from "@/lib/api/live-runs";
 import { getTrace, listTraces } from "@/lib/api/traces";
 
-export type TraceFilters = { status?: string; search?: string; since?: string };
+export type TraceFilters = {
+  status?: string;
+  search?: string;
+  since?: string;
+  environment?: string | null;
+  version?: string | null;
+};
 
 export function tracesQueryKey(projectId: string, filters: TraceFilters) {
   return [
@@ -13,6 +19,8 @@ export function tracesQueryKey(projectId: string, filters: TraceFilters) {
     filters.status ?? "",
     filters.search ?? "",
     filters.since ?? "",
+    filters.environment ?? "",
+    filters.version ?? "",
   ] as const;
 }
 

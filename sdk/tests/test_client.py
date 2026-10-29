@@ -344,3 +344,38 @@ def test_live_runs_list_get_promote_rescore(
         assert rescored.scores[0].score == 0.9
         assert captured_requests[-1].method == "POST"
         assert str(captured_requests[-1].url).endswith("/live-interactions/live-1/rescore")
+
+
+def test_alerts_resource_sends_only_set_fields() -> None:
+    seen: list[tuple[str, str, Any]] = []
+    rule = {"id": "r1", "name": "p99", "metric": "latency_p99_ms", "threshold": 3000}
+
+    def handler(request: httpx2.Request) -> httpx2.Response:
+        body = json.loads(request.content) if request.content else None
+        seen.append((request.method, request.url.path, body))
+        if request.method == "DELETE":
+            return httpx2.Response(204)
+        return httpx2.Response(200, json=rule)
+
+    with Client("http://test", transport=httpx2.MockTransport(handler)) as client:
+        created = client.alerts.create("p1", name="p99", metric="latency_p99_ms", threshold=3000)
+        client.alerts.update("r1", webhook_url=None)
+        client.alerts.delete("r1")
+        with pytest.raises(ValueError, match="unknown alert rule fields"):
+            client.alerts.update("r1", nope=1)
+    assert created.metric == "latency_p99_ms"
+    assert seen[0] == (
+        "POST",
+        "/api/v1/projects/p1/alert-rules",
+        {
+            "name": "p99",
+            "metric": "latency_p99_ms",
+            "operator": "gt",
+            "threshold": 3000,
+            "window_minutes": 60,
+            "webhook_format": "json",
+            "enabled": True,
+        },
+    )
+    assert seen[1] == ("PATCH", "/api/v1/alert-rules/r1", {"webhook_url": None})
+    assert seen[2][0] == "DELETE"

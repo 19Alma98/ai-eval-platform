@@ -20,6 +20,9 @@ class Project:
     name: str
     slug: str
     created_at: datetime
+    # Days of production data (traces, live answers, scores, alert events) to keep;
+    # None falls back to the server's RETENTION_DAYS (keep forever when unset).
+    retention_days: int | None = None
 
     @classmethod
     def create(cls, name: str, slug: str | None = None) -> Project:

@@ -251,6 +251,34 @@ def test_init_honors_service_name_env(monkeypatch: pytest.MonkeyPatch) -> None:
     assert provider.resource.attributes.get("service.name") == "env-svc"
 
 
+def test_init_sets_release_resource(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("OPENGRADE_ENVIRONMENT", "prod")
+    opengrade.init(project_slug="demo", instrument=False, version="1.4.2")
+    provider = _otel._PROVIDER
+    assert isinstance(provider, TracerProvider)
+    attrs = provider.resource.attributes
+    assert attrs.get("service.version") == "1.4.2"
+    assert attrs.get("deployment.environment") == "prod"
+    assert "opengrade.version" not in attrs
+
+
+def test_init_on_host_provider_stamps_release_on_spans() -> None:
+    host = TracerProvider(shutdown_on_exit=False)
+    host_exporter = _RecordingExporter()
+    host.add_span_processor(_otel.BatchSpanProcessor(host_exporter))
+    trace.set_tracer_provider(host)
+
+    opengrade.init(project_slug="demo", instrument=False, version="v9", environment="staging")
+    with opengrade_span():
+        pass
+    opengrade.flush()
+    host.force_flush()
+    (span,) = [s for s in host_exporter.spans if s.name == "s"]
+    assert span.attributes is not None
+    assert span.attributes["opengrade.version"] == "v9"
+    assert span.attributes["opengrade.environment"] == "staging"
+
+
 def test_flush_without_init_returns_true() -> None:
     assert opengrade.flush() is True
 
