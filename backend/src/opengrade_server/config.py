@@ -42,6 +42,14 @@ class Settings(BaseSettings):
     otlp_max_inflight: int = 32
     otlp_max_pending_scores: int = 200
     otlp_retry_after_seconds: int = 1
+    # Server-side alerts: rules are evaluated in the API process every interval.
+    alerts_enabled: bool = True
+    alerts_interval_seconds: float = 60.0
+    # Webhook for rules without their own (Slack/Teams/any JSON endpoint).
+    alert_webhook_url: str | None = None
+    alert_webhook_timeout_seconds: float = 10.0
+    # Where the UI is reachable from outside, for links in alert notifications.
+    public_base_url: str | None = None
 
 
 @lru_cache

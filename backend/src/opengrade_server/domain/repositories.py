@@ -5,6 +5,7 @@ from collections.abc import Collection
 from datetime import datetime
 from typing import Protocol
 
+from opengrade_server.domain.alert import AlertEvent, AlertRule
 from opengrade_server.domain.app_config import AppConfig, AppConfigAlias
 from opengrade_server.domain.dataset import Dataset, DatasetItem
 from opengrade_server.domain.evaluation import EvaluationResultRecord, EvaluationRun
@@ -147,6 +148,26 @@ class ExperimentAliasRepository(Protocol):
     async def list_events(
         self, project_id: uuid.UUID, name: str, *, limit: int = 50
     ) -> list[ExperimentAliasEvent]: ...
+
+
+class AlertRepository(Protocol):
+    async def add_rule(self, rule: AlertRule) -> AlertRule: ...
+
+    async def update_rule(self, rule: AlertRule) -> AlertRule: ...
+
+    async def get_rule(self, rule_id: uuid.UUID) -> AlertRule | None: ...
+
+    async def list_rules(self, project_id: uuid.UUID) -> list[AlertRule]: ...
+
+    async def list_enabled_rules(self) -> list[AlertRule]: ...
+
+    async def delete_rule(self, rule_id: uuid.UUID) -> bool: ...
+
+    async def add_event(self, event: AlertEvent) -> AlertEvent: ...
+
+    async def list_events(
+        self, project_id: uuid.UUID, *, rule_id: uuid.UUID | None = None, limit: int = 50
+    ) -> list[AlertEvent]: ...
 
 
 class ExperimentMetricRepository(Protocol):

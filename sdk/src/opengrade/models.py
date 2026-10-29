@@ -349,3 +349,36 @@ class ListLiveInteractionsResponse(_ApiModel):
 
 class TraceScoresAccepted(_ApiModel):
     accepted: int
+
+
+class AlertRuleResponse(_ApiModel):
+    id: str
+    project_id: str | None = None
+    name: str
+    metric: str
+    operator: str = "gt"
+    threshold: float
+    window_minutes: int = 60
+    min_samples: int = 0
+    score_name: str | None = None
+    score_source: str | None = None
+    webhook_url: str | None = None
+    webhook_format: str = "json"
+    repeat_minutes: int | None = None
+    enabled: bool = True
+    state: str = "no_data"
+    last_value: float | None = None
+    last_evaluated_at: datetime | str | None = None
+    last_notified_at: datetime | str | None = None
+
+
+class AlertEventResponse(_ApiModel):
+    id: str
+    rule_id: str
+    kind: str
+    value: float | None = None
+    threshold: float | None = None
+    message: str = ""
+    delivery_status: str = "skipped"
+    delivery_error: str | None = None
+    created_at: datetime | str | None = None

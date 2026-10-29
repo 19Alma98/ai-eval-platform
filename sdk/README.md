@@ -333,6 +333,25 @@ opengrade.log_feedback(True, trace_id=trace_id, user_id="user-42", comment="grea
 - Scores are sent in the background (batches every 2 s, 100 scores or about 512 KB). A 413 (body over the server's 1 MiB limit) splits the batch in half and resends, dropping only a single score that is still too large. A batch rejected with 400/422 is resent item by item so only the bad scores are dropped; 401/403/404 and other 4xx drop the batch at once; only network errors and 5xx are retried once after a 1 s backoff, then dropped with a warning.
 - `opengrade.flush(timeout_millis)` is one total budget: spans, then pending metrics, then scores. At exit, spans, pending metrics, and scores share one ~5 s budget (span flush is capped at ~2 s of that).
 
+### Alerts
+
+The server checks alert rules every minute on production data and notifies a webhook (Slack or any URL) when one fires or resolves. Create them in the UI (Production → Alerts) or as code:
+
+```python
+client = opengrade.get_client()
+client.alerts.create(
+    name="Groundedness failing",
+    metric="score_fail_rate",  # also error_rate, latency_p90_ms, traffic, cost_usd, ...
+    score_name="groundedness",
+    threshold=0.2,  # rates are 0-1
+    window_minutes=60,
+    webhook_url="https://hooks.slack.com/services/...",
+    webhook_format="slack",
+)
+client.alerts.list()  # with state: ok / firing / no_data
+client.alerts.events()  # notification log
+```
+
 ### Live runs → TestSet loop
 
 ```python

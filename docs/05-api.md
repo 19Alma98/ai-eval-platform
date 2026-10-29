@@ -370,6 +370,27 @@ Default window: the last 24 hours (`until` defaults to now). Naive datetimes are
 - `GET /api/v1/projects/{project_id}/traces/{trace_id}` includes `scores`.
 - `GET /api/v1/projects/{project_id}/live-interactions` and `GET /api/v1/live-interactions/{id}` include `trace_scores`, joined on `metadata.source_trace_id`. `failed_only=true` also keeps interactions with any trace score whose stored label is `FAIL`, whatever its source (e.g. an SDK metric under its threshold, or a thumbs-down); `ERROR` does not count. Judge calibration ignores trace scores.
 
+## Alerts (server-side)
+
+Rules on production monitoring metrics, evaluated by the API process every `ALERTS_INTERVAL_SECONDS` (default 60; `ALERTS_ENABLED=false` turns the loop off). Same numbers as the Production page (experiment-bound traces excluded).
+
+```http
+POST   /projects/{project_id}/alert-rules            # create
+GET    /projects/{project_id}/alert-rules            # list with current state
+POST   /projects/{project_id}/alert-rules/evaluate   # evaluate now
+GET    /projects/{project_id}/alert-events?rule_id=&limit=
+GET    /alert-rules/{rule_id}
+PATCH  /alert-rules/{rule_id}                         # omitted = unchanged, null clears optional fields
+DELETE /alert-rules/{rule_id}
+POST   /alert-rules/{rule_id}/test                    # send a test notification
+```
+
+Body: `name`, `metric` (`error_rate`, `latency_p50_ms` / `latency_p90_ms` / `latency_p99_ms`, `traffic`, `cost_usd`, `total_tokens`, `needs_review`, `score_mean`, `score_fail_rate`), `operator` (`gt` / `lt`), `threshold` (rates are 0–1), `window_minutes` (5–10080, default 60), `min_samples` (default 10 for rates/percentiles/scores, else 0), `score_name` + optional `score_source` (`judge`, `sdk`, `human`) for `score_*`, `webhook_url`, `webhook_format` (`json` or `slack`), `repeat_minutes`, `enabled`.
+
+State: `ok`, `firing`, or `no_data` (fewer than `min_samples`). Becoming `firing` notifies once, going back to `ok` sends `resolved`; `repeat_minutes` re-sends while firing. Changing the condition resets the state. Every notification is logged as an alert event with its delivery status (`sent`, `failed`, `skipped` when no webhook). Webhook: the rule's URL, else `ALERT_WEBHOOK_URL`. The `json` payload has `text` (Slack-compatible), `event`, `project`, `rule`, `value`, `samples`, `url`, `at`; `slack` sends only `text`. Set `PUBLIC_BASE_URL` to include a link to the Production page.
+
+Single API replica only: several replicas would each evaluate and notify.
+
 ## Comparison
 
 ```http

@@ -609,3 +609,73 @@ export type ProductionMonitoring = {
   traffic: TrafficBucket[];
   metrics: MetricMonitor[];
 };
+
+export type AlertMetric =
+  | "error_rate"
+  | "latency_p50_ms"
+  | "latency_p90_ms"
+  | "latency_p99_ms"
+  | "traffic"
+  | "cost_usd"
+  | "total_tokens"
+  | "needs_review"
+  | "score_mean"
+  | "score_fail_rate";
+
+export type AlertRule = {
+  id: string;
+  project_id: string;
+  name: string;
+  metric: AlertMetric;
+  operator: "gt" | "lt";
+  threshold: number;
+  window_minutes: number;
+  min_samples: number;
+  score_name: string | null;
+  score_source: string | null;
+  webhook_url: string | null;
+  webhook_format: "json" | "slack";
+  repeat_minutes: number | null;
+  enabled: boolean;
+  state: "ok" | "firing" | "no_data";
+  last_value: number | null;
+  last_evaluated_at: string | null;
+  last_notified_at: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type AlertRuleInput = {
+  name: string;
+  metric: AlertMetric;
+  operator: "gt" | "lt";
+  threshold: number;
+  window_minutes: number;
+  min_samples?: number | null;
+  score_name?: string | null;
+  score_source?: string | null;
+  webhook_url?: string | null;
+  webhook_format: "json" | "slack";
+  repeat_minutes?: number | null;
+  enabled?: boolean;
+};
+
+export type AlertEvent = {
+  id: string;
+  rule_id: string;
+  project_id: string;
+  kind: "firing" | "resolved" | "repeat" | "test";
+  value: number | null;
+  threshold: number;
+  message: string;
+  delivery_status: "sent" | "failed" | "skipped";
+  delivery_error: string | null;
+  created_at: string;
+};
+
+export type AlertEvaluation = {
+  rule: AlertRule;
+  value: number | null;
+  samples: number;
+  event: AlertEvent | null;
+};

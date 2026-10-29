@@ -1085,3 +1085,96 @@ class ProjectOverviewResponse(BaseModel):
     offline: OfflineOverviewResponse
     calibration_alerts: list[CalibrationAlertResponse]
     warnings: list[str] = Field(default_factory=list)
+
+
+AlertMetricName = Literal[
+    "error_rate",
+    "latency_p50_ms",
+    "latency_p90_ms",
+    "latency_p99_ms",
+    "traffic",
+    "cost_usd",
+    "total_tokens",
+    "needs_review",
+    "score_mean",
+    "score_fail_rate",
+]
+
+
+class CreateAlertRuleRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    name: str = Field(min_length=1, max_length=200)
+    metric: AlertMetricName
+    operator: Literal["gt", "lt"] = "gt"
+    threshold: float
+    window_minutes: int = Field(default=60, ge=5, le=7 * 24 * 60)
+    min_samples: int | None = Field(default=None, ge=0)
+    score_name: str | None = Field(default=None, max_length=200)
+    score_source: str | None = Field(default=None, max_length=64)
+    webhook_url: str | None = Field(default=None, max_length=2000)
+    webhook_format: Literal["json", "slack"] = "json"
+    repeat_minutes: int | None = Field(default=None, ge=5)
+    enabled: bool = True
+
+
+class UpdateAlertRuleRequest(BaseModel):
+    """Omitted fields stay as they are; ``null`` clears score/webhook/repeat fields."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    name: str | None = Field(default=None, min_length=1, max_length=200)
+    metric: AlertMetricName | None = None
+    operator: Literal["gt", "lt"] | None = None
+    threshold: float | None = None
+    window_minutes: int | None = Field(default=None, ge=5, le=7 * 24 * 60)
+    min_samples: int | None = Field(default=None, ge=0)
+    score_name: str | None = Field(default=None, max_length=200)
+    score_source: str | None = Field(default=None, max_length=64)
+    webhook_url: str | None = Field(default=None, max_length=2000)
+    webhook_format: Literal["json", "slack"] | None = None
+    repeat_minutes: int | None = Field(default=None, ge=5)
+    enabled: bool | None = None
+
+
+class AlertRuleResponse(BaseModel):
+    id: uuid.UUID
+    project_id: uuid.UUID
+    name: str
+    metric: str
+    operator: str
+    threshold: float
+    window_minutes: int
+    min_samples: int
+    score_name: str | None
+    score_source: str | None
+    webhook_url: str | None
+    webhook_format: str
+    repeat_minutes: int | None
+    enabled: bool
+    state: str
+    last_value: float | None
+    last_evaluated_at: datetime | None
+    last_notified_at: datetime | None
+    created_at: datetime
+    updated_at: datetime
+
+
+class AlertEventResponse(BaseModel):
+    id: uuid.UUID
+    rule_id: uuid.UUID
+    project_id: uuid.UUID
+    kind: str
+    value: float | None
+    threshold: float
+    message: str
+    delivery_status: str
+    delivery_error: str | None
+    created_at: datetime
+
+
+class AlertEvaluationResponse(BaseModel):
+    rule: AlertRuleResponse
+    value: float | None
+    samples: int
+    event: AlertEventResponse | None

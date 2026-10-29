@@ -14,6 +14,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from opengrade_server.domain.alert import AlertEvent, AlertRule
 from opengrade_server.domain.app_config import AppConfig, AppConfigAlias
 from opengrade_server.domain.dataset import Dataset, DatasetItem
 from opengrade_server.domain.evaluation import EvaluationResultRecord, EvaluationRun
@@ -33,6 +34,8 @@ from opengrade_server.domain.project import Project
 from opengrade_server.domain.trace import Span, Trace
 from opengrade_server.domain.trace_score import TraceScore, TraceScoreSummaryRow
 from opengrade_server.infrastructure.models import (
+    AlertEventModel,
+    AlertRuleModel,
     AppConfigAliasModel,
     AppConfigModel,
     DatasetItemModel,
@@ -1839,3 +1842,148 @@ class SqlJudgeClaimCache:
                 await session.commit()
         except Exception:  # noqa: BLE001
             _cache_logger.warning("judge claim cache write failed", exc_info=True)
+
+
+def _alert_rule_to_domain(row: AlertRuleModel) -> AlertRule:
+    return AlertRule(
+        id=row.id,
+        project_id=row.project_id,
+        name=row.name,
+        metric=row.metric,
+        operator=row.operator,
+        threshold=row.threshold,
+        window_minutes=row.window_minutes,
+        min_samples=row.min_samples,
+        score_name=row.score_name,
+        score_source=row.score_source,
+        webhook_url=row.webhook_url,
+        webhook_format=row.webhook_format,
+        repeat_minutes=row.repeat_minutes,
+        enabled=row.enabled,
+        state=row.state,
+        last_value=row.last_value,
+        last_evaluated_at=row.last_evaluated_at,
+        last_notified_at=row.last_notified_at,
+        created_at=row.created_at,
+        updated_at=row.updated_at,
+    )
+
+
+def _alert_event_to_domain(row: AlertEventModel) -> AlertEvent:
+    return AlertEvent(
+        id=row.id,
+        rule_id=row.rule_id,
+        project_id=row.project_id,
+        kind=row.kind,
+        value=row.value,
+        threshold=row.threshold,
+        message=row.message,
+        delivery_status=row.delivery_status,
+        delivery_error=row.delivery_error,
+        created_at=row.created_at,
+    )
+
+
+_ALERT_RULE_FIELDS = (
+    "name",
+    "metric",
+    "operator",
+    "threshold",
+    "window_minutes",
+    "min_samples",
+    "score_name",
+    "score_source",
+    "webhook_url",
+    "webhook_format",
+    "repeat_minutes",
+    "enabled",
+    "state",
+    "last_value",
+    "last_evaluated_at",
+    "last_notified_at",
+    "created_at",
+    "updated_at",
+)
+
+
+class SqlAlchemyAlertRepository:
+    def __init__(self, session: AsyncSession) -> None:
+        self._session = session
+
+    async def add_rule(self, rule: AlertRule) -> AlertRule:
+        row = AlertRuleModel(
+            id=rule.id,
+            project_id=rule.project_id,
+            **{field: getattr(rule, field) for field in _ALERT_RULE_FIELDS},
+        )
+        self._session.add(row)
+        await self._session.commit()
+        await self._session.refresh(row)
+        return _alert_rule_to_domain(row)
+
+    async def update_rule(self, rule: AlertRule) -> AlertRule:
+        row = await self._session.get(AlertRuleModel, rule.id)
+        if row is None:
+            raise LookupError(f"alert rule {rule.id} not found")
+        for field in _ALERT_RULE_FIELDS:
+            setattr(row, field, getattr(rule, field))
+        await self._session.commit()
+        await self._session.refresh(row)
+        return _alert_rule_to_domain(row)
+
+    async def get_rule(self, rule_id: uuid.UUID) -> AlertRule | None:
+        row = await self._session.get(AlertRuleModel, rule_id)
+        return _alert_rule_to_domain(row) if row is not None else None
+
+    async def list_rules(self, project_id: uuid.UUID) -> list[AlertRule]:
+        result = await self._session.execute(
+            select(AlertRuleModel)
+            .where(AlertRuleModel.project_id == project_id)
+            .order_by(AlertRuleModel.created_at.asc())
+        )
+        return [_alert_rule_to_domain(row) for row in result.scalars().all()]
+
+    async def list_enabled_rules(self) -> list[AlertRule]:
+        result = await self._session.execute(
+            select(AlertRuleModel)
+            .where(AlertRuleModel.enabled.is_(True))
+            .order_by(AlertRuleModel.project_id, AlertRuleModel.created_at)
+        )
+        return [_alert_rule_to_domain(row) for row in result.scalars().all()]
+
+    async def delete_rule(self, rule_id: uuid.UUID) -> bool:
+        row = await self._session.get(AlertRuleModel, rule_id)
+        if row is None:
+            return False
+        await self._session.delete(row)
+        await self._session.commit()
+        return True
+
+    async def add_event(self, event: AlertEvent) -> AlertEvent:
+        row = AlertEventModel(
+            id=event.id,
+            rule_id=event.rule_id,
+            project_id=event.project_id,
+            kind=event.kind,
+            value=event.value,
+            threshold=event.threshold,
+            message=event.message[:2000],
+            delivery_status=event.delivery_status,
+            delivery_error=(event.delivery_error or None) and event.delivery_error[:2000],
+            created_at=event.created_at,
+        )
+        self._session.add(row)
+        await self._session.commit()
+        await self._session.refresh(row)
+        return _alert_event_to_domain(row)
+
+    async def list_events(
+        self, project_id: uuid.UUID, *, rule_id: uuid.UUID | None = None, limit: int = 50
+    ) -> list[AlertEvent]:
+        query = select(AlertEventModel).where(AlertEventModel.project_id == project_id)
+        if rule_id is not None:
+            query = query.where(AlertEventModel.rule_id == rule_id)
+        result = await self._session.execute(
+            query.order_by(AlertEventModel.created_at.desc()).limit(limit)
+        )
+        return [_alert_event_to_domain(row) for row in result.scalars().all()]

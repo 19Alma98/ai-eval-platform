@@ -1,5 +1,6 @@
+import asyncio
 from collections.abc import AsyncIterator
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, suppress
 
 from fastapi import FastAPI, Response, status
 from fastapi.responses import JSONResponse
@@ -36,13 +37,24 @@ def _ensure_evaluators_registered() -> None:
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
+    from opengrade_server.application.alerts import run_alert_loop
     from opengrade_server.application.scoring_recovery import recover_scoring_after_restart
 
     init_db()
     await bootstrap_schema()
     _ensure_evaluators_registered()
     await recover_scoring_after_restart()
+    settings = get_settings()
+    alert_loop = (
+        asyncio.create_task(run_alert_loop(settings.alerts_interval_seconds), name="alert-loop")
+        if settings.alerts_enabled
+        else None
+    )
     yield
+    if alert_loop is not None:
+        alert_loop.cancel()
+        with suppress(asyncio.CancelledError):
+            await alert_loop
     await dispose_db()
 
 
