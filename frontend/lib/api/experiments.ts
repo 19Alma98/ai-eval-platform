@@ -84,9 +84,14 @@ export function summarizeProjectExperiments(
   );
 }
 
-export function compareExperiments(experimentId: string, baselineId: string) {
+export function compareExperiments(
+  experimentId: string,
+  baselineId: string,
+  groupBy?: string | null,
+) {
+  const qs = groupBy ? `?${new URLSearchParams({ group_by: groupBy })}` : "";
   return apiGet<ExperimentCompareResponse>(
-    `/api/v1/experiments/${experimentId}/compare/${baselineId}`,
+    `/api/v1/experiments/${experimentId}/compare/${baselineId}${qs}`,
   );
 }
 

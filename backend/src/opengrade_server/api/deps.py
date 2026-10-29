@@ -634,8 +634,9 @@ def get_summarize_experiment(
     evaluators: SqlAlchemyEvaluatorRepository = Depends(get_evaluator_repository),
     fingerprints: CurrentScoringFingerprint = Depends(get_current_scoring_fingerprint),
     metrics: SqlAlchemyExperimentMetricRepository = Depends(get_experiment_metric_repository),
+    datasets: SqlAlchemyDatasetRepository = Depends(get_dataset_repository),
 ) -> SummarizeExperiment:
-    return SummarizeExperiment(experiments, runs, evaluators, fingerprints, metrics)
+    return SummarizeExperiment(experiments, runs, evaluators, fingerprints, metrics, datasets)
 
 
 def get_compare_experiments(
@@ -644,8 +645,9 @@ def get_compare_experiments(
     evaluators: SqlAlchemyEvaluatorRepository = Depends(get_evaluator_repository),
     fingerprints: CurrentScoringFingerprint = Depends(get_current_scoring_fingerprint),
     metrics: SqlAlchemyExperimentMetricRepository = Depends(get_experiment_metric_repository),
+    datasets: SqlAlchemyDatasetRepository = Depends(get_dataset_repository),
 ) -> CompareExperiments:
-    return CompareExperiments(experiments, runs, evaluators, fingerprints, metrics)
+    return CompareExperiments(experiments, runs, evaluators, fingerprints, metrics, datasets)
 
 
 def get_compare_experiment_items(
@@ -719,8 +721,9 @@ def get_release_check(
     compare: CompareExperiments = Depends(get_compare_experiments),
     fingerprints: CurrentScoringFingerprint = Depends(get_current_scoring_fingerprint),
     metrics: SqlAlchemyExperimentMetricRepository = Depends(get_experiment_metric_repository),
+    datasets: SqlAlchemyDatasetRepository = Depends(get_dataset_repository),
 ) -> ReleaseCheck:
-    return ReleaseCheck(projects, experiments, runs, compare, fingerprints, metrics)
+    return ReleaseCheck(projects, experiments, runs, compare, fingerprints, metrics, datasets)
 
 
 def get_live_interaction_repository(

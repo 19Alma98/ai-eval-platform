@@ -128,6 +128,7 @@ result = opengrade.evaluate(
     # git=False,  # the commit/branch/dirty state is recorded automatically; False skips it
     max_concurrency=8,
     # repeats=3,  # run each item 3 times: per-item mean, flaky items counted
+    # group_by="category",  # also report means / baseline deltas per metadata value
 )
 print(result.summary(), result.url)
 
@@ -151,6 +152,7 @@ How it behaves:
 - **Datasets**: pass a registered name/id, a path to CSV/JSON/JSONL, a list or iterable of dicts, a pandas DataFrame, or a Polars DataFrame. Rows need an `input` column (or `question`). `expected_output` (or `expected_answer`), `context` and `metadata` map to item fields; any other column goes into `metadata` (so `expected_doc_ids` and `must_contain` work). A missing `input`/`question` raises `opengrade.DatasetColumnError` (CSV headers are checked up front). Inline rows are hashed into a dataset name, so re-running on the same rows reuses the same dataset. Generators are materialised before upload (no lazy streaming).
 - **Outputs** are uploaded with `PUT /experiments/{id}/outputs`, so this works without `opengrade.init()`. With tracing on, `finish()` waits for the OTLP traces to be bound (up to 30s) and merges their context in. Your explicit output always wins.
 - **Repeats**: `repeats=N` runs the task N times per item (each run is its own trace and output, `repeat` 0..N-1). Scores are averaged per item before aggregating, so every item weighs once and the baseline comparison still pairs items; the bootstrap CI then reflects run-to-run noise less. Items whose PASS/FAIL changes between repeats count as flaky (`result.flaky`, the `flaky` column in `summary()`, the UI scorecard). In a manual loop pass `exp.run(item, repeat=i)`. Max 100.
+- **Groups**: `group_by="category"` (a dataset-item metadata key, dotted paths allowed) adds per-group means and baseline deltas: `result.groups` and a `by category:` block in `summary()`. A drop on one kind of question shows up even when the overall mean holds. `client.experiments.summary(id, group_by=...)` / `compare(..., group_by=...)` return the same data; the release gate can enforce it with a `groups` policy block (see `docs/08-cli-ci.md`).
 - **Errors**: when a task raises, `evaluate` records it on the item (`result.errors`, `metadata.error`) and moves on. Pass `raise_on_error=True` to stop instead. When the `with` block raises, nothing is scored. Bad dataset columns raise `DatasetColumnError` before the run starts.
 
 ### Custom metrics

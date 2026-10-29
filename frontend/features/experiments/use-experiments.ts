@@ -90,6 +90,29 @@ export function experimentCompareQueryOptions(
   } as const;
 }
 
+export function experimentGroupCompareQueryOptions(
+  experimentId: string,
+  baselineId: string,
+  groupBy: string,
+) {
+  return {
+    queryKey: [...experimentCompareQueryKey(experimentId, baselineId), "group", groupBy] as const,
+    queryFn: () => compareExperiments(experimentId, baselineId, groupBy),
+  } as const;
+}
+
+/** Compare with per-group rows; disabled until a group key is picked. */
+export function useExperimentGroupCompare(
+  experimentId: string | null,
+  baselineId: string | null,
+  groupBy: string | null,
+) {
+  return useQuery({
+    ...experimentGroupCompareQueryOptions(experimentId ?? "", baselineId ?? "", groupBy ?? ""),
+    enabled: Boolean(experimentId && baselineId && groupBy),
+  });
+}
+
 export function useExperimentCompare(
   experimentId: string | null,
   baselineId: string | null,

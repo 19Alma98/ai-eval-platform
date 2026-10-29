@@ -5,6 +5,7 @@ import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useMemo, useState } from "react";
 import { ArrowRight } from "lucide-react";
+import { CompareGroupsSection } from "@/features/experiments/compare-groups-section";
 import { CompareItemsTable } from "@/features/experiments/compare-items-table";
 import { CompareTable } from "@/features/experiments/compare-table";
 import {
@@ -66,6 +67,7 @@ export function ExperimentCompareView({
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const baselineFromQuery = searchParams.get("baseline");
+  const groupBy = searchParams.get("group")?.trim() || null;
 
   const experimentQuery = useExperiment(experimentId);
   const experimentsQuery = useExperiments(projectId);
@@ -101,6 +103,14 @@ export function ExperimentCompareView({
   function setBaselineId(id: string) {
     const params = new URLSearchParams(searchParams.toString());
     params.set("baseline", id);
+    params.set("project", projectId);
+    router.replace(`${pathname}?${params.toString()}`);
+  }
+
+  function setGroupBy(key: string | null) {
+    const params = new URLSearchParams(searchParams.toString());
+    if (key) params.set("group", key);
+    else params.delete("group");
     params.set("project", projectId);
     router.replace(`${pathname}?${params.toString()}`);
   }
@@ -288,6 +298,13 @@ export function ExperimentCompareView({
             metrics={comparison.metrics}
             selectedEvaluatorId={selectedEvaluatorId}
             onSelectEvaluator={setPickedEvaluatorId}
+          />
+          <CompareGroupsSection
+            experimentId={experimentId}
+            baselineId={baselineId}
+            datasetId={experiment.dataset_id}
+            groupBy={groupBy}
+            onGroupByChange={setGroupBy}
           />
           <CompareItemsTable
             projectId={projectId}

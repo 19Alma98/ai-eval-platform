@@ -201,12 +201,17 @@ class FakeServer:
                 scores = [r["score"] for r in metric["results"] if r.get("score") is not None]
                 mean = sum(scores) / len(scores) if scores else None
                 rows.append({"evaluator_name": metric["name"], "mean_score": mean})
+            group_by = request.url.params.get("group_by")
             return httpx2.Response(
                 200,
                 json={
                     "experiment_id": m[1],
                     "evaluators": rows,
                     "experiment_metrics": self.experiment_metrics.get(m[1], {}),
+                    "group_by": group_by,
+                    "groups": [{"value": "billing", "n_items": 2, "evaluators": rows}]
+                    if group_by
+                    else [],
                 },
             )
         if m := re.fullmatch(r"/api/v1/experiments/([^/]+)/compare/([^/]+)", path):
@@ -1087,3 +1092,15 @@ def test_manual_loop_repeat_keeps_runs_apart(server: FakeServer) -> None:
 def test_repeats_out_of_range_rejected(server: FakeServer) -> None:
     with pytest.raises(ValueError, match="repeats must be"):
         opengrade.evaluate(dataset=ROWS, task=_task, metrics=["hit_at_k"], repeats=0)
+
+
+def test_evaluate_group_by_reports_groups(server: FakeServer) -> None:
+    result = opengrade.evaluate(
+        dataset=ROWS, task=_task, metrics=["hit_at_k"], name="grouped", group_by="category"
+    )
+    summary_calls = [c for c in server.calls if c[1].endswith("/summary")]
+    assert summary_calls
+    assert result.groups == {"billing": {"hit_at_k": 0.5}}
+    text = result.summary()
+    assert "by category:" in text
+    assert "billing (n=2)" in text

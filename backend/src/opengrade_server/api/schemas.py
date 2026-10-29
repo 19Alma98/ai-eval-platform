@@ -618,10 +618,18 @@ class EvaluatorSummaryResponse(BaseModel):
     n_flaky: int = 0
 
 
+class GroupSummaryResponse(BaseModel):
+    value: str
+    n_items: int
+    evaluators: list[EvaluatorSummaryResponse]
+
+
 class ExperimentSummaryResponse(BaseModel):
     experiment_id: uuid.UUID
     evaluators: list[EvaluatorSummaryResponse]
     experiment_metrics: dict[str, float] = Field(default_factory=dict)
+    group_by: str | None = None
+    groups: list[GroupSummaryResponse] = Field(default_factory=list)
 
 
 class MetricComparisonResponse(BaseModel):
@@ -650,6 +658,13 @@ class ExperimentMetricComparisonResponse(BaseModel):
     delta: float | None
 
 
+class GroupCompareResponse(BaseModel):
+    value: str
+    n_items: int
+    metrics: list[MetricComparisonResponse]
+    n_regressions: int
+
+
 class ExperimentCompareResponse(BaseModel):
     experiment_id: uuid.UUID
     baseline_experiment_id: uuid.UUID
@@ -665,6 +680,8 @@ class ExperimentCompareResponse(BaseModel):
     experiment_metrics: list[ExperimentMetricComparisonResponse] = Field(default_factory=list)
     candidate_git: GitInfo | None = None
     baseline_git: GitInfo | None = None
+    group_by: str | None = None
+    groups: list[GroupCompareResponse] = Field(default_factory=list)
 
 
 class AbsoluteMinRuleBody(BaseModel):
@@ -705,6 +722,15 @@ class ExperimentMetricRuleBody(BaseModel):
         return self
 
 
+class GroupRuleBody(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    by: str = Field(min_length=1, max_length=200)
+    min_items: int = Field(default=5, ge=1)
+    metrics: list[str] | None = Field(default=None, min_length=1)
+    max_delta: float | None = None
+
+
 class ReleasePolicyBody(BaseModel):
     """Quality gate policy.
 
@@ -718,6 +744,7 @@ class ReleasePolicyBody(BaseModel):
     cost: CostRuleBody | None = None
     regression: RegressionRuleBody | None = None
     experiment_metrics: dict[str, ExperimentMetricRuleBody] | None = None
+    groups: GroupRuleBody | None = None
     # Optional meta keys (stripped before evaluation); accepted so they are not
     # treated as absolute-min evaluator rules.
     api_base_url: str | None = None

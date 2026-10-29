@@ -27,7 +27,10 @@ _COST_KEYS = frozenset({"max_per_request_usd"})
 _MIN_KEYS = frozenset({"min"})
 _REGRESSION_KEYS = frozenset({"max_delta", "allow_insufficient_n"})
 _EXPERIMENT_METRIC_KEYS = frozenset({"min", "max"})
+_GROUP_KEYS = frozenset({"by", "min_items", "metrics", "max_delta"})
 EXPERIMENT_METRICS_KEY = "experiment_metrics"
+GROUPS_KEY = "groups"
+DEFAULT_GROUP_MIN_ITEMS = 5
 
 
 class InvalidPolicyError(ValueError):
@@ -66,12 +69,38 @@ class ExperimentMetricRule:
 
 
 @dataclass(frozen=True, slots=True)
+class GroupRule:
+    """Re-apply the min rules (and the regression bound) inside each group of items.
+
+    Groups come from a dataset-item metadata field (``by``). Groups with fewer than
+    ``min_items`` items are not gated. ``metrics`` limits which evaluators are checked;
+    ``max_delta`` overrides ``regression.max_delta`` for groups.
+    """
+
+    by: str
+    min_items: int = DEFAULT_GROUP_MIN_ITEMS
+    metrics: tuple[str, ...] | None = None
+    max_delta: float | None = None
+
+    def applies_to(self, evaluator_name: str) -> bool:
+        return self.metrics is None or evaluator_name in self.metrics
+
+
+@dataclass(frozen=True, slots=True)
 class ReleasePolicy:
     absolute_mins: tuple[AbsoluteMinRule, ...]
     latency: LatencyP95Rule | None
     cost: CostMeanRule | None
     regression: RegressionRule | None
     experiment_metrics: tuple[ExperimentMetricRule, ...] = ()
+    groups: GroupRule | None = None
+
+    def group_max_delta(self) -> float | None:
+        if self.groups is None:
+            return None
+        if self.groups.max_delta is not None:
+            return self.groups.max_delta
+        return self.regression.max_delta if self.regression is not None else None
 
 
 @dataclass(frozen=True, slots=True)
@@ -116,6 +145,7 @@ def parse_release_policy(raw: dict[str, Any]) -> ReleasePolicy:
     cost: CostMeanRule | None = None
     regression: RegressionRule | None = None
     experiment_metrics: tuple[ExperimentMetricRule, ...] = ()
+    groups: GroupRule | None = None
 
     for key, value in raw.items():
         if key in META_KEYS:
@@ -127,6 +157,9 @@ def parse_release_policy(raw: dict[str, Any]) -> ReleasePolicy:
             continue
         if key == EXPERIMENT_METRICS_KEY:
             experiment_metrics = _parse_experiment_metrics(value)
+            continue
+        if key == GROUPS_KEY:
+            groups = _parse_groups(value)
             continue
         if key == "latency":
             latency = _parse_latency(value)
@@ -145,13 +178,19 @@ def parse_release_policy(raw: dict[str, Any]) -> ReleasePolicy:
     ):
         raise InvalidPolicyError("policy must define at least one rule")
 
-    return ReleasePolicy(
+    policy = ReleasePolicy(
         absolute_mins=tuple(absolute_mins),
         latency=latency,
         cost=cost,
         regression=regression,
         experiment_metrics=experiment_metrics,
+        groups=groups,
     )
+    if groups is not None and not absolute_mins and policy.group_max_delta() is None:
+        raise InvalidPolicyError(
+            "policy.groups needs metric min rules or a regression max_delta to apply per group"
+        )
+    return policy
 
 
 def _require_float(block: str, field: str, value: Any) -> float:
@@ -235,6 +274,86 @@ def _parse_experiment_metrics(value: dict[str, Any]) -> tuple[ExperimentMetricRu
     return tuple(rules)
 
 
+def _parse_groups(value: dict[str, Any]) -> GroupRule:
+    unknown = set(value) - _GROUP_KEYS
+    if unknown:
+        raise InvalidPolicyError(f"policy.groups has unsupported keys: {sorted(unknown)}")
+    by = value.get("by")
+    if not isinstance(by, str) or not by.strip():
+        raise InvalidPolicyError("policy.groups requires by (a dataset metadata field)")
+    min_items = value.get("min_items", DEFAULT_GROUP_MIN_ITEMS)
+    if isinstance(min_items, bool) or not isinstance(min_items, int) or min_items < 1:
+        raise InvalidPolicyError("policy.groups.min_items must be a positive integer")
+    metrics = value.get("metrics")
+    if metrics is not None and (
+        not isinstance(metrics, list)
+        or not metrics
+        or not all(isinstance(m, str) and m.strip() for m in metrics)
+    ):
+        raise InvalidPolicyError("policy.groups.metrics must be a non-empty list of names")
+    max_delta = value.get("max_delta")
+    return GroupRule(
+        by=by.strip(),
+        min_items=min_items,
+        metrics=tuple(m.strip() for m in metrics) if metrics is not None else None,
+        max_delta=_require_float("groups", "max_delta", max_delta)
+        if max_delta is not None
+        else None,
+    )
+
+
+@dataclass(frozen=True, slots=True)
+class GroupInput:
+    """One group of items: candidate means per evaluator and mean-score deltas."""
+
+    value: str
+    n_items: int
+    mean_scores: Mapping[str, float | None]
+    deltas: Mapping[str, float | None]
+
+
+def evaluate_group_checks(policy: ReleasePolicy, groups: list[GroupInput]) -> list[PolicyCheck]:
+    """Per-group min and regression checks. Metrics that do not apply to a group (no
+    applicable item, no paired delta) and groups under ``min_items`` are not checked."""
+    rule = policy.groups
+    if rule is None:
+        return []
+    max_delta = policy.group_max_delta()
+    checks: list[PolicyCheck] = []
+    for group in groups:
+        if group.n_items < rule.min_items:
+            continue
+        prefix = f"{GROUPS_KEY}.{rule.by}={group.value}"
+        for min_rule in policy.absolute_mins:
+            if not rule.applies_to(min_rule.evaluator_name):
+                continue
+            actual = group.mean_scores.get(min_rule.evaluator_name)
+            if actual is None:
+                continue
+            checks.append(
+                PolicyCheck(
+                    metric=f"{prefix}.{min_rule.evaluator_name}.min",
+                    actual=actual,
+                    threshold=min_rule.min_score,
+                    status="passed" if actual >= min_rule.min_score else "failed",
+                )
+            )
+        if max_delta is None:
+            continue
+        for name, delta in sorted(group.deltas.items()):
+            if delta is None or not rule.applies_to(name):
+                continue
+            checks.append(
+                PolicyCheck(
+                    metric=f"{prefix}.regression.{name}.mean_score",
+                    actual=delta,
+                    threshold=max_delta,
+                    status="passed" if delta >= max_delta else "failed",
+                )
+            )
+    return checks
+
+
 def percentile_nearest_rank(values: list[float], percentile: float) -> float:
     if not values:
         raise ValueError("values must be non-empty")
@@ -272,6 +391,7 @@ def evaluate_policy(
     candidate: list[EvaluatorMetricInput] | tuple[EvaluatorMetricInput, ...],
     regression_deltas: list[RegressionDeltaInput] | tuple[RegressionDeltaInput, ...] = (),
     experiment_metrics: Mapping[str, float] | None = None,
+    groups: list[GroupInput] | None = None,
 ) -> PolicyEvaluation:
     checks: list[PolicyCheck] = []
     by_name = _by_name(candidate)
@@ -322,6 +442,8 @@ def evaluate_policy(
         else:
             for delta in regression_deltas:
                 checks.append(_eval_regression(policy.regression, delta))
+
+    checks.extend(evaluate_group_checks(policy, groups or []))
 
     overall: OverallStatus = (
         "passed" if checks and all(c.status == "passed" for c in checks) else "failed"

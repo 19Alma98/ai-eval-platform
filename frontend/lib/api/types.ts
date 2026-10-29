@@ -248,6 +248,13 @@ export type CompareRunRef = {
   metadata: Record<string, unknown>;
 };
 
+export type GroupCompare = {
+  value: string;
+  n_items: number;
+  metrics: MetricComparison[];
+  n_regressions: number;
+};
+
 export type ExperimentCompareResponse = {
   experiment_id: string;
   baseline_experiment_id: string;
@@ -261,6 +268,8 @@ export type ExperimentCompareResponse = {
   baseline_runs?: CompareRunRef[];
   candidate_git?: GitInfo | null;
   baseline_git?: GitInfo | null;
+  group_by?: string | null;
+  groups?: GroupCompare[];
 };
 
 export type ItemSide = {

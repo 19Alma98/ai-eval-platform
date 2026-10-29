@@ -167,10 +167,18 @@ class EvaluatorSummaryResponse(_ApiModel):
     n_flaky: int = 0
 
 
+class GroupSummaryResponse(_ApiModel):
+    value: str
+    n_items: int = 0
+    evaluators: list[EvaluatorSummaryResponse] = Field(default_factory=list)
+
+
 class ExperimentSummaryResponse(_ApiModel):
     experiment_id: str
     evaluators: list[EvaluatorSummaryResponse] = Field(default_factory=list)
     experiment_metrics: dict[str, float] = Field(default_factory=dict)
+    group_by: str | None = None
+    groups: list[GroupSummaryResponse] = Field(default_factory=list)
 
 
 class MetricComparisonResponse(_ApiModel):
@@ -195,6 +203,13 @@ class ExperimentMetricsResponse(_ApiModel):
     metrics: dict[str, float] = Field(default_factory=dict)
 
 
+class GroupCompareResponse(_ApiModel):
+    value: str
+    n_items: int = 0
+    metrics: list[MetricComparisonResponse] = Field(default_factory=list)
+    n_regressions: int = 0
+
+
 class ExperimentCompareResponse(_ApiModel):
     experiment_id: str | None = None
     baseline_experiment_id: str | None = None
@@ -207,6 +222,8 @@ class ExperimentCompareResponse(_ApiModel):
     experiment_metrics: list[ExperimentMetricComparisonResponse] = Field(default_factory=list)
     candidate_git: GitInfo | None = None
     baseline_git: GitInfo | None = None
+    group_by: str | None = None
+    groups: list[GroupCompareResponse] = Field(default_factory=list)
 
 
 class MetricsPackEntryResponse(_ApiModel):

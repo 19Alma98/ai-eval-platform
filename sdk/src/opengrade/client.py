@@ -462,13 +462,17 @@ class _ExperimentsResource:
         *,
         run_ids: builtins.list[str] | None = None,
         evaluator_ids: builtins.list[str] | None = None,
+        group_by: str | None = None,
     ) -> ExperimentSummaryResponse:
+        """Aggregates per evaluator; ``group_by`` (item metadata key) adds per-group rows."""
         path = f"/api/v1/experiments/{experiment_id}/summary"
         pairs: builtins.list[tuple[str, str]] = []
         for rid in run_ids or []:
             pairs.append(("run_ids", rid))
         for eid in evaluator_ids or []:
             pairs.append(("evaluator_ids", eid))
+        if group_by:
+            pairs.append(("group_by", group_by))
         if pairs:
             path = f"{path}?{urlencode(pairs)}"
         return self._http.request_model("GET", path, response_model=ExperimentSummaryResponse)
@@ -481,7 +485,9 @@ class _ExperimentsResource:
         evaluator_ids: builtins.list[str] | None = None,
         candidate_run_ids: builtins.list[str] | None = None,
         baseline_run_ids: builtins.list[str] | None = None,
+        group_by: str | None = None,
     ) -> ExperimentCompareResponse:
+        """Candidate vs baseline; ``group_by`` (item metadata key) adds per-group deltas."""
         path = f"/api/v1/experiments/{experiment_id}/compare/{baseline_id}"
         pairs: builtins.list[tuple[str, str]] = []
         for eid in evaluator_ids or []:
@@ -490,6 +496,8 @@ class _ExperimentsResource:
             pairs.append(("candidate_run_ids", rid))
         for rid in baseline_run_ids or []:
             pairs.append(("baseline_run_ids", rid))
+        if group_by:
+            pairs.append(("group_by", group_by))
         if pairs:
             path = f"{path}?{urlencode(pairs)}"
         return self._http.request_model("GET", path, response_model=ExperimentCompareResponse)

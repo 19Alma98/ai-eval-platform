@@ -45,6 +45,8 @@ from opengrade_server.api.schemas import (
     ExperimentResponse,
     ExperimentSummaryResponse,
     GitInfo,
+    GroupCompareResponse,
+    GroupSummaryResponse,
     ItemComparisonRowResponse,
     ItemSideResponse,
     MetricComparisonResponse,
@@ -66,6 +68,7 @@ from opengrade_server.application.client_results import (
 from opengrade_server.application.compare import (
     CompareExperiments,
     CompareRunRef,
+    EvaluatorSummary,
     ExperimentComparison,
     ExperimentSummary,
     InvalidCompareSelectionError,
@@ -174,27 +177,37 @@ def _run_response(
     )
 
 
+def _evaluator_summary_response(item: EvaluatorSummary) -> EvaluatorSummaryResponse:
+    return EvaluatorSummaryResponse(
+        evaluator_id=item.evaluator_id,
+        evaluator_name=item.evaluator_name,
+        run_id=item.run_id,
+        status=item.status,
+        n_items=item.aggregates.n_items,
+        n_scored=item.aggregates.n_scored,
+        n_error=item.aggregates.n_error,
+        n_skipped=item.aggregates.n_skipped,
+        mean_score=item.aggregates.mean_score,
+        pass_rate=item.aggregates.pass_rate,
+        n_repeats=item.aggregates.n_repeats,
+        n_flaky=item.aggregates.n_flaky,
+    )
+
+
 def _summary_response(summary: ExperimentSummary) -> ExperimentSummaryResponse:
     return ExperimentSummaryResponse(
         experiment_id=summary.experiment_id,
-        evaluators=[
-            EvaluatorSummaryResponse(
-                evaluator_id=item.evaluator_id,
-                evaluator_name=item.evaluator_name,
-                run_id=item.run_id,
-                status=item.status,
-                n_items=item.aggregates.n_items,
-                n_scored=item.aggregates.n_scored,
-                n_error=item.aggregates.n_error,
-                n_skipped=item.aggregates.n_skipped,
-                mean_score=item.aggregates.mean_score,
-                pass_rate=item.aggregates.pass_rate,
-                n_repeats=item.aggregates.n_repeats,
-                n_flaky=item.aggregates.n_flaky,
-            )
-            for item in summary.evaluators
-        ],
+        evaluators=[_evaluator_summary_response(item) for item in summary.evaluators],
         experiment_metrics=dict(summary.experiment_metrics),
+        group_by=summary.group_by,
+        groups=[
+            GroupSummaryResponse(
+                value=group.value,
+                n_items=group.n_items,
+                evaluators=[_evaluator_summary_response(item) for item in group.evaluators],
+            )
+            for group in summary.groups
+        ],
     )
 
 
@@ -269,6 +282,16 @@ def _compare_response(comparison: ExperimentComparison) -> ExperimentCompareResp
         baseline_git=GitInfo.model_validate(comparison.baseline_git)
         if comparison.baseline_git
         else None,
+        group_by=comparison.group_by,
+        groups=[
+            GroupCompareResponse(
+                value=group.value,
+                n_items=group.n_items,
+                metrics=[_metric_response(m) for m in group.metrics],
+                n_regressions=len(group.regressions),
+            )
+            for group in comparison.groups
+        ],
     )
 
 
@@ -599,6 +622,7 @@ async def summarize_experiment(
     experiment_id: uuid.UUID,
     run_ids: list[uuid.UUID] | None = Query(default=None),
     evaluator_ids: list[uuid.UUID] | None = Query(default=None),
+    group_by: str | None = Query(default=None, max_length=200),
     use_case: SummarizeExperiment = Depends(get_summarize_experiment),
 ) -> ExperimentSummaryResponse:
     try:
@@ -606,6 +630,7 @@ async def summarize_experiment(
             experiment_id,
             run_ids=run_ids,
             evaluator_ids=evaluator_ids,
+            group_by=group_by,
         )
     except ExperimentNotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
@@ -624,6 +649,7 @@ async def compare_experiments(
     evaluator_ids: list[uuid.UUID] | None = Query(default=None),
     candidate_run_ids: list[uuid.UUID] | None = Query(default=None),
     baseline_run_ids: list[uuid.UUID] | None = Query(default=None),
+    group_by: str | None = Query(default=None, max_length=200),
     use_case: CompareExperiments = Depends(get_compare_experiments),
 ) -> ExperimentCompareResponse:
     try:
@@ -633,6 +659,7 @@ async def compare_experiments(
             evaluator_ids=evaluator_ids,
             candidate_run_ids=candidate_run_ids,
             baseline_run_ids=baseline_run_ids,
+            group_by=group_by,
         )
     except ExperimentNotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc

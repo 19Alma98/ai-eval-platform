@@ -313,6 +313,46 @@ class ExperimentResult:
             lines.append(f"    {key.ljust(width)}  {_fmt(value)}{suffix}")
         return lines
 
+    @property
+    def groups(self) -> dict[str, dict[str, float | None]]:
+        """Mean score per group value and metric (``evaluate(group_by=...)``)."""
+        if self.server_summary is None:
+            return {}
+        return {
+            group.value: {
+                row.evaluator_name or row.evaluator_id or "?": row.mean_score
+                for row in group.evaluators
+            }
+            for group in self.server_summary.groups
+        }
+
+    def _group_lines(self) -> list[str]:
+        if self.server_summary is None or not self.server_summary.groups:
+            return []
+        deltas: dict[tuple[str, str], MetricComparisonResponse] = {}
+        for compared in self.comparison.groups if self.comparison else []:
+            for metric in compared.metrics:
+                if metric.metric == "mean_score":
+                    key = (compared.value, metric.evaluator_name or metric.evaluator_id or "")
+                    deltas[key] = metric
+        rows: list[tuple[str, ...]] = []
+        for group in self.server_summary.groups:
+            for ev in group.evaluators:
+                name = ev.evaluator_name or ev.evaluator_id or "?"
+                rows.append(
+                    (
+                        f"{group.value} (n={group.n_items})",
+                        name,
+                        _fmt(ev.mean_score),
+                        _fmt_delta(deltas.get((group.value, name))),
+                    )
+                )
+        widths = [max(len(r[i]) for r in rows) for i in range(4)]
+        lines = [f"  by {self.server_summary.group_by}:"]
+        for cells in rows:
+            lines.append("    " + "  ".join(c.ljust(w) for c, w in zip(cells, widths, strict=True)))
+        return lines
+
     def _comparison_by_name(self) -> dict[str, MetricComparisonResponse]:
         if self.comparison is None:
             return {}
@@ -369,6 +409,7 @@ class ExperimentResult:
                 lines.append("  " + "  ".join(c.ljust(w) for c, w in zip(row, widths, strict=True)))
         else:
             lines.append("  (no metrics scored)")
+        lines.extend(self._group_lines())
         lines.extend(self._experiment_metric_lines())
         lines.append(f"  view: {self.url}")
         for run in self.errors[:_MAX_ERROR_LINKS]:
@@ -428,10 +469,12 @@ class Experiment:
         local_metrics: list[LocalMetric],
         baseline_id: str | None,
         repeats: int = 1,
+        group_by: str | None = None,
     ) -> None:
         if not 1 <= repeats <= MAX_REPEATS:
             raise ValueError(f"repeats must be between 1 and {MAX_REPEATS}")
         self.repeats = repeats
+        self.group_by = group_by
         self._client = client
         self.experiment = experiment
         self._items = items
@@ -726,7 +769,7 @@ class Experiment:
             )
         scored = evaluation is not None or submitted
         if scored:
-            server_summary = self._client.experiments.summary(self.id)
+            server_summary = self._summary_with_groups()
         elif self._metrics_logged:
             try:
                 server_summary = self._client.experiments.summary(self.id)
@@ -737,7 +780,9 @@ class Experiment:
         # Compare needs evaluator runs on both sides; experiment metrics ride along.
         if scored and self.baseline_id is not None:
             try:
-                comparison = self._client.experiments.compare(self.id, self.baseline_id)
+                comparison = self._client.experiments.compare(
+                    self.id, self.baseline_id, group_by=self.group_by
+                )
             except OpengradeError as exc:
                 logger.warning(
                     "opengrade: compare with baseline %s failed: %s", self.baseline_id, exc
@@ -760,6 +805,18 @@ class Experiment:
         )
         announce(self.result)
         return self.result
+
+    def _summary_with_groups(self) -> ExperimentSummaryResponse:
+        if self.group_by is None:
+            return self._client.experiments.summary(self.id)
+        try:
+            return self._client.experiments.summary(self.id, group_by=self.group_by)
+        except OpengradeAPIError as exc:
+            if exc.status != 400:
+                raise
+            # A bad group key must not lose the run's scores.
+            logger.warning("opengrade: group_by %r rejected: %s", self.group_by, exc)
+            return self._client.experiments.summary(self.id)
 
     def _await_trace_binding(
         self, records: list[ItemRun], bind_timeout: float, poll_interval: float
@@ -1225,6 +1282,7 @@ def start_experiment(
     app_config_id: str | None = None,
     app_config_alias: str | None = None,
     repeats: int = 1,
+    group_by: str | None = None,
     client: Client | None = None,
 ) -> Experiment:
     """Create an experiment and return it for a manual loop.
@@ -1246,6 +1304,9 @@ def start_experiment(
     ``exp.run`` in a manual loop). Scores average per item, so the comparison with the
     baseline still pairs items, and items whose verdict changes between repeats are
     counted as flaky.
+
+    ``group_by`` names a dataset-item metadata field (``"category"``, ``"meta.lang"``):
+    the result then also reports means and baseline deltas per group value.
     """
     if not 1 <= repeats <= MAX_REPEATS:
         raise ValueError(f"repeats must be between 1 and {MAX_REPEATS}")
@@ -1297,6 +1358,7 @@ def start_experiment(
         local_metrics=local_metrics,
         baseline_id=baseline_id,
         repeats=repeats,
+        group_by=group_by,
     )
     logger.info("opengrade experiment %s started: %s", experiment.name, exp.url)
     return exp
@@ -1321,6 +1383,7 @@ def evaluate(
     raise_on_error: bool = False,
     timeout: float = 600.0,
     repeats: int = 1,
+    group_by: str | None = None,
     client: Client | None = None,
 ) -> ExperimentResult:
     """Run ``task`` on every dataset item, score it and return the result.
@@ -1331,7 +1394,8 @@ def evaluate(
     raises is recorded as an item error (unless ``raise_on_error``).
 
     ``repeats`` runs the task that many times per item, to measure non-deterministic
-    pipelines: scores are averaged per item and flaky items are reported.
+    pipelines: scores are averaged per item and flaky items are reported. ``group_by``
+    (an item metadata field) adds per-group means and baseline deltas to the result.
     """
     if max_concurrency < 1:
         raise ValueError("max_concurrency must be >= 1")
@@ -1349,6 +1413,7 @@ def evaluate(
         app_config_id=app_config_id,
         app_config_alias=app_config_alias,
         repeats=repeats,
+        group_by=group_by,
         client=client,
     )
     exp.run_task(task, max_concurrency=max_concurrency, raise_on_error=raise_on_error)
