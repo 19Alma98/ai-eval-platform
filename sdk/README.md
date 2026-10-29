@@ -269,7 +269,9 @@ Or manage the client yourself: `async with AsyncClient(...) as client: ...`. Cha
 Tag production traffic with the release and deployment that served it, so a deploy can be compared with the previous one:
 
 ```python
-opengrade.init(version=os.environ["GIT_SHA"], environment="prod")  # or OPENGRADE_VERSION / OPENGRADE_ENVIRONMENT
+opengrade.init(
+    version=os.environ["GIT_SHA"], environment="prod"
+)  # or OPENGRADE_VERSION / OPENGRADE_ENVIRONMENT
 ```
 
 They become the OTel resource attributes `service.version` / `deployment.environment` (when opengrade attaches to a host TracerProvider, they are stamped on each span as `opengrade.version` / `opengrade.environment`). Production → Health then filters by environment and version and shows a **By version** table (error rate, latency, cost per trace, failing scores side by side); the Traces list filters the same way, and alert rules can be scoped to an `environment` / `version`. API: `GET /projects/{id}/monitoring?environment=&version=`, `/monitoring/versions`, `/monitoring/facets`, `GET /projects/{id}/traces?environment=&version=`.
