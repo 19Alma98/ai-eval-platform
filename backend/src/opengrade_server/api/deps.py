@@ -36,6 +36,13 @@ from opengrade_server.application.evaluate import (
     StartEvaluateExperiment,
 )
 from opengrade_server.application.evaluators import CreateEvaluator, ListEvaluators
+from opengrade_server.application.experiment_aliases import (
+    DeleteExperimentAlias,
+    GetExperimentAlias,
+    ListExperimentAliases,
+    ListExperimentAliasHistory,
+    SetExperimentAlias,
+)
 from opengrade_server.application.experiment_metrics import (
     GetExperimentMetrics,
     LogExperimentMetrics,
@@ -105,6 +112,7 @@ from opengrade_server.infrastructure.repositories import (
     SqlAlchemyDatasetRepository,
     SqlAlchemyEvaluationRunRepository,
     SqlAlchemyEvaluatorRepository,
+    SqlAlchemyExperimentAliasRepository,
     SqlAlchemyExperimentItemOutputRepository,
     SqlAlchemyExperimentMetricRepository,
     SqlAlchemyExperimentRepository,
@@ -163,6 +171,12 @@ def get_experiment_repository(
     session: AsyncSession = Depends(get_db_session),
 ) -> SqlAlchemyExperimentRepository:
     return SqlAlchemyExperimentRepository(session)
+
+
+def get_experiment_alias_repository(
+    session: AsyncSession = Depends(get_db_session),
+) -> SqlAlchemyExperimentAliasRepository:
+    return SqlAlchemyExperimentAliasRepository(session)
 
 
 def get_evaluation_run_repository(
@@ -485,6 +499,43 @@ def get_get_experiment(
     experiments: SqlAlchemyExperimentRepository = Depends(get_experiment_repository),
 ) -> GetExperiment:
     return GetExperiment(experiments)
+
+
+def get_set_experiment_alias(
+    aliases: SqlAlchemyExperimentAliasRepository = Depends(get_experiment_alias_repository),
+    experiments: SqlAlchemyExperimentRepository = Depends(get_experiment_repository),
+    projects: SqlAlchemyProjectRepository = Depends(get_project_repository),
+) -> SetExperimentAlias:
+    return SetExperimentAlias(aliases, experiments, projects)
+
+
+def get_get_experiment_alias(
+    aliases: SqlAlchemyExperimentAliasRepository = Depends(get_experiment_alias_repository),
+    experiments: SqlAlchemyExperimentRepository = Depends(get_experiment_repository),
+    projects: SqlAlchemyProjectRepository = Depends(get_project_repository),
+) -> GetExperimentAlias:
+    return GetExperimentAlias(aliases, experiments, projects)
+
+
+def get_list_experiment_aliases(
+    aliases: SqlAlchemyExperimentAliasRepository = Depends(get_experiment_alias_repository),
+    experiments: SqlAlchemyExperimentRepository = Depends(get_experiment_repository),
+    projects: SqlAlchemyProjectRepository = Depends(get_project_repository),
+) -> ListExperimentAliases:
+    return ListExperimentAliases(aliases, experiments, projects)
+
+
+def get_list_experiment_alias_history(
+    aliases: SqlAlchemyExperimentAliasRepository = Depends(get_experiment_alias_repository),
+    projects: SqlAlchemyProjectRepository = Depends(get_project_repository),
+) -> ListExperimentAliasHistory:
+    return ListExperimentAliasHistory(aliases, projects)
+
+
+def get_delete_experiment_alias(
+    aliases: SqlAlchemyExperimentAliasRepository = Depends(get_experiment_alias_repository),
+) -> DeleteExperimentAlias:
+    return DeleteExperimentAlias(aliases)
 
 
 def get_app_settings() -> Settings:

@@ -19,13 +19,18 @@ from rich.table import Table
 from opengrade_server.cli_evaluate import (
     EVALUATE_KEY,
     RESERVED_TOP_LEVEL,
+    AliasTarget,
     EmbeddedServer,
     EvaluateConfigError,
+    alias_ref,
     apply_judge_env,
     emit_json,
+    fetch_alias,
     post_release_check,
     resolve_evaluate_config,
     resolve_task,
+    same_exam,
+    without_regression,
 )
 from opengrade_server.config import DEFAULT_SQLITE_URL, Settings, get_settings
 from opengrade_server.ui import ui_root
@@ -328,6 +333,39 @@ def _print_checks(body: dict[str, Any]) -> None:
     console.print(table)
 
 
+def _promote(
+    client: Any,
+    *,
+    project_id: str,
+    alias: str,
+    experiment_id: str,
+    dataset_id: str | None,
+    metrics_set_id: str | None,
+    version: str | None,
+    quiet: bool,
+) -> dict[str, Any]:
+    current = fetch_alias(client, project_id, alias)
+    exam_changed = current is not None and not same_exam(current, dataset_id, metrics_set_id)
+    note = f"opengrade evaluate: gate passed (version {version or 'n/a'})"
+    if exam_changed:
+        note += "; exam changed (new dataset / metrics set)"
+    response = client.experiments.set_alias(
+        alias, experiment_id, project_id=project_id, note=note, force=exam_changed
+    )
+    previous = response.previous_experiment_id
+    if not quiet:
+        console.print(
+            f"[green]Promoted:[/green] alias {alias!r} → {experiment_id}"
+            + (f" (was {previous})" if previous and previous != experiment_id else "")
+        )
+    return {
+        "alias": alias,
+        "experiment_id": experiment_id,
+        "previous_experiment_id": previous,
+        "exam_changed": exam_changed,
+    }
+
+
 @app.command("evaluate")
 def evaluate_cmd(
     config: Annotated[
@@ -366,6 +404,17 @@ def evaluate_cmd(
         str | None,
         typer.Option("--backend-store-uri", help="Embedded DB URL (default: temp SQLite)"),
     ] = None,
+    version: Annotated[
+        str | None,
+        typer.Option("--version", help="Application version stored on the experiment (git SHA)"),
+    ] = None,
+    promote: Annotated[
+        str | None,
+        typer.Option(
+            "--promote",
+            help="Move this experiment alias (e.g. main) to the run when the gate passes",
+        ),
+    ] = None,
     as_json: Annotated[bool, typer.Option("--json", help="Emit machine-readable JSON")] = False,
 ) -> None:
     """Run a dataset exam (evaluate) and optionally apply a release policy gate."""
@@ -389,6 +438,8 @@ def evaluate_cmd(
             baseline=baseline,
             from_experiment=from_experiment,
             backend_store_uri=backend_store_uri,
+            version=version,
+            promote=promote,
             as_json=as_json,
         )
         task_fn = resolve_task(cfg)
@@ -419,27 +470,53 @@ def evaluate_cmd(
         if cfg.init_tracing:
             opengrade.init(service_name=cfg.name or "opengrade-evaluate")
 
+        client = opengrade.get_client()
         metrics_set_id: str | None = None
         dataset_arg: Any = cfg.dataset
         baseline_arg = cfg.baseline
         metrics_arg = cfg.metrics
+        baseline_target: AliasTarget | None = None
+        missing_baseline_alias: str | None = None
 
-        if cfg.from_experiment:
-            client = opengrade.get_client()
-            template = client.experiments.get(cfg.from_experiment)
-            if not template.dataset_id:
+        from_experiment = cfg.from_experiment
+        from_alias = alias_ref(from_experiment)
+        if from_alias is not None:
+            target = fetch_alias(client, project_id, from_alias)
+            if target is None:
                 raise EvaluateConfigError(
-                    f"from_experiment {cfg.from_experiment} has no dataset_id"
+                    f"from_experiment alias {from_alias!r} is not set in project "
+                    f"{project_name!r}: bootstrap it with dataset + metrics and --promote"
                 )
+            from_experiment = target.experiment_id
+            if baseline_arg is None:
+                baseline_target = target
+
+        if from_experiment:
+            template = client.experiments.get(from_experiment)
+            if not template.dataset_id:
+                raise EvaluateConfigError(f"from_experiment {from_experiment} has no dataset_id")
             if not template.metrics_set_id:
                 raise EvaluateConfigError(
-                    f"from_experiment {cfg.from_experiment} has no metrics_set_id"
+                    f"from_experiment {from_experiment} has no metrics_set_id"
                 )
             dataset_arg = template.dataset_id
             metrics_set_id = template.metrics_set_id
             metrics_arg = None
             if baseline_arg is None:
-                baseline_arg = cfg.from_experiment
+                baseline_arg = from_experiment
+
+        baseline_alias = alias_ref(baseline_arg)
+        if baseline_alias is not None:
+            baseline_target = fetch_alias(client, project_id, baseline_alias)
+            if baseline_target is None:
+                missing_baseline_alias = baseline_alias
+                baseline_arg = None
+                console.print(
+                    f"[yellow]No baseline yet:[/yellow] alias {baseline_alias!r} is not set; "
+                    "running without a baseline (regression checks skipped)"
+                )
+            else:
+                baseline_arg = baseline_target.experiment_id
 
         assert dataset_arg is not None
 
@@ -453,15 +530,29 @@ def evaluate_cmd(
             baseline=baseline_arg,
             max_concurrency=cfg.max_concurrency,
             project=project_id,
+            version=cfg.version,
             task_type=cfg.task_type,
-            client=opengrade.get_client(),
+            client=client,
         )
+
+        run_dataset_id = result.experiment.dataset_id
+        run_metrics_set_id = result.experiment.metrics_set_id
+        gate_baseline_id = result.baseline_id
+        if baseline_target is not None and not same_exam(
+            baseline_target, run_dataset_id, run_metrics_set_id
+        ):
+            console.print(
+                f"[yellow]Exam changed:[/yellow] alias {baseline_target.alias!r} ran another "
+                "dataset / metrics set; regression checks skipped for this run"
+            )
+            gate_baseline_id = None
 
         payload: dict[str, Any] = {
             "experiment_id": result.id,
             "url": result.url,
             "project_id": project_id,
-            "baseline_id": result.baseline_id,
+            "version": cfg.version,
+            "baseline_id": gate_baseline_id,
             "metrics": result.metrics,
             "status": "evaluated",
         }
@@ -475,13 +566,18 @@ def evaluate_cmd(
                 emit_json(payload)
             raise typer.Exit(EXIT_PASS)
 
+        gate_policy = cfg.policy
+        alias_baseline = baseline_target is not None or missing_baseline_alias is not None
+        if gate_baseline_id is None and alias_baseline:
+            gate_policy = without_regression(cfg.policy)
+
         try:
             body = post_release_check(
                 base_url=tracking_uri,
                 project_id=project_id,
                 experiment_id=result.id,
-                policy=cfg.policy,
-                baseline_experiment_id=result.baseline_id,
+                policy=gate_policy,
+                baseline_experiment_id=gate_baseline_id,
             )
         except EvaluateConfigError as exc:
             console.print(f"[red]Configuration/API error:[/red] {exc}")
@@ -493,18 +589,33 @@ def evaluate_cmd(
             console.print(f"[red]Infrastructure error:[/red] {exc}")
             raise typer.Exit(EXIT_INFRA) from exc
 
+        passed = body.get("status") == "passed"
         payload["gate"] = body.get("status")
         payload["checks"] = body.get("checks")
+        payload["promoted"] = None
+        if passed and cfg.promote:
+            payload["promoted"] = _promote(
+                client,
+                project_id=project_id,
+                alias=cfg.promote,
+                experiment_id=result.id,
+                dataset_id=run_dataset_id,
+                metrics_set_id=run_metrics_set_id,
+                version=cfg.version,
+                quiet=cfg.as_json,
+            )
         if cfg.as_json:
             emit_json(payload)
         else:
             _print_checks(body)
 
-        if body.get("status") == "passed":
+        if passed:
             if not cfg.as_json:
                 console.print("[green]Result: PASSED[/green]")
             raise typer.Exit(EXIT_PASS)
         if not cfg.as_json:
+            if cfg.promote:
+                console.print(f"Alias {cfg.promote!r} not moved: the gate failed")
             console.print("[red]Result: FAILED[/red]")
         raise typer.Exit(EXIT_GATE_FAILED)
 

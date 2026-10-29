@@ -44,7 +44,21 @@ jobs:
         run: |
           uv run opengrade evaluate \
             --config opengrade.yaml \
-            --name "ci-${GITHUB_SHA::7}"
+            --name "ci-${GITHUB_SHA::7}" \
+            --version "$GITHUB_SHA"
+
+      # Moving baseline (needs a persistent server); promotes only on push to main:
+      # - name: Run evaluate + gate (alias baseline)
+      #   env:
+      #     LLM_API_KEY: ${{ secrets.LLM_API_KEY }}
+      #     PROMOTE: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' && '--promote main' || '' }}
+      #   run: |
+      #     uv run opengrade evaluate \
+      #       --config opengrade.yaml \
+      #       --name "ci-${GITHUB_SHA::7}" \
+      #       --version "$GITHUB_SHA" \
+      #       --baseline alias:main \
+      #       $PROMOTE
 
       # Standalone check against an existing experiment (optional second job):
       # - run: opengrade check --policy opengrade.yaml --base-url … --project-id … --experiment-id …

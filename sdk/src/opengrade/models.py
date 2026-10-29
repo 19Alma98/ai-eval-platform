@@ -77,6 +77,34 @@ class ExperimentResponse(_ApiModel):
     created_at: datetime | str | None = None
 
 
+class ExperimentAliasTargetResponse(_ApiModel):
+    id: str
+    name: str
+    version: str | None = None
+    dataset_id: str | None = None
+    metrics_set_id: str | None = None
+    status: str | None = None
+    created_at: datetime | str | None = None
+
+
+class ExperimentAliasResponse(_ApiModel):
+    name: str
+    experiment_id: str
+    updated_at: datetime | str | None = None
+    experiment: ExperimentAliasTargetResponse
+    previous_experiment_id: str | None = None
+    changed: bool | None = None
+
+
+class ExperimentAliasEventResponse(_ApiModel):
+    id: str
+    name: str
+    experiment_id: str
+    previous_experiment_id: str | None = None
+    note: str | None = None
+    created_at: datetime | str | None = None
+
+
 class ExperimentItemOutputResponse(_ApiModel):
     id: str | None = None
     experiment_id: str | None = None

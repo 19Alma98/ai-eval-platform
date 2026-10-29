@@ -19,6 +19,7 @@ from opengrade_server.domain.dataset import Dataset, DatasetItem
 from opengrade_server.domain.evaluation import EvaluationResultRecord, EvaluationRun
 from opengrade_server.domain.evaluator import Evaluator
 from opengrade_server.domain.experiment import Experiment
+from opengrade_server.domain.experiment_alias import ExperimentAlias, ExperimentAliasEvent
 from opengrade_server.domain.experiment_output import ExperimentItemOutput
 from opengrade_server.domain.live_interaction import (
     DuplicateExternalIdError,
@@ -39,6 +40,8 @@ from opengrade_server.infrastructure.models import (
     EvaluationResultModel,
     EvaluationRunModel,
     EvaluatorModel,
+    ExperimentAliasEventModel,
+    ExperimentAliasModel,
     ExperimentItemOutputModel,
     ExperimentMetricModel,
     ExperimentModel,
@@ -145,6 +148,14 @@ class SqlAlchemyProjectRepository:
         row = await self._session.get(ProjectModel, project_id)
         if row is None:
             return False
+        await self._session.execute(
+            delete(ExperimentAliasEventModel).where(
+                ExperimentAliasEventModel.project_id == project_id
+            )
+        )
+        await self._session.execute(
+            delete(ExperimentAliasModel).where(ExperimentAliasModel.project_id == project_id)
+        )
         await self._session.execute(
             delete(ExperimentModel).where(ExperimentModel.project_id == project_id)
         )
@@ -420,6 +431,27 @@ def _app_config_alias_to_domain(row: AppConfigAliasModel) -> AppConfigAlias:
         name=row.name,
         app_config_id=row.app_config_id,
         updated_at=row.updated_at,
+    )
+
+
+def _experiment_alias_to_domain(row: ExperimentAliasModel) -> ExperimentAlias:
+    return ExperimentAlias(
+        project_id=row.project_id,
+        name=row.name,
+        experiment_id=row.experiment_id,
+        updated_at=row.updated_at,
+    )
+
+
+def _experiment_alias_event_to_domain(row: ExperimentAliasEventModel) -> ExperimentAliasEvent:
+    return ExperimentAliasEvent(
+        id=row.id,
+        project_id=row.project_id,
+        name=row.name,
+        experiment_id=row.experiment_id,
+        previous_experiment_id=row.previous_experiment_id,
+        note=row.note,
+        created_at=row.created_at,
     )
 
 
@@ -730,6 +762,77 @@ class SqlAlchemyEvaluatorRepository:
             select(EvaluatorModel).where(EvaluatorModel.id.in_(evaluator_ids))
         )
         return [_evaluator_to_domain(row) for row in result.scalars().all()]
+
+
+class SqlAlchemyExperimentAliasRepository:
+    def __init__(self, session: AsyncSession) -> None:
+        self._session = session
+
+    async def set(self, alias: ExperimentAlias, event: ExperimentAliasEvent) -> ExperimentAlias:
+        row = await self._session.get(ExperimentAliasModel, (alias.project_id, alias.name))
+        if row is None:
+            row = ExperimentAliasModel(
+                project_id=alias.project_id,
+                name=alias.name,
+                experiment_id=alias.experiment_id,
+                updated_at=alias.updated_at,
+            )
+            self._session.add(row)
+        else:
+            row.experiment_id = alias.experiment_id
+            row.updated_at = alias.updated_at
+        self._session.add(
+            ExperimentAliasEventModel(
+                id=event.id,
+                project_id=event.project_id,
+                name=event.name,
+                experiment_id=event.experiment_id,
+                previous_experiment_id=event.previous_experiment_id,
+                note=event.note,
+                created_at=event.created_at,
+            )
+        )
+        try:
+            await self._session.commit()
+        except IntegrityError:
+            await self._session.rollback()
+            raise
+        await self._session.refresh(row)
+        return _experiment_alias_to_domain(row)
+
+    async def get(self, project_id: uuid.UUID, name: str) -> ExperimentAlias | None:
+        row = await self._session.get(ExperimentAliasModel, (project_id, name))
+        return _experiment_alias_to_domain(row) if row is not None else None
+
+    async def list_by_project(self, project_id: uuid.UUID) -> list[ExperimentAlias]:
+        result = await self._session.execute(
+            select(ExperimentAliasModel)
+            .where(ExperimentAliasModel.project_id == project_id)
+            .order_by(ExperimentAliasModel.name.asc())
+        )
+        return [_experiment_alias_to_domain(row) for row in result.scalars().all()]
+
+    async def delete(self, project_id: uuid.UUID, name: str) -> bool:
+        row = await self._session.get(ExperimentAliasModel, (project_id, name))
+        if row is None:
+            return False
+        await self._session.delete(row)
+        await self._session.commit()
+        return True
+
+    async def list_events(
+        self, project_id: uuid.UUID, name: str, *, limit: int = 50
+    ) -> list[ExperimentAliasEvent]:
+        result = await self._session.execute(
+            select(ExperimentAliasEventModel)
+            .where(
+                ExperimentAliasEventModel.project_id == project_id,
+                ExperimentAliasEventModel.name == name,
+            )
+            .order_by(ExperimentAliasEventModel.created_at.desc())
+            .limit(max(1, min(limit, 500)))
+        )
+        return [_experiment_alias_event_to_domain(row) for row in result.scalars().all()]
 
 
 class SqlAlchemyExperimentRepository:

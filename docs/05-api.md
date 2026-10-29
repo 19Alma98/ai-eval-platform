@@ -243,6 +243,30 @@ Optional query params:
 
 Response includes per-evaluator aggregates: run `status`, `mean_score`, `pass_rate`, item counts (`n_scored`, `n_error`, `n_skipped`), and `experiment_metrics` (`{key: value}`).
 
+### Experiment aliases (promoted baselines)
+
+```http
+PUT /projects/{project_id}/experiment-aliases/{alias}
+GET /projects/{project_id}/experiment-aliases
+GET /projects/{project_id}/experiment-aliases/{alias}
+GET /projects/{project_id}/experiment-aliases/{alias}/history?limit=50
+DELETE /projects/{project_id}/experiment-aliases/{alias}
+```
+
+An alias (e.g. `main`) points to the experiment that is the current baseline. `opengrade evaluate --promote main` moves it when the quality gate passes; `baseline: alias:main` reads it (see `docs/08-cli-ci.md`).
+
+`PUT` body:
+
+```json
+{"experiment_id": "uuid", "note": "gate passed (version 1a2b3c4)", "force": false}
+```
+
+The experiment must belong to the project and must not be `running`, `failed` or `cancelled`. When the alias already points to an experiment with another `dataset_id` or `metrics_set_id`, the move is refused unless `force: true` (the two runs measured different exams). Response: `name`, `experiment_id`, `updated_at`, `experiment` (`id`, `name`, `version`, `dataset_id`, `metrics_set_id`, `status`, `created_at`), `previous_experiment_id`, and `changed` (`false` when the alias already pointed there; no history entry is written).
+
+Every move appends a history entry (`experiment_id`, `previous_experiment_id`, `note`, `created_at`); `GET .../history` lists them newest first. Deleting the alias keeps its history; deleting the target experiment removes the alias.
+
+Errors: 404 project, experiment or alias not found; 400 empty alias name; 409 experiment running/failed/cancelled, or exam mismatch without `force`.
+
 ## Evaluators
 
 ```http

@@ -31,6 +31,11 @@ from opengrade_server.application.evaluators import (
     EvaluatorNotFoundError,
     UnknownEvaluatorKindError,
 )
+from opengrade_server.application.experiment_aliases import (
+    ExperimentAliasExamMismatchError,
+    ExperimentAliasNotFoundError,
+    ExperimentNotPromotableError,
+)
 from opengrade_server.application.experiments import ExperimentNotFoundError
 from opengrade_server.application.live_interactions import (
     LiveInteractionNotFoundError,
@@ -62,6 +67,7 @@ _NOT_FOUND: tuple[type[Exception], ...] = (
     ProjectMissingError,
     DatasetNotFoundError,
     ExperimentNotFoundError,
+    ExperimentAliasNotFoundError,
     EvaluatorNotFoundError,
     EvaluationRunNotFoundError,
     AppConfigNotFoundError,
@@ -82,6 +88,8 @@ _CONFLICT: tuple[type[Exception], ...] = (
     MetricsSetConflictError,
     MetricsSetReferencedError,
     MetricsSetProtectedError,
+    ExperimentNotPromotableError,
+    ExperimentAliasExamMismatchError,
 )
 
 INTEGRITY_CONFLICT_DETAIL = "Resource conflict"

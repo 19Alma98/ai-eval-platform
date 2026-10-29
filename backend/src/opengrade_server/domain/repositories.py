@@ -10,6 +10,7 @@ from opengrade_server.domain.dataset import Dataset, DatasetItem
 from opengrade_server.domain.evaluation import EvaluationResultRecord, EvaluationRun
 from opengrade_server.domain.evaluator import Evaluator
 from opengrade_server.domain.experiment import Experiment
+from opengrade_server.domain.experiment_alias import ExperimentAlias, ExperimentAliasEvent
 from opengrade_server.domain.experiment_output import ExperimentItemOutput
 from opengrade_server.domain.live_interaction import (
     LiveInteraction,
@@ -132,6 +133,20 @@ class ExperimentRepository(Protocol):
     async def try_mark_running(self, experiment_id: uuid.UUID) -> Experiment | None: ...
 
     async def count_by_metrics_set_id(self, metrics_set_id: uuid.UUID) -> int: ...
+
+
+class ExperimentAliasRepository(Protocol):
+    async def set(self, alias: ExperimentAlias, event: ExperimentAliasEvent) -> ExperimentAlias: ...
+
+    async def get(self, project_id: uuid.UUID, name: str) -> ExperimentAlias | None: ...
+
+    async def list_by_project(self, project_id: uuid.UUID) -> list[ExperimentAlias]: ...
+
+    async def delete(self, project_id: uuid.UUID, name: str) -> bool: ...
+
+    async def list_events(
+        self, project_id: uuid.UUID, name: str, *, limit: int = 50
+    ) -> list[ExperimentAliasEvent]: ...
 
 
 class ExperimentMetricRepository(Protocol):

@@ -225,3 +225,14 @@ def test_evaluate_latency_skips_rows_without_latency_ms() -> None:
     check = eval_result.checks[0]
     assert check.status == "passed"
     assert check.actual == 150.0
+
+
+def test_release_request_body_accepts_allow_insufficient_n() -> None:
+    from opengrade_server.api.schemas import ReleasePolicyBody
+
+    body = ReleasePolicyBody.model_validate(
+        {"regression": {"max_delta": -0.05, "allow_insufficient_n": True}}
+    )
+    policy = parse_release_policy(body.to_raw_dict())
+    assert policy.regression is not None
+    assert policy.regression.allow_insufficient_n is True

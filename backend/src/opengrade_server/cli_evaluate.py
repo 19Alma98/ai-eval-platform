@@ -22,6 +22,8 @@ import uvicorn
 from opengrade_server.config import get_settings
 
 EVALUATE_KEY = "evaluate"
+ALIAS_PREFIX = "alias:"
+REGRESSION_KEY = "regression"
 RESERVED_TOP_LEVEL = frozenset(
     {
         "api_base_url",
@@ -56,6 +58,8 @@ class EvaluateConfig:
     judge_api_base: str | None = None
     judge_api_key_env: str | None = None
     backend_store_uri: str | None = None
+    version: str | None = None
+    promote: str | None = None
     policy: dict[str, Any] = field(default_factory=dict)
     as_json: bool = False
 
@@ -117,6 +121,8 @@ def resolve_evaluate_config(
     baseline: str | None = None,
     from_experiment: str | None = None,
     backend_store_uri: str | None = None,
+    version: str | None = None,
+    promote: str | None = None,
     as_json: bool = False,
 ) -> EvaluateConfig:
     meta, block, policy = split_config(raw)
@@ -155,6 +161,8 @@ def resolve_evaluate_config(
         judge_api_base=_as_opt_str(judge.get("api_base")),
         judge_api_key_env=_as_opt_str(judge.get("api_key_env")),
         backend_store_uri=backend_store_uri or _as_opt_str(block.get("backend_store_uri")),
+        version=_merge_str(version, block.get("version")),
+        promote=_merge_str(promote, block.get("promote")),
         policy=policy,
         as_json=as_json,
     )
@@ -184,6 +192,13 @@ def validate_evaluate_config(cfg: EvaluateConfig, *, require_exam: bool = True) 
             )
     if cfg.max_concurrency < 1:
         raise EvaluateConfigError("max_concurrency must be >= 1")
+    if cfg.promote and not cfg.policy:
+        raise EvaluateConfigError("promote needs policy blocks: only a passing gate promotes")
+    if cfg.version is not None and len(cfg.version) > 200:
+        raise EvaluateConfigError("version must be at most 200 characters")
+    for label, ref in (("baseline", cfg.baseline), ("from_experiment", cfg.from_experiment)):
+        if alias_ref(ref) == "":
+            raise EvaluateConfigError(f"{label}: empty alias name in {ref!r}")
 
 
 def apply_judge_env(cfg: EvaluateConfig) -> None:
@@ -369,6 +384,47 @@ def post_release_check(
     if not isinstance(body, dict):
         raise RuntimeError(f"release-check returned non-object JSON: {type(body).__name__}")
     return cast(dict[str, Any], body)
+
+
+def alias_ref(ref: str | None) -> str | None:
+    if ref is None or not ref.startswith(ALIAS_PREFIX):
+        return None
+    return ref[len(ALIAS_PREFIX) :].strip()
+
+
+@dataclass(frozen=True)
+class AliasTarget:
+    alias: str
+    experiment_id: str
+    dataset_id: str | None
+    metrics_set_id: str | None
+    version: str | None
+
+
+def fetch_alias(client: Any, project_id: str, alias: str) -> AliasTarget | None:
+    from opengrade import OpengradeAPIError
+
+    try:
+        response = client.experiments.get_alias(alias, project_id=project_id)
+    except OpengradeAPIError as exc:
+        if exc.status == 404:
+            return None
+        raise
+    return AliasTarget(
+        alias=alias,
+        experiment_id=str(response.experiment_id),
+        dataset_id=response.experiment.dataset_id,
+        metrics_set_id=response.experiment.metrics_set_id,
+        version=response.experiment.version,
+    )
+
+
+def same_exam(target: AliasTarget, dataset_id: str | None, metrics_set_id: str | None) -> bool:
+    return target.dataset_id == dataset_id and target.metrics_set_id == metrics_set_id
+
+
+def without_regression(policy: dict[str, Any]) -> dict[str, Any]:
+    return {k: v for k, v in policy.items() if k != REGRESSION_KEY}
 
 
 def emit_json(payload: dict[str, Any]) -> None:

@@ -306,6 +306,8 @@ Priority: **P0** blocks a public release, **P1** fix before promoting it, **P2**
 - [ ] Pagination on SDK list calls; `set_project` / `evaluate` scan all projects/datasets/experiments.
 - [ ] Experiments over time: x-axis by date, chart `log_metrics` (cost, p50/p95), dataset-version
   column/filter, metric columns in the experiments list.
+- [ ] Experiment aliases in the UI: "baseline" badge on the experiment an alias points to, promote /
+  roll back buttons, alias history (API + CLI `--promote` already shipped, `/experiment-aliases`).
 - [ ] Compare shows params and experiment-metric deltas (backend already returns
   `ExperimentCompareResponse.experiment_metrics`), lower-is-better marking for latency/cost.
 - [ ] Live view: session/user grouping, filter by SDK metric / feedback, SDK metrics + feedback in the
