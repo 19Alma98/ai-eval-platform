@@ -1,9 +1,3 @@
-"""Experiment aliases: a named, movable baseline (``main`` → experiment).
-
-CI promotes the candidate to the alias when its quality gate passes, so the next
-run compares against the last accepted experiment instead of a fixed one.
-"""
-
 from __future__ import annotations
 
 import uuid
@@ -23,8 +17,6 @@ from opengrade_server.domain.repositories import (
     ProjectRepository,
 )
 
-# Scoring in progress or broken. "created" stays promotable: experiments scored only
-# with client-side metrics never leave it.
 UNPROMOTABLE_STATUSES = frozenset({"running", "failed", "cancelled"})
 
 
@@ -46,8 +38,6 @@ class ExperimentNotPromotableError(Exception):
 
 
 class ExperimentAliasExamMismatchError(Exception):
-    """The candidate ran a different exam (dataset / metrics set) than the alias target."""
-
     def __init__(self, alias: str, current: Experiment, candidate: Experiment) -> None:
         self.alias = alias
         changed = []

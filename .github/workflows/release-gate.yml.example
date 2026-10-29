@@ -47,10 +47,7 @@ jobs:
             --name "ci-${GITHUB_SHA::7}" \
             --version "$GITHUB_SHA"
 
-      # Moving baseline: needs api_base_url (or a durable --backend-store-uri) so the
-      # alias survives between runs. Use instead of the step above.
-      # PRs compare against the last accepted main run; pushes to main promote the run
-      # to "main" when the gate passes. Never promote from pull requests.
+      # Moving baseline (needs a persistent server); promotes only on push to main:
       # - name: Run evaluate + gate (alias baseline)
       #   env:
       #     LLM_API_KEY: ${{ secrets.LLM_API_KEY }}

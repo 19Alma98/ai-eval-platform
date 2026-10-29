@@ -14,10 +14,8 @@ evaluate:
   dataset: tests/rag_gold.csv
   metrics: [hit_at_k, groundedness, correctness, latency]
   name: ci
-  # Moving baseline (needs a persistent server: api_base_url or backend_store_uri):
-  # baseline: alias:main             # compare against the last run promoted to "main"
-  # promote: main                    # CI on main only: move "main" here when the gate passes
-  # version: set with --version "$GITHUB_SHA" (stored on the experiment)
+  # baseline: alias:main             # needs a persistent server
+  # promote: main                    # CI on main only
   task_type: rag_qa
   max_concurrency: 4
   init: false

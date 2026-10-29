@@ -233,17 +233,15 @@ def test_resolve_promote_requires_policy_and_reads_yaml() -> None:
         version="def456",
     )
     assert cfg.promote == "main"
-    assert cfg.version == "def456"  # flag wins over YAML
+    assert cfg.version == "def456"
 
 
 def test_evaluate_promotes_alias_and_compares_against_it(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """First run bootstraps the alias, later runs gate against it; a failed gate keeps it."""
     monkeypatch.chdir(tmp_path)
     monkeypatch.syspath_prepend(str(tmp_path))
     config, _ = _write_bootstrap_files(tmp_path)
-    # Five questions: regression needs n >= 5 paired items to produce a check.
     rows = [
         {"input": f"q{i}", "expected_output": "a", "expected_doc_ids": ["d1"]} for i in range(5)
     ]
@@ -288,7 +286,6 @@ def test_evaluate_promotes_alias_and_compares_against_it(
     assert three["baseline_id"] == two["experiment_id"]
     assert three["promoted"] is None
 
-    # The alias still points at the last run that passed: reuse its exam and compare.
     task_py = tmp_path / "rag_task.py"
     reuse = tmp_path / "reuse.yaml"
     reuse.write_text(
@@ -309,8 +306,6 @@ regression:
     assert reread.exit_code == EXIT_PASS, reread.output
     assert _json_tail(reread.output)["baseline_id"] == two["experiment_id"]
 
-    # A new gold set is a new exam: no regression against the old one, and the
-    # passing run becomes the new baseline.
     rows.append({"input": "q-new", "expected_output": "a", "expected_doc_ids": ["d1"]})
     (tmp_path / "gold.json").write_text(json.dumps(rows), encoding="utf-8")
     changed = runner.invoke(app, [*common, "--version", "sha-3"])

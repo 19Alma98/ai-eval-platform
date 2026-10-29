@@ -107,7 +107,6 @@ ALIAS_PREFIX = "alias:"
 
 
 def alias_name(ref: str) -> str | None:
-    """``"alias:main"`` → ``"main"``; ``None`` for ids and experiment names."""
     if not ref.startswith(ALIAS_PREFIX):
         return None
     name = ref[len(ALIAS_PREFIX) :].strip()

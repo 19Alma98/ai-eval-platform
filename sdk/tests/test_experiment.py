@@ -395,7 +395,7 @@ def test_evaluate_by_dataset_name_with_baseline_by_name(server: FakeServer) -> N
 def test_baseline_by_alias_uses_promoted_experiment(server: FakeServer) -> None:
     ds_id = server.add_dataset("gold-v1", [{"input": "q1"}])
     promoted = server.add_experiment("ci", ds_id, "2026-01-01T00:00:00Z")
-    server.add_experiment("ci", ds_id, "2026-02-01T00:00:00Z")  # newer, never promoted
+    server.add_experiment("ci", ds_id, "2026-02-01T00:00:00Z")
     server.aliases["main"] = promoted
 
     result = opengrade.evaluate(dataset="gold-v1", task=lambda item: "x", baseline="alias:main")

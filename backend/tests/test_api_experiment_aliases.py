@@ -1,5 +1,3 @@
-"""Experiment aliases: promoted baselines with history (SQLite end to end)."""
-
 from __future__ import annotations
 
 import os

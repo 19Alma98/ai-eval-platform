@@ -387,7 +387,6 @@ def post_release_check(
 
 
 def alias_ref(ref: str | None) -> str | None:
-    """``"alias:main"`` → ``"main"``; ``None`` for ids, names and ``None``."""
     if ref is None or not ref.startswith(ALIAS_PREFIX):
         return None
     return ref[len(ALIAS_PREFIX) :].strip()
@@ -395,8 +394,6 @@ def alias_ref(ref: str | None) -> str | None:
 
 @dataclass(frozen=True)
 class AliasTarget:
-    """Experiment an alias points to, with the exam it ran."""
-
     alias: str
     experiment_id: str
     dataset_id: str | None
@@ -405,7 +402,6 @@ class AliasTarget:
 
 
 def fetch_alias(client: Any, project_id: str, alias: str) -> AliasTarget | None:
-    """Current target of ``alias``; ``None`` when the alias was never promoted."""
     from opengrade import OpengradeAPIError
 
     try:

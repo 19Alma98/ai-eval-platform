@@ -136,9 +136,7 @@ class ExperimentRepository(Protocol):
 
 
 class ExperimentAliasRepository(Protocol):
-    async def set(self, alias: ExperimentAlias, event: ExperimentAliasEvent) -> ExperimentAlias:
-        """Upsert the alias and append ``event`` to its history in one transaction."""
-        ...
+    async def set(self, alias: ExperimentAlias, event: ExperimentAliasEvent) -> ExperimentAlias: ...
 
     async def get(self, project_id: uuid.UUID, name: str) -> ExperimentAlias | None: ...
 

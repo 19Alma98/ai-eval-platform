@@ -344,7 +344,6 @@ def _promote(
     version: str | None,
     quiet: bool,
 ) -> dict[str, Any]:
-    """Point ``alias`` at the run that just passed the gate."""
     current = fetch_alias(client, project_id, alias)
     exam_changed = current is not None and not same_exam(current, dataset_id, metrics_set_id)
     note = f"opengrade evaluate: gate passed (version {version or 'n/a'})"
@@ -476,7 +475,6 @@ def evaluate_cmd(
         dataset_arg: Any = cfg.dataset
         baseline_arg = cfg.baseline
         metrics_arg = cfg.metrics
-        # Set when the baseline comes from an alias: checked against the run's exam.
         baseline_target: AliasTarget | None = None
         missing_baseline_alias: str | None = None
 
@@ -543,7 +541,6 @@ def evaluate_cmd(
         if baseline_target is not None and not same_exam(
             baseline_target, run_dataset_id, run_metrics_set_id
         ):
-            # A different gold set or metrics set: deltas would compare different exams.
             console.print(
                 f"[yellow]Exam changed:[/yellow] alias {baseline_target.alias!r} ran another "
                 "dataset / metrics set; regression checks skipped for this run"

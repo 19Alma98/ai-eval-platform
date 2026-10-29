@@ -281,11 +281,6 @@ class _ExperimentsResource:
         note: str | None = None,
         force: bool = False,
     ) -> ExperimentAliasResponse:
-        """Point ``alias`` (e.g. ``"main"``) at a completed experiment: promote a baseline.
-
-        The server answers 409 when the experiment is not completed, or when it ran a
-        different dataset / metrics set than the current target (unless ``force``).
-        """
         project_id = resolve_project_id(project_id)
         body: dict[str, Any] = {"experiment_id": experiment_id}
         if note is not None:
@@ -318,7 +313,6 @@ class _ExperimentsResource:
     def alias_history(
         self, alias: str, *, project_id: str | None = None, limit: int = 50
     ) -> builtins.list[ExperimentAliasEventResponse]:
-        """Promotions of ``alias``, newest first."""
         project_id = resolve_project_id(project_id)
         return self._http.request_model_list(
             "GET",

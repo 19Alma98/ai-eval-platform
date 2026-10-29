@@ -19,8 +19,6 @@ def clean_alias_name(name: str) -> str:
 
 @dataclass(frozen=True, slots=True)
 class ExperimentAlias:
-    """Named pointer to an experiment, e.g. ``main`` = the current baseline."""
-
     project_id: uuid.UUID
     name: str
     experiment_id: uuid.UUID
@@ -43,8 +41,6 @@ class ExperimentAlias:
 
 @dataclass(frozen=True, slots=True)
 class ExperimentAliasEvent:
-    """One move of an alias: the audit trail of promotions."""
-
     id: uuid.UUID
     project_id: uuid.UUID
     name: str

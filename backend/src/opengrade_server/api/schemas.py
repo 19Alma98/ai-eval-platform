@@ -488,7 +488,6 @@ class ExperimentResponse(BaseModel):
 class SetExperimentAliasRequest(BaseModel):
     experiment_id: uuid.UUID
     note: str | None = Field(default=None, max_length=2000)
-    # Move the alias even when the candidate ran a different dataset / metrics set.
     force: bool = False
 
 
@@ -508,7 +507,6 @@ class ExperimentAliasResponse(BaseModel):
     updated_at: datetime
     experiment: ExperimentAliasTargetResponse
     previous_experiment_id: uuid.UUID | None = None
-    # False when the alias already pointed to this experiment (no history entry).
     changed: bool | None = None
 
 
