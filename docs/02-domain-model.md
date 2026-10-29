@@ -222,7 +222,8 @@ An experiment is an immutable record of *what was evaluated against what*. Every
 | App under test | `model_config` is a snapshot. With an app config it carries `app_config_id` and `content_hash`; app configs themselves are versioned per `name` (monotonic `version`). |
 | Parameters | Logged params are locked once the experiment has evaluation runs (or when they come from an app config snapshot). |
 | Grading | `metrics_set_id` pins a versioned metrics set. Each `EvaluationRun` is kept; LLM-judge results record `prompt_version` and `model` in their metadata. |
-| Label | `version` is an optional free-form label (git SHA, release tag) set by the caller, e.g. `opengrade.evaluate(..., version="v1.4.0")`. |
+| Label | `version` is an optional free-form label (git SHA, release tag) set by the caller (default: the short commit SHA, `-dirty` suffix with uncommitted changes), e.g. `opengrade.evaluate(..., version="v1.4.0")`. |
+| Code | `git` is `{commit, branch, dirty, remote_url}`, detected by the SDK from the local checkout (or CI env vars such as `GITHUB_SHA` / `CI_COMMIT_SHA` when there is no `.git`). Compare shows both commits and links the code diff for GitHub / GitLab remotes. Credentials are stripped from the remote URL. Opt out with `git=False` or `OPENGRADE_DISABLE_GIT=1`. |
 
 Re-scoring an experiment adds a new `EvaluationRun`; it never overwrites earlier results. Compare and release checks read the latest *terminal* run with results.
 

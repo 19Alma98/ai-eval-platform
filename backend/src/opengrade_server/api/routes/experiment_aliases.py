@@ -15,6 +15,7 @@ from opengrade_server.api.schemas import (
     ExperimentAliasEventResponse,
     ExperimentAliasResponse,
     ExperimentAliasTargetResponse,
+    GitInfo,
     SetExperimentAliasRequest,
 )
 from opengrade_server.application.experiment_aliases import (
@@ -36,6 +37,7 @@ def _target_response(experiment: Experiment) -> ExperimentAliasTargetResponse:
         id=experiment.id,
         name=experiment.name,
         version=experiment.version,
+        git=GitInfo.model_validate(experiment.git) if experiment.git else None,
         dataset_id=experiment.dataset_id,
         metrics_set_id=experiment.metrics_set_id,
         status=experiment.status,

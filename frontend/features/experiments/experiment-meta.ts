@@ -1,4 +1,4 @@
-import type { Experiment, MetricsSetSummary } from "@/lib/api/types";
+import type { Experiment, GitInfo, MetricsSetSummary } from "@/lib/api/types";
 import { formatDurationMs, formatPercent } from "@/lib/format";
 
 export function metricsSetBoundLabel(
@@ -32,7 +32,65 @@ export function experimentModel(experiment: Experiment): string | null {
 
 export function experimentVersion(experiment: Experiment): string | null {
   const trimmed = experiment.version?.trim();
-  return trimmed ? trimmed : null;
+  if (!trimmed) return null;
+  // The SDK defaults the version to the short SHA, already shown as the commit.
+  const prefix = trimmed.replace(/-dirty$/, "");
+  if (prefix.length >= 7 && experiment.git?.commit?.startsWith(prefix)) return null;
+  return trimmed;
+}
+
+export type ExperimentCommit = {
+  sha: string;
+  short: string;
+  branch: string | null;
+  dirty: boolean;
+  href: string | null;
+};
+
+function remoteRoute(remote: string | null | undefined, route: string): string | null {
+  if (!remote || !/^https?:\/\//.test(remote)) return null;
+  const base = remote.replace(/\/+$/, "");
+  if (base.includes("github")) return `${base}/${route}`;
+  if (base.includes("gitlab")) return `${base}/-/${route}`;
+  return null;
+}
+
+export function experimentCommit(
+  experiment: Pick<Experiment, "git">,
+): ExperimentCommit | null {
+  const git = experiment.git;
+  const sha = git?.commit?.trim();
+  if (!git || !sha) return null;
+  return {
+    sha,
+    short: sha.slice(0, 7),
+    branch: git.branch?.trim() || null,
+    dirty: git.dirty === true,
+    href: remoteRoute(git.remote_url, `commit/${sha}`),
+  };
+}
+
+export type CodeChange =
+  | { kind: "unknown" }
+  | { kind: "same"; dirty: boolean }
+  | { kind: "changed"; diffHref: string | null };
+
+/** How the code moved from baseline to candidate, as far as the recorded commits tell. */
+export function codeChange(
+  baseline: GitInfo | null | undefined,
+  candidate: GitInfo | null | undefined,
+): CodeChange {
+  if (!baseline?.commit || !candidate?.commit) return { kind: "unknown" };
+  if (baseline.commit === candidate.commit) {
+    return { kind: "same", dirty: Boolean(baseline.dirty || candidate.dirty) };
+  }
+  const sameRemote = baseline.remote_url && baseline.remote_url === candidate.remote_url;
+  return {
+    kind: "changed",
+    diffHref: sameRemote
+      ? remoteRoute(candidate.remote_url, `compare/${baseline.commit}...${candidate.commit}`)
+      : null,
+  };
 }
 
 function snapshotAppConfigVersion(raw: unknown): number | null {

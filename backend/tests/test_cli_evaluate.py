@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import subprocess
 from pathlib import Path
 from typing import Any
 
@@ -236,6 +237,19 @@ def test_resolve_promote_requires_policy_and_reads_yaml() -> None:
     assert cfg.version == "def456"
 
 
+def _git_commit(repo: Path, marker: str) -> None:
+    def git(*args: str) -> None:
+        subprocess.run(["git", *args], cwd=repo, check=True, capture_output=True)
+
+    if not (repo / ".git").exists():
+        git("init", "-q", "-b", "main")
+        git("config", "user.email", "t@example.com")
+        git("config", "user.name", "t")
+    (repo / "marker.txt").write_text(marker, encoding="utf-8")
+    git("add", "marker.txt")
+    git("commit", "-q", "-m", marker)
+
+
 def test_evaluate_promotes_alias_and_compares_against_it(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -257,6 +271,7 @@ def test_evaluate_promotes_alias_and_compares_against_it(
     store = f"sqlite+aiosqlite:///{(tmp_path / 'store.db').as_posix()}"
     common = ["evaluate", "--config", str(config), "--backend-store-uri", store, "--json"]
 
+    _git_commit(tmp_path, "v1")
     first = runner.invoke(app, [*common, "--version", "sha-1"])
     assert first.exit_code == EXIT_PASS, first.output
     assert "No baseline yet" in first.output
@@ -266,10 +281,15 @@ def test_evaluate_promotes_alias_and_compares_against_it(
     assert one["promoted"]["experiment_id"] == one["experiment_id"]
     assert one["promoted"]["previous_experiment_id"] is None
 
+    assert one["git"]["branch"] == "main" and one["git"]["dirty"] is False
+
+    _git_commit(tmp_path, "v2")
     second = runner.invoke(app, [*common, "--version", "sha-2"])
     assert second.exit_code == EXIT_PASS, second.output
     two = _json_tail(second.output)
     assert two["baseline_id"] == one["experiment_id"]
+    assert two["baseline_git"] == one["git"]
+    assert two["git"]["commit"] != one["git"]["commit"]
     assert any(c["metric"].startswith("regression.") for c in two["checks"]), two["checks"]
     assert two["promoted"]["previous_experiment_id"] == one["experiment_id"]
 

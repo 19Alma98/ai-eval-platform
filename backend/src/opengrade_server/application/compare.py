@@ -88,6 +88,8 @@ class ExperimentComparison:
     candidate_runs: list[CompareRunRef] = field(default_factory=list)
     baseline_runs: list[CompareRunRef] = field(default_factory=list)
     experiment_metrics: list[ExperimentMetricComparison] = field(default_factory=list)
+    candidate_git: dict[str, Any] | None = None
+    baseline_git: dict[str, Any] | None = None
 
 
 def _metadata_evaluator_name(run: EvaluationRun) -> str | None:
@@ -351,4 +353,6 @@ class CompareExperiments:
             candidate_runs=candidate_run_refs,
             baseline_runs=baseline_run_refs,
             experiment_metrics=experiment_metrics,
+            candidate_git=experiment.git,
+            baseline_git=baseline.git,
         )

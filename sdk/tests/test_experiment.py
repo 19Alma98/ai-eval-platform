@@ -999,3 +999,26 @@ def test_summary_shows_experiment_metric_delta_vs_baseline(server: FakeServer) -
     assert "experiment metrics:" in text
     cost_line = next(line for line in text.splitlines() if "cost_usd" in line)
     assert "2.000" in cost_line and "+0.500 vs baseline" in cost_line
+
+
+def test_start_experiment_records_git_and_default_version(
+    server: FakeServer, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    git = {"commit": "b" * 40, "branch": "main", "dirty": True, "remote_url": None}
+    monkeypatch.setattr(opengrade.experiment, "detect_git", lambda: dict(git))
+
+    exp = opengrade.start_experiment("v1", dataset=ROWS, metrics=[lambda item, out: 1.0])
+    stored = server.experiments[exp.id]
+    assert stored["git"] == git
+    assert stored["version"] == "b" * 12 + "-dirty"
+
+    pinned = opengrade.start_experiment(
+        "v2", dataset=ROWS, metrics=[lambda item, out: 1.0], version="1.4.0"
+    )
+    assert server.experiments[pinned.id]["version"] == "1.4.0"
+
+    skipped = opengrade.start_experiment(
+        "v3", dataset=ROWS, metrics=[lambda item, out: 1.0], git=False
+    )
+    assert "git" not in server.experiments[skipped.id]
+    assert "version" not in server.experiments[skipped.id]

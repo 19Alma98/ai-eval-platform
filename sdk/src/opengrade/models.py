@@ -63,6 +63,13 @@ class ImportDatasetItemsResponse(_ApiModel):
     forked_from_dataset_id: str | None = None
 
 
+class GitInfo(_ApiModel):
+    commit: str
+    branch: str | None = None
+    dirty: bool | None = None
+    remote_url: str | None = None
+
+
 class ExperimentResponse(_ApiModel):
     id: str
     project_id: str | None = None
@@ -70,6 +77,7 @@ class ExperimentResponse(_ApiModel):
     dataset_id: str | None = None
     experiment_model_config: dict[str, Any] = Field(default_factory=dict, alias="model_config")
     version: str | None = None
+    git: GitInfo | None = None
     baseline_experiment_id: str | None = None
     app_config_id: str | None = None
     metrics_set_id: str | None = None
@@ -81,6 +89,7 @@ class ExperimentAliasTargetResponse(_ApiModel):
     id: str
     name: str
     version: str | None = None
+    git: GitInfo | None = None
     dataset_id: str | None = None
     metrics_set_id: str | None = None
     status: str | None = None
@@ -193,6 +202,8 @@ class ExperimentCompareResponse(_ApiModel):
     config_mismatches: list[MetricComparisonResponse] = Field(default_factory=list)
     insufficient_n: list[MetricComparisonResponse] = Field(default_factory=list)
     experiment_metrics: list[ExperimentMetricComparisonResponse] = Field(default_factory=list)
+    candidate_git: GitInfo | None = None
+    baseline_git: GitInfo | None = None
 
 
 class MetricsPackEntryResponse(_ApiModel):

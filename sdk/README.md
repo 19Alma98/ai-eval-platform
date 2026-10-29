@@ -124,7 +124,8 @@ result = opengrade.evaluate(
     name="gemma-prompt-v2",
     params={"model": "gemma4"},  # stored as the experiment's model_config
     baseline="prod",  # experiment name (latest), id, or "alias:main" (promoted baseline)
-    version="1a2b3c4",  # e.g. the git SHA of the code under test
+    # version="v1.4.0",  # default: short git SHA of the code under test
+    # git=False,  # the commit/branch/dirty state is recorded automatically; False skips it
     max_concurrency=8,
 )
 print(result.summary(), result.url)

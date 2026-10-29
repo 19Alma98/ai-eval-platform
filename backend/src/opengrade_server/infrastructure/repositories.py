@@ -468,6 +468,7 @@ def _experiment_to_domain(row: ExperimentModel) -> Experiment:
         created_at=row.created_at,
         app_config_id=row.app_config_id,
         metrics_set_id=row.metrics_set_id,
+        git=dict(row.git) if row.git else None,
     )
 
 
@@ -847,6 +848,7 @@ class SqlAlchemyExperimentRepository:
             dataset_id=experiment.dataset_id,
             model_config_json=dict(experiment.model_config),
             version=experiment.version,
+            git=dict(experiment.git) if experiment.git else None,
             baseline_experiment_id=experiment.baseline_experiment_id,
             app_config_id=experiment.app_config_id,
             metrics_set_id=experiment.metrics_set_id,

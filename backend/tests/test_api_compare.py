@@ -316,9 +316,10 @@ async def test_summary_and_compare_experiments(client: AsyncClient) -> None:
             second_item_id = item.json()["id"]
     assert second_item_id is not None
 
+    baseline_git = {"commit": "a" * 40, "branch": "main", "dirty": False}
     baseline = await client.post(
         f"/api/v1/projects/{project_id}/experiments",
-        json={"name": "baseline", "dataset_id": dataset_id},
+        json={"name": "baseline", "dataset_id": dataset_id, "git": baseline_git},
     )
     assert baseline.status_code == 201
     baseline_id = baseline.json()["id"]
@@ -377,6 +378,8 @@ async def test_summary_and_compare_experiments(client: AsyncClient) -> None:
     assert cmp["baseline_runs"][0]["evaluator_id"] == evaluator_id
     assert "run_id" in cmp["candidate_runs"][0]
     assert "metadata" in cmp["candidate_runs"][0]
+    assert cmp["baseline_git"] == {**baseline_git, "remote_url": None}
+    assert cmp["candidate_git"] is None
 
 
 @pytest.mark.asyncio

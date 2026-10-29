@@ -28,6 +28,7 @@ from opengrade import _config, _otel
 from opengrade._async import run_sync
 from opengrade._context import get_client, resolve_or_create_project
 from opengrade._eval_run import bind_evaluation
+from opengrade._git import detect_git, version_from_git
 from opengrade._http import OpengradeAPIError, OpengradeError
 from opengrade._links import experiment_item_url, experiment_url, trace_url, ui_base_url
 from opengrade._run_context import ACTIVE_RUN
@@ -1159,6 +1160,14 @@ def log_metrics(metrics: Mapping[str, float]) -> dict[str, float]:
     return _active_experiment().log_metrics(metrics)
 
 
+def _resolve_git(git: bool | Mapping[str, Any]) -> dict[str, Any] | None:
+    if git is True:
+        return detect_git()
+    if not git:
+        return None
+    return {k: v for k, v in dict(git).items() if v is not None} or None
+
+
 def start_experiment(
     name: str | None = None,
     *,
@@ -1169,6 +1178,7 @@ def start_experiment(
     baseline: str | ExperimentResponse | ExperimentResult | None = None,
     project: str | None = None,
     version: str | None = None,
+    git: bool | Mapping[str, Any] = True,
     task_type: str = "rag_qa",
     app_config_id: str | None = None,
     app_config_alias: str | None = None,
@@ -1183,6 +1193,11 @@ def start_experiment(
     experiment a promoted alias points to), a name (latest wins) or a previous
     result. With an app config the server snapshots it as the experiment's params
     (``exp.params``), replacing ``params``.
+
+    ``git=True`` records the commit the code runs at (local checkout, else CI env),
+    so a compare shows which revisions candidate and baseline came from; it also
+    becomes ``version`` (short SHA) when none is given. Pass a dict to set it
+    explicitly, or ``False`` to skip.
     """
     explicit_client = client is not None
     client = client or get_client()
@@ -1204,6 +1219,9 @@ def start_experiment(
         )
         score_on_server = metrics is None or bool(server_metrics)
     baseline_id = _resolve_baseline(client, project_id, baseline, dataset_id=dataset_id)
+    git_info = _resolve_git(git)
+    if version is None:
+        version = version_from_git(git_info)
 
     experiment = client.experiments.create(
         project_id,
@@ -1211,6 +1229,7 @@ def start_experiment(
         dataset_id=dataset_id,
         model_config=_jsonable(dict(params or {})),
         version=version,
+        git=git_info,
         baseline_experiment_id=baseline_id,
         app_config_id=app_config_id,
         app_config_alias=app_config_alias,
@@ -1244,6 +1263,7 @@ def evaluate(
     max_concurrency: int = 1,
     project: str | None = None,
     version: str | None = None,
+    git: bool | Mapping[str, Any] = True,
     task_type: str = "rag_qa",
     app_config_id: str | None = None,
     app_config_alias: str | None = None,
@@ -1269,6 +1289,7 @@ def evaluate(
         baseline=baseline,
         project=project,
         version=version,
+        git=git,
         task_type=task_type,
         app_config_id=app_config_id,
         app_config_alias=app_config_alias,
