@@ -70,6 +70,7 @@ class EvaluationResultRecord:
     explanation: str | None
     metadata: dict[str, Any]
     duration_ms: int | None
+    repeat: int = 0
 
     @classmethod
     def create(
@@ -82,6 +83,7 @@ class EvaluationResultRecord:
         explanation: str | None = None,
         metadata: dict[str, Any] | None = None,
         duration_ms: int | None = None,
+        repeat: int = 0,
     ) -> EvaluationResultRecord:
         return cls(
             id=uuid.uuid4(),
@@ -92,6 +94,7 @@ class EvaluationResultRecord:
             explanation=explanation,
             metadata=dict(metadata or {}),
             duration_ms=duration_ms,
+            repeat=repeat,
         )
 
 

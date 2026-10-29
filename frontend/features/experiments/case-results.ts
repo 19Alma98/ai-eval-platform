@@ -5,6 +5,7 @@ import type {
   ExperimentItemOutput,
 } from "@/lib/api/types";
 import { compareMetrics, metricInfo } from "@/lib/metrics-catalog";
+import { collapseResultsByItem } from "./repeats";
 import { buildRunItemViews, type RunItemView } from "./run-items";
 
 export type Outcome = "pass" | "fail" | "skipped" | "error" | "scored" | "pending";
@@ -80,7 +81,7 @@ export function buildCaseViews(
     if (!run) continue;
     resultIndex.set(
       metric.runId,
-      new Map(run.results.map((r) => [r.dataset_item_id, r])),
+      collapseResultsByItem(run.results),
     );
   }
 

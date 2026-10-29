@@ -424,6 +424,7 @@ class EvaluationResultModel(Base):
         "metadata", PortableJSON, nullable=False, server_default="{}"
     )
     duration_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    repeat: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0", default=0)
 
     run: Mapped[EvaluationRunModel] = relationship("EvaluationRunModel", back_populates="results")
 
@@ -529,7 +530,8 @@ class ExperimentItemOutputModel(Base):
         UniqueConstraint(
             "experiment_id",
             "dataset_item_id",
-            name="uq_experiment_item_outputs_exp_item",
+            "repeat",
+            name="uq_experiment_item_outputs_exp_item_repeat",
         ),
         Index("ix_experiment_item_outputs_experiment_id", "experiment_id"),
     )
@@ -555,6 +557,7 @@ class ExperimentItemOutputModel(Base):
         nullable=False,
         server_default=func.now(),
     )
+    repeat: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0", default=0)
 
 
 class ExperimentMetricModel(Base):

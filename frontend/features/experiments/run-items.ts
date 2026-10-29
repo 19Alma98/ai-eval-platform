@@ -3,6 +3,7 @@ import type {
   EvaluationResult,
   ExperimentItemOutput,
 } from "@/lib/api/types";
+import { collapseResultsByItem, firstOutputByItem } from "./repeats";
 
 export function shouldRenderRunItemsSection(opts: {
   hasEvaluationRun: boolean;
@@ -85,8 +86,8 @@ export function buildRunItemViews(
   outputs: ExperimentItemOutput[],
   results: EvaluationResult[],
 ): RunItemView[] {
-  const outputByItem = new Map(outputs.map((o) => [o.dataset_item_id, o]));
-  const resultByItem = new Map(results.map((r) => [r.dataset_item_id, r]));
+  const outputByItem = firstOutputByItem(outputs);
+  const resultByItem = collapseResultsByItem(results);
 
   return datasetItems.map((item) => {
     const output = outputByItem.get(item.id);

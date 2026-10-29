@@ -18,6 +18,7 @@ evaluate:
   # promote: main                    # CI on main only
   task_type: rag_qa
   max_concurrency: 4
+  # repeats: 3                       # run each item 3x; scores average per item, flaky items reported
   init: false
   judge:
     model: openai/gpt-4o-mini

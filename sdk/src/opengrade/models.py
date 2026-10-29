@@ -122,6 +122,7 @@ class ExperimentItemOutputResponse(_ApiModel):
     context: Any | None = None
     metadata: dict[str, Any] = Field(default_factory=dict)
     updated_at: datetime | str | None = None
+    repeat: int = 0
 
 
 class EvaluationResultResponse(_ApiModel):
@@ -162,6 +163,8 @@ class EvaluatorSummaryResponse(_ApiModel):
     n_skipped: int | None = None
     mean_score: float | None = None
     pass_rate: float | None = None
+    n_repeats: int = 1
+    n_flaky: int = 0
 
 
 class ExperimentSummaryResponse(_ApiModel):

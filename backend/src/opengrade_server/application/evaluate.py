@@ -150,6 +150,7 @@ class EvaluateExperiment:
                     pass_threshold=pass_threshold,
                     config_override=config_override,
                     missing_output_item_ids=missing_output_item_ids,
+                    repeats=inputs.repeats,
                 )
                 run = await self._runs.update_run(run)
                 if results:

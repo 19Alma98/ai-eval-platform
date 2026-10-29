@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import uuid
 from collections.abc import Iterable, Sequence, Set
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import UTC, datetime
 from typing import Literal
 
@@ -30,6 +30,9 @@ class Aggregates:
     n_applicable: int
     mean_score: float | None
     pass_rate: float | None
+    # Repeats: most repeats seen on one item, and items whose verdict changed between them.
+    n_repeats: int = 1
+    n_flaky: int = 0
 
 
 @dataclass(frozen=True, slots=True)
@@ -132,28 +135,53 @@ def _normalize_label(label: str | None) -> str | None:
     return label.strip().upper()
 
 
+def group_by_item(
+    results: Iterable[EvaluationResultRecord],
+) -> dict[uuid.UUID, list[EvaluationResultRecord]]:
+    """Results per dataset item, repeats in order."""
+    groups: dict[uuid.UUID, list[EvaluationResultRecord]] = {}
+    for result in results:
+        groups.setdefault(result.dataset_item_id, []).append(result)
+    for rows in groups.values():
+        rows.sort(key=lambda r: r.repeat)
+    return groups
+
+
+def _applicable(rows: Iterable[EvaluationResultRecord]) -> list[EvaluationResultRecord]:
+    return [r for r in rows if _normalize_label(r.label) != "SKIPPED"]
+
+
+def is_flaky(rows: Sequence[EvaluationResultRecord]) -> bool:
+    """True when applicable repeats of one item disagree on PASS."""
+    verdicts = {_normalize_label(r.label) == "PASS" for r in _applicable(rows)}
+    return len(verdicts) > 1
+
+
 def aggregate_results(results: Iterable[EvaluationResultRecord]) -> Aggregates:
+    """Aggregate a run's results. With repeats, each item weighs once (mean of its repeats)."""
     items = list(results)
     scores = [r.score for r in items if r.score is not None]
     labels = [_normalize_label(r.label) for r in items]
     n_error = sum(1 for label in labels if label == "ERROR")
     n_skipped = sum(1 for label in labels if label == "SKIPPED")
-    n_pass = sum(1 for label in labels if label == "PASS")
+    groups = group_by_item(items)
     # SKIPPED means the metric does not apply to the item (e.g. no must_contain gold),
     # so it is excluded from the denominator. ERROR still counts as 0.0 so evaluator
     # or infra failures cannot inflate the mean.
-    applicable = [r for r, label in zip(items, labels, strict=True) if label != "SKIPPED"]
-    covered_scores = [r.score if r.score is not None else 0.0 for r in applicable]
-    mean_score = sum(covered_scores) / len(covered_scores) if covered_scores else None
-    pass_rate = (n_pass / len(applicable)) if applicable else None
+    means = item_values(items, metric="mean_score", groups=groups)
+    passes = item_values(items, metric="pass_rate", groups=groups)
+    mean_score = sum(means.values()) / len(means) if means else None
+    pass_rate = sum(passes.values()) / len(passes) if passes else None
     return Aggregates(
-        n_items=len(items),
+        n_items=len(groups),
         n_scored=len(scores),
         n_error=n_error,
         n_skipped=n_skipped,
-        n_applicable=len(applicable),
+        n_applicable=len(means),
         mean_score=mean_score,
         pass_rate=pass_rate,
+        n_repeats=max((len(rows) for rows in groups.values()), default=1),
+        n_flaky=sum(1 for rows in groups.values() if is_flaky(rows)),
     )
 
 
@@ -200,21 +228,71 @@ def _metric_value(result: EvaluationResultRecord, metric: MetricName) -> float:
     return result.score if result.score is not None else 0.0
 
 
+def item_values(
+    results: Iterable[EvaluationResultRecord],
+    *,
+    metric: MetricName,
+    groups: dict[uuid.UUID, list[EvaluationResultRecord]] | None = None,
+) -> dict[uuid.UUID, float]:
+    """Per applicable item: the mean of ``metric`` over its applicable repeats."""
+    by_item = groups if groups is not None else group_by_item(results)
+    values: dict[uuid.UUID, float] = {}
+    for item_id, rows in by_item.items():
+        applicable = _applicable(rows)
+        if applicable:
+            values[item_id] = sum(_metric_value(r, metric) for r in applicable) / len(applicable)
+    return values
+
+
 def paired_item_diffs(
     candidate_results: Iterable[EvaluationResultRecord],
     baseline_results: Iterable[EvaluationResultRecord],
     *,
     metric: MetricName,
 ) -> list[float]:
-    """Paired cand−base values for applicable items present on both sides."""
-    cand = {
-        r.dataset_item_id: r for r in candidate_results if _normalize_label(r.label) != "SKIPPED"
-    }
-    base = {
-        r.dataset_item_id: r for r in baseline_results if _normalize_label(r.label) != "SKIPPED"
-    }
+    """Paired cand−base values for applicable items present on both sides.
+
+    Repeats collapse to their per-item mean first, so items stay the unit of pairing.
+    """
+    cand = item_values(candidate_results, metric=metric)
+    base = item_values(baseline_results, metric=metric)
     shared = sorted(set(cand) & set(base), key=str)
-    return [_metric_value(cand[i], metric) - _metric_value(base[i], metric) for i in shared]
+    return [cand[i] - base[i] for i in shared]
+
+
+def collapse_repeats(rows: Sequence[EvaluationResultRecord]) -> EvaluationResultRecord:
+    """One record standing for an item's repeats (the record itself when there is one).
+
+    Score is the mean over applicable repeats, the label PASS when at least half of them
+    passed; ``metadata.repeats`` keeps the per-repeat scores and labels.
+    """
+    if len(rows) == 1:
+        return rows[0]
+    applicable = _applicable(rows)
+    if not applicable:
+        return rows[0]
+    scores = [r.score if r.score is not None else 0.0 for r in applicable]
+    mean = sum(scores) / len(scores)
+    pass_share = sum(_metric_value(r, "pass_rate") for r in applicable) / len(applicable)
+    std = (sum((v - mean) ** 2 for v in scores) / len(scores)) ** 0.5
+    failing = next((r for r in applicable if _normalize_label(r.label) != "PASS"), applicable[0])
+    metadata = dict(failing.metadata)
+    metadata["repeats"] = {
+        "n": len(rows),
+        "n_applicable": len(applicable),
+        "pass_rate": pass_share,
+        "std": std,
+        "flaky": is_flaky(rows),
+        "scores": [r.score for r in rows],
+        "labels": [r.label for r in rows],
+    }
+    return replace(
+        failing,
+        score=mean,
+        label="PASS" if pass_share >= 0.5 else "FAIL",
+        metadata=metadata,
+        repeat=0,
+    )
 
 
 def _status_from_ci(ci_low: float, ci_high: float) -> MetricStatus:

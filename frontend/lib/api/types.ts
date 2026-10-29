@@ -217,6 +217,10 @@ export type EvaluatorSummary = {
   n_skipped: number;
   mean_score: number | null;
   pass_rate: number | null;
+  /** Most runs of one item (1 without repeats). */
+  n_repeats?: number;
+  /** Items whose verdict changed between repeats. */
+  n_flaky?: number;
 };
 
 export type ExperimentSummary = {
@@ -295,6 +299,7 @@ export type EvaluationResult = {
   explanation: string | null;
   metadata: Record<string, unknown>;
   duration_ms: number | null;
+  repeat?: number;
 };
 
 export type EvaluationRun = {
@@ -316,6 +321,7 @@ export type ExperimentItemOutput = {
   context: unknown | null;
   metadata: Record<string, unknown>;
   updated_at: string;
+  repeat?: number;
 };
 
 export type EvaluateResponse = {

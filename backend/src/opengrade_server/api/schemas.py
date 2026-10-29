@@ -15,6 +15,7 @@ from pydantic import (
     model_validator,
 )
 
+from opengrade_server.domain.experiment_output import MAX_REPEATS
 from opengrade_server.domain.trace_score import (
     MAX_TRACE_SCORE_BATCH,
     MAX_TRACE_SCORE_METADATA_BYTES,
@@ -542,6 +543,7 @@ class EvaluatePackRequest(BaseModel):
 
 class ClientResultItemRequest(BaseModel):
     dataset_item_id: uuid.UUID
+    repeat: int = Field(default=0, ge=0, lt=MAX_REPEATS)
     score: float | None = None
     label: str | None = Field(default=None, max_length=32)
     explanation: str | None = Field(default=None, max_length=4000)
@@ -582,6 +584,7 @@ class EvaluationResultResponse(BaseModel):
     explanation: str | None
     metadata: dict[str, Any]
     duration_ms: int | None
+    repeat: int = 0
 
 
 class EvaluationRunResponse(BaseModel):
@@ -611,6 +614,8 @@ class EvaluatorSummaryResponse(BaseModel):
     n_skipped: int
     mean_score: float | None
     pass_rate: float | None
+    n_repeats: int = 1
+    n_flaky: int = 0
 
 
 class ExperimentSummaryResponse(BaseModel):
@@ -765,6 +770,7 @@ class ReleaseCheckResponse(BaseModel):
 
 class UpsertExperimentOutputItemRequest(BaseModel):
     dataset_item_id: uuid.UUID
+    repeat: int = Field(default=0, ge=0, lt=MAX_REPEATS)
     actual_output: Any | None = None
     context: Any | None = None
     metadata: dict[str, Any] | None = None
@@ -782,6 +788,7 @@ class ExperimentItemOutputResponse(BaseModel):
     context: Any | None
     metadata: dict[str, Any]
     updated_at: datetime
+    repeat: int = 0
 
 
 class UpsertExperimentOutputsResponse(BaseModel):

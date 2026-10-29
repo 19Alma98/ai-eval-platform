@@ -108,7 +108,9 @@ class EvaluationRunner:
         pass_threshold: float | None = None,
         config_override: dict[str, Any] | None = None,
         missing_output_item_ids: set[UUID] | frozenset[UUID] = frozenset(),
+        repeats: list[int] | None = None,
     ) -> tuple[EvaluationRun, list[EvaluationResultRecord]]:
+        """Score ``items``; ``repeats[i]`` (default 0) is the repeat index of ``items[i]``."""
         started = datetime.now(UTC)
         run = run.with_status("RUNNING", started_at=started)
         evaluator_entity = effective_entity(evaluator_entity, config_override)
@@ -116,7 +118,7 @@ class EvaluationRunner:
         impl = self._resolve(evaluator_entity)
         semaphore = asyncio.Semaphore(self._max_concurrency)
 
-        async def _one(item: DatasetItem) -> EvaluationResultRecord:
+        async def _one(item: DatasetItem, repeat: int) -> EvaluationResultRecord:
             if item.id in missing_output_item_ids:
                 # The app produced nothing for this item: a quality failure, not a
                 # non-applicable metric, so it must not become SKIPPED.
@@ -128,13 +130,18 @@ class EvaluationRunner:
                     explanation=MISSING_OUTPUT_EXPLANATION,
                     metadata={"missing_output": True},
                     duration_ms=0,
+                    repeat=repeat,
                 )
             async with semaphore:
-                return await self._evaluate_item(run.id, impl, item, kind)
+                record = await self._evaluate_item(run.id, impl, item, kind)
+                return replace(record, repeat=repeat) if repeat else record
 
+        item_repeats = repeats if repeats is not None else [0] * len(items)
         results = [
             _apply_verdict(r, pass_threshold)
-            for r in await asyncio.gather(*[_one(item) for item in items])
+            for r in await asyncio.gather(
+                *[_one(item, rep) for item, rep in zip(items, item_repeats, strict=True)]
+            )
         ]
         finished = datetime.now(UTC)
         status = run_status_from_results(results)

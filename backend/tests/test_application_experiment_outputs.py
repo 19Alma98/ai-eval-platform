@@ -107,8 +107,9 @@ class FakeExperimentItemOutputRepository:
     outputs: dict[tuple[uuid.UUID, uuid.UUID], ExperimentItemOutput] = field(default_factory=dict)
 
     async def get(
-        self, experiment_id: uuid.UUID, dataset_item_id: uuid.UUID
+        self, experiment_id: uuid.UUID, dataset_item_id: uuid.UUID, repeat: int = 0
     ) -> ExperimentItemOutput | None:
+        assert repeat == 0
         return self.outputs.get((experiment_id, dataset_item_id))
 
     async def upsert_many(self, outputs: list[ExperimentItemOutput]) -> list[ExperimentItemOutput]:

@@ -158,6 +158,8 @@ Request body:
 
 Omitted fields in each item are left unchanged on update; `"context": null` clears context.
 
+Optional `"repeat": 0..99` (default `0`) stores repeated runs of the same item separately (unique per experiment, item and repeat). Every repeat is scored; results carry the same `repeat`, and `POST .../client-results` accepts it per result. Aggregates weigh each item once (mean over its applicable repeats): summary rows add `n_repeats` and `n_flaky` (items whose PASS changed between repeats), compare pairs item means, and compare-items shows the item mean with `metadata.repeats` (`n`, `pass_rate`, `std`, `flaky`, per-repeat `scores` / `labels`). OTLP binding reads `opengrade.repeat` next to `opengrade.dataset_item_id`.
+
 Response: `{ "upserted": N, "items": [ ExperimentItemOutput ] }`.
 
 ```http

@@ -155,6 +155,7 @@ def _result_response(result: EvaluationResultRecord) -> EvaluationResultResponse
         explanation=result.explanation,
         metadata=result.metadata,
         duration_ms=result.duration_ms,
+        repeat=result.repeat,
     )
 
 
@@ -188,6 +189,8 @@ def _summary_response(summary: ExperimentSummary) -> ExperimentSummaryResponse:
                 n_skipped=item.aggregates.n_skipped,
                 mean_score=item.aggregates.mean_score,
                 pass_rate=item.aggregates.pass_rate,
+                n_repeats=item.aggregates.n_repeats,
+                n_flaky=item.aggregates.n_flaky,
             )
             for item in summary.evaluators
         ],
@@ -219,6 +222,7 @@ def _output_response(output: ExperimentItemOutput) -> ExperimentItemOutputRespon
         context=output.context,
         metadata=dict(output.metadata),
         updated_at=output.updated_at,
+        repeat=output.repeat,
     )
 
 
@@ -226,6 +230,7 @@ def _upsert_output_item(entry: UpsertExperimentOutputItemRequest) -> UpsertOutpu
     fields_set = entry.model_fields_set
     return UpsertOutputItem(
         dataset_item_id=entry.dataset_item_id,
+        repeat=entry.repeat,
         actual_output=entry.actual_output if "actual_output" in fields_set else UNSET,
         context=entry.context if "context" in fields_set else UNSET,
         metadata=entry.metadata if "metadata" in fields_set else UNSET,
@@ -510,6 +515,7 @@ async def submit_client_results(
                 results=[
                     ClientResultItem(
                         dataset_item_id=r.dataset_item_id,
+                        repeat=r.repeat,
                         score=r.score,
                         label=r.label,
                         explanation=r.explanation,

@@ -26,6 +26,7 @@ class ExperimentItemNotInDatasetError(Exception):
 @dataclass(frozen=True, slots=True)
 class UpsertOutputItem:
     dataset_item_id: uuid.UUID
+    repeat: int = 0
     actual_output: Any = UNSET
     context: Any = UNSET
     metadata: Any = UNSET
@@ -99,11 +100,12 @@ class UpsertExperimentOutputs:
             if dataset_item is None or dataset_item.dataset_id != experiment.dataset_id:
                 raise ExperimentItemNotInDatasetError(experiment_id, entry.dataset_item_id)
 
-            existing = await self._outputs.get(experiment_id, entry.dataset_item_id)
+            existing = await self._outputs.get(experiment_id, entry.dataset_item_id, entry.repeat)
             if existing is None:
                 existing = ExperimentItemOutput.create(
                     experiment_id,
                     entry.dataset_item_id,
+                    repeat=entry.repeat,
                 )
             patched.append(
                 existing.with_patch(

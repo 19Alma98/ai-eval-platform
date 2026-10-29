@@ -40,6 +40,7 @@ class FakeServer:
         self.experiment_metrics: dict[str, dict[str, float]] = {}
         self.aliases: dict[str, str] = {}
         self.fail_metrics = False
+        self.summary_repeats = 1
         self.calls: list[tuple[str, str, Any]] = []
         self.add_metrics_set(
             "Default",
@@ -146,8 +147,11 @@ class FakeServer:
             store = self.outputs[m[1]]
             if method == "PUT":
                 for entry in body["items"]:
+                    key = entry["dataset_item_id"]
+                    if entry.get("repeat"):
+                        key = f"{key}#{entry['repeat']}"
                     current = store.setdefault(
-                        entry["dataset_item_id"],
+                        key,
                         {"dataset_item_id": entry["dataset_item_id"], "metadata": {}},
                     )
                     current.update(entry)
@@ -184,7 +188,15 @@ class FakeServer:
         if m := re.fullmatch(r"/api/v1/experiments/([^/]+)/summary", path):
             rows = []
             if m[1] in self.scored_on_server:
-                rows.append({"evaluator_name": "hit_at_k", "mean_score": 0.5, "pass_rate": 0.5})
+                rows.append(
+                    {
+                        "evaluator_name": "hit_at_k",
+                        "mean_score": 0.5,
+                        "pass_rate": 0.5,
+                        "n_repeats": self.summary_repeats,
+                        "n_flaky": 1 if self.summary_repeats > 1 else 0,
+                    }
+                )
             for metric in self.client_results.get(m[1], []):
                 scores = [r["score"] for r in metric["results"] if r.get("score") is not None]
                 mean = sum(scores) / len(scores) if scores else None
@@ -1022,3 +1034,56 @@ def test_start_experiment_records_git_and_default_version(
     )
     assert "git" not in server.experiments[skipped.id]
     assert "version" not in server.experiments[skipped.id]
+
+
+def test_evaluate_repeats_runs_each_item_n_times(server: FakeServer) -> None:
+    server.summary_repeats = 3
+    calls: list[str] = []
+
+    def task(item: Any) -> str:
+        calls.append(item.input)
+        return f"answer {len(calls)}"
+
+    def even(item: Any, output: Any) -> float:
+        return float(int(output.split()[-1]) % 2 == 0)
+
+    result = opengrade.evaluate(
+        dataset=ROWS, task=task, metrics=["hit_at_k", even], name="rep", repeats=3
+    )
+
+    assert sorted(calls) == ["q1"] * 3 + ["q2"] * 3
+    assert result.repeats == 3
+    assert len(result.items) == 6
+    outputs = server.outputs[result.id]
+    assert len(outputs) == 6
+    repeats = sorted(o.get("repeat", 0) for o in outputs.values())
+    assert repeats == [0, 0, 1, 1, 2, 2]
+
+    (submitted,) = server.client_results[result.id]
+    pairs = sorted((r["dataset_item_id"], r.get("repeat", 0)) for r in submitted["results"])
+    assert len(set(pairs)) == 6
+
+    # Answers 1..6 alternate odd/even: each item averages its own repeats.
+    assert result.local_metrics["even"] is not None
+    assert result.flaky == {"hit_at_k": 1, "even": 0}
+    text = result.summary()
+    assert "2 items x 3 repeats" in text
+    assert "flaky" in text
+
+
+def test_manual_loop_repeat_keeps_runs_apart(server: FakeServer) -> None:
+    with opengrade.start_experiment("manual-rep", dataset=ROWS, metrics=["hit_at_k"]) as exp:
+        (item, _) = exp.items()
+        for repeat in range(2):
+            with exp.run(item, repeat=repeat) as run:
+                run.log(f"out {repeat}")
+    assert exp.result is not None
+    assert sorted(r.repeat for r in exp.result.items) == [0, 1]
+    with pytest.raises(ValueError, match="repeat must be"):
+        with exp.run(item, repeat=-1):
+            pass
+
+
+def test_repeats_out_of_range_rejected(server: FakeServer) -> None:
+    with pytest.raises(ValueError, match="repeats must be"):
+        opengrade.evaluate(dataset=ROWS, task=_task, metrics=["hit_at_k"], repeats=0)

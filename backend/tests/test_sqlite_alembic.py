@@ -39,7 +39,7 @@ async def test_bootstrap_applies_alembic_on_fresh_sqlite(
         assert "alembic_version" in insp.get_table_names()
         with sync.connect() as conn:
             version = conn.execute(text("SELECT version_num FROM alembic_version")).scalar()
-        assert version == "0018_experiment_git"
+        assert version == "0019_item_repeats"
         # Drift index from migration 0007 is present
         exp_indexes = {ix["name"] for ix in insp.get_indexes("experiments")}
         assert "ix_experiments_app_config_id" in exp_indexes
@@ -98,7 +98,7 @@ async def test_bootstrap_stamps_legacy_create_all_db(tmp_path: Path) -> None:
     try:
         with sync.connect() as conn:
             version = conn.execute(text("SELECT version_num FROM alembic_version")).scalar()
-        assert version == "0018_experiment_git"
+        assert version == "0019_item_repeats"
     finally:
         sync.dispose()
         await dispose_db()

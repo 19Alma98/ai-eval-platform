@@ -237,6 +237,28 @@ def test_resolve_promote_requires_policy_and_reads_yaml() -> None:
     assert cfg.version == "def456"
 
 
+def test_resolve_repeats_reads_yaml_and_validates() -> None:
+    block = {"task": "pkg:fn", "dataset": "x.csv", "metrics": ["hit_at_k"]}
+    assert resolve_evaluate_config({"evaluate": block}).repeats == 1
+    assert resolve_evaluate_config({"evaluate": {**block, "repeats": 3}}).repeats == 3
+    with pytest.raises(EvaluateConfigError, match="repeats must be"):
+        resolve_evaluate_config({"evaluate": {**block, "repeats": 101}})
+
+
+def test_evaluate_embedded_with_repeats(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.syspath_prepend(str(tmp_path))
+    config, _ = _write_bootstrap_files(tmp_path)
+    config.write_text(
+        config.read_text(encoding="utf-8").replace(
+            "  max_concurrency: 1\n", "  max_concurrency: 1\n  repeats: 2\n"
+        ),
+        encoding="utf-8",
+    )
+    result = runner.invoke(app, ["evaluate", "--config", str(config), "--json"])
+    assert result.exit_code == EXIT_PASS, result.output
+
+
 def _git_commit(repo: Path, marker: str) -> None:
     def git(*args: str) -> None:
         subprocess.run(["git", *args], cwd=repo, check=True, capture_output=True)

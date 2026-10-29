@@ -4,14 +4,15 @@ from opengrade._run_context import record_documents
 from opengrade._trace import set_attributes
 
 
-def bind_evaluation(*, experiment_id: str, dataset_item_id: str) -> None:
-    """Bind the current span to an experiment dataset item."""
-    set_attributes(
-        {
-            "opengrade.experiment_id": experiment_id,
-            "opengrade.dataset_item_id": dataset_item_id,
-        }
-    )
+def bind_evaluation(*, experiment_id: str, dataset_item_id: str, repeat: int = 0) -> None:
+    """Bind the current span to an experiment dataset item (and repeat, when > 0)."""
+    attributes: dict[str, object] = {
+        "opengrade.experiment_id": experiment_id,
+        "opengrade.dataset_item_id": dataset_item_id,
+    }
+    if repeat:
+        attributes["opengrade.repeat"] = repeat
+    set_attributes(attributes)
 
 
 def _document_has_id(doc: dict[str, object]) -> bool:

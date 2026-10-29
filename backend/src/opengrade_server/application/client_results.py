@@ -48,6 +48,7 @@ class ClientMetricNameConflictError(Exception):
 @dataclass(frozen=True, slots=True)
 class ClientResultItem:
     dataset_item_id: uuid.UUID
+    repeat: int = 0
     score: float | None = None
     label: str | None = None
     explanation: str | None = None
@@ -136,6 +137,7 @@ class SubmitClientResults:
                     label=_result_label(r, metric.threshold),
                     explanation=r.explanation,
                     metadata=r.metadata,
+                    repeat=r.repeat,
                 )
                 for r in metric.results
             ]
@@ -185,10 +187,10 @@ class SubmitClientResults:
                 raise ClientResultsValidationError(f"metric {metric.name!r}: scores must be finite")
             if not metric.results:
                 raise ClientResultsValidationError(f"metric {metric.name!r} has no results")
-            ids = [r.dataset_item_id for r in metric.results]
+            ids = [(r.dataset_item_id, r.repeat) for r in metric.results]
             if len(set(ids)) != len(ids):
                 raise ClientResultsValidationError(
-                    f"metric {metric.name!r} has duplicate dataset_item_id"
+                    f"metric {metric.name!r} has duplicate (dataset_item_id, repeat)"
                 )
             for r in metric.results:
                 _result_label(r, metric.threshold)

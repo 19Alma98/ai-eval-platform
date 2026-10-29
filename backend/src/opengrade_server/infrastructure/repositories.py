@@ -494,6 +494,7 @@ def _result_to_domain(row: EvaluationResultModel) -> EvaluationResultRecord:
         explanation=row.explanation,
         metadata=dict(row.metadata_json or {}),
         duration_ms=row.duration_ms,
+        repeat=row.repeat,
     )
 
 
@@ -506,6 +507,7 @@ def _experiment_item_output_to_domain(row: ExperimentItemOutputModel) -> Experim
         context=row.context,
         metadata=dict(row.metadata_json or {}),
         updated_at=row.updated_at,
+        repeat=row.repeat,
     )
 
 
@@ -518,6 +520,7 @@ def _experiment_item_output_to_model(output: ExperimentItemOutput) -> Experiment
         context=output.context,
         metadata_json=dict(output.metadata),
         updated_at=output.updated_at,
+        repeat=output.repeat,
     )
 
 
@@ -985,6 +988,7 @@ class SqlAlchemyEvaluationRunRepository:
             explanation=result.explanation,
             metadata_json=dict(result.metadata),
             duration_ms=result.duration_ms,
+            repeat=result.repeat,
         )
         self._session.add(row)
         await self._session.commit()
@@ -1010,6 +1014,7 @@ class SqlAlchemyEvaluationRunRepository:
                 explanation=r.explanation,
                 metadata_json=dict(r.metadata),
                 duration_ms=r.duration_ms,
+                repeat=r.repeat,
             )
             for r in results
         ]
@@ -1196,6 +1201,7 @@ class SqlAlchemyExperimentItemOutputRepository:
             select(ExperimentItemOutputModel).where(
                 ExperimentItemOutputModel.experiment_id == output.experiment_id,
                 ExperimentItemOutputModel.dataset_item_id == output.dataset_item_id,
+                ExperimentItemOutputModel.repeat == output.repeat,
             )
         )
         existing = result.scalar_one_or_none()
@@ -1222,17 +1228,18 @@ class SqlAlchemyExperimentItemOutputRepository:
         result = await self._session.execute(
             select(ExperimentItemOutputModel)
             .where(ExperimentItemOutputModel.experiment_id == experiment_id)
-            .order_by(ExperimentItemOutputModel.dataset_item_id)
+            .order_by(ExperimentItemOutputModel.dataset_item_id, ExperimentItemOutputModel.repeat)
         )
         return [_experiment_item_output_to_domain(row) for row in result.scalars().all()]
 
     async def get(
-        self, experiment_id: uuid.UUID, dataset_item_id: uuid.UUID
+        self, experiment_id: uuid.UUID, dataset_item_id: uuid.UUID, repeat: int = 0
     ) -> ExperimentItemOutput | None:
         result = await self._session.execute(
             select(ExperimentItemOutputModel).where(
                 ExperimentItemOutputModel.experiment_id == experiment_id,
                 ExperimentItemOutputModel.dataset_item_id == dataset_item_id,
+                ExperimentItemOutputModel.repeat == repeat,
             )
         )
         row = result.scalar_one_or_none()

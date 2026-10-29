@@ -127,6 +127,7 @@ result = opengrade.evaluate(
     # version="v1.4.0",  # default: short git SHA of the code under test
     # git=False,  # the commit/branch/dirty state is recorded automatically; False skips it
     max_concurrency=8,
+    # repeats=3,  # run each item 3 times: per-item mean, flaky items counted
 )
 print(result.summary(), result.url)
 
@@ -149,6 +150,7 @@ How it behaves:
 - **Metrics**: a string is a server metric kind (`hit_at_k`, `recall_at_k`, `mrr`, `must_contain`, `groundedness`, `correctness`, `answer_relevance`, `context_precision`, `context_recall`, `latency`). A dict sets threshold/config, for example `{"kind": "hit_at_k", "config": {"k": 3}}`. The SDK finds or creates a metrics set that holds exactly those kinds, using the project's defaults for anything you leave out. `metrics=None` uses the project default set. A Python metric runs locally (see *Custom metrics* below), and its scores are submitted to the platform (`POST /experiments/{id}/client-results`). From there they are aggregated, shown in the UI and compared with the baseline like server metrics.
 - **Datasets**: pass a registered name/id, a path to CSV/JSON/JSONL, a list or iterable of dicts, a pandas DataFrame, or a Polars DataFrame. Rows need an `input` column (or `question`). `expected_output` (or `expected_answer`), `context` and `metadata` map to item fields; any other column goes into `metadata` (so `expected_doc_ids` and `must_contain` work). A missing `input`/`question` raises `opengrade.DatasetColumnError` (CSV headers are checked up front). Inline rows are hashed into a dataset name, so re-running on the same rows reuses the same dataset. Generators are materialised before upload (no lazy streaming).
 - **Outputs** are uploaded with `PUT /experiments/{id}/outputs`, so this works without `opengrade.init()`. With tracing on, `finish()` waits for the OTLP traces to be bound (up to 30s) and merges their context in. Your explicit output always wins.
+- **Repeats**: `repeats=N` runs the task N times per item (each run is its own trace and output, `repeat` 0..N-1). Scores are averaged per item before aggregating, so every item weighs once and the baseline comparison still pairs items; the bootstrap CI then reflects run-to-run noise less. Items whose PASS/FAIL changes between repeats count as flaky (`result.flaky`, the `flaky` column in `summary()`, the UI scorecard). In a manual loop pass `exp.run(item, repeat=i)`. Max 100.
 - **Errors**: when a task raises, `evaluate` records it on the item (`result.errors`, `metadata.error`) and moves on. Pass `raise_on_error=True` to stop instead. When the `with` block raises, nothing is scored. Bad dataset columns raise `DatasetColumnError` before the run starts.
 
 ### Custom metrics
