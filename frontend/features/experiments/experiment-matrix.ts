@@ -1,5 +1,6 @@
 import type { Experiment, ExperimentSummary } from "@/lib/api/types";
 import { experimentAppConfigChip, experimentModel, experimentVersion } from "./experiment-meta";
+import { isLowerBetter } from "./metric-direction";
 
 export type MetricCell = { mean: number | null; passRate: number | null; nScored: number };
 
@@ -131,17 +132,43 @@ export function sortRows(rows: MatrixRow[], sort: SortState): MatrixRow[] {
   });
 }
 
-/** Highest mean per column (higher is better for every built-in metric). */
+/**
+ * Best mean per column. Quality metrics are higher-is-better; latency/cost
+ * (and logged keys matching that heuristic) are lower-is-better.
+ */
 export function bestByColumn(rows: MatrixRow[], columns: MetricColumn[]): Record<string, number> {
   const best: Record<string, number> = {};
   for (const col of columns) {
-    if (col.kind !== "evaluator") continue;
+    const directionKey = col.kind === "logged" ? col.label : col.key;
+    const lower = isLowerBetter(directionKey);
     for (const row of rows) {
       const v = row.metrics[col.key]?.mean;
-      if (v != null && (best[col.key] == null || v > best[col.key])) best[col.key] = v;
+      if (v == null) continue;
+      if (
+        best[col.key] == null ||
+        (lower ? v < best[col.key] : v > best[col.key])
+      ) {
+        best[col.key] = v;
+      }
     }
   }
   return best;
+}
+
+export function paramDiff(
+  candidateConfig: Record<string, unknown>,
+  baselineConfig: Record<string, unknown>,
+): { key: string; candidate: string | null; baseline: string | null }[] {
+  const candidate = flattenParams(candidateConfig);
+  const baseline = flattenParams(baselineConfig);
+  const keys = new Set([...Object.keys(candidate), ...Object.keys(baseline)]);
+  const rows: { key: string; candidate: string | null; baseline: string | null }[] = [];
+  for (const key of [...keys].sort()) {
+    const c = candidate[key] ?? null;
+    const b = baseline[key] ?? null;
+    if (c !== b) rows.push({ key, candidate: c, baseline: b });
+  }
+  return rows;
 }
 
 /**

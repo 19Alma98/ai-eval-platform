@@ -306,6 +306,13 @@ export type GroupCompare = {
   n_regressions: number;
 };
 
+export type ExperimentMetricComparison = {
+  key: string;
+  candidate: number | null;
+  baseline: number | null;
+  delta: number | null;
+};
+
 export type ExperimentCompareResponse = {
   experiment_id: string;
   baseline_experiment_id: string;
@@ -317,6 +324,7 @@ export type ExperimentCompareResponse = {
   insufficient_n?: MetricComparison[];
   candidate_runs?: CompareRunRef[];
   baseline_runs?: CompareRunRef[];
+  experiment_metrics?: ExperimentMetricComparison[];
   candidate_git?: GitInfo | null;
   baseline_git?: GitInfo | null;
   group_by?: string | null;

@@ -68,94 +68,103 @@ type CompareTableProps = {
   metrics: MetricComparison[];
   selectedEvaluatorId: string | null;
   onSelectEvaluator: (evaluatorId: string) => void;
+  showCi?: boolean;
+  showScore?: boolean;
 };
 
 export function CompareTable({
   metrics,
   selectedEvaluatorId,
   onSelectEvaluator,
+  showCi = true,
+  showScore = true,
 }: CompareTableProps) {
   const rows = useMemo(() => groupMetricsByEvaluator(metrics), [metrics]);
 
   const columns: DataTableColumn<EvaluatorCompareRow>[] = useMemo(
-    () => [
-      {
-        id: "metric",
-        header: "Metric",
-        cell: (row) => {
-          const info = metricInfo(row.evaluator_name);
-          return (
-            <span className="text-sm font-medium text-foreground" title={info.description}>
-              {info.label}
-            </span>
-          );
-        },
-      },
-      {
-        id: "baseline",
-        header: "Baseline passed",
-        headerClassName: "w-[140px] text-right",
-        className: "text-right tabular-nums text-sm text-muted-foreground",
-        cell: (row) => formatPercent(row.baseline_pass_rate),
-      },
-      {
-        id: "candidate",
-        header: "Candidate passed",
-        headerClassName: "w-[140px] text-right",
-        className: "text-right tabular-nums text-sm font-medium",
-        cell: (row) => formatPercent(row.candidate_pass_rate),
-      },
-      {
-        id: "change",
-        header: "Change",
-        headerClassName: "w-[160px] text-right",
-        className: "text-right tabular-nums text-sm",
-        cell: (row) => {
-          const delta =
-            row.candidate_pass_rate != null && row.baseline_pass_rate != null
-              ? row.candidate_pass_rate - row.baseline_pass_rate
-              : null;
-          const ci = formatCi(row.pass_rate_ci);
-          return (
-            <span className="flex flex-col items-end">
-              <span
-                className={cn(
-                  delta != null && delta < -0.0001 && "text-status-fail",
-                  delta != null && delta > 0.0001 && "text-status-ok",
-                )}
-              >
-                {formatDeltaPoints(delta)}
+    () => {
+      const cols: DataTableColumn<EvaluatorCompareRow>[] = [
+        {
+          id: "metric",
+          header: "Metric",
+          cell: (row) => {
+            const info = metricInfo(row.evaluator_name);
+            return (
+              <span className="text-sm font-medium text-foreground" title={info.description}>
+                {info.label}
               </span>
-              {ci ? (
-                <span className="text-[11px] whitespace-nowrap text-muted-foreground">{ci}</span>
-              ) : null}
-            </span>
-          );
+            );
+          },
         },
-      },
-      {
-        id: "score",
-        header: "Avg. score",
-        headerClassName: "w-[160px] text-right",
-        className: "text-right tabular-nums text-xs text-muted-foreground",
-        cell: (row) => {
-          const ci = formatCi(row.mean_ci);
-          return (
-            <span className="flex flex-col items-end">
-              <span>{`${formatScore(row.baseline_mean)} → ${formatScore(row.candidate_mean)}`}</span>
-              {ci ? <span className="text-[11px] whitespace-nowrap">{ci}</span> : null}
-            </span>
-          );
+        {
+          id: "baseline",
+          header: "Baseline passed",
+          headerClassName: "w-[140px] text-right",
+          className: "text-right tabular-nums text-sm text-muted-foreground",
+          cell: (row) => formatPercent(row.baseline_pass_rate),
         },
-      },
-      {
+        {
+          id: "candidate",
+          header: "Candidate passed",
+          headerClassName: "w-[140px] text-right",
+          className: "text-right tabular-nums text-sm font-medium",
+          cell: (row) => formatPercent(row.candidate_pass_rate),
+        },
+        {
+          id: "change",
+          header: "Change",
+          headerClassName: "w-[160px] text-right",
+          className: "text-right tabular-nums text-sm",
+          cell: (row) => {
+            const delta =
+              row.candidate_pass_rate != null && row.baseline_pass_rate != null
+                ? row.candidate_pass_rate - row.baseline_pass_rate
+                : null;
+            const ci = showCi ? formatCi(row.pass_rate_ci) : null;
+            return (
+              <span className="flex flex-col items-end">
+                <span
+                  className={cn(
+                    delta != null && delta < -0.0001 && "text-status-fail",
+                    delta != null && delta > 0.0001 && "text-status-ok",
+                  )}
+                >
+                  {formatDeltaPoints(delta)}
+                </span>
+                {ci ? (
+                  <span className="text-[11px] whitespace-nowrap text-muted-foreground">{ci}</span>
+                ) : null}
+              </span>
+            );
+          },
+        },
+      ];
+      if (showScore) {
+        cols.push({
+          id: "score",
+          header: "Avg. score",
+          headerClassName: "w-[160px] text-right",
+          className: "text-right tabular-nums text-xs text-muted-foreground",
+          cell: (row) => {
+            const ci = showCi ? formatCi(row.mean_ci) : null;
+            return (
+              <span className="flex flex-col items-end">
+                <span>{`${formatScore(row.baseline_mean)} → ${formatScore(row.candidate_mean)}`}</span>
+                {ci ? <span className="text-[11px] whitespace-nowrap">{ci}</span> : null}
+              </span>
+            );
+          },
+        });
+      }
+      cols.push({
         id: "status",
         header: "Verdict",
         headerClassName: "w-[140px]",
         cell: (row) => <CompareStatusCell status={row.status} />,
-      },
-    ],
-    [],
+      });
+      return cols;
+    },
+    [showCi, showScore],
   );
 
   if (rows.length === 0) {

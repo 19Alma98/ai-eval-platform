@@ -5,9 +5,16 @@ import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useMemo, useState } from "react";
 import { ArrowRight } from "lucide-react";
+import { CompareDetails } from "@/features/experiments/compare-details";
 import { CompareGroupsSection } from "@/features/experiments/compare-groups-section";
 import { CompareItemsTable } from "@/features/experiments/compare-items-table";
 import { CompareTable } from "@/features/experiments/compare-table";
+import {
+  parseCompareCols,
+  parseDetailsOpen,
+  serializeCompareCols,
+  type CompareOptionalColumn,
+} from "@/features/experiments/compare-url-state";
 import {
   defaultCompareEvaluatorId,
   groupMetricsByEvaluator,
@@ -75,6 +82,11 @@ export function ExperimentCompareView({
   const searchParams = useSearchParams();
   const baselineFromQuery = searchParams.get("baseline");
   const groupBy = searchParams.get("group")?.trim() || null;
+  const detailsOpen = parseDetailsOpen(searchParams.get("details"));
+  const visibleCols = useMemo(
+    () => parseCompareCols(searchParams.get("cols")),
+    [searchParams],
+  );
 
   const experimentQuery = useExperiment(experimentId);
   const experimentsQuery = useExperiments(projectId);
@@ -137,6 +149,24 @@ export function ExperimentCompareView({
     const params = new URLSearchParams(searchParams.toString());
     if (key) params.set("group", key);
     else params.delete("group");
+    params.set("project", projectId);
+    router.replace(`${pathname}?${params.toString()}`);
+  }
+
+  function patchCompareUrl(patch: {
+    details?: boolean;
+    cols?: Set<CompareOptionalColumn>;
+  }) {
+    const params = new URLSearchParams(searchParams.toString());
+    if (patch.details !== undefined) {
+      if (patch.details) params.set("details", "1");
+      else params.delete("details");
+    }
+    if (patch.cols !== undefined) {
+      const serialized = serializeCompareCols(patch.cols);
+      if (serialized === null) params.delete("cols");
+      else params.set("cols", serialized);
+    }
     params.set("project", projectId);
     router.replace(`${pathname}?${params.toString()}`);
   }
@@ -325,6 +355,17 @@ export function ExperimentCompareView({
             metrics={comparison.metrics}
             selectedEvaluatorId={selectedEvaluatorId}
             onSelectEvaluator={setPickedEvaluatorId}
+            showCi={visibleCols.has("ci")}
+            showScore={visibleCols.has("score")}
+          />
+          <CompareDetails
+            open={detailsOpen}
+            onOpenChange={(open) => patchCompareUrl({ details: open })}
+            experimentMetrics={comparison.experiment_metrics ?? []}
+            candidateConfig={experiment.model_config ?? {}}
+            baselineConfig={baselineExperiment?.model_config ?? {}}
+            visibleCols={visibleCols}
+            onVisibleColsChange={(cols) => patchCompareUrl({ cols })}
           />
           <CompareGroupsSection
             experimentId={experimentId}

@@ -7,6 +7,7 @@ import {
   columnDecimals,
   filterRows,
   flattenParams,
+  paramDiff,
   sortRows,
   trendSeries,
   varyingParams,
@@ -102,7 +103,11 @@ describe("experiment matrix", () => {
   });
 
   it("marks the best value and orders the trend by creation", () => {
-    assert.deepEqual(bestByColumn(rows, columns), { groundedness: 0.9, recall_at_k: 0.8 });
+    assert.deepEqual(bestByColumn(rows, columns), {
+      groundedness: 0.9,
+      recall_at_k: 0.8,
+      "logged:latency_p50": 120,
+    });
     assert.deepEqual(
       trendSeries(rows, columns).map((p) => [p.label, p.groundedness]),
       [
@@ -110,6 +115,39 @@ describe("experiment matrix", () => {
         ["exp-b", 0.9],
         ["exp-c", null],
       ],
+    );
+  });
+
+  it("picks the lowest latency when several logged values exist", () => {
+    const withLatency = [
+      exp("a", "2026-01-01T00:00:00Z", { model: "a" }),
+      exp("b", "2026-01-02T00:00:00Z", { model: "b" }),
+    ];
+    const latencySummaries: ExperimentSummary[] = [
+      {
+        experiment_id: "a",
+        evaluators: [],
+        experiment_metrics: { latency_p50_ms: 200 },
+      },
+      {
+        experiment_id: "b",
+        evaluators: [],
+        experiment_metrics: { latency_p50_ms: 80 },
+      },
+    ];
+    const built = buildMatrix(withLatency, latencySummaries);
+    assert.deepEqual(bestByColumn(built.rows, built.columns), {
+      "logged:latency_p50_ms": 80,
+    });
+  });
+
+  it("diffs only params that differ between configs", () => {
+    assert.deepEqual(
+      paramDiff(
+        { model: { name: "gpt-4o", temperature: 0.2 }, content_hash: "x" },
+        { model: { name: "gpt-4o", temperature: 0 }, content_hash: "y" },
+      ),
+      [{ key: "model.temperature", candidate: "0.2", baseline: "0" }],
     );
   });
 });
