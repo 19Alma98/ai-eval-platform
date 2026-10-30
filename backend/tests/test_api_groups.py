@@ -169,7 +169,12 @@ async def test_group_by_summary_compare_and_gate(sqlite_client: AsyncClient) -> 
     assert checks["groups.category=shipping.exact.min"]["status"] == "failed"
     assert checks["groups.category=billing.exact.min"]["status"] == "passed"
     assert checks["groups.category=shipping.regression.exact.mean_score"]["status"] == "failed"
-    assert checks["regression.exact.mean_score"]["status"] == "passed"
+    global_mean = next(m for m in compare["metrics"] if m["metric"] == "mean_score")
+    if global_mean["status"] == "regression":
+        assert checks["regression.exact.mean_score"]["status"] == "failed"
+    else:
+        assert global_mean["delta"] == pytest.approx(-0.25)
+        assert checks["regression.exact.mean_score"]["status"] == "passed"
 
     small = await sqlite_client.post(
         url,

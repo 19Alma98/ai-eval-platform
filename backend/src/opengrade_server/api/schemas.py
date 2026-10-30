@@ -708,7 +708,7 @@ class CostRuleBody(BaseModel):
 class RegressionRuleBody(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    max_delta: float
+    max_delta: float | None = None
     allow_insufficient_n: bool = False
 
 

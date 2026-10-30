@@ -63,20 +63,20 @@ Edge cases:
 
 - **No alias yet** (first run): the run is evaluated without a baseline, `regression` is dropped from the policy for that run, and `--promote` creates the alias. `from_experiment: alias:<name>` cannot bootstrap: it has no exam to clone (exit 2).
 - **Exam changed** (another dataset or metrics set than the alias target, e.g. a new gold set): deltas would compare different exams, so `regression` is skipped for that run; when the gate passes, the alias moves (recorded as `exam changed` in its history).
-- **Ratchet:** promotion accepts runs within `regression.max_delta`, so small losses can add up over many promotions. Keep absolute `min` rules next to `regression`.
+- **Ratchet:** the gate fails on bootstrap `regression` (same as the compare page). Optional `max_delta` only blocks large mean drops when the CI still includes 0; repeated promotions of noisy “unchanged” runs can still drift the mean. Keep absolute `min` rules next to `regression`.
 
 #### Gate per group (`groups`)
 
-A global mean can pass while one kind of question collapses. `groups` re-applies the metric `min` rules (and the `regression` bound) inside each group of test cases, grouped by a dataset-item metadata field:
+A global mean can pass while one kind of question collapses. `groups` re-applies the metric `min` rules and the same bootstrap regression check (plus optional mean floor) inside each group of test cases, grouped by a dataset-item metadata field:
 
 ```yaml
 groundedness: {min: 0.7}
-regression: {max_delta: -0.05}
+regression: {max_delta: -0.05}   # optional mean floor; bootstrap status is always gated
 groups:
   by: category          # metadata key; dotted paths (meta.lang) and list values (tags) work
   min_items: 5          # smaller groups are not gated (default 5)
   # metrics: [groundedness]   # optional: only these metrics per group
-  # max_delta: -0.10          # optional: looser/tighter regression bound for groups
+  # max_delta: -0.10          # optional: looser/tighter mean floor for groups
 ```
 
 Checks appear as `groups.category=billing.groundedness.min` and `groups.category=billing.regression.groundedness.mean_score`. A metric with no applicable item in a group (e.g. all SKIPPED) is not checked there. At most 50 distinct values per key. The same grouping is available without gating: `GET /experiments/{id}/summary?group_by=category`, `GET /experiments/{id}/compare/{baseline}?group_by=category`, `opengrade.evaluate(..., group_by="category")` and the "By group" section of the compare page.

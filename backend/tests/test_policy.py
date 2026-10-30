@@ -141,26 +141,95 @@ def test_evaluate_latency_p95_and_cost_mean() -> None:
     assert abs(by_metric["cost.max_per_request_usd"].actual - 0.07 / 3) < 1e-12
 
 
-def test_evaluate_regression_max_delta() -> None:
-    policy = parse_release_policy({"regression": {"max_delta": -0.03}})
+def test_parse_regression_without_max_delta() -> None:
+    policy = parse_release_policy({"regression": {}})
+    assert policy.regression is not None
+    assert policy.regression.max_delta is None
+    only_allow = parse_release_policy({"regression": {"allow_insufficient_n": True}})
+    assert only_allow.regression is not None
+    assert only_allow.regression.max_delta is None
+    assert only_allow.regression.allow_insufficient_n is True
+
+
+def test_evaluate_regression_bootstrap_status_primary() -> None:
+    """Gate follows compare status; max_delta alone no longer decides pass/fail."""
+    policy = parse_release_policy({"regression": {"max_delta": -0.05}})
+    significant = evaluate_policy(
+        policy,
+        candidate=[],
+        regression_deltas=[
+            RegressionDeltaInput(
+                evaluator_name="quality",
+                mean_score_delta=-0.02,
+                compare_status="regression",
+            )
+        ],
+    )
+    assert significant.status == "failed"
+    assert significant.checks[0].metric == "regression.quality.mean_score"
+
     ok = evaluate_policy(
         policy,
         candidate=[],
-        regression_deltas=[RegressionDeltaInput(evaluator_name="quality", mean_score_delta=-0.02)],
+        regression_deltas=[
+            RegressionDeltaInput(
+                evaluator_name="quality",
+                mean_score_delta=-0.02,
+                compare_status="unchanged",
+            )
+        ],
+    )
+    assert ok.status == "passed"
+
+    empty = evaluate_policy(policy, candidate=[], regression_deltas=[])
+    assert empty.status == "failed"
+    assert empty.checks[0].status == "unavailable"
+
+
+def test_evaluate_regression_mean_floor_when_ci_includes_zero() -> None:
+    policy = parse_release_policy({"regression": {"max_delta": -0.03}})
+    floor = evaluate_policy(
+        policy,
+        candidate=[],
+        regression_deltas=[
+            RegressionDeltaInput(
+                evaluator_name="quality",
+                mean_score_delta=-0.05,
+                compare_status="unchanged",
+            )
+        ],
+    )
+    assert floor.status == "failed"
+    assert floor.checks[0].status == "failed"
+
+
+def test_evaluate_regression_bootstrap_only_without_max_delta() -> None:
+    policy = parse_release_policy({"regression": {}})
+    ok = evaluate_policy(
+        policy,
+        candidate=[],
+        regression_deltas=[
+            RegressionDeltaInput(
+                evaluator_name="quality",
+                mean_score_delta=-0.2,
+                compare_status="unchanged",
+            )
+        ],
     )
     assert ok.status == "passed"
 
     bad = evaluate_policy(
         policy,
         candidate=[],
-        regression_deltas=[RegressionDeltaInput(evaluator_name="quality", mean_score_delta=-0.05)],
+        regression_deltas=[
+            RegressionDeltaInput(
+                evaluator_name="quality",
+                mean_score_delta=-0.01,
+                compare_status="regression",
+            )
+        ],
     )
     assert bad.status == "failed"
-    assert bad.checks[0].metric == "regression.quality.mean_score"
-
-    empty = evaluate_policy(policy, candidate=[], regression_deltas=[])
-    assert empty.status == "failed"
-    assert empty.checks[0].status == "unavailable"
 
 
 def test_evaluate_regression_insufficient_n_is_unavailable() -> None:
@@ -173,6 +242,7 @@ def test_evaluate_regression_insufficient_n_is_unavailable() -> None:
                 evaluator_name="quality",
                 mean_score_delta=-0.4,
                 insufficient_n=True,
+                compare_status="insufficient_n",
             )
         ],
     )

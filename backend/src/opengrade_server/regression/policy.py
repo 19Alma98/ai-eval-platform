@@ -3,7 +3,7 @@ from __future__ import annotations
 import math
 import uuid
 from collections.abc import Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any, Literal
 
 from opengrade_server.domain.evaluation import EvaluationResultRecord
@@ -57,7 +57,7 @@ class CostMeanRule:
 
 @dataclass(frozen=True, slots=True)
 class RegressionRule:
-    max_delta: float
+    max_delta: float | None = None
     allow_insufficient_n: bool = False
 
 
@@ -130,6 +130,7 @@ class RegressionDeltaInput:
     evaluator_name: str
     mean_score_delta: float | None
     insufficient_n: bool = False
+    compare_status: str | None = None
 
 
 def strip_meta_keys(raw: dict[str, Any]) -> dict[str, Any]:
@@ -186,9 +187,15 @@ def parse_release_policy(raw: dict[str, Any]) -> ReleasePolicy:
         experiment_metrics=experiment_metrics,
         groups=groups,
     )
-    if groups is not None and not absolute_mins and policy.group_max_delta() is None:
+    if (
+        groups is not None
+        and not absolute_mins
+        and regression is None
+        and policy.group_max_delta() is None
+    ):
         raise InvalidPolicyError(
-            "policy.groups needs metric min rules or a regression max_delta to apply per group"
+            "policy.groups needs metric min rules, a regression block, "
+            "or groups.max_delta to apply per group"
         )
     return policy
 
@@ -238,15 +245,15 @@ def _parse_regression(value: dict[str, Any]) -> RegressionRule:
     unknown = set(value) - _REGRESSION_KEYS
     if unknown:
         raise InvalidPolicyError(f"policy.regression has unsupported keys: {sorted(unknown)}")
-    if "max_delta" not in value:
-        raise InvalidPolicyError("policy.regression requires max_delta")
     allow = value.get("allow_insufficient_n", False)
     if not isinstance(allow, bool):
         raise InvalidPolicyError("policy.regression.allow_insufficient_n must be a boolean")
-    return RegressionRule(
-        max_delta=_require_float("regression", "max_delta", value["max_delta"]),
-        allow_insufficient_n=allow,
+    max_delta = (
+        _require_float("regression", "max_delta", value["max_delta"])
+        if "max_delta" in value
+        else None
     )
+    return RegressionRule(max_delta=max_delta, allow_insufficient_n=allow)
 
 
 def _parse_experiment_metrics(value: dict[str, Any]) -> tuple[ExperimentMetricRule, ...]:
@@ -304,12 +311,13 @@ def _parse_groups(value: dict[str, Any]) -> GroupRule:
 
 @dataclass(frozen=True, slots=True)
 class GroupInput:
-    """One group of items: candidate means per evaluator and mean-score deltas."""
+    """One group of items: candidate means, mean-score deltas, and compare statuses."""
 
     value: str
     n_items: int
     mean_scores: Mapping[str, float | None]
     deltas: Mapping[str, float | None]
+    statuses: Mapping[str, str] = field(default_factory=dict)
 
 
 def evaluate_group_checks(policy: ReleasePolicy, groups: list[GroupInput]) -> list[PolicyCheck]:
@@ -318,7 +326,8 @@ def evaluate_group_checks(policy: ReleasePolicy, groups: list[GroupInput]) -> li
     rule = policy.groups
     if rule is None:
         return []
-    max_delta = policy.group_max_delta()
+    run_regression = policy.regression is not None or policy.group_max_delta() is not None
+    floor = policy.group_max_delta()
     checks: list[PolicyCheck] = []
     for group in groups:
         if group.n_items < rule.min_items:
@@ -338,19 +347,80 @@ def evaluate_group_checks(policy: ReleasePolicy, groups: list[GroupInput]) -> li
                     status="passed" if actual >= min_rule.min_score else "failed",
                 )
             )
-        if max_delta is None:
+        if not run_regression:
             continue
-        for name, delta in sorted(group.deltas.items()):
-            if delta is None or not rule.applies_to(name):
+        names = sorted(
+            set(group.deltas) | set(group.statuses),
+            key=str,
+        )
+        for name in names:
+            if not rule.applies_to(name):
                 continue
-            checks.append(
-                PolicyCheck(
-                    metric=f"{prefix}.regression.{name}.mean_score",
-                    actual=delta,
-                    threshold=max_delta,
-                    status="passed" if delta >= max_delta else "failed",
+            status = group.statuses.get(name)
+            delta = group.deltas.get(name)
+            if status is None and delta is None:
+                continue
+            if status == "insufficient_n":
+                if policy.regression is not None and policy.regression.allow_insufficient_n:
+                    continue
+                checks.append(
+                    PolicyCheck(
+                        metric=f"{prefix}.regression.{name}.mean_score",
+                        actual=delta,
+                        threshold=floor,
+                        status="unavailable",
+                    )
                 )
-            )
+                continue
+            if status in ("config_mismatch", "unavailable"):
+                checks.append(
+                    PolicyCheck(
+                        metric=f"{prefix}.regression.{name}.mean_score",
+                        actual=delta,
+                        threshold=floor,
+                        status="unavailable",
+                    )
+                )
+                continue
+            if status == "regression":
+                checks.append(
+                    PolicyCheck(
+                        metric=f"{prefix}.regression.{name}.mean_score",
+                        actual=delta,
+                        threshold=floor,
+                        status="failed",
+                    )
+                )
+                continue
+            if status in ("improved", "unchanged"):
+                if floor is not None and delta is not None and delta < floor:
+                    checks.append(
+                        PolicyCheck(
+                            metric=f"{prefix}.regression.{name}.mean_score",
+                            actual=delta,
+                            threshold=floor,
+                            status="failed",
+                        )
+                    )
+                else:
+                    checks.append(
+                        PolicyCheck(
+                            metric=f"{prefix}.regression.{name}.mean_score",
+                            actual=delta,
+                            threshold=floor,
+                            status="passed",
+                        )
+                    )
+                continue
+            if status is None and delta is not None and floor is not None:
+                checks.append(
+                    PolicyCheck(
+                        metric=f"{prefix}.regression.{name}.mean_score",
+                        actual=delta,
+                        threshold=floor,
+                        status="passed" if delta >= floor else "failed",
+                    )
+                )
     return checks
 
 
@@ -480,8 +550,6 @@ def _eval_latency(
             threshold=rule.p95_max_ms,
             status="unavailable",
         )
-    # Missing app output is a quality failure for the latency gate: do not compute
-    # p95 on the remaining subset alone (that would green-light incomplete runs).
     if _has_missing_output_without_latency(metric.results):
         values = _metadata_floats(metric.results, "latency_ms")
         actual = percentile_nearest_rank(values, 95.0) if values else None
@@ -560,13 +628,44 @@ def _eval_experiment_metric(rule: ExperimentMetricRule, actual: float | None) ->
 
 
 def _eval_regression(rule: RegressionRule, delta: RegressionDeltaInput) -> PolicyCheck:
+    """Gate on compare bootstrap status; optional ``max_delta`` is a mean floor."""
     metric = f"regression.{delta.evaluator_name}.mean_score"
-    if delta.insufficient_n:
+    status = delta.compare_status
+    if delta.insufficient_n or status == "insufficient_n":
         return PolicyCheck(
             metric=metric,
             actual=delta.mean_score_delta,
             threshold=rule.max_delta,
             status="unavailable",
+        )
+    if status in ("config_mismatch", "unavailable"):
+        return PolicyCheck(
+            metric=metric,
+            actual=delta.mean_score_delta,
+            threshold=rule.max_delta,
+            status="unavailable",
+        )
+    if status == "regression":
+        return PolicyCheck(
+            metric=metric,
+            actual=delta.mean_score_delta,
+            threshold=rule.max_delta,
+            status="failed",
+        )
+    if status in ("improved", "unchanged"):
+        actual = delta.mean_score_delta
+        if rule.max_delta is not None and actual is not None and actual < rule.max_delta:
+            return PolicyCheck(
+                metric=metric,
+                actual=actual,
+                threshold=rule.max_delta,
+                status="failed",
+            )
+        return PolicyCheck(
+            metric=metric,
+            actual=actual,
+            threshold=rule.max_delta,
+            status="passed",
         )
     if delta.mean_score_delta is None:
         return PolicyCheck(
@@ -576,6 +675,13 @@ def _eval_regression(rule: RegressionRule, delta: RegressionDeltaInput) -> Polic
             status="unavailable",
         )
     actual = delta.mean_score_delta
+    if rule.max_delta is None:
+        return PolicyCheck(
+            metric=metric,
+            actual=actual,
+            threshold=None,
+            status="unavailable",
+        )
     return PolicyCheck(
         metric=metric,
         actual=actual,

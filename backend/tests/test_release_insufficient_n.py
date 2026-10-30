@@ -186,3 +186,90 @@ async def test_release_check_still_fails_real_regression() -> None:
         c.metric == "regression.quality.mean_score" and c.status == "failed"
         for c in result.checks.checks
     )
+
+
+@pytest.mark.asyncio
+async def test_release_check_fails_bootstrap_regression_within_mean_floor() -> None:
+    """Significant CI regression fails even when mean delta is above max_delta."""
+    project = Project.create("p")
+    dataset_id = uuid.uuid4()
+    baseline = Experiment.create(project.id, "baseline", dataset_id)
+    candidate = Experiment.create(
+        project.id,
+        "candidate",
+        dataset_id,
+        baseline_experiment_id=baseline.id,
+    )
+    metric = _metric(status="regression", delta=-0.02)
+    comparison = ExperimentComparison(
+        experiment_id=candidate.id,
+        baseline_experiment_id=baseline.id,
+        metrics=[metric],
+        regressions=[metric],
+        improved=[],
+        unchanged=[],
+        config_mismatches=[],
+        insufficient_n=[],
+    )
+    compare = AsyncMock()
+    compare.execute = AsyncMock(return_value=comparison)
+
+    result = await ReleaseCheck(
+        _Projects(project),
+        _Experiments(candidate, baseline),
+        _Runs(),
+        compare,
+    ).execute(
+        ReleaseCheckCommand(
+            project_id=project.id,
+            experiment_id=candidate.id,
+            policy={"regression": {"max_delta": -0.05}},
+            baseline_experiment_id=baseline.id,
+        )
+    )
+    assert result.status == "failed"
+    assert any(
+        c.metric == "regression.quality.mean_score" and c.status == "failed"
+        for c in result.checks.checks
+    )
+
+
+@pytest.mark.asyncio
+async def test_release_check_passes_unchanged_above_mean_floor() -> None:
+    project = Project.create("p")
+    dataset_id = uuid.uuid4()
+    baseline = Experiment.create(project.id, "baseline", dataset_id)
+    candidate = Experiment.create(
+        project.id,
+        "candidate",
+        dataset_id,
+        baseline_experiment_id=baseline.id,
+    )
+    metric = _metric(status="unchanged", delta=-0.02)
+    comparison = ExperimentComparison(
+        experiment_id=candidate.id,
+        baseline_experiment_id=baseline.id,
+        metrics=[metric],
+        regressions=[],
+        improved=[],
+        unchanged=[metric],
+        config_mismatches=[],
+        insufficient_n=[],
+    )
+    compare = AsyncMock()
+    compare.execute = AsyncMock(return_value=comparison)
+
+    result = await ReleaseCheck(
+        _Projects(project),
+        _Experiments(candidate, baseline),
+        _Runs(),
+        compare,
+    ).execute(
+        ReleaseCheckCommand(
+            project_id=project.id,
+            experiment_id=candidate.id,
+            policy={"regression": {"max_delta": -0.05}},
+            baseline_experiment_id=baseline.id,
+        )
+    )
+    assert result.status == "passed"

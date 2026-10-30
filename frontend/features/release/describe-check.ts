@@ -60,7 +60,10 @@ export function describeCheck(check: ReleaseCheckItemResponse): CheckView {
       key: id,
       title: "No drop vs baseline",
       actual: "Needs a baseline",
-      target: `≥ ${formatDeltaPoints(check.threshold)}`,
+      target:
+        check.threshold == null
+          ? "no significant drop (95% CI)"
+          : `no significant drop; mean floor ${formatDeltaPoints(check.threshold)}`,
       outcome,
       isRegression: true,
     };
@@ -71,7 +74,10 @@ export function describeCheck(check: ReleaseCheckItemResponse): CheckView {
       key: id,
       title: `${metricLabel(regression[1])} vs baseline`,
       actual: formatDeltaPoints(check.actual),
-      target: `no worse than ${formatDeltaPoints(check.threshold)}`,
+      target:
+        check.threshold == null
+          ? "no significant drop (95% CI)"
+          : `no significant drop (95% CI); mean floor ${formatDeltaPoints(check.threshold)}`,
       outcome,
       isRegression: true,
     };
@@ -127,9 +133,10 @@ export function policyFromQualityBar(bar: QualityBar): Record<string, unknown> {
   if (bar.latencyEnabled && seconds !== null) {
     policy.latency = { p95_max_ms: Math.round(seconds * 1000) };
   }
-  const points = num(bar.regressionPoints);
-  if (bar.regressionEnabled && points !== null) {
-    policy.regression = { max_delta: -Math.abs(points) / 100 };
+  if (bar.regressionEnabled) {
+    const points = num(bar.regressionPoints);
+    policy.regression =
+      points !== null ? { max_delta: -Math.abs(points) / 100 } : {};
   }
   return policy;
 }

@@ -40,7 +40,9 @@ from opengrade_server.regression.policy import (
 
 class MissingBaselineError(Exception):
     def __init__(self) -> None:
-        super().__init__("baseline_experiment_id is required when policy includes regression")
+        super().__init__(
+            "baseline_experiment_id is required when policy includes regression or groups.max_delta"
+        )
 
 
 @dataclass(frozen=True, slots=True)
@@ -129,12 +131,16 @@ class ReleaseCheck:
 
         baseline_id: uuid.UUID | None = None
         group_deltas: dict[str, dict[str, float | None]] = {}
+        group_statuses: dict[str, dict[str, str]] = {}
         regression_deltas: list[RegressionDeltaInput] = []
         saw_insufficient_n = False
         allow_insufficient_n = (
             policy.regression is not None and policy.regression.allow_insufficient_n
         )
-        if policy.regression is not None:
+        need_compare = policy.regression is not None or (
+            policy.groups is not None and policy.groups.max_delta is not None
+        )
+        if need_compare:
             baseline_id = command.baseline_experiment_id or experiment.baseline_experiment_id
             if baseline_id is None:
                 raise MissingBaselineError()
@@ -154,29 +160,39 @@ class ReleaseCheck:
                 }
                 for group in comparison.groups
             }
-            for metric in comparison.metrics:
-                if metric.metric != "mean_score":
-                    continue
-                name = metric.evaluator_name or str(metric.evaluator_id)
-                if metric.status == "insufficient_n":
-                    saw_insufficient_n = True
-                    if allow_insufficient_n:
-                        # Demo/small-n escape hatch: omit from regression enforcement.
+            group_statuses = {
+                group.value: {
+                    m.evaluator_name or str(m.evaluator_id): m.status
+                    for m in group.metrics
+                    if m.metric == "mean_score"
+                }
+                for group in comparison.groups
+            }
+            if policy.regression is not None:
+                for metric in comparison.metrics:
+                    if metric.metric != "mean_score":
+                        continue
+                    name = metric.evaluator_name or str(metric.evaluator_id)
+                    if metric.status == "insufficient_n":
+                        saw_insufficient_n = True
+                        if allow_insufficient_n:
+                            continue
+                        regression_deltas.append(
+                            RegressionDeltaInput(
+                                evaluator_name=name,
+                                mean_score_delta=metric.delta,
+                                insufficient_n=True,
+                                compare_status=metric.status,
+                            )
+                        )
                         continue
                     regression_deltas.append(
                         RegressionDeltaInput(
                             evaluator_name=name,
                             mean_score_delta=metric.delta,
-                            insufficient_n=True,
+                            compare_status=metric.status,
                         )
                     )
-                    continue
-                regression_deltas.append(
-                    RegressionDeltaInput(
-                        evaluator_name=name,
-                        mean_score_delta=metric.delta,
-                    )
-                )
 
         policy_for_eval = policy
         if (
@@ -209,6 +225,7 @@ class ReleaseCheck:
                         for metric in candidate
                     },
                     deltas=group_deltas.get(value, {}),
+                    statuses=group_statuses.get(value, {}),
                 )
                 for value, item_ids in by_value.items()
             ]

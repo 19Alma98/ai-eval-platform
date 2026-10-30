@@ -487,9 +487,9 @@ Input:
 
 `experiment_metrics` gates experiment-level scalars: `{"experiment_metrics": {"cost_usd": {"max": 2.0}, "accuracy": {"min": 0.8}}}`. Each bound becomes a check named `experiment_metrics.<key>.min|max`; a key the experiment never logged is `unavailable` and fails the gate. A rule needs `min` or `max` (422 otherwise); `min` must be <= `max` and keys follow the metric key rules (400 otherwise).
 
-`baseline_experiment_id` is required when `policy.regression` is set unless the experiment already has `baseline_experiment_id`.
+`baseline_experiment_id` is required when `policy.regression` is set (or when `groups.max_delta` is set without a top-level regression block) unless the experiment already has `baseline_experiment_id`.
 
-Regression compare status `insufficient_n` (paired n < 5) produces a check with status `unavailable` and fails the gate. Set `regression.allow_insufficient_n: true` to soft-pass those evaluators (small demo sets only). Latency p95 fails when any result has `missing_output: true` without `latency_ms`.
+`policy.regression` fails a shared evaluator when compare status is `regression` (same paired bootstrap 95% CI as `/compare`). Optional `max_delta` is a mean-score safety floor (also fail when the CI includes 0 but the mean drop is below the floor). Omit `max_delta` for bootstrap-only gating (`"regression": {}`). Compare status `insufficient_n` (paired n < 5) produces a check with status `unavailable` and fails the gate. Set `regression.allow_insufficient_n: true` to soft-pass those evaluators (small demo sets only). Latency p95 fails when any result has `missing_output: true` without `latency_ms`.
 
 Response (HTTP 200 for both pass and fail):
 ```json

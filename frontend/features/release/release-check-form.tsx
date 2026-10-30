@@ -398,7 +398,7 @@ export function ReleaseCheckForm({
                     (!regressionEnabled || baselineId == null) && "text-muted-foreground",
                   )}
                 >
-                  No metric drops vs baseline by more than (points)
+                  No significant drop vs baseline (95% CI); optional mean floor (points)
                 </span>
                 <Input
                   type="number"
@@ -408,7 +408,8 @@ export function ReleaseCheckForm({
                   disabled={!regressionEnabled || baselineId == null}
                   onChange={(e) => setRegressionPoints(e.target.value)}
                   className="h-8 w-20 tabular-nums"
-                  aria-label="Allowed drop in points"
+                  placeholder="—"
+                  aria-label="Optional mean-score floor in points"
                 />
               </label>
             </div>

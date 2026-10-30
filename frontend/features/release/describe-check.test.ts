@@ -27,6 +27,15 @@ test("describeCheck humanizes check ids", () => {
   assert.equal(regression.actual, "−50 pts");
   assert.equal(regression.outcome, "failed");
   assert.ok(regression.isRegression);
+  assert.match(regression.target, /95% CI/);
+  assert.match(regression.target, /mean floor/);
+  const bootstrapOnly = describeCheck({
+    metric: "regression.groundedness.mean_score",
+    actual: -0.1,
+    threshold: null,
+    status: "failed",
+  });
+  assert.equal(bootstrapOnly.target, "no significant drop (95% CI)");
   assert.equal(
     describeCheck({ metric: "x.min", actual: null, threshold: 1, status: "unavailable" }).outcome,
     "unavailable",
@@ -78,5 +87,15 @@ test("policyFromQualityBar builds the API policy", () => {
       latency: { p95_max_ms: 30000 },
       regression: { max_delta: -0.05 },
     },
+  );
+  assert.deepEqual(
+    policyFromQualityBar({
+      rules: [],
+      latencyEnabled: false,
+      latencySeconds: "30",
+      regressionEnabled: true,
+      regressionPoints: "",
+    }),
+    { regression: {} },
   );
 });
