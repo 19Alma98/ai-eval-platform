@@ -1,3 +1,4 @@
+import { isLowerBetter } from "@/features/experiments/metric-direction";
 import type { ReleaseCheckItemResponse } from "@/lib/api/types";
 import { formatDeltaPoints, formatScore } from "@/lib/format";
 import { metricLabel } from "@/lib/metrics-catalog";
@@ -68,6 +69,33 @@ export function describeCheck(check: ReleaseCheckItemResponse): CheckView {
       isRegression: true,
     };
   }
+  const groupRegression = /^groups\.(.+)=(.+)\.regression\.(.+)\.mean_score$/.exec(id);
+  if (groupRegression) {
+    const [, by, value, metric] = groupRegression;
+    return {
+      key: id,
+      title: `${metricLabel(metric!)} in ${by}=${value} vs baseline`,
+      actual: formatDeltaPoints(check.actual),
+      target:
+        check.threshold == null
+          ? "no significant drop (95% CI)"
+          : `no significant drop (95% CI); mean floor ${formatDeltaPoints(check.threshold)}`,
+      outcome,
+      isRegression: true,
+    };
+  }
+  const groupMin = /^groups\.(.+)=(.+)\.(.+)\.min$/.exec(id);
+  if (groupMin) {
+    const [, by, value, metric] = groupMin;
+    return {
+      key: id,
+      title: `${metricLabel(metric!)} in ${by}=${value}`,
+      actual: formatScore(check.actual),
+      target: `≥ ${formatScore(check.threshold)}`,
+      outcome,
+      isRegression: false,
+    };
+  }
   const regression = /^regression\.(.+)\.mean_score$/.exec(id);
   if (regression) {
     return {
@@ -107,12 +135,25 @@ export function describeCheck(check: ReleaseCheckItemResponse): CheckView {
 
 export type QualityBarRule = { name: string; enabled: boolean; min: string };
 
+export type ExperimentMetricRule = {
+  key: string;
+  enabled: boolean;
+  bound: string;
+};
+
 export type QualityBar = {
   rules: QualityBarRule[];
   latencyEnabled: boolean;
   latencySeconds: string;
   regressionEnabled: boolean;
   regressionPoints: string;
+  costEnabled: boolean;
+  costMaxUsd: string;
+  experimentMetricRules: ExperimentMetricRule[];
+  groupsEnabled: boolean;
+  groupsBy: string;
+  groupsMinItems: string;
+  groupsMaxDeltaPoints: string;
 };
 
 function num(value: string): number | null {
@@ -137,6 +178,31 @@ export function policyFromQualityBar(bar: QualityBar): Record<string, unknown> {
     const points = num(bar.regressionPoints);
     policy.regression =
       points !== null ? { max_delta: -Math.abs(points) / 100 } : {};
+  }
+  const costMax = num(bar.costMaxUsd);
+  if (bar.costEnabled && costMax !== null) {
+    policy.cost = { max_per_request_usd: costMax };
+  }
+  const experimentMetrics: Record<string, { min?: number; max?: number }> = {};
+  for (const rule of bar.experimentMetricRules) {
+    const bound = num(rule.bound);
+    if (!rule.enabled || bound === null) continue;
+    experimentMetrics[rule.key] = isLowerBetter(rule.key) ? { max: bound } : { min: bound };
+  }
+  if (Object.keys(experimentMetrics).length > 0) {
+    policy.experiment_metrics = experimentMetrics;
+  }
+  if (bar.groupsEnabled && bar.groupsBy.trim()) {
+    const groups: Record<string, unknown> = { by: bar.groupsBy.trim() };
+    const minItems = num(bar.groupsMinItems);
+    if (minItems !== null && Number.isInteger(minItems) && minItems >= 1) {
+      groups.min_items = minItems;
+    }
+    const groupPoints = num(bar.groupsMaxDeltaPoints);
+    if (groupPoints !== null) {
+      groups.max_delta = -Math.abs(groupPoints) / 100;
+    }
+    policy.groups = groups;
   }
   return policy;
 }

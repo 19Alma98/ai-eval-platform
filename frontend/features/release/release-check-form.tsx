@@ -18,15 +18,18 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
-import { formatErrorForUi } from "@/lib/api/client";
-import { cn } from "@/lib/cn";
-import { compareMetrics, metricInfo } from "@/lib/metrics-catalog";
-import { withProjectQuery } from "@/lib/project-href";
+import { useDataset } from "@/features/datasets/use-datasets";
+import { groupableMetadataKeys } from "@/features/experiments/group-compare";
+import { isLowerBetter } from "@/features/experiments/metric-direction";
 import {
   useExperimentSummary,
   useExperiments,
 } from "@/features/experiments/use-experiments";
 import { useMetricsSet, useMetricsSets } from "@/features/metrics/use-metrics-sets";
+import { formatErrorForUi } from "@/lib/api/client";
+import { cn } from "@/lib/cn";
+import { compareMetrics, metricInfo } from "@/lib/metrics-catalog";
+import { withProjectQuery } from "@/lib/project-href";
 import { policyFromQualityBar, type QualityBar } from "./describe-check";
 import { parsePolicyYaml } from "./parse-policy";
 import { ReleaseResult } from "./release-result";
@@ -35,6 +38,8 @@ import { useReleaseCheck } from "./use-release";
 const NO_BASELINE = "__none__";
 const DEFAULT_MIN = "0.7";
 const DEFAULT_LATENCY_S = "30";
+const DEFAULT_COST_USD = "0.05";
+const DEFAULT_GROUPS_MIN_ITEMS = "5";
 
 type ReleaseCheckFormProps = {
   projectId: string;
@@ -86,6 +91,15 @@ export function ReleaseCheckForm({
   const [latencyEdit, setLatencySeconds] = useState<string | null>(null);
   const [regressionEnabled, setRegressionEnabled] = useState(true);
   const [regressionPoints, setRegressionPoints] = useState("5");
+  const [costEnabled, setCostEnabled] = useState(false);
+  const [costMaxUsdEdit, setCostMaxUsd] = useState<string | null>(null);
+  const [runMetricEdits, setRunMetricEdits] = useState<
+    Record<string, { enabled?: boolean; bound?: string }>
+  >({});
+  const [groupsEnabled, setGroupsEnabled] = useState(false);
+  const [groupsByPick, setGroupsBy] = useState<string | null>(null);
+  const [groupsMinItems, setGroupsMinItems] = useState(DEFAULT_GROUPS_MIN_ITEMS);
+  const [groupsMaxDeltaPoints, setGroupsMaxDeltaPoints] = useState("");
   const [yamlMode, setYamlMode] = useState(false);
   const [yamlDraft, setYamlDraft] = useState("");
   const [parseError, setParseError] = useState<string | null>(null);
@@ -103,6 +117,7 @@ export function ReleaseCheckForm({
   const experimentId = pickedExperimentId || latestFinished?.id || "";
   const selectedExperiment = experiments.find((e) => e.id === experimentId);
   const summaryQuery = useExperimentSummary(experimentId || null);
+  const datasetQuery = useDataset(selectedExperiment?.dataset_id ?? null);
 
   const baselineId =
     baselinePick === NO_BASELINE
@@ -124,13 +139,19 @@ export function ReleaseCheckForm({
     latencyEdit ??
     (typeof latencyBudgetMs === "number" ? String(latencyBudgetMs / 1000) : DEFAULT_LATENCY_S);
 
+  const costBudgetUsd = defaultSetQuery.data?.entries.find((e) => e.kind === "cost")?.config
+    .max_usd;
+  const costMaxUsd =
+    costMaxUsdEdit ??
+    (typeof costBudgetUsd === "number" ? String(costBudgetUsd) : DEFAULT_COST_USD);
+
   const metricNames = useMemo(
     () =>
       [
         ...new Set(
           (summaryQuery.data?.evaluators ?? [])
             .map((e) => e.evaluator_name?.trim() ?? "")
-            .filter((n) => n && n !== "latency"),
+            .filter((n) => n && n !== "latency" && n !== "cost"),
         ),
       ].sort(compareMetrics),
     [summaryQuery.data],
@@ -138,6 +159,18 @@ export function ReleaseCheckForm({
   const hasLatency = (summaryQuery.data?.evaluators ?? []).some(
     (e) => e.evaluator_name === "latency",
   );
+  const hasCost = (summaryQuery.data?.evaluators ?? []).some((e) => e.evaluator_name === "cost");
+
+  const experimentMetricKeys = useMemo(
+    () => Object.keys(summaryQuery.data?.experiment_metrics ?? {}).sort(),
+    [summaryQuery.data],
+  );
+
+  const groupKeys = useMemo(
+    () => groupableMetadataKeys(datasetQuery.data?.items ?? []),
+    [datasetQuery.data?.items],
+  );
+  const groupsBy = groupsByPick ?? groupKeys[0] ?? "";
 
   const bar: QualityBar = {
     rules: metricNames.map((name) => ({
@@ -149,12 +182,38 @@ export function ReleaseCheckForm({
     latencySeconds,
     regressionEnabled: regressionEnabled && baselineId != null,
     regressionPoints,
+    costEnabled: costEnabled && hasCost,
+    costMaxUsd,
+    experimentMetricRules: experimentMetricKeys.map((key) => {
+      const current = summaryQuery.data?.experiment_metrics?.[key];
+      return {
+        key,
+        enabled: runMetricEdits[key]?.enabled ?? false,
+        bound:
+          runMetricEdits[key]?.bound ??
+          (typeof current === "number" ? String(current) : ""),
+      };
+    }),
+    groupsEnabled: groupsEnabled && groupKeys.length > 0,
+    groupsBy,
+    groupsMinItems,
+    groupsMaxDeltaPoints,
   };
-  const generatedPolicy = policyFromQualityBar(bar);
+
+  const groupsAllowed =
+    bar.rules.some((r) => r.enabled) || bar.regressionEnabled;
+  const generatedPolicy = policyFromQualityBar({
+    ...bar,
+    groupsEnabled: bar.groupsEnabled && groupsAllowed,
+  });
   const generatedYaml = dump(generatedPolicy, { lineWidth: 100 });
 
   function editRule(name: string, patch: { enabled?: boolean; min?: string }) {
     setRuleEdits((prev) => ({ ...prev, [name]: { ...prev[name], ...patch } }));
+  }
+
+  function editRunMetric(key: string, patch: { enabled?: boolean; bound?: string }) {
+    setRunMetricEdits((prev) => ({ ...prev, [key]: { ...prev[key], ...patch } }));
   }
 
   function handleSubmit(event: SubmitEvent) {
@@ -221,7 +280,9 @@ export function ReleaseCheckForm({
     );
   }
 
-  const scored = (summaryQuery.data?.evaluators.length ?? 0) > 0;
+  const scored =
+    (summaryQuery.data?.evaluators.length ?? 0) > 0 ||
+    Object.keys(summaryQuery.data?.experiment_metrics ?? {}).length > 0;
 
   return (
     <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_minmax(0,0.9fr)]">
@@ -242,6 +303,13 @@ export function ReleaseCheckForm({
                   setExperimentId(v ?? "");
                   setBaselinePick(null);
                   setRuleEdits({});
+                  setRunMetricEdits({});
+                  setCostEnabled(false);
+                  setCostMaxUsd(null);
+                  setGroupsEnabled(false);
+                  setGroupsBy(null);
+                  setGroupsMinItems(DEFAULT_GROUPS_MIN_ITEMS);
+                  setGroupsMaxDeltaPoints("");
                   releaseCheck.reset();
                 }}
               >
@@ -381,6 +449,29 @@ export function ReleaseCheckForm({
                   />
                 </label>
               ) : null}
+              {hasCost ? (
+                <label className="flex items-center gap-3 px-3 py-2 text-sm">
+                  <input
+                    type="checkbox"
+                    className="size-4 accent-primary"
+                    checked={costEnabled}
+                    onChange={(e) => setCostEnabled(e.target.checked)}
+                  />
+                  <span className={cn("flex-1", !costEnabled && "text-muted-foreground")}>
+                    Average cost per answer at most (USD)
+                  </span>
+                  <Input
+                    type="number"
+                    step="0.001"
+                    min={0}
+                    value={costMaxUsd}
+                    disabled={!costEnabled}
+                    onChange={(e) => setCostMaxUsd(e.target.value)}
+                    className="h-8 w-24 tabular-nums"
+                    aria-label="Maximum average cost per answer in USD"
+                  />
+                </label>
+              ) : null}
               <label
                 className="flex items-center gap-3 px-3 py-2 text-sm"
                 title={baselineId ? undefined : "Choose a baseline to enable this rule"}
@@ -412,6 +503,108 @@ export function ReleaseCheckForm({
                   aria-label="Optional mean-score floor in points"
                 />
               </label>
+              {experimentMetricKeys.map((key) => {
+                const rule = bar.experimentMetricRules.find((r) => r.key === key)!;
+                const lower = isLowerBetter(key);
+                return (
+                  <label
+                    key={key}
+                    className="flex items-center gap-3 px-3 py-2 text-sm"
+                    title="Experiment-level scalar from log_metrics"
+                  >
+                    <input
+                      type="checkbox"
+                      className="size-4 accent-primary"
+                      checked={rule.enabled}
+                      onChange={(e) => editRunMetric(key, { enabled: e.target.checked })}
+                    />
+                    <span className={cn("flex-1", !rule.enabled && "text-muted-foreground")}>
+                      Run metric {key} {lower ? "at most" : "at least"}
+                    </span>
+                    <Input
+                      type="number"
+                      step="any"
+                      value={rule.bound}
+                      disabled={!rule.enabled}
+                      onChange={(e) => editRunMetric(key, { bound: e.target.value })}
+                      className="h-8 w-24 tabular-nums"
+                      aria-label={`${lower ? "Maximum" : "Minimum"} ${key}`}
+                    />
+                  </label>
+                );
+              })}
+              {groupKeys.length > 0 ? (
+                <div className="flex flex-col gap-2 px-3 py-2 text-sm">
+                  <label
+                    className="flex items-center gap-3"
+                    title={
+                      groupsAllowed
+                        ? "Re-apply metric mins (and regression) inside each metadata slice"
+                        : "Enable at least one metric min or regression first"
+                    }
+                  >
+                    <input
+                      type="checkbox"
+                      className="size-4 accent-primary"
+                      checked={groupsEnabled && groupsAllowed}
+                      disabled={!groupsAllowed}
+                      onChange={(e) => setGroupsEnabled(e.target.checked)}
+                    />
+                    <span
+                      className={cn(
+                        "flex-1",
+                        (!groupsEnabled || !groupsAllowed) && "text-muted-foreground",
+                      )}
+                    >
+                      Also gate by metadata group
+                    </span>
+                  </label>
+                  {groupsEnabled && groupsAllowed ? (
+                    <div className="flex flex-wrap items-end gap-3 pl-7">
+                      <div className="flex min-w-[8rem] flex-1 flex-col gap-1">
+                        <span className="text-xs text-muted-foreground">Field</span>
+                        <Select value={groupsBy} onValueChange={(v) => setGroupsBy(v ?? "")}>
+                          <SelectTrigger className="h-8 w-full" aria-label="Group metadata field">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {groupKeys.map((key) => (
+                              <SelectItem key={key} value={key}>
+                                {key}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div className="flex w-20 flex-col gap-1">
+                        <span className="text-xs text-muted-foreground">Min items</span>
+                        <Input
+                          type="number"
+                          step="1"
+                          min={1}
+                          value={groupsMinItems}
+                          onChange={(e) => setGroupsMinItems(e.target.value)}
+                          className="h-8 tabular-nums"
+                          aria-label="Minimum items per group"
+                        />
+                      </div>
+                      <div className="flex w-24 flex-col gap-1">
+                        <span className="text-xs text-muted-foreground">Floor (pts)</span>
+                        <Input
+                          type="number"
+                          step="1"
+                          min={0}
+                          value={groupsMaxDeltaPoints}
+                          onChange={(e) => setGroupsMaxDeltaPoints(e.target.value)}
+                          className="h-8 tabular-nums"
+                          placeholder="—"
+                          aria-label="Optional group regression floor in points"
+                        />
+                      </div>
+                    </div>
+                  ) : null}
+                </div>
+              ) : null}
             </div>
           )}
           {scored ? (
