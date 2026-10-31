@@ -43,7 +43,7 @@ Task wiring (XOR): `--task module.path:callable` or `--script path.py` (must def
 
 Judge secrets: `evaluate.judge.api_key_env: LLM_API_KEY` reads the environment (set via CI secrets). Do not commit API keys in YAML.
 
-Flags override YAML: `--task`, `--script`, `--dataset`, `--metrics`, `--name`, `--baseline`, `--from-experiment`, `--version`, `--promote`, `--base-url`, `--project`, `--backend-store-uri`, `--json`.
+Flags override YAML: `--task`, `--script`, `--dataset`, `--metrics`, `--name`, `--baseline`, `--from-experiment`, `--version`, `--promote`, `--require-baseline` / `--allow-missing-baseline`, `--base-url`, `--project`, `--backend-store-uri`, `--json`. Report files (flags only): `--report-md PATH`, `--junit PATH`.
 
 `--version` / `evaluate.version` is stored on the experiment (`experiments.version`, max 200 chars). Every run also records the git revision it measured (`experiments.git`: commit, branch, uncommitted changes, remote) from the checkout in the working directory, or from CI env vars (`GITHUB_SHA`, `CI_COMMIT_SHA`, …) when there is no `.git`; without `--version` the short SHA becomes the version. The output prints the candidate and baseline commits and, for GitHub / GitLab remotes, a link to the code diff between them; it warns when both ran the same commit. Set `OPENGRADE_DISABLE_GIT=1` to skip detection.
 
@@ -64,6 +64,56 @@ Edge cases:
 - **No alias yet** (first run): the run is evaluated without a baseline, `regression` is dropped from the policy for that run, and `--promote` creates the alias. `from_experiment: alias:<name>` cannot bootstrap: it has no exam to clone (exit 2).
 - **Exam changed** (another dataset or metrics set than the alias target, e.g. a new gold set): deltas would compare different exams, so `regression` is skipped for that run; when the gate passes, the alias moves (recorded as `exam changed` in its history).
 - **Ratchet:** the gate fails on bootstrap `regression` (same as the compare page). Optional `max_delta` only blocks large mean drops when the CI still includes 0; repeated promotions of noisy “unchanged” runs can still drift the mean. Keep absolute `min` rules next to `regression`.
+
+#### Require a baseline on pull requests (`--require-baseline`)
+
+By default a run with no comparable baseline (alias not set yet, or exam changed) skips every rule that compares with the baseline and can still pass: right for the first run on `main`, wrong for a pull request, which would go green without being compared with anything (e.g. the CI cache holding the baseline expired).
+
+`--require-baseline` (YAML `evaluate.require_baseline: true`) turns that into a failure: the absolute rules are still evaluated and reported, and a failed check `baseline.required` is added (exit `1`, no promotion). It needs `baseline` / `from_experiment` and at least one baseline rule in the policy (exit `2` otherwise). `--allow-missing-baseline` overrides a YAML `true`.
+
+```bash
+# pull_request: must be compared with main
+opengrade evaluate --config opengrade.yaml --baseline alias:main --require-baseline
+# push to main: may bootstrap / re-base the alias
+opengrade evaluate --config opengrade.yaml --baseline alias:main --promote main
+```
+
+A PR that intentionally changes the exam (new gold items, another metrics set) cannot be compared with `main`: run it without `--require-baseline` (e.g. behind a PR label, see `examples/ci_regression_gate/github-workflow.yml.example`); merging it re-bases the alias.
+
+With a policy that only has baseline rules, the first run without a baseline has nothing to gate on: it passes (and `--promote` bootstraps the alias) instead of failing with an empty policy.
+
+#### Latency, cost and run metrics vs the baseline
+
+`regression` compares evaluator scores. Latency, cost and run-level metrics have relative bounds too, next to their absolute ones:
+
+```yaml
+latency:
+  p95_max_ms: 2000
+  max_increase_pct: 25        # p95 at most 25% above the baseline p95
+cost:
+  max_per_request_usd: 0.01
+  max_increase_pct: 10        # mean cost per request at most 10% above the baseline
+experiment_metrics:
+  opengrade.error_rate:       # logged by every evaluate run
+    max: 0.05
+    max_increase: 0.01        # at most +1 point of task errors vs the baseline
+  accuracy:                   # higher is better: guard decreases
+    max_decrease_pct: 2
+```
+
+Checks: `latency.p95.max_increase_pct`, `cost.mean_per_request_usd.max_increase_pct`, `experiment_metrics.<key>.max_increase|max_decrease|max_increase_pct|max_decrease_pct`. `actual` is the change in the guarded direction (percent for `*_pct`). Unlike `regression` these are plain comparisons, not a significance test: wall-clock latency on shared CI runners is noisy, so keep `max_increase_pct` generous or use `repeats`. Like `regression`, they are dropped on a run without a baseline (or fail it with `--require-baseline`).
+
+#### Reports: job summary, PR comment, JUnit
+
+```bash
+opengrade evaluate --config opengrade.yaml --baseline alias:main --require-baseline \
+  --report-md "$GITHUB_STEP_SUMMARY" --junit opengrade-junit.xml
+```
+
+- `--report-md PATH` writes a Markdown report: verdict, candidate / baseline experiment and commits (with a code-diff link), notes (no baseline, exam changed), failing checks first, per-metric deltas vs the baseline, and all checks in a collapsible block. Point it at `$GITHUB_STEP_SUMMARY` for the job summary, or at a file posted as a sticky PR comment.
+- `--junit PATH` writes JUnit XML, one test case per check; `failed` and `unavailable` checks are failures. CI test-report widgets (GitLab, Jenkins, Azure DevOps, JUnit-report actions on GitHub) show them per check.
+
+Both are written whenever the gate runs, passing or failing, and are also available on `opengrade check`. Parent directories are created.
 
 #### Gate per group (`groups`)
 
@@ -92,14 +142,14 @@ opengrade evaluate --config opengrade.yaml --version "$GITHUB_SHA" --baseline al
 
 The alias lives in the server's database: use a persistent server (`api_base_url`) or `--backend-store-uri` pointing at a durable DB. The default embedded temp SQLite is discarded after each run.
 
-`--json` output adds `version`, `git` / `baseline_git` (code revisions of the run and its baseline), the `baseline_id` actually used by the gate, and `promoted` (`{alias, experiment_id, previous_experiment_id, exam_changed}` or `null`). Aliases and their history are also available over the API (`/projects/{id}/experiment-aliases`, see `docs/05-api.md`) and the SDK (`client.experiments.set_alias / get_alias / alias_history`, `baseline="alias:main"`).
+`--json` output (stdout is one JSON document; diagnostics go to stderr) adds `version`, `git` / `baseline_git` (code revisions of the run and its baseline), `baseline_ref` (as configured, e.g. `alias:main`), the `baseline_id` actually used by the gate, `code_diff_url`, `comparison` (per-evaluator candidate / baseline / delta / status), `experiment_metrics`, `notes`, and `promoted` (`{alias, experiment_id, previous_experiment_id, exam_changed}` or `null`). Aliases and their history are also available over the API (`/projects/{id}/experiment-aliases`, see `docs/05-api.md`) and the SDK (`client.experiments.set_alias / get_alias / alias_history`, `baseline="alias:main"`).
 
 Design: [`docs/superpowers/specs/2026-10-28-opengrade-evaluate-cli-design.md`](superpowers/specs/2026-10-28-opengrade-evaluate-cli-design.md).
 
 ### Quality gate only
 
 ```text
-opengrade check --policy opengrade.yaml [--base-url URL] [--project-id ID] [--experiment-id ID] [--baseline-experiment-id ID]
+opengrade check --policy opengrade.yaml [--base-url URL] [--project-id ID] [--experiment-id ID] [--baseline-experiment-id ID] [--report-md PATH] [--junit PATH]
 ```
 
 YAML may include meta fields (`api_base_url`, `project` / `project_id`, `experiment_id`, `baseline_experiment_id`) plus policy blocks. The `evaluate:` block is ignored. Flags override meta fields. The CLI strips reserved keys and POSTs the remainder as `policy` to `POST /api/v1/projects/{project_id}/release-check`.
@@ -181,19 +231,9 @@ Exit codes:
 - 2 = configuration error
 - 3 = infrastructure/evaluation execution error
 
-## GitHub integration — later
+## GitHub integration
 
-Create a GitHub Check Run or PR comment:
-
-```text
-AI Quality Gate
-
-✓ Answer quality   0.91 >= 0.85
-✓ Groundedness     0.92 >= 0.90
-✗ P95 latency      2.61s > 2.00s
-
-Result: FAILED
-```
+`--report-md` covers the job summary and PR comments (post the file with a sticky-comment action); `--junit` covers check annotations through a JUnit-report action. A native GitHub Check Run (without a third-party action) is not built in yet. Full workflow: [`examples/ci_regression_gate/github-workflow.yml.example`](../examples/ci_regression_gate/github-workflow.yml.example).
 
 ## Benchmarking
 

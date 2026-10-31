@@ -1,7 +1,10 @@
 # CI regression gate: "the PR must be at least as good as the last accepted main run".
 #
-#   PR:            opengrade evaluate --config opengrade.yaml --baseline alias:main
-#   push to main:  opengrade evaluate --config opengrade.yaml --baseline alias:main --promote main
+#   PR:            opengrade evaluate --config opengrade.yaml --require-baseline
+#   push to main:  opengrade evaluate --config opengrade.yaml --promote main
+#
+# --require-baseline makes a PR fail when there is nothing to compare with (alias not
+# set, dataset / metrics changed) instead of silently skipping the comparison.
 #
 # The alias lives in the server DB, so CI needs a persistent store: set api_base_url
 # (shared OpenGrade server) or pass --backend-store-uri pointing at a durable database.
@@ -27,6 +30,18 @@ must_contain:
   min: 0.8
 latency:
   p95_max_ms: 2000
+  # max_increase_pct: 25     # p95 vs baseline; keep generous, CI runners are noisy
+
+# Run-level metrics logged by every evaluate (opengrade.error_rate, latency_p50/p95_ms)
+# or by run.log_metrics(...). Bounds can be absolute (min/max) or vs the baseline.
+experiment_metrics:
+  opengrade.error_rate:
+    max: 0.05
+    max_increase: 0.0        # no new task errors compared with main
+
+# cost:                      # needs token usage / cost on the traces
+#   max_per_request_usd: 0.01
+#   max_increase_pct: 10
 
 # Relative check vs baseline: fails when a metric is a statistically significant
 # regression (paired bootstrap CI below 0), or when the mean drops more than 0.05.

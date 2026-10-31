@@ -1,15 +1,20 @@
 # Copy to .github/workflows/rag-regression-gate.yml in your app repo and adapt.
 #
-# pull_request : evaluate the PR and compare against alias:main (last run that passed on main).
-#                Fails (exit 1) if any metric regresses vs the baseline or drops under a floor.
+# pull_request : evaluate the PR and compare with alias:main (last run that passed on main).
+#                Fails (exit 1) when a metric regresses vs the baseline, drops under a floor,
+#                or when there is no baseline to compare with (--require-baseline).
+#                Posts the gate report as a sticky PR comment.
 # push to main : same evaluation; when the gate passes, promote the run to alias:main.
 #
 # The baseline must survive between runs. Two options:
-#   A) Shared OpenGrade server (recommended): set api_base_url in opengrade.yaml or
-#      OPENGRADE_BASE_URL below; no cache needed.
+#   A) Shared OpenGrade server (recommended): set the OPENGRADE_BASE_URL repository variable.
 #   B) No server: keep a SQLite store in the GitHub Actions cache. main saves it after
 #      every run; PRs restore main's copy (PRs can read caches of their base branch).
-#      Caches unused for 7 days are evicted: the next main run then re-bootstraps.
+#      Caches unused for 7 days are evicted: PRs then fail on baseline.required until the
+#      next push to main re-bootstraps the alias.
+#
+# A PR that intentionally changes the exam (dataset / metrics) cannot be compared with
+# main: add the label `opengrade:exam-change` to run it without --require-baseline.
 #
 # Exit codes: 0 pass | 1 gate failed | 2 config error | 3 infra error
 
@@ -17,6 +22,7 @@ name: RAG regression gate
 
 on:
   pull_request:
+    types: [opened, synchronize, reopened, labeled, unlabeled]
   push:
     branches: [main]
 
@@ -24,13 +30,19 @@ concurrency:
   group: rag-gate-${{ github.ref }}
   cancel-in-progress: true
 
+permissions:
+  contents: read
+  pull-requests: write   # sticky PR comment
+  checks: write          # JUnit test report
+
 jobs:
   gate:
     runs-on: ubuntu-latest
     env:
-      LLM_API_KEY: ${{ secrets.LLM_API_KEY }}          # only if you use LLM-judge metrics
-      OPENGRADE_BASE_URL: ${{ vars.OPENGRADE_BASE_URL }} # option A; empty → option B
+      LLM_API_KEY: ${{ secrets.LLM_API_KEY }}            # only for LLM-judge metrics
+      OPENGRADE_BASE_URL: ${{ vars.OPENGRADE_BASE_URL }}  # option A; empty → option B
       IS_MAIN: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+      EXAM_CHANGE: ${{ contains(github.event.pull_request.labels.*.name, 'opengrade:exam-change') }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -52,29 +64,37 @@ jobs:
       - name: Evaluate + regression gate
         run: |
           mkdir -p .opengrade
-          args=(--config opengrade.yaml --version "${GITHUB_SHA::7}" --baseline alias:main --json)
+          args=(--config opengrade.yaml --version "${GITHUB_SHA::7}" --baseline alias:main
+                --report-md .opengrade/report.md --junit .opengrade/junit.xml)
           if [ -n "$OPENGRADE_BASE_URL" ]; then
             args+=(--base-url "$OPENGRADE_BASE_URL")
           else
             args+=(--backend-store-uri "sqlite+aiosqlite:///$PWD/.opengrade/ci.db")
           fi
-          if [ "$IS_MAIN" = "true" ]; then args+=(--promote main); fi
-          set +e
-          uv run opengrade evaluate "${args[@]}" > gate.json
-          code=$?
-          set -e
-          # Human-readable summary on the run page (the CLI has no markdown reporter yet).
-          python - <<'PY' >> "$GITHUB_STEP_SUMMARY" || true
-          import json
-          body = json.load(open("gate.json"))
-          print(f"## RAG quality gate: {str(body.get('gate')).upper()}\n")
-          print(f"[experiment]({body['url']}) · baseline `{body.get('baseline_id')}`\n")
-          print("| check | actual | threshold | status |\n|---|---|---|---|")
-          for c in body.get("checks", []):
-              icon = {"passed": "✅", "failed": "❌"}.get(c["status"], "⚠️")
-              print(f"| `{c['metric']}` | {c.get('actual')} | {c.get('threshold')} | {icon} {c['status']} |")
-          PY
-          exit $code
+          if [ "$IS_MAIN" = "true" ]; then
+            args+=(--promote main)
+          elif [ "$EXAM_CHANGE" != "true" ]; then
+            args+=(--require-baseline)
+          fi
+          uv run opengrade evaluate "${args[@]}"
+
+      - name: Job summary
+        if: always() && hashFiles('.opengrade/report.md') != ''
+        run: cat .opengrade/report.md >> "$GITHUB_STEP_SUMMARY"
+
+      - name: PR comment
+        if: always() && github.event_name == 'pull_request' && hashFiles('.opengrade/report.md') != ''
+        uses: marocchino/sticky-pull-request-comment@v2
+        with:
+          header: opengrade-gate
+          path: .opengrade/report.md
+
+      - name: JUnit report
+        if: always() && hashFiles('.opengrade/junit.xml') != ''
+        uses: mikepenz/action-junit-report@v4
+        with:
+          report_paths: .opengrade/junit.xml
+          check_name: OpenGrade quality gate
 
       - name: Save baseline store (main only)
         if: always() && env.OPENGRADE_BASE_URL == '' && env.IS_MAIN == 'true'

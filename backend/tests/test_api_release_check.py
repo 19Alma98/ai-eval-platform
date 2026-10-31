@@ -576,3 +576,73 @@ async def test_release_check_latency_fails_with_missing_output(
     assert body["status"] == "failed"
     assert body["checks"][0]["metric"] == "latency.p95"
     assert body["checks"][0]["status"] == "failed"
+
+
+async def _seed_latency_experiment(
+    client: AsyncClient,
+    runs: InMemoryEvaluationRunRepository,
+    project_id: str,
+    dataset_id: str,
+    name: str,
+    latencies: tuple[float, ...],
+) -> str:
+    experiment = await client.post(
+        f"/api/v1/projects/{project_id}/experiments",
+        json={"name": name, "dataset_id": dataset_id},
+    )
+    experiment_id = uuid.UUID(experiment.json()["id"])
+    run = EvaluationRun(
+        id=uuid.uuid4(),
+        experiment_id=experiment_id,
+        evaluator_id=uuid.uuid4(),
+        status="PASSED",
+        started_at=datetime.now(UTC),
+        finished_at=datetime.now(UTC),
+        metadata={"evaluator_name": "latency"},
+    )
+    await runs.add_run(run)
+    for latency_ms in latencies:
+        await runs.add_result(
+            EvaluationResultRecord.create(
+                run.id, uuid.uuid4(), score=1.0, label="PASS", metadata={"latency_ms": latency_ms}
+            )
+        )
+    return str(experiment_id)
+
+
+@pytest.mark.asyncio
+async def test_release_check_latency_increase_pct_vs_baseline(
+    release_env: tuple[AsyncClient, InMemoryEvaluationRunRepository],
+) -> None:
+    client, runs = release_env
+    project_id, dataset_id, _, _item_id = await _seed_quality(client)
+    baseline_id = await _seed_latency_experiment(
+        client, runs, project_id, dataset_id, "base", (100.0, 100.0, 100.0)
+    )
+    candidate_id = await _seed_latency_experiment(
+        client, runs, project_id, dataset_id, "cand", (150.0, 150.0, 150.0)
+    )
+    policy = {"latency": {"p95_max_ms": 2000, "max_increase_pct": 20}}
+
+    response = await client.post(
+        f"/api/v1/projects/{project_id}/release-check",
+        json={
+            "experiment_id": candidate_id,
+            "baseline_experiment_id": baseline_id,
+            "policy": policy,
+        },
+    )
+    assert response.status_code == 200
+    body = response.json()
+    assert body["status"] == "failed"
+    assert [(c["metric"], c["actual"], c["status"]) for c in body["checks"]] == [
+        ("latency.p95", 150.0, "passed"),
+        ("latency.p95.max_increase_pct", 50.0, "failed"),
+    ]
+
+    # A relative bound needs a baseline, like regression does.
+    missing = await client.post(
+        f"/api/v1/projects/{project_id}/release-check",
+        json={"experiment_id": candidate_id, "policy": policy},
+    )
+    assert missing.status_code == 400

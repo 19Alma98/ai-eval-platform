@@ -361,3 +361,78 @@ regression:
     assert not any(c["metric"].startswith("regression.") for c in four["checks"])
     assert four["promoted"]["exam_changed"] is True
     assert four["promoted"]["previous_experiment_id"] == two["experiment_id"]
+
+
+def test_resolve_require_baseline_flag_yaml_and_validation() -> None:
+    block = {"task": "pkg:fn", "dataset": "x.csv", "metrics": ["hit_at_k"]}
+    policy = {"regression": {"max_delta": -0.05}}
+    cfg = resolve_evaluate_config(
+        {"evaluate": {**block, "baseline": "alias:main", "require_baseline": True}, **policy}
+    )
+    assert cfg.require_baseline is True
+    # the flag overrides YAML in both directions
+    off = resolve_evaluate_config(
+        {"evaluate": {**block, "baseline": "alias:main", "require_baseline": True}, **policy},
+        require_baseline=False,
+    )
+    assert off.require_baseline is False
+    with pytest.raises(EvaluateConfigError, match="needs baseline"):
+        resolve_evaluate_config({"evaluate": block, **policy}, require_baseline=True)
+    with pytest.raises(EvaluateConfigError, match="compares with the baseline"):
+        resolve_evaluate_config(
+            {"evaluate": {**block, "baseline": "alias:main"}, "hit_at_k": {"min": 0.5}},
+            require_baseline=True,
+        )
+    with pytest.raises(EvaluateConfigError, match="true or false"):
+        resolve_evaluate_config({"evaluate": {**block, "require_baseline": "yes"}, **policy})
+
+
+def test_evaluate_require_baseline_fails_without_alias_and_writes_reports(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.syspath_prepend(str(tmp_path))
+    config, _ = _write_bootstrap_files(tmp_path)
+    rows = [
+        {"input": f"q{i}", "expected_output": "a", "expected_doc_ids": ["d1"]} for i in range(5)
+    ]
+    (tmp_path / "gold.json").write_text(json.dumps(rows), encoding="utf-8")
+    # Only baseline rules: the first (bootstrap) run has nothing else to gate on.
+    config.write_text(
+        config.read_text(encoding="utf-8")
+        .replace("  max_concurrency: 1\n", "  max_concurrency: 1\n  baseline: alias:main\n")
+        .replace("hit_at_k:\n  min: 0.4\n", "")
+        + "regression:\n  max_delta: -0.05\n",
+        encoding="utf-8",
+    )
+    store = f"sqlite+aiosqlite:///{(tmp_path / 'store.db').as_posix()}"
+    md, xml = tmp_path / "out" / "gate.md", tmp_path / "out" / "gate.xml"
+    common = ["evaluate", "--config", str(config), "--backend-store-uri", store, "--json"]
+
+    strict = runner.invoke(
+        app, [*common, "--require-baseline", "--report-md", str(md), "--junit", str(xml)]
+    )
+    assert strict.exit_code == EXIT_GATE_FAILED, strict.output
+    payload = json.loads(strict.stdout)
+    assert payload["gate"] == "failed"
+    assert payload["checks"] == [
+        {"metric": "baseline.required", "actual": None, "threshold": None, "status": "failed"}
+    ]
+    assert payload["notes"] == ["No baseline: alias 'main' is not set."]
+    assert "❌ OpenGrade quality gate: FAILED" in md.read_text(encoding="utf-8")
+    assert "baseline.required" in md.read_text(encoding="utf-8")
+    assert 'failures="1"' in xml.read_text(encoding="utf-8")
+
+    # Without the flag the bootstrap run passes and promotes, even with a regression-only
+    # policy (it used to fail with "policy must define at least one rule").
+    boot = runner.invoke(app, [*common, "--promote", "main"])
+    assert boot.exit_code == EXIT_PASS, boot.output
+    assert json.loads(boot.stdout)["promoted"]["alias"] == "main"
+
+    compared = runner.invoke(app, [*common, "--require-baseline", "--report-md", str(md)])
+    assert compared.exit_code == EXIT_PASS, compared.output
+    body = json.loads(compared.stdout)
+    assert body["baseline_ref"] == "alias:main"
+    assert body["baseline_id"] == json.loads(boot.stdout)["experiment_id"]
+    assert [row["metric"] for row in body["comparison"]] == ["hit_at_k"]
+    assert "### Metrics vs baseline" in md.read_text(encoding="utf-8")

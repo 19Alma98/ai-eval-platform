@@ -22,11 +22,16 @@ META_KEYS = frozenset(
     }
 )
 
-_LATENCY_KEYS = frozenset({"p95_max_ms"})
-_COST_KEYS = frozenset({"max_per_request_usd"})
+# Relative bounds compare the candidate with the baseline experiment.
+INCREASE_PCT_KEY = "max_increase_pct"
+_RELATIVE_METRIC_KEYS = frozenset(
+    {"max_increase", "max_decrease", INCREASE_PCT_KEY, "max_decrease_pct"}
+)
+_LATENCY_KEYS = frozenset({"p95_max_ms", INCREASE_PCT_KEY})
+_COST_KEYS = frozenset({"max_per_request_usd", INCREASE_PCT_KEY})
 _MIN_KEYS = frozenset({"min"})
 _REGRESSION_KEYS = frozenset({"max_delta", "allow_insufficient_n"})
-_EXPERIMENT_METRIC_KEYS = frozenset({"min", "max"})
+_EXPERIMENT_METRIC_KEYS = frozenset({"min", "max"}) | _RELATIVE_METRIC_KEYS
 _GROUP_KEYS = frozenset({"by", "min_items", "metrics", "max_delta"})
 EXPERIMENT_METRICS_KEY = "experiment_metrics"
 GROUPS_KEY = "groups"
@@ -45,14 +50,20 @@ class AbsoluteMinRule:
 
 @dataclass(frozen=True, slots=True)
 class LatencyP95Rule:
+    """p95 latency: absolute ceiling and/or max % increase over the baseline p95."""
+
     evaluator_name: str
-    p95_max_ms: float
+    p95_max_ms: float | None = None
+    max_increase_pct: float | None = None
 
 
 @dataclass(frozen=True, slots=True)
 class CostMeanRule:
+    """Mean cost per request: absolute ceiling and/or max % increase over the baseline."""
+
     evaluator_name: str
-    max_per_request_usd: float
+    max_per_request_usd: float | None = None
+    max_increase_pct: float | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -63,9 +74,28 @@ class RegressionRule:
 
 @dataclass(frozen=True, slots=True)
 class ExperimentMetricRule:
+    """Run-level metric bounds. ``max_increase`` / ``max_decrease`` are absolute changes vs
+    the baseline run; the ``*_pct`` variants are relative to the baseline value."""
+
     key: str
     min_value: float | None = None
     max_value: float | None = None
+    max_increase: float | None = None
+    max_decrease: float | None = None
+    max_increase_pct: float | None = None
+    max_decrease_pct: float | None = None
+
+    @property
+    def is_relative(self) -> bool:
+        return any(
+            v is not None
+            for v in (
+                self.max_increase,
+                self.max_decrease,
+                self.max_increase_pct,
+                self.max_decrease_pct,
+            )
+        )
 
 
 @dataclass(frozen=True, slots=True)
@@ -94,6 +124,16 @@ class ReleasePolicy:
     regression: RegressionRule | None
     experiment_metrics: tuple[ExperimentMetricRule, ...] = ()
     groups: GroupRule | None = None
+
+    def needs_baseline(self) -> bool:
+        """True when any rule compares the candidate with a baseline experiment."""
+        return (
+            self.regression is not None
+            or (self.groups is not None and self.groups.max_delta is not None)
+            or (self.latency is not None and self.latency.max_increase_pct is not None)
+            or (self.cost is not None and self.cost.max_increase_pct is not None)
+            or any(rule.is_relative for rule in self.experiment_metrics)
+        )
 
     def group_max_delta(self) -> float | None:
         if self.groups is None:
@@ -135,6 +175,47 @@ class RegressionDeltaInput:
 
 def strip_meta_keys(raw: dict[str, Any]) -> dict[str, Any]:
     return {k: v for k, v in raw.items() if k not in META_KEYS}
+
+
+_NON_MIN_BLOCKS = frozenset({"regression", "latency", "cost", EXPERIMENT_METRICS_KEY, GROUPS_KEY})
+
+
+def strip_baseline_rules(raw: dict[str, Any]) -> dict[str, Any]:
+    """Raw policy without the rules that need a baseline: ``regression``,
+    ``groups.max_delta`` and the relative latency / cost / run-metric bounds.
+
+    Used when a run has no comparable baseline (first run of an alias, exam changed).
+    Blocks left empty are dropped; ``groups`` is dropped when no metric ``min`` remains
+    for it to re-apply.
+    """
+    out: dict[str, Any] = {}
+    for key, value in raw.items():
+        if key == "regression":
+            continue
+        if key in ("latency", "cost") and isinstance(value, dict):
+            kept = {k: v for k, v in value.items() if k != INCREASE_PCT_KEY}
+            if kept:
+                out[key] = kept
+            continue
+        if key == EXPERIMENT_METRICS_KEY and isinstance(value, dict):
+            metrics: dict[str, Any] = {}
+            for metric_key, rule in value.items():
+                if isinstance(rule, dict):
+                    rule = {k: v for k, v in rule.items() if k not in _RELATIVE_METRIC_KEYS}
+                    if not rule:
+                        continue
+                metrics[metric_key] = rule
+            if metrics:
+                out[key] = metrics
+            continue
+        if key == GROUPS_KEY and isinstance(value, dict):
+            out[key] = {k: v for k, v in value.items() if k != "max_delta"}
+            continue
+        out[key] = value
+    has_min_rules = any(k not in _NON_MIN_BLOCKS and k not in META_KEYS for k in out)
+    if GROUPS_KEY in out and not has_min_rules:
+        del out[GROUPS_KEY]
+    return out
 
 
 def parse_release_policy(raw: dict[str, Any]) -> ReleasePolicy:
@@ -215,15 +296,27 @@ def _parse_absolute_min(name: str, value: dict[str, Any]) -> AbsoluteMinRule:
     return AbsoluteMinRule(evaluator_name=name, min_score=_require_float(name, "min", value["min"]))
 
 
+def _optional_float(block: str, value: dict[str, Any], field: str) -> float | None:
+    return _require_float(block, field, value[field]) if field in value else None
+
+
+def _optional_non_negative(block: str, value: dict[str, Any], field: str) -> float | None:
+    parsed = _optional_float(block, value, field)
+    if parsed is not None and parsed < 0:
+        raise InvalidPolicyError(f"policy.{block}.{field} must be >= 0")
+    return parsed
+
+
 def _parse_latency(value: dict[str, Any]) -> LatencyP95Rule:
     unknown = set(value) - _LATENCY_KEYS
     if unknown:
         raise InvalidPolicyError(f"policy.latency has unsupported keys: {sorted(unknown)}")
-    if "p95_max_ms" not in value:
-        raise InvalidPolicyError("policy.latency requires p95_max_ms")
+    if not value:
+        raise InvalidPolicyError("policy.latency requires p95_max_ms or max_increase_pct")
     return LatencyP95Rule(
         evaluator_name="latency",
-        p95_max_ms=_require_float("latency", "p95_max_ms", value["p95_max_ms"]),
+        p95_max_ms=_optional_float("latency", value, "p95_max_ms"),
+        max_increase_pct=_optional_non_negative("latency", value, INCREASE_PCT_KEY),
     )
 
 
@@ -231,13 +324,12 @@ def _parse_cost(value: dict[str, Any]) -> CostMeanRule:
     unknown = set(value) - _COST_KEYS
     if unknown:
         raise InvalidPolicyError(f"policy.cost has unsupported keys: {sorted(unknown)}")
-    if "max_per_request_usd" not in value:
-        raise InvalidPolicyError("policy.cost requires max_per_request_usd")
+    if not value:
+        raise InvalidPolicyError("policy.cost requires max_per_request_usd or max_increase_pct")
     return CostMeanRule(
         evaluator_name="cost",
-        max_per_request_usd=_require_float(
-            "cost", "max_per_request_usd", value["max_per_request_usd"]
-        ),
+        max_per_request_usd=_optional_float("cost", value, "max_per_request_usd"),
+        max_increase_pct=_optional_non_negative("cost", value, INCREASE_PCT_KEY),
     )
 
 
@@ -270,12 +362,24 @@ def _parse_experiment_metrics(value: dict[str, Any]) -> tuple[ExperimentMetricRu
         if unknown:
             raise InvalidPolicyError(f"policy.{block} has unsupported keys: {sorted(unknown)}")
         if not rule:
-            raise InvalidPolicyError(f"policy.{block} requires min or max")
-        min_value = _require_float(block, "min", rule["min"]) if "min" in rule else None
-        max_value = _require_float(block, "max", rule["max"]) if "max" in rule else None
+            raise InvalidPolicyError(
+                f"policy.{block} requires min or max, or a max_increase/max_decrease bound"
+            )
+        min_value = _optional_float(block, rule, "min")
+        max_value = _optional_float(block, rule, "max")
         if min_value is not None and max_value is not None and min_value > max_value:
             raise InvalidPolicyError(f"policy.{block} min must be <= max")
-        rules.append(ExperimentMetricRule(key=key, min_value=min_value, max_value=max_value))
+        rules.append(
+            ExperimentMetricRule(
+                key=key,
+                min_value=min_value,
+                max_value=max_value,
+                max_increase=_optional_non_negative(block, rule, "max_increase"),
+                max_decrease=_optional_non_negative(block, rule, "max_decrease"),
+                max_increase_pct=_optional_non_negative(block, rule, INCREASE_PCT_KEY),
+                max_decrease_pct=_optional_non_negative(block, rule, "max_decrease_pct"),
+            )
+        )
     if not rules:
         raise InvalidPolicyError(f"policy.{EXPERIMENT_METRICS_KEY} must define at least one metric")
     return tuple(rules)
@@ -462,9 +566,15 @@ def evaluate_policy(
     regression_deltas: list[RegressionDeltaInput] | tuple[RegressionDeltaInput, ...] = (),
     experiment_metrics: Mapping[str, float] | None = None,
     groups: list[GroupInput] | None = None,
+    baseline: list[EvaluatorMetricInput] | tuple[EvaluatorMetricInput, ...] | None = None,
+    baseline_experiment_metrics: Mapping[str, float] | None = None,
 ) -> PolicyEvaluation:
+    """Apply ``policy``. ``baseline`` / ``baseline_experiment_metrics`` feed the relative
+    latency, cost and run-metric bounds (``max_increase_pct`` …); without them those
+    checks are ``unavailable``."""
     checks: list[PolicyCheck] = []
     by_name = _by_name(candidate)
+    base_by_name = _by_name(baseline or ())
 
     for rule in policy.absolute_mins:
         metric = by_name.get(rule.evaluator_name)
@@ -489,15 +599,24 @@ def evaluate_policy(
         )
 
     if policy.latency is not None:
-        checks.append(_eval_latency(policy.latency, by_name.get(policy.latency.evaluator_name)))
+        name = policy.latency.evaluator_name
+        checks.extend(_eval_latency(policy.latency, by_name.get(name), base_by_name.get(name)))
 
     if policy.cost is not None:
-        checks.append(_eval_cost(policy.cost, by_name.get(policy.cost.evaluator_name)))
+        name = policy.cost.evaluator_name
+        checks.extend(_eval_cost(policy.cost, by_name.get(name), base_by_name.get(name)))
 
     for metric_rule in policy.experiment_metrics:
-        checks.extend(
-            _eval_experiment_metric(metric_rule, (experiment_metrics or {}).get(metric_rule.key))
-        )
+        actual_value = (experiment_metrics or {}).get(metric_rule.key)
+        checks.extend(_eval_experiment_metric(metric_rule, actual_value))
+        if metric_rule.is_relative:
+            checks.extend(
+                _eval_experiment_metric_vs_baseline(
+                    metric_rule,
+                    actual_value,
+                    (baseline_experiment_metrics or {}).get(metric_rule.key),
+                )
+            )
 
     if policy.regression is not None:
         if not regression_deltas:
@@ -539,69 +658,111 @@ def _has_missing_output_without_latency(
     return False
 
 
+def _latency_p95(metric: EvaluatorMetricInput | None) -> tuple[float | None, bool]:
+    """``(p95, has_missing_output)``: an item without output and without latency counts
+    as a failure for the absolute ceiling (it may have timed out)."""
+    if metric is None:
+        return None, False
+    values = _metadata_floats(metric.results, "latency_ms")
+    p95 = percentile_nearest_rank(values, 95.0) if values else None
+    return p95, _has_missing_output_without_latency(metric.results)
+
+
+def _cost_mean(metric: EvaluatorMetricInput | None) -> float | None:
+    if metric is None:
+        return None
+    values = _metadata_floats(metric.results, "cost_usd")
+    return sum(values) / len(values) if values else None
+
+
+def percent_change(candidate: float, baseline: float) -> float | None:
+    """Relative change in percent; ``None`` when the baseline is 0 and the candidate is not
+    (an infinite increase)."""
+    if baseline == 0:
+        return 0.0 if candidate == 0 else None
+    return (candidate - baseline) / abs(baseline) * 100.0
+
+
+def _increase_pct_check(
+    metric: str, candidate: float | None, baseline: float | None, max_pct: float
+) -> PolicyCheck:
+    if candidate is None or baseline is None:
+        return PolicyCheck(metric=metric, actual=None, threshold=max_pct, status="unavailable")
+    change = percent_change(candidate, baseline)
+    if change is None:
+        # Baseline was 0: any increase is unbounded in percent.
+        return PolicyCheck(metric=metric, actual=None, threshold=max_pct, status="failed")
+    return PolicyCheck(
+        metric=metric,
+        actual=change,
+        threshold=max_pct,
+        status="passed" if change <= max_pct else "failed",
+    )
+
+
 def _eval_latency(
     rule: LatencyP95Rule,
     metric: EvaluatorMetricInput | None,
-) -> PolicyCheck:
-    if metric is None:
-        return PolicyCheck(
-            metric="latency.p95",
-            actual=None,
-            threshold=rule.p95_max_ms,
-            status="unavailable",
+    baseline: EvaluatorMetricInput | None = None,
+) -> list[PolicyCheck]:
+    checks: list[PolicyCheck] = []
+    actual, missing_output = _latency_p95(metric)
+    if rule.p95_max_ms is not None:
+        status: CheckStatus
+        if missing_output:
+            status = "failed"
+        elif actual is None:
+            status = "unavailable"
+        else:
+            status = "passed" if actual <= rule.p95_max_ms else "failed"
+        checks.append(
+            PolicyCheck(
+                metric="latency.p95", actual=actual, threshold=rule.p95_max_ms, status=status
+            )
         )
-    if _has_missing_output_without_latency(metric.results):
-        values = _metadata_floats(metric.results, "latency_ms")
-        actual = percentile_nearest_rank(values, 95.0) if values else None
-        return PolicyCheck(
-            metric="latency.p95",
-            actual=actual,
-            threshold=rule.p95_max_ms,
-            status="failed",
+    if rule.max_increase_pct is not None:
+        base_p95, _ = _latency_p95(baseline)
+        checks.append(
+            _increase_pct_check(
+                f"latency.p95.{INCREASE_PCT_KEY}", actual, base_p95, rule.max_increase_pct
+            )
         )
-    values = _metadata_floats(metric.results, "latency_ms")
-    if not values:
-        return PolicyCheck(
-            metric="latency.p95",
-            actual=None,
-            threshold=rule.p95_max_ms,
-            status="unavailable",
-        )
-    actual = percentile_nearest_rank(values, 95.0)
-    return PolicyCheck(
-        metric="latency.p95",
-        actual=actual,
-        threshold=rule.p95_max_ms,
-        status="passed" if actual <= rule.p95_max_ms else "failed",
-    )
+    return checks
 
 
 def _eval_cost(
     rule: CostMeanRule,
     metric: EvaluatorMetricInput | None,
-) -> PolicyCheck:
-    if metric is None:
-        return PolicyCheck(
-            metric="cost.max_per_request_usd",
-            actual=None,
-            threshold=rule.max_per_request_usd,
-            status="unavailable",
+    baseline: EvaluatorMetricInput | None = None,
+) -> list[PolicyCheck]:
+    checks: list[PolicyCheck] = []
+    actual = _cost_mean(metric)
+    if rule.max_per_request_usd is not None:
+        status: CheckStatus = (
+            "unavailable"
+            if actual is None
+            else "passed"
+            if actual <= rule.max_per_request_usd
+            else "failed"
         )
-    values = _metadata_floats(metric.results, "cost_usd")
-    if not values:
-        return PolicyCheck(
-            metric="cost.max_per_request_usd",
-            actual=None,
-            threshold=rule.max_per_request_usd,
-            status="unavailable",
+        checks.append(
+            PolicyCheck(
+                metric="cost.max_per_request_usd",
+                actual=actual,
+                threshold=rule.max_per_request_usd,
+                status=status,
+            )
         )
-    actual = sum(values) / len(values)
-    return PolicyCheck(
-        metric="cost.max_per_request_usd",
-        actual=actual,
-        threshold=rule.max_per_request_usd,
-        status="passed" if actual <= rule.max_per_request_usd else "failed",
-    )
+    if rule.max_increase_pct is not None:
+        checks.append(
+            _increase_pct_check(
+                f"cost.mean_per_request_usd.{INCREASE_PCT_KEY}",
+                actual,
+                _cost_mean(baseline),
+                rule.max_increase_pct,
+            )
+        )
+    return checks
 
 
 def _eval_experiment_metric(rule: ExperimentMetricRule, actual: float | None) -> list[PolicyCheck]:
@@ -622,6 +783,57 @@ def _eval_experiment_metric(rule: ExperimentMetricRule, actual: float | None) ->
                 actual=actual,
                 threshold=threshold,
                 status=status,
+            )
+        )
+    return checks
+
+
+def _eval_experiment_metric_vs_baseline(
+    rule: ExperimentMetricRule, actual: float | None, baseline: float | None
+) -> list[PolicyCheck]:
+    """Change vs the baseline run, reported in the direction the bound names (an increase
+    for ``max_increase*``, a decrease for ``max_decrease*``); passes when <= threshold."""
+    checks: list[PolicyCheck] = []
+    prefix = f"{EXPERIMENT_METRICS_KEY}.{rule.key}"
+    bounds = (
+        ("max_increase", rule.max_increase, 1.0, False),
+        ("max_decrease", rule.max_decrease, -1.0, False),
+        (INCREASE_PCT_KEY, rule.max_increase_pct, 1.0, True),
+        ("max_decrease_pct", rule.max_decrease_pct, -1.0, True),
+    )
+    for name, threshold, sign, relative in bounds:
+        if threshold is None:
+            continue
+        metric = f"{prefix}.{name}"
+        if actual is None or baseline is None:
+            checks.append(
+                PolicyCheck(metric=metric, actual=None, threshold=threshold, status="unavailable")
+            )
+            continue
+        if relative:
+            change = percent_change(actual, baseline)
+            if change is None:
+                # Baseline 0, candidate moved: unbounded in percent; fails only in the
+                # direction the bound guards.
+                moved_wrong_way = (actual - baseline) * sign > 0
+                checks.append(
+                    PolicyCheck(
+                        metric=metric,
+                        actual=None,
+                        threshold=threshold,
+                        status="failed" if moved_wrong_way else "passed",
+                    )
+                )
+                continue
+        else:
+            change = actual - baseline
+        moved = change * sign
+        checks.append(
+            PolicyCheck(
+                metric=metric,
+                actual=moved,
+                threshold=threshold,
+                status="passed" if moved <= threshold else "failed",
             )
         )
     return checks

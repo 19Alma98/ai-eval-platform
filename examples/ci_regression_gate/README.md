@@ -3,7 +3,8 @@
 Runnable example of the most common CI check for a RAG pipeline / LLM app:
 
 - **PR**: run the gold test set, compare against the **last accepted run on `main`**.
-  Equal or better → exit `0`. Worse → exit `1`, the PR check goes red.
+  Equal or better → exit `0`. Worse → exit `1`, the PR check goes red. No baseline to
+  compare with → also exit `1` (`--require-baseline`), never a silent pass.
 - **Push to `main`**: same run; when the gate passes, that run becomes the new baseline
   (`--promote main`). A failed run never becomes the baseline.
 
@@ -19,6 +20,7 @@ cd backend && uv sync --all-extras && cd ..
 
 | Step | Simulates | Result |
 |------|-----------|--------|
+| 0 | PR before `main` ever ran (`--require-baseline`) | **FAIL** on `baseline.required` |
 | 1 | first push to `main` (no baseline yet) | PASS, alias `main` created |
 | 2 | PR with a refactor that keeps quality | PASS (deltas `0.0`) |
 | 3 | PR with a buggy tokenizer (`RAG_TOKENIZER=raw`) | **FAIL**, alias not moved |
@@ -36,12 +38,16 @@ Alias 'main' not moved: the gate failed
 Result: FAILED
 ```
 
+Each step also writes `reports/stepN.md` (what the job summary / PR comment shows)
+and `reports/stepN.xml` (JUnit, one test case per check).
+
 ## How the policy works ([`opengrade.yaml`](opengrade.yaml))
 
 | Block | Question it answers |
 |-------|---------------------|
 | `hit_at_k.min`, `must_contain.min` | Is the run good enough in absolute terms? |
-| `latency.p95_max_ms` | Is it fast enough? |
+| `latency.p95_max_ms` | Is it fast enough? (`max_increase_pct` adds "not slower than main by more than N%") |
+| `experiment_metrics` | Run-level numbers: `opengrade.error_rate` must stay under 5% **and** not grow vs main (`max_increase: 0.0`). |
 | `regression` | Is any metric **worse than the baseline**? Fails on a statistically significant drop (paired bootstrap, CI entirely below 0) **or** a mean drop larger than `max_delta`. |
 | `groups.by: category` | Same checks per question category, so one category collapsing is not hidden by the global mean. |
 
@@ -63,16 +69,19 @@ Rules of thumb:
 [`github-workflow.yml.example`](github-workflow.yml.example) wires it up:
 
 ```bash
-# pull_request
-opengrade evaluate --config opengrade.yaml --version "$GITHUB_SHA" --baseline alias:main
-# push to main
-opengrade evaluate --config opengrade.yaml --version "$GITHUB_SHA" --baseline alias:main --promote main
+# pull_request: must be compared with main
+opengrade evaluate --config opengrade.yaml --version "$GITHUB_SHA" --require-baseline \
+  --report-md .opengrade/report.md --junit .opengrade/junit.xml
+# push to main: may bootstrap / re-base the alias
+opengrade evaluate --config opengrade.yaml --version "$GITHUB_SHA" --promote main
 ```
 
 The baseline must outlive a single CI job. Either point `api_base_url` / `--base-url` at a
 shared OpenGrade server (recommended: you also get the compare UI and history), or keep a
 SQLite store in the Actions cache, as the workflow does when `OPENGRADE_BASE_URL` is empty.
-The workflow also writes the gate table to the job summary from `--json` output.
+The workflow puts the Markdown report in the job summary and in a sticky PR comment, and
+publishes the JUnit file as a check. A PR that intentionally changes the gold set gets
+the `opengrade:exam-change` label to run without `--require-baseline`.
 
 Promote only from `main`, never from pull requests: a PR that passes is not merged code.
 

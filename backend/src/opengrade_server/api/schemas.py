@@ -694,15 +694,33 @@ class AbsoluteMinRuleBody(BaseModel):
 
 
 class LatencyRuleBody(BaseModel):
+    """p95 ceiling and/or max % increase of p95 vs the baseline experiment."""
+
     model_config = ConfigDict(extra="forbid")
 
-    p95_max_ms: float
+    p95_max_ms: float | None = None
+    max_increase_pct: float | None = Field(default=None, ge=0)
+
+    @model_validator(mode="after")
+    def _needs_bound(self) -> Self:
+        if self.p95_max_ms is None and self.max_increase_pct is None:
+            raise ValueError("latency rule requires p95_max_ms or max_increase_pct")
+        return self
 
 
 class CostRuleBody(BaseModel):
+    """Mean cost ceiling and/or max % increase vs the baseline experiment."""
+
     model_config = ConfigDict(extra="forbid")
 
-    max_per_request_usd: float
+    max_per_request_usd: float | None = None
+    max_increase_pct: float | None = Field(default=None, ge=0)
+
+    @model_validator(mode="after")
+    def _needs_bound(self) -> Self:
+        if self.max_per_request_usd is None and self.max_increase_pct is None:
+            raise ValueError("cost rule requires max_per_request_usd or max_increase_pct")
+        return self
 
 
 class RegressionRuleBody(BaseModel):
@@ -717,11 +735,28 @@ class ExperimentMetricRuleBody(BaseModel):
 
     min: float | None = None
     max: float | None = None
+    # Changes vs the baseline experiment (absolute, or % of the baseline value).
+    max_increase: float | None = Field(default=None, ge=0)
+    max_decrease: float | None = Field(default=None, ge=0)
+    max_increase_pct: float | None = Field(default=None, ge=0)
+    max_decrease_pct: float | None = Field(default=None, ge=0)
 
     @model_validator(mode="after")
     def _needs_bound(self) -> Self:
-        if self.min is None and self.max is None:
-            raise ValueError("experiment metric rule requires min or max")
+        if all(
+            v is None
+            for v in (
+                self.min,
+                self.max,
+                self.max_increase,
+                self.max_decrease,
+                self.max_increase_pct,
+                self.max_decrease_pct,
+            )
+        ):
+            raise ValueError(
+                "experiment metric rule requires min or max, or a max_increase/max_decrease bound"
+            )
         return self
 
 

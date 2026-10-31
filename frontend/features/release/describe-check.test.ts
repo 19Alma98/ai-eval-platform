@@ -188,3 +188,53 @@ test("policyFromQualityBar emits cost, experiment_metrics, and groups", () => {
     },
   );
 });
+
+test("describeCheck covers relative bounds vs baseline", () => {
+  const latency = describeCheck({
+    metric: "latency.p95.max_increase_pct",
+    actual: 31.25,
+    threshold: 20,
+    status: "failed",
+  });
+  assert.equal(latency.title, "Latency (95% of answers) vs baseline");
+  assert.equal(latency.actual, "+31.3%");
+  assert.equal(latency.target, "increase ≤ 20%");
+  assert.ok(latency.isRegression);
+
+  const cost = describeCheck({
+    metric: "cost.mean_per_request_usd.max_increase_pct",
+    actual: null,
+    threshold: 10,
+    status: "unavailable",
+  });
+  assert.equal(cost.title, "Average cost per answer vs baseline");
+  assert.equal(cost.actual, "—");
+  assert.equal(cost.outcome, "unavailable");
+
+  const errors = describeCheck({
+    metric: "experiment_metrics.opengrade.error_rate.max_increase",
+    actual: 0.05,
+    threshold: 0.01,
+    status: "failed",
+  });
+  assert.equal(errors.title, "Run metric opengrade.error_rate vs baseline");
+  assert.equal(errors.actual, "0.05");
+  assert.equal(errors.target, "increase ≤ 0.01");
+
+  const accuracy = describeCheck({
+    metric: "experiment_metrics.accuracy.max_decrease_pct",
+    actual: -2,
+    threshold: 5,
+    status: "passed",
+  });
+  assert.equal(accuracy.actual, "−2.0%");
+  assert.equal(accuracy.target, "decrease ≤ 5%");
+
+  const plainMax = describeCheck({
+    metric: "experiment_metrics.cost_usd.max",
+    actual: 1,
+    threshold: 2,
+    status: "passed",
+  });
+  assert.equal(plainMax.title, "Run metric cost_usd");
+});
