@@ -30,6 +30,13 @@ exactly the absolute floor (`min: 0.8`): **an absolute threshold alone would let
 What blocks it is the comparison with the baseline:
 
 ```text
+Test cases worse than baseline (4):
+  ▼ How often are laptops refreshed?
+      hit_at_k: 1.000 PASS → 0.000 FAIL
+      must_contain: 1.000 PASS → 0.000 FAIL
+      baseline:  Laptops are refreshed every 3 years; request a replacement in ServiceNow.
+      candidate: I don't know.
+  …
 regression.hit_at_k.mean_score       -0.20   -0.05   failed
 regression.must_contain.mean_score   -0.20   -0.05   failed
 groups.category=it.hit_at_k.min       0.67    0.8    failed

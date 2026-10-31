@@ -43,7 +43,7 @@ Task wiring (XOR): `--task module.path:callable` or `--script path.py` (must def
 
 Judge secrets: `evaluate.judge.api_key_env: LLM_API_KEY` reads the environment (set via CI secrets). Do not commit API keys in YAML.
 
-Flags override YAML: `--task`, `--script`, `--dataset`, `--metrics`, `--name`, `--baseline`, `--from-experiment`, `--version`, `--promote`, `--require-baseline` / `--allow-missing-baseline`, `--base-url`, `--project`, `--backend-store-uri`, `--json`. Report files (flags only): `--report-md PATH`, `--junit PATH`.
+Flags override YAML: `--task`, `--script`, `--dataset`, `--metrics`, `--name`, `--baseline`, `--from-experiment`, `--version`, `--promote`, `--require-baseline` / `--allow-missing-baseline`, `--base-url`, `--project`, `--backend-store-uri`, `--json`. Report files (flags only): `--report-md PATH`, `--junit PATH`; `--show-regressions N` (default 10, `0` = off) lists the test cases that got worse.
 
 `--version` / `evaluate.version` is stored on the experiment (`experiments.version`, max 200 chars). Every run also records the git revision it measured (`experiments.git`: commit, branch, uncommitted changes, remote) from the checkout in the working directory, or from CI env vars (`GITHUB_SHA`, `CI_COMMIT_SHA`, …) when there is no `.git`; without `--version` the short SHA becomes the version. The output prints the candidate and baseline commits and, for GitHub / GitLab remotes, a link to the code diff between them; it warns when both ran the same commit. Set `OPENGRADE_DISABLE_GIT=1` to skip detection.
 
@@ -103,6 +103,12 @@ experiment_metrics:
 
 Checks: `latency.p95.max_increase_pct`, `cost.mean_per_request_usd.max_increase_pct`, `experiment_metrics.<key>.max_increase|max_decrease|max_increase_pct|max_decrease_pct`. `actual` is the change in the guarded direction (percent for `*_pct`). Unlike `regression` these are plain comparisons, not a significance test: wall-clock latency on shared CI runners is noisy, so keep `max_increase_pct` generous or use `repeats`. Like `regression`, they are dropped on a run without a baseline (or fail it with `--require-baseline`).
 
+#### Which test cases got worse (`--show-regressions`)
+
+When the run has a baseline, the output lists up to `N` test cases (default 10) whose score dropped on at least one metric: the input, the baseline and candidate outputs, and per metric `baseline → candidate` score and label (`hit_at_k: 1.000 PASS → 0.000 FAIL`). Cases that regressed on more metrics come first, then the largest total drop. The same list goes into `--json` (`regressed_items`, `regressed_items_total`), the Markdown report (table plus collapsible full outputs with the evaluator's explanation) and the JUnit failure of each `regression.<metric>.mean_score` check, with a link to the side-by-side compare page (`compare_url`).
+
+A case counts as worse when its score drops by more than the compare threshold, item by item, so the list can be non-empty while the aggregate `regression` check passes (some cases up, some down). It is diagnostic only: it never changes the gate result, and a failure to fetch it is a warning.
+
 #### Reports: job summary, PR comment, JUnit
 
 ```bash
@@ -110,7 +116,7 @@ opengrade evaluate --config opengrade.yaml --baseline alias:main --require-basel
   --report-md "$GITHUB_STEP_SUMMARY" --junit opengrade-junit.xml
 ```
 
-- `--report-md PATH` writes a Markdown report: verdict, candidate / baseline experiment and commits (with a code-diff link), notes (no baseline, exam changed), failing checks first, per-metric deltas vs the baseline, and all checks in a collapsible block. Point it at `$GITHUB_STEP_SUMMARY` for the job summary, or at a file posted as a sticky PR comment.
+- `--report-md PATH` writes a Markdown report: verdict, candidate / baseline experiment and commits (with a code-diff link), notes (no baseline, exam changed), failing checks first, per-metric deltas vs the baseline, the test cases that got worse, and all checks in a collapsible block. Model inputs / outputs are HTML-escaped and clipped so they cannot break the layout. Point it at `$GITHUB_STEP_SUMMARY` for the job summary, or at a file posted as a sticky PR comment.
 - `--junit PATH` writes JUnit XML, one test case per check; `failed` and `unavailable` checks are failures. CI test-report widgets (GitLab, Jenkins, Azure DevOps, JUnit-report actions on GitHub) show them per check.
 
 Both are written whenever the gate runs, passing or failing, and are also available on `opengrade check`. Parent directories are created.
@@ -142,7 +148,7 @@ opengrade evaluate --config opengrade.yaml --version "$GITHUB_SHA" --baseline al
 
 The alias lives in the server's database: use a persistent server (`api_base_url`) or `--backend-store-uri` pointing at a durable DB. The default embedded temp SQLite is discarded after each run.
 
-`--json` output (stdout is one JSON document; diagnostics go to stderr) adds `version`, `git` / `baseline_git` (code revisions of the run and its baseline), `baseline_ref` (as configured, e.g. `alias:main`), the `baseline_id` actually used by the gate, `code_diff_url`, `comparison` (per-evaluator candidate / baseline / delta / status), `experiment_metrics`, `notes`, and `promoted` (`{alias, experiment_id, previous_experiment_id, exam_changed}` or `null`). Aliases and their history are also available over the API (`/projects/{id}/experiment-aliases`, see `docs/05-api.md`) and the SDK (`client.experiments.set_alias / get_alias / alias_history`, `baseline="alias:main"`).
+`--json` output (stdout is one JSON document; diagnostics go to stderr) adds `version`, `git` / `baseline_git` (code revisions of the run and its baseline), `baseline_ref` (as configured, e.g. `alias:main`), the `baseline_id` actually used by the gate, `code_diff_url`, `compare_url`, `comparison` (per-evaluator candidate / baseline / delta / status), `regressed_items` / `regressed_items_total`, `experiment_metrics`, `notes`, and `promoted` (`{alias, experiment_id, previous_experiment_id, exam_changed}` or `null`). Aliases and their history are also available over the API (`/projects/{id}/experiment-aliases`, see `docs/05-api.md`) and the SDK (`client.experiments.set_alias / get_alias / alias_history`, `baseline="alias:main"`).
 
 Design: [`docs/superpowers/specs/2026-10-28-opengrade-evaluate-cli-design.md`](superpowers/specs/2026-10-28-opengrade-evaluate-cli-design.md).
 

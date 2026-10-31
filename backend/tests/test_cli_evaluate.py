@@ -436,3 +436,69 @@ def test_evaluate_require_baseline_fails_without_alias_and_writes_reports(
     assert body["baseline_id"] == json.loads(boot.stdout)["experiment_id"]
     assert [row["metric"] for row in body["comparison"]] == ["hit_at_k"]
     assert "### Metrics vs baseline" in md.read_text(encoding="utf-8")
+
+
+def test_evaluate_lists_test_cases_worse_than_baseline(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.syspath_prepend(str(tmp_path))
+    config, task_py = _write_bootstrap_files(tmp_path)
+    rows = [
+        {"input": f"q{i}", "expected_output": "a", "expected_doc_ids": ["d1"]} for i in range(6)
+    ]
+    (tmp_path / "gold.json").write_text(json.dumps(rows), encoding="utf-8")
+    # BREAK=1 makes q0..q2 retrieve the wrong document.
+    task_py.write_text(
+        """
+import os
+import opengrade
+
+def task(item):
+    broken = os.environ.get("BREAK") == "1" and item.input in ("q0", "q1", "q2")
+    opengrade.set_retrieval_documents([{"id": "zz" if broken else "d1", "text": "doc"}])
+    return ("wrong | answer" if broken else "answer") + f" to {item.input}"
+""",
+        encoding="utf-8",
+    )
+    config.write_text(
+        config.read_text(encoding="utf-8").replace(
+            "  max_concurrency: 1\n", "  max_concurrency: 1\n  baseline: alias:main\n"
+        )
+        + "regression:\n  max_delta: -0.05\n",
+        encoding="utf-8",
+    )
+    store = f"sqlite+aiosqlite:///{(tmp_path / 'store.db').as_posix()}"
+    common = ["evaluate", "--config", str(config), "--backend-store-uri", store]
+
+    boot = runner.invoke(app, [*common, "--promote", "main", "--json"])
+    assert boot.exit_code == EXIT_PASS, boot.output
+    baseline_id = json.loads(boot.stdout)["experiment_id"]
+
+    monkeypatch.setenv("BREAK", "1")
+    md = tmp_path / "gate.md"
+    worse = runner.invoke(
+        app, [*common, "--json", "--show-regressions", "2", "--report-md", str(md)]
+    )
+    payload = json.loads(worse.stdout)
+    assert payload["baseline_id"] == baseline_id
+    assert payload["regressed_items_total"] == 3
+    assert len(payload["regressed_items"]) == 2
+    first = payload["regressed_items"][0]
+    assert first["input"] in ("q0", "q1", "q2")
+    assert first["baseline_output"] == f"answer to {first['input']}"
+    assert first["candidate_output"] == f"wrong | answer to {first['input']}"
+    assert first["metrics"][0]["metric"] == "hit_at_k"
+    assert first["metrics"][0]["baseline_score"] == 1.0
+    assert first["metrics"][0]["candidate_score"] == 0.0
+    assert payload["compare_url"].endswith(
+        f"compare?baseline={baseline_id}&project=" + payload["project_id"]
+    )
+    assert "### Test cases worse than baseline (2 of 3)" in md.read_text(encoding="utf-8")
+
+    text = runner.invoke(app, common)
+    assert "Test cases worse than baseline (3):" in text.output
+    assert "hit_at_k: 1.000 PASS → 0.000 FAIL" in text.output
+
+    off = runner.invoke(app, [*common, "--json", "--show-regressions", "0"])
+    assert "regressed_items" not in json.loads(off.stdout)

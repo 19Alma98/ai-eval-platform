@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import os
 import socket
 import webbrowser
@@ -15,8 +16,10 @@ import uvicorn
 import yaml
 from rich.console import Console
 from rich.table import Table
+from rich.text import Text
 
 from opengrade_server.cli_evaluate import (
+    DEFAULT_SHOW_REGRESSIONS,
     EVALUATE_KEY,
     RESERVED_TOP_LEVEL,
     AliasTarget,
@@ -26,6 +29,7 @@ from opengrade_server.cli_evaluate import (
     apply_judge_env,
     emit_json,
     fetch_alias,
+    fetch_regressed_items,
     post_release_check,
     resolve_evaluate_config,
     resolve_task,
@@ -361,6 +365,42 @@ def _print_checks(body: dict[str, Any]) -> None:
     console.print(table)
 
 
+def _clip(value: Any, limit: int = 160) -> str:
+    text = value if isinstance(value, str) else json.dumps(value, ensure_ascii=False, default=str)
+    text = " ".join(str(text).split())
+    return text if len(text) <= limit else text[: limit - 1] + "…"
+
+
+def _score_change(metric: dict[str, Any]) -> str:
+    def side(score: Any, label: Any) -> str:
+        text = "n/a" if score is None else f"{score:.3f}"
+        return f"{text} {label}" if label else text
+
+    return (
+        f"{side(metric.get('baseline_score'), metric.get('baseline_label'))} → "
+        f"{side(metric.get('candidate_score'), metric.get('candidate_label'))}"
+    )
+
+
+def _print_regressed_items(payload: dict[str, Any]) -> None:
+    items: list[dict[str, Any]] = payload.get("regressed_items") or []
+    total = payload.get("regressed_items_total") or 0
+    if not items:
+        return
+    shown = f"{len(items)} of {total}" if total > len(items) else str(total)
+    console.print(f"[bold]Test cases worse than baseline ({shown}):[/bold]")
+    for item in items:
+        console.print(Text.assemble(("  ▼ ", "red"), _clip(item.get("input"))), soft_wrap=True)
+        for metric in item["metrics"]:
+            console.print(
+                f"      {metric['metric']}: {_score_change(metric)}", soft_wrap=True, markup=False
+            )
+        for label, key in (("baseline: ", "baseline_output"), ("candidate:", "candidate_output")):
+            console.print(f"      {label} {_clip(item.get(key))}", soft_wrap=True, markup=False)
+    if payload.get("compare_url"):
+        console.print(f"  all cases: {payload['compare_url']}", soft_wrap=True)
+
+
 def _git_dict(git: Any) -> dict[str, Any] | None:
     if git is None:
         return None
@@ -492,6 +532,17 @@ def evaluate_cmd(
             help="Move this experiment alias (e.g. main) to the run when the gate passes",
         ),
     ] = None,
+    show_regressions: Annotated[
+        int,
+        typer.Option(
+            "--show-regressions",
+            min=0,
+            help=(
+                "List up to N test cases whose score dropped vs the baseline "
+                "(input, both outputs, per-metric scores) in the output and reports; 0 = off"
+            ),
+        ),
+    ] = DEFAULT_SHOW_REGRESSIONS,
     require_baseline: Annotated[
         bool | None,
         typer.Option(
@@ -691,10 +742,38 @@ def evaluate_cmd(
             "notes": notes,
             "status": "evaluated",
         }
+        if gate_baseline_id:
+            payload["compare_url"] = (
+                f"{tracking_uri.rstrip('/')}/experiments/{result.id}/compare"
+                f"?baseline={gate_baseline_id}&project={project_id}"
+            )
+        if gate_baseline_id and comparison and show_regressions > 0:
+            assert result.comparison is not None
+            evaluators = [
+                (row.evaluator_id, row.evaluator_name or row.evaluator_id)
+                for row in result.comparison.metrics
+                if row.metric == "mean_score"
+                and row.evaluator_id
+                and row.status not in ("config_mismatch", "unavailable")
+            ]
+            try:
+                items, total = fetch_regressed_items(
+                    base_url=tracking_uri,
+                    experiment_id=result.id,
+                    baseline_id=gate_baseline_id,
+                    evaluators=evaluators,
+                    limit=show_regressions,
+                )
+                payload["regressed_items"] = items
+                payload["regressed_items_total"] = total
+            except (httpx2.HTTPError, RuntimeError, ValueError) as exc:
+                # Diagnostics only: never turn a gate result into an infra error.
+                log.print(f"[yellow]Could not list regressed test cases:[/yellow] {exc}")
         if not cfg.as_json:
             console.print(result.summary())
             console.print(f"Experiment: [cyan]{result.url}[/cyan]")
             _print_code_revisions(candidate_git, baseline_git, has_baseline=bool(gate_baseline_id))
+            _print_regressed_items(payload)
 
         if not cfg.policy:
             payload["gate"] = None

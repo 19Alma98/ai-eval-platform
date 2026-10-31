@@ -9,6 +9,8 @@ that parse JUnit).
 
 from __future__ import annotations
 
+import html
+import json
 import math
 import xml.etree.ElementTree as ET
 from pathlib import Path
@@ -80,6 +82,76 @@ def _commit(git: dict[str, Any] | None) -> str:
     if git.get("dirty"):
         text += " + uncommitted"
     return text
+
+
+def _text(value: Any) -> str:
+    if value is None:
+        return ""
+    if isinstance(value, str):
+        return value
+    return json.dumps(value, ensure_ascii=False, default=str)
+
+
+def _clip(text: str, limit: int) -> str:
+    return text if len(text) <= limit else text[: limit - 1] + "…"
+
+
+def _cell(value: Any, limit: int = 120) -> str:
+    """Free text (model input / output) made safe for one Markdown table cell."""
+    text = _clip(" ".join(_text(value).split()), limit)
+    return html.escape(text, quote=False).replace("|", "\\|") or "—"
+
+
+def _score_side(score: Any, label: Any) -> str:
+    text = "n/a" if score is None else _num(score)
+    return f"{text} {html.escape(str(label))}" if label else text
+
+
+def _regressed_items_section(payload: dict[str, Any]) -> list[str]:
+    items: list[dict[str, Any]] = list(payload.get("regressed_items") or [])
+    if not items:
+        return []
+    total = int(payload.get("regressed_items_total") or len(items))
+    shown = f"{len(items)} of {total}" if total > len(items) else str(total)
+    lines = [
+        f"### Test cases worse than baseline ({shown})",
+        "",
+        "| # | Input | Metric: baseline → candidate | Candidate output |",
+        "|---|---|---|---|",
+    ]
+    for n, item in enumerate(items, start=1):
+        changes = "<br>".join(
+            f"{html.escape(str(m['metric']))}: "
+            f"{_score_side(m.get('baseline_score'), m.get('baseline_label'))} → "
+            f"{_score_side(m.get('candidate_score'), m.get('candidate_label'))}"
+            for m in item.get("metrics", [])
+        )
+        lines.append(
+            f"| {n} | {_cell(item.get('input'))} | {changes} "
+            f"| {_cell(item.get('candidate_output'))} |"
+        )
+    lines += ["", "<details><summary>Full outputs</summary>", ""]
+    for n, item in enumerate(items, start=1):
+        lines.append(f"**#{n}** {_cell(item.get('input'), 300)}")
+        lines.append("")
+        blocks = [
+            ("Expected", item.get("expected_output")),
+            ("Baseline", item.get("baseline_output")),
+            ("Candidate", item.get("candidate_output")),
+        ]
+        for metric in item.get("metrics", []):
+            if metric.get("explanation"):
+                blocks.append((f"Why ({metric['metric']})", metric["explanation"]))
+        for label, value in blocks:
+            if value is None or value == "":
+                continue
+            body = html.escape(_clip(_text(value), 1500), quote=False)
+            lines.append(f"{label}:<pre>{body}</pre>")
+        lines.append("")
+    lines += ["</details>", ""]
+    if payload.get("compare_url"):
+        lines += [f"[All test cases side by side]({payload['compare_url']})", ""]
+    return lines
 
 
 def _check_rows(checks: list[dict[str, Any]]) -> list[str]:
@@ -161,6 +233,8 @@ def render_markdown(payload: dict[str, Any], *, title: str = "OpenGrade quality 
         lines += [f"| {name} | {_num(value)} |" for name, value in metrics.items()]
         lines.append("")
 
+    lines += _regressed_items_section(payload)
+
     if checks:
         lines += [
             f"<details><summary>All checks ({len(checks)})</summary>",
@@ -171,6 +245,14 @@ def render_markdown(payload: dict[str, Any], *, title: str = "OpenGrade quality 
             "",
         ]
     return "\n".join(lines).rstrip() + "\n"
+
+
+def _regression_metric(check: str) -> str:
+    """``regression.hit_at_k.mean_score`` → ``hit_at_k`` (``""`` for other checks)."""
+    prefix, suffix = "regression.", ".mean_score"
+    if check.startswith(prefix) and check.endswith(suffix):
+        return check[len(prefix) : -len(suffix)]
+    return ""
 
 
 def render_junit(payload: dict[str, Any], *, suite: str = "opengrade quality gate") -> str:
@@ -188,6 +270,15 @@ def render_junit(payload: dict[str, Any], *, suite: str = "opengrade quality gat
     for key in ("experiment_id", "url", "version", "baseline_id", "gate"):
         if payload.get(key) is not None:
             ET.SubElement(props, "property", name=key, value=str(payload[key]))
+    # Regression checks list the test cases that got worse on that metric.
+    cases_by_metric: dict[str, list[str]] = {}
+    for item in payload.get("regressed_items") or []:
+        for m in item.get("metrics", []):
+            cases_by_metric.setdefault(str(m["metric"]), []).append(
+                f"- {_clip(' '.join(_text(item.get('input')).split()), 200)}: "
+                f"{_score_side(m.get('baseline_score'), m.get('baseline_label'))} → "
+                f"{_score_side(m.get('candidate_score'), m.get('candidate_label'))}"
+            )
     for check in checks:
         metric = str(check.get("metric", ""))
         case = ET.SubElement(ts, "testcase", classname="opengrade.gate", name=metric)
@@ -201,7 +292,7 @@ def render_junit(payload: dict[str, Any], *, suite: str = "opengrade quality gat
         else:
             message = f"{status}: no data to evaluate (fails the gate); required {threshold}"
         failure = ET.SubElement(case, "failure", message=message, type=str(status))
-        failure.text = message
+        failure.text = "\n".join([message, *cases_by_metric.get(_regression_metric(metric), [])])
     ET.indent(root)
     return '<?xml version="1.0" encoding="UTF-8"?>\n' + ET.tostring(root, encoding="unicode") + "\n"
 

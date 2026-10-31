@@ -427,6 +427,73 @@ def post_release_check(
     return cast(dict[str, Any], body)
 
 
+DEFAULT_SHOW_REGRESSIONS = 10
+
+
+def fetch_regressed_items(
+    *,
+    base_url: str,
+    experiment_id: str,
+    baseline_id: str,
+    evaluators: list[tuple[str, str]],
+    limit: int,
+) -> tuple[list[dict[str, Any]], int]:
+    """Test cases whose score dropped vs the baseline, merged across evaluators.
+
+    ``evaluators`` is ``[(evaluator_id, name), …]``. Returns up to ``limit`` items (most
+    regressed metrics first, then largest total drop) and the total number of regressed
+    items. Each item: ``dataset_item_id``, ``input``, ``expected_output``,
+    ``baseline_output``, ``candidate_output`` and ``metrics`` (per regressed evaluator:
+    scores, labels, delta, candidate explanation).
+    """
+    by_item: dict[str, dict[str, Any]] = {}
+    root = base_url.rstrip("/")
+    for evaluator_id, name in evaluators:
+        url = f"{root}/api/v1/experiments/{UUID(experiment_id)}/compare/{UUID(baseline_id)}/items"
+        response = httpx2.get(
+            url,
+            params={"evaluator_id": str(UUID(evaluator_id)), "regressions_only": "true"},
+            timeout=60.0,
+        )
+        if response.status_code >= 400:
+            raise RuntimeError(f"compare items HTTP {response.status_code}: {response.text}")
+        for row in response.json().get("items", []):
+            item_id = str(row["dataset_item_id"])
+            baseline = row.get("baseline") or {}
+            candidate = row.get("candidate") or {}
+            item = by_item.setdefault(
+                item_id,
+                {
+                    "dataset_item_id": item_id,
+                    "input": row.get("input"),
+                    "expected_output": row.get("expected_output"),
+                    "baseline_output": baseline.get("actual_output"),
+                    "candidate_output": candidate.get("actual_output"),
+                    "metrics": [],
+                },
+            )
+            item["metrics"].append(
+                {
+                    "metric": name,
+                    "baseline_score": baseline.get("score"),
+                    "candidate_score": candidate.get("score"),
+                    "baseline_label": baseline.get("label"),
+                    "candidate_label": candidate.get("label"),
+                    "delta": row.get("delta"),
+                    "explanation": candidate.get("explanation"),
+                }
+            )
+    items = sorted(
+        by_item.values(),
+        key=lambda it: (
+            -len(it["metrics"]),
+            sum(m["delta"] or 0.0 for m in it["metrics"]),
+            it["dataset_item_id"],
+        ),
+    )
+    return items[:limit], len(items)
+
+
 def alias_ref(ref: str | None) -> str | None:
     if ref is None or not ref.startswith(ALIAS_PREFIX):
         return None
