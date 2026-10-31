@@ -201,7 +201,10 @@ def test_evaluate_embedded_bootstrap_and_gate(
 
     result = runner.invoke(app, ["evaluate", "--config", str(config), "--json"])
     assert result.exit_code == EXIT_PASS, result.output
-    assert "experiment_id" in result.output
+    # --json: stdout is exactly one JSON document (banner/diagnostics go to stderr)
+    payload = json.loads(result.stdout)
+    assert payload["experiment_id"]
+    assert payload["gate"] == "passed"
 
     # Impossible threshold so the same setup fails the gate
     fail_config = tmp_path / "fail.yaml"

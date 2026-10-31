@@ -1,0 +1,39 @@
+# CI regression gate: "the PR must be at least as good as the last accepted main run".
+#
+#   PR:            opengrade evaluate --config opengrade.yaml --baseline alias:main
+#   push to main:  opengrade evaluate --config opengrade.yaml --baseline alias:main --promote main
+#
+# The alias lives in the server DB, so CI needs a persistent store: set api_base_url
+# (shared OpenGrade server) or pass --backend-store-uri pointing at a durable database.
+# api_base_url: https://opengrade.internal
+
+project: ci-regression-gate
+
+evaluate:
+  task: rag_app:task
+  dataset: gold.jsonl
+  metrics: [hit_at_k, must_contain, latency]
+  name: rag-ci
+  task_type: rag_qa
+  max_concurrency: 4
+  baseline: alias:main        # compare against the last run that passed on main
+  # promote: main             # set via --promote main, only on push to main
+
+# ---- Policy -------------------------------------------------------------------------
+# Absolute floors: never ship below these, whatever the baseline was.
+hit_at_k:
+  min: 0.8
+must_contain:
+  min: 0.8
+latency:
+  p95_max_ms: 2000
+
+# Relative check vs baseline: fails when a metric is a statistically significant
+# regression (paired bootstrap CI below 0), or when the mean drops more than 0.05.
+regression:
+  max_delta: -0.05
+
+# Same checks per question category: a global mean can hide one category collapsing.
+groups:
+  by: category
+  min_items: 5

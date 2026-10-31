@@ -146,7 +146,7 @@ uv run opengrade check --policy ../examples/opengrade.yaml \
   --experiment-id <experiment-uuid>
 ```
 
-Exit codes: `0` pass, `1` gate failed, `2` config error, `3` infra error. Example workflow: [`.github/workflows/release-gate.yml.example`](.github/workflows/release-gate.yml.example). Details: [`docs/08-cli-ci.md`](docs/08-cli-ci.md).
+Exit codes: `0` pass, `1` gate failed, `2` config error, `3` infra error. Example workflow: [`.github/workflows/release-gate.yml.example`](.github/workflows/release-gate.yml.example). Runnable PR-vs-main regression gate (no LLM needed): [`examples/ci_regression_gate/`](examples/ci_regression_gate/README.md). Details: [`docs/08-cli-ci.md`](docs/08-cli-ci.md).
 
 ## PyPI release
 

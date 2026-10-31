@@ -157,6 +157,8 @@ opengrade ui
 
 See `.github/workflows/release-gate.yml.example` and `examples/opengrade.yaml`.
 
+Runnable "PR must not be worse than `main`" example (deterministic, no LLM): [`examples/ci_regression_gate/`](../examples/ci_regression_gate/README.md) — local demo script plus a GitHub Actions workflow that keeps the baseline on a shared server or in the Actions cache.
+
 Preferred (evaluate + gate in one step):
 
 ```yaml

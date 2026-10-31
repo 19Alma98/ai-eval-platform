@@ -59,6 +59,8 @@ PACKAGED_UI_HINT = (
 
 app = typer.Typer(add_completion=False, no_args_is_help=True)
 console = Console()
+# Diagnostics go here in --json mode so stdout stays a single JSON document.
+err_console = Console(stderr=True)
 
 
 @app.callback()
@@ -492,13 +494,14 @@ def evaluate_cmd(
             as_json=as_json,
         )
         task_fn = resolve_task(cfg)
+        log = err_console if cfg.as_json else console
 
         tracking_uri = cfg.base_url
         if not tracking_uri:
             apply_judge_env(cfg)
             embedded = EmbeddedServer(database_url=cfg.backend_store_uri)
             tracking_uri = embedded.start()
-            console.print(f"Embedded OpenGrade API: [cyan]{tracking_uri}[/cyan]")
+            log.print(f"Embedded OpenGrade API: [cyan]{tracking_uri}[/cyan]")
         else:
             # Judge env still useful if the remote server reads the same process env (rare);
             # for remote, keys usually live on the server. Only apply when keys are set.
@@ -560,7 +563,7 @@ def evaluate_cmd(
             if baseline_target is None:
                 missing_baseline_alias = baseline_alias
                 baseline_arg = None
-                console.print(
+                log.print(
                     f"[yellow]No baseline yet:[/yellow] alias {baseline_alias!r} is not set; "
                     "running without a baseline (regression checks skipped)"
                 )
@@ -591,7 +594,7 @@ def evaluate_cmd(
         if baseline_target is not None and not same_exam(
             baseline_target, run_dataset_id, run_metrics_set_id
         ):
-            console.print(
+            log.print(
                 f"[yellow]Exam changed:[/yellow] alias {baseline_target.alias!r} ran another "
                 "dataset / metrics set; regression checks skipped for this run"
             )
