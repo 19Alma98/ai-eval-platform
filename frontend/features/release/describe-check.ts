@@ -24,6 +24,11 @@ function rawNumber(value: number | null): string {
   return value.toLocaleString("en-US", { maximumFractionDigits: 4 });
 }
 
+function pct(value: number | null): string {
+  if (value === null || value === undefined || Number.isNaN(value)) return "—";
+  return `${value >= 0 ? "+" : "−"}${Math.abs(value).toFixed(1)}%`;
+}
+
 function outcomeOf(status: string): CheckView["outcome"] {
   const key = status.toLowerCase();
   if (key === "passed") return "passed";
@@ -54,6 +59,34 @@ export function describeCheck(check: ReleaseCheckItemResponse): CheckView {
       target: check.threshold == null ? "—" : `≤ $${check.threshold.toFixed(4)}`,
       outcome,
       isRegression: false,
+    };
+  }
+  if (id === "latency.p95.max_increase_pct" || id === "cost.mean_per_request_usd.max_increase_pct") {
+    return {
+      key: id,
+      title: id.startsWith("latency")
+        ? "Latency (95% of answers) vs baseline"
+        : "Average cost per answer vs baseline",
+      actual: pct(check.actual),
+      target: check.threshold == null ? "—" : `increase ≤ ${check.threshold}%`,
+      outcome,
+      isRegression: true,
+    };
+  }
+  const runMetricVsBaseline =
+    /^experiment_metrics\.(.+)\.max_(increase|decrease)(_pct)?$/.exec(id);
+  if (runMetricVsBaseline) {
+    const [, key, direction, relative] = runMetricVsBaseline;
+    const threshold =
+      check.threshold == null ? "—" : relative ? `${check.threshold}%` : rawNumber(check.threshold);
+    return {
+      key: id,
+      title: `Run metric ${key} vs baseline`,
+      // `actual` is the change in the guarded direction (positive = moved that way).
+      actual: relative ? pct(check.actual) : rawNumber(check.actual),
+      target: `${direction} ≤ ${threshold}`,
+      outcome,
+      isRegression: true,
     };
   }
   if (id === "regression.max_delta") {

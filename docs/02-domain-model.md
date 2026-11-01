@@ -235,8 +235,10 @@ Semantics:
 - `{name}.min` — pass if latest-run `mean_score >= min`
 - `latency.p95_max_ms` — pass if p95 of result `metadata.latency_ms` (nearest-rank) `<=` threshold. Rows without `latency_ms` (e.g. SKIPPED) are excluded from the sample. Any result with `metadata.missing_output: true` and no usable `latency_ms` fails the check (do not green-light incomplete runs on a latency subset).
 - `cost.max_per_request_usd` — pass if mean of result `metadata.cost_usd` `<=` threshold
+- `latency.max_increase_pct` / `cost.max_increase_pct` — relative bounds vs the **baseline** experiment: pass if the candidate p95 latency (resp. mean cost per request) is at most that many percent above the baseline's (`(candidate − baseline) / baseline × 100`). Checks `latency.p95.max_increase_pct` and `cost.mean_per_request_usd.max_increase_pct`; `actual` is the change in percent. Missing data on either side → `unavailable`; any increase from a baseline of 0 fails. Each block needs its absolute bound, its relative bound, or both.
 - `regression` — for each shared evaluator, uses the **same bootstrap status as experiment compare** (`GET …/compare/{baseline}`): fail when status is `regression` (paired 95% CI entirely below 0). Optional `max_delta` is a mean-score **safety floor**: also fail when status is `unchanged`/`improved` but `mean_score` delta (candidate − baseline) `< max_delta`. Compare status `insufficient_n` (n < 5) yields check `unavailable` → overall failed. Opt-in `regression.allow_insufficient_n: true` restores soft-pass (skip those evaluators) for small demo sets. A bare `regression: {}` gates on bootstrap only.
-- `experiment_metrics` — `{key: {min?, max?}}` gates experiment-level scalars logged via `PUT /experiments/{id}/metrics`; each bound becomes a check `experiment_metrics.<key>.min|max`. A key that was never logged is `unavailable` and fails the gate.
+- `experiment_metrics` — `{key: {min?, max?}}` gates experiment-level scalars logged via `PUT /experiments/{id}/metrics`; each bound becomes a check `experiment_metrics.<key>.min|max`. A key that was never logged is `unavailable` and fails the gate. Relative bounds vs the baseline run: `max_increase` / `max_decrease` (absolute change) and `max_increase_pct` / `max_decrease_pct` (percent of the baseline value), checks `experiment_metrics.<key>.<bound>`. `actual` is the change in the guarded direction (positive = moved that way; improvements are negative) and passes when `<=` the bound. Use `max_increase` for lower-is-better metrics (`opengrade.error_rate`, `opengrade.latency_p95_ms`) and `max_decrease` for higher-is-better ones.
+- Rules that compare with a baseline (`regression`, `groups.max_delta`, any relative bound) require a baseline experiment.
 - Missing run/metadata/score → check `unavailable` → overall failed
 
 Example (RAG portfolio uses pack metric names):
@@ -253,6 +255,11 @@ latency:
 regression:
   max_delta: -0.05   # optional mean floor; omit for bootstrap-only
   # allow_insufficient_n: true   # optional; demos with n < 5 only
+# Relative bounds vs the baseline (optional):
+#   latency: {p95_max_ms: 30000, max_increase_pct: 25}
+#   cost: {max_increase_pct: 10}
+#   experiment_metrics:
+#     opengrade.error_rate: {max: 0.05, max_increase: 0.01}
 ```
 
 Legacy/custom evaluator names (for example `quality` with a `contains` evaluator) remain valid when those evaluators exist on the project.

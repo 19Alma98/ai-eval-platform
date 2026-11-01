@@ -21,10 +21,14 @@ import uvicorn
 
 from opengrade_server.config import get_settings
 from opengrade_server.domain.experiment_output import MAX_REPEATS
+from opengrade_server.regression.policy import (
+    InvalidPolicyError,
+    parse_release_policy,
+    strip_baseline_rules,
+)
 
 EVALUATE_KEY = "evaluate"
 ALIAS_PREFIX = "alias:"
-REGRESSION_KEY = "regression"
 RESERVED_TOP_LEVEL = frozenset(
     {
         "api_base_url",
@@ -62,6 +66,7 @@ class EvaluateConfig:
     backend_store_uri: str | None = None
     version: str | None = None
     promote: str | None = None
+    require_baseline: bool = False
     policy: dict[str, Any] = field(default_factory=dict)
     as_json: bool = False
 
@@ -125,6 +130,7 @@ def resolve_evaluate_config(
     backend_store_uri: str | None = None,
     version: str | None = None,
     promote: str | None = None,
+    require_baseline: bool | None = None,
     as_json: bool = False,
 ) -> EvaluateConfig:
     meta, block, policy = split_config(raw)
@@ -166,12 +172,32 @@ def resolve_evaluate_config(
         backend_store_uri=backend_store_uri or _as_opt_str(block.get("backend_store_uri")),
         version=_merge_str(version, block.get("version")),
         promote=_merge_str(promote, block.get("promote")),
+        require_baseline=(
+            require_baseline
+            if require_baseline is not None
+            else _as_bool("require_baseline", block.get("require_baseline", False))
+        ),
         policy=policy,
         as_json=as_json,
     )
     # Script may supply DATASET/METRICS later — defer full exam check until resolve_task.
     validate_evaluate_config(cfg, require_exam=not bool(cfg.script) or bool(cfg.from_experiment))
     return cfg
+
+
+def _as_bool(label: str, value: Any) -> bool:
+    if not isinstance(value, bool):
+        raise EvaluateConfigError(f"evaluate.{label} must be true or false")
+    return value
+
+
+def policy_needs_baseline(policy: dict[str, Any]) -> bool:
+    """True when the policy has rules that compare with a baseline. A malformed policy
+    reports False here; the release-check call returns the real error."""
+    try:
+        return parse_release_policy(policy).needs_baseline()
+    except InvalidPolicyError:
+        return False
 
 
 def validate_evaluate_config(cfg: EvaluateConfig, *, require_exam: bool = True) -> None:
@@ -199,6 +225,16 @@ def validate_evaluate_config(cfg: EvaluateConfig, *, require_exam: bool = True) 
         raise EvaluateConfigError(f"repeats must be between 1 and {MAX_REPEATS}")
     if cfg.promote and not cfg.policy:
         raise EvaluateConfigError("promote needs policy blocks: only a passing gate promotes")
+    if cfg.require_baseline:
+        if not cfg.baseline and not cfg.from_experiment:
+            raise EvaluateConfigError(
+                "require_baseline needs baseline (e.g. alias:main) or from_experiment"
+            )
+        if not policy_needs_baseline(cfg.policy):
+            raise EvaluateConfigError(
+                "require_baseline needs a policy rule that compares with the baseline "
+                "(regression, groups.max_delta or a max_increase / max_decrease bound)"
+            )
     if cfg.version is not None and len(cfg.version) > 200:
         raise EvaluateConfigError("version must be at most 200 characters")
     for label, ref in (("baseline", cfg.baseline), ("from_experiment", cfg.from_experiment)):
@@ -391,6 +427,73 @@ def post_release_check(
     return cast(dict[str, Any], body)
 
 
+DEFAULT_SHOW_REGRESSIONS = 10
+
+
+def fetch_regressed_items(
+    *,
+    base_url: str,
+    experiment_id: str,
+    baseline_id: str,
+    evaluators: list[tuple[str, str]],
+    limit: int,
+) -> tuple[list[dict[str, Any]], int]:
+    """Test cases whose score dropped vs the baseline, merged across evaluators.
+
+    ``evaluators`` is ``[(evaluator_id, name), …]``. Returns up to ``limit`` items (most
+    regressed metrics first, then largest total drop) and the total number of regressed
+    items. Each item: ``dataset_item_id``, ``input``, ``expected_output``,
+    ``baseline_output``, ``candidate_output`` and ``metrics`` (per regressed evaluator:
+    scores, labels, delta, candidate explanation).
+    """
+    by_item: dict[str, dict[str, Any]] = {}
+    root = base_url.rstrip("/")
+    for evaluator_id, name in evaluators:
+        url = f"{root}/api/v1/experiments/{UUID(experiment_id)}/compare/{UUID(baseline_id)}/items"
+        response = httpx2.get(
+            url,
+            params={"evaluator_id": str(UUID(evaluator_id)), "regressions_only": "true"},
+            timeout=60.0,
+        )
+        if response.status_code >= 400:
+            raise RuntimeError(f"compare items HTTP {response.status_code}: {response.text}")
+        for row in response.json().get("items", []):
+            item_id = str(row["dataset_item_id"])
+            baseline = row.get("baseline") or {}
+            candidate = row.get("candidate") or {}
+            item = by_item.setdefault(
+                item_id,
+                {
+                    "dataset_item_id": item_id,
+                    "input": row.get("input"),
+                    "expected_output": row.get("expected_output"),
+                    "baseline_output": baseline.get("actual_output"),
+                    "candidate_output": candidate.get("actual_output"),
+                    "metrics": [],
+                },
+            )
+            item["metrics"].append(
+                {
+                    "metric": name,
+                    "baseline_score": baseline.get("score"),
+                    "candidate_score": candidate.get("score"),
+                    "baseline_label": baseline.get("label"),
+                    "candidate_label": candidate.get("label"),
+                    "delta": row.get("delta"),
+                    "explanation": candidate.get("explanation"),
+                }
+            )
+    items = sorted(
+        by_item.values(),
+        key=lambda it: (
+            -len(it["metrics"]),
+            sum(m["delta"] or 0.0 for m in it["metrics"]),
+            it["dataset_item_id"],
+        ),
+    )
+    return items[:limit], len(items)
+
+
 def alias_ref(ref: str | None) -> str | None:
     if ref is None or not ref.startswith(ALIAS_PREFIX):
         return None
@@ -428,8 +531,9 @@ def same_exam(target: AliasTarget, dataset_id: str | None, metrics_set_id: str |
     return target.dataset_id == dataset_id and target.metrics_set_id == metrics_set_id
 
 
-def without_regression(policy: dict[str, Any]) -> dict[str, Any]:
-    return {k: v for k, v in policy.items() if k != REGRESSION_KEY}
+def without_baseline_rules(policy: dict[str, Any]) -> dict[str, Any]:
+    """Policy for a run with no comparable baseline (see ``strip_baseline_rules``)."""
+    return strip_baseline_rules(policy)
 
 
 def emit_json(payload: dict[str, Any]) -> None:

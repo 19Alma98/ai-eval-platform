@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import os
 import socket
 import webbrowser
@@ -15,8 +16,10 @@ import uvicorn
 import yaml
 from rich.console import Console
 from rich.table import Table
+from rich.text import Text
 
 from opengrade_server.cli_evaluate import (
+    DEFAULT_SHOW_REGRESSIONS,
     EVALUATE_KEY,
     RESERVED_TOP_LEVEL,
     AliasTarget,
@@ -26,12 +29,14 @@ from opengrade_server.cli_evaluate import (
     apply_judge_env,
     emit_json,
     fetch_alias,
+    fetch_regressed_items,
     post_release_check,
     resolve_evaluate_config,
     resolve_task,
     same_exam,
-    without_regression,
+    without_baseline_rules,
 )
+from opengrade_server.cli_report import BASELINE_REQUIRED_CHECK, write_reports
 from opengrade_server.config import DEFAULT_SQLITE_URL, Settings, get_settings
 from opengrade_server.ui import ui_root
 
@@ -57,8 +62,23 @@ PACKAGED_UI_HINT = (
     "(or `./scripts/package-ui.sh`), or install a release wheel that includes the UI."
 )
 
+ReportMdOption = Annotated[
+    Path | None,
+    typer.Option(
+        "--report-md",
+        dir_okay=False,
+        help='Write a Markdown report (e.g. "$GITHUB_STEP_SUMMARY" or a PR comment body)',
+    ),
+]
+JunitOption = Annotated[
+    Path | None,
+    typer.Option("--junit", dir_okay=False, help="Write a JUnit XML report (one test per check)"),
+]
+
 app = typer.Typer(add_completion=False, no_args_is_help=True)
 console = Console()
+# Diagnostics go here in --json mode so stdout stays a single JSON document.
+err_console = Console(stderr=True)
 
 
 @app.callback()
@@ -256,6 +276,8 @@ def check(
     project_id: Annotated[str | None, typer.Option("--project-id")] = None,
     experiment_id: Annotated[str | None, typer.Option("--experiment-id")] = None,
     baseline_experiment_id: Annotated[str | None, typer.Option("--baseline-experiment-id")] = None,
+    report_md: ReportMdOption = None,
+    junit: JunitOption = None,
 ) -> None:
     """Evaluate a release policy against an experiment via the API."""
     try:
@@ -302,6 +324,16 @@ def check(
             raise typer.Exit(EXIT_INFRA) from exc
 
         _print_checks(body)
+        write_reports(
+            {
+                "experiment_id": experiment_uuid,
+                "baseline_id": body.get("baseline_experiment_id") or baseline_uuid,
+                "gate": body.get("status"),
+                "checks": body.get("checks"),
+            },
+            markdown=report_md,
+            junit=junit,
+        )
         if body.get("status") == "passed":
             console.print("[green]Result: PASSED[/green]")
             raise typer.Exit(EXIT_PASS)
@@ -331,6 +363,42 @@ def _print_checks(body: dict[str, Any]) -> None:
             str(check.get("status", "")),
         )
     console.print(table)
+
+
+def _clip(value: Any, limit: int = 160) -> str:
+    text = value if isinstance(value, str) else json.dumps(value, ensure_ascii=False, default=str)
+    text = " ".join(str(text).split())
+    return text if len(text) <= limit else text[: limit - 1] + "…"
+
+
+def _score_change(metric: dict[str, Any]) -> str:
+    def side(score: Any, label: Any) -> str:
+        text = "n/a" if score is None else f"{score:.3f}"
+        return f"{text} {label}" if label else text
+
+    return (
+        f"{side(metric.get('baseline_score'), metric.get('baseline_label'))} → "
+        f"{side(metric.get('candidate_score'), metric.get('candidate_label'))}"
+    )
+
+
+def _print_regressed_items(payload: dict[str, Any]) -> None:
+    items: list[dict[str, Any]] = payload.get("regressed_items") or []
+    total = payload.get("regressed_items_total") or 0
+    if not items:
+        return
+    shown = f"{len(items)} of {total}" if total > len(items) else str(total)
+    console.print(f"[bold]Test cases worse than baseline ({shown}):[/bold]")
+    for item in items:
+        console.print(Text.assemble(("  ▼ ", "red"), _clip(item.get("input"))), soft_wrap=True)
+        for metric in item["metrics"]:
+            console.print(
+                f"      {metric['metric']}: {_score_change(metric)}", soft_wrap=True, markup=False
+            )
+        for label, key in (("baseline: ", "baseline_output"), ("candidate:", "candidate_output")):
+            console.print(f"      {label} {_clip(item.get(key))}", soft_wrap=True, markup=False)
+    if payload.get("compare_url"):
+        console.print(f"  all cases: {payload['compare_url']}", soft_wrap=True)
 
 
 def _git_dict(git: Any) -> dict[str, Any] | None:
@@ -464,6 +532,29 @@ def evaluate_cmd(
             help="Move this experiment alias (e.g. main) to the run when the gate passes",
         ),
     ] = None,
+    show_regressions: Annotated[
+        int,
+        typer.Option(
+            "--show-regressions",
+            min=0,
+            help=(
+                "List up to N test cases whose score dropped vs the baseline "
+                "(input, both outputs, per-metric scores) in the output and reports; 0 = off"
+            ),
+        ),
+    ] = DEFAULT_SHOW_REGRESSIONS,
+    require_baseline: Annotated[
+        bool | None,
+        typer.Option(
+            "--require-baseline/--allow-missing-baseline",
+            help=(
+                "Fail the gate when there is no comparable baseline (alias not set, exam "
+                "changed) instead of skipping the comparison. Use on pull requests."
+            ),
+        ),
+    ] = None,
+    report_md: ReportMdOption = None,
+    junit: JunitOption = None,
     as_json: Annotated[bool, typer.Option("--json", help="Emit machine-readable JSON")] = False,
 ) -> None:
     """Run a dataset exam (evaluate) and optionally apply a release policy gate."""
@@ -489,16 +580,18 @@ def evaluate_cmd(
             backend_store_uri=backend_store_uri,
             version=version,
             promote=promote,
+            require_baseline=require_baseline,
             as_json=as_json,
         )
         task_fn = resolve_task(cfg)
+        log = err_console if cfg.as_json else console
 
         tracking_uri = cfg.base_url
         if not tracking_uri:
             apply_judge_env(cfg)
             embedded = EmbeddedServer(database_url=cfg.backend_store_uri)
             tracking_uri = embedded.start()
-            console.print(f"Embedded OpenGrade API: [cyan]{tracking_uri}[/cyan]")
+            log.print(f"Embedded OpenGrade API: [cyan]{tracking_uri}[/cyan]")
         else:
             # Judge env still useful if the remote server reads the same process env (rare);
             # for remote, keys usually live on the server. Only apply when keys are set.
@@ -526,6 +619,8 @@ def evaluate_cmd(
         metrics_arg = cfg.metrics
         baseline_target: AliasTarget | None = None
         missing_baseline_alias: str | None = None
+        notes: list[str] = []
+        baseline_ref = cfg.baseline or cfg.from_experiment
 
         from_experiment = cfg.from_experiment
         from_alias = alias_ref(from_experiment)
@@ -560,9 +655,14 @@ def evaluate_cmd(
             if baseline_target is None:
                 missing_baseline_alias = baseline_alias
                 baseline_arg = None
-                console.print(
+                notes.append(f"No baseline: alias '{baseline_alias}' is not set.")
+                log.print(
                     f"[yellow]No baseline yet:[/yellow] alias {baseline_alias!r} is not set; "
-                    "running without a baseline (regression checks skipped)"
+                    + (
+                        "the gate will fail (--require-baseline)"
+                        if cfg.require_baseline
+                        else "running without a baseline (regression checks skipped)"
+                    )
                 )
             else:
                 baseline_arg = baseline_target.experiment_id
@@ -591,9 +691,18 @@ def evaluate_cmd(
         if baseline_target is not None and not same_exam(
             baseline_target, run_dataset_id, run_metrics_set_id
         ):
-            console.print(
+            notes.append(
+                f"Exam changed: alias '{baseline_target.alias}' ran another dataset / "
+                "metrics set, so the runs are not comparable."
+            )
+            log.print(
                 f"[yellow]Exam changed:[/yellow] alias {baseline_target.alias!r} ran another "
-                "dataset / metrics set; regression checks skipped for this run"
+                "dataset / metrics set; "
+                + (
+                    "the gate will fail (--require-baseline)"
+                    if cfg.require_baseline
+                    else "regression checks skipped for this run"
+                )
             )
             gate_baseline_id = None
 
@@ -601,41 +710,97 @@ def evaluate_cmd(
         baseline_git = (
             _git_dict(client.experiments.get(gate_baseline_id).git) if gate_baseline_id else None
         )
+        comparison = (
+            [
+                {
+                    "metric": row.evaluator_name or row.evaluator_id,
+                    "candidate": row.candidate,
+                    "baseline": row.baseline,
+                    "delta": row.delta,
+                    "status": row.status,
+                }
+                for row in result.comparison.metrics
+                if row.metric == "mean_score"
+            ]
+            if gate_baseline_id and result.comparison is not None
+            else []
+        )
         payload: dict[str, Any] = {
             "experiment_id": result.id,
+            "name": result.experiment.name,
             "url": result.url,
             "project_id": project_id,
             "version": result.experiment.version,
             "git": candidate_git,
+            "baseline_ref": baseline_ref,
             "baseline_id": gate_baseline_id,
             "baseline_git": baseline_git,
+            "code_diff_url": _compare_url(candidate_git, baseline_git),
             "metrics": result.metrics,
+            "experiment_metrics": result.experiment_metrics,
+            "comparison": comparison,
+            "notes": notes,
             "status": "evaluated",
         }
+        if gate_baseline_id:
+            payload["compare_url"] = (
+                f"{tracking_uri.rstrip('/')}/experiments/{result.id}/compare"
+                f"?baseline={gate_baseline_id}&project={project_id}"
+            )
+        if gate_baseline_id and comparison and show_regressions > 0:
+            assert result.comparison is not None
+            evaluators = [
+                (row.evaluator_id, row.evaluator_name or row.evaluator_id)
+                for row in result.comparison.metrics
+                if row.metric == "mean_score"
+                and row.evaluator_id
+                and row.status not in ("config_mismatch", "unavailable")
+            ]
+            try:
+                items, total = fetch_regressed_items(
+                    base_url=tracking_uri,
+                    experiment_id=result.id,
+                    baseline_id=gate_baseline_id,
+                    evaluators=evaluators,
+                    limit=show_regressions,
+                )
+                payload["regressed_items"] = items
+                payload["regressed_items_total"] = total
+            except (httpx2.HTTPError, RuntimeError, ValueError) as exc:
+                # Diagnostics only: never turn a gate result into an infra error.
+                log.print(f"[yellow]Could not list regressed test cases:[/yellow] {exc}")
         if not cfg.as_json:
             console.print(result.summary())
             console.print(f"Experiment: [cyan]{result.url}[/cyan]")
             _print_code_revisions(candidate_git, baseline_git, has_baseline=bool(gate_baseline_id))
+            _print_regressed_items(payload)
 
         if not cfg.policy:
             payload["gate"] = None
+            write_reports(payload, markdown=report_md, junit=junit)
             if cfg.as_json:
                 emit_json(payload)
             raise typer.Exit(EXIT_PASS)
 
         gate_policy = cfg.policy
         alias_baseline = baseline_target is not None or missing_baseline_alias is not None
-        if gate_baseline_id is None and alias_baseline:
-            gate_policy = without_regression(cfg.policy)
+        baseline_missing = gate_baseline_id is None and (alias_baseline or cfg.require_baseline)
+        if baseline_missing:
+            gate_policy = without_baseline_rules(cfg.policy)
 
         try:
-            body = post_release_check(
-                base_url=tracking_uri,
-                project_id=project_id,
-                experiment_id=result.id,
-                policy=gate_policy,
-                baseline_experiment_id=gate_baseline_id,
-            )
+            if gate_policy:
+                body = post_release_check(
+                    base_url=tracking_uri,
+                    project_id=project_id,
+                    experiment_id=result.id,
+                    policy=gate_policy,
+                    baseline_experiment_id=gate_baseline_id,
+                )
+            else:
+                # Only baseline rules and no baseline (first run of an alias): nothing to
+                # gate on, so the run passes and can bootstrap the alias.
+                body = {"status": "passed", "checks": []}
         except EvaluateConfigError as exc:
             console.print(f"[red]Configuration/API error:[/red] {exc}")
             raise typer.Exit(EXIT_CONFIG) from exc
@@ -646,9 +811,23 @@ def evaluate_cmd(
             console.print(f"[red]Infrastructure error:[/red] {exc}")
             raise typer.Exit(EXIT_INFRA) from exc
 
+        checks = list(body.get("checks") or [])
+        if baseline_missing and cfg.require_baseline:
+            # The comparison could not run: report it as a failed check, not a silent pass.
+            checks.append(
+                {
+                    "metric": BASELINE_REQUIRED_CHECK,
+                    "actual": None,
+                    "threshold": None,
+                    "status": "failed",
+                }
+            )
+            body = {**body, "status": "failed", "checks": checks}
+            if not notes:
+                notes.append(f"No comparable baseline for {baseline_ref!r}.")
         passed = body.get("status") == "passed"
         payload["gate"] = body.get("status")
-        payload["checks"] = body.get("checks")
+        payload["checks"] = checks
         payload["promoted"] = None
         if passed and cfg.promote:
             payload["promoted"] = _promote(
@@ -661,6 +840,7 @@ def evaluate_cmd(
                 version=result.experiment.version,
                 quiet=cfg.as_json,
             )
+        write_reports(payload, markdown=report_md, junit=junit)
         if cfg.as_json:
             emit_json(payload)
         else:

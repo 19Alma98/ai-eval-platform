@@ -16,6 +16,7 @@ from opengrade_server.application.scoring_inputs import (
     current_fingerprint,
 )
 from opengrade_server.domain.evaluation import EvaluationRun
+from opengrade_server.domain.experiment import Experiment
 from opengrade_server.domain.repositories import (
     DatasetRepository,
     EvaluationRunRepository,
@@ -41,7 +42,8 @@ from opengrade_server.regression.policy import (
 class MissingBaselineError(Exception):
     def __init__(self) -> None:
         super().__init__(
-            "baseline_experiment_id is required when policy includes regression or groups.max_delta"
+            "baseline_experiment_id is required when policy includes regression, "
+            "groups.max_delta or a relative bound (max_increase_pct, max_increase, …)"
         )
 
 
@@ -99,35 +101,7 @@ class ReleaseCheck:
         except InvalidPolicyError:
             raise
 
-        all_runs = await self._runs.list_runs_by_experiment(command.experiment_id)
-        try:
-            # Stale runs (outputs or test set changed after scoring) must not gate a
-            # release: their metrics show up as unavailable until re-scored.
-            selected = select_runs(
-                all_runs,
-                current_fingerprint=await current_fingerprint(self._fingerprints, experiment),
-                run_ids_with_results=await self._runs.list_run_ids_with_results(
-                    command.experiment_id
-                ),
-            )
-        except ValueError as exc:
-            raise InvalidCompareSelectionError(str(exc)) from exc
-
-        candidate: list[EvaluatorMetricInput] = []
-        for run in selected:
-            name = _evaluator_name(run)
-            if name is None:
-                continue
-            results = await self._runs.list_results(run.id)
-            aggregates = aggregate_results(results)
-            candidate.append(
-                EvaluatorMetricInput(
-                    evaluator_id=run.evaluator_id,
-                    evaluator_name=name,
-                    mean_score=aggregates.mean_score,
-                    results=tuple(results),
-                )
-            )
+        candidate = await self._metric_inputs(experiment)
 
         baseline_id: uuid.UUID | None = None
         group_deltas: dict[str, dict[str, float | None]] = {}
@@ -140,13 +114,26 @@ class ReleaseCheck:
         need_compare = policy.regression is not None or (
             policy.groups is not None and policy.groups.max_delta is not None
         )
-        if need_compare:
+        baseline_inputs: list[EvaluatorMetricInput] = []
+        baseline_experiment_metrics: dict[str, float] = {}
+        if policy.needs_baseline():
             baseline_id = command.baseline_experiment_id or experiment.baseline_experiment_id
             if baseline_id is None:
                 raise MissingBaselineError()
             baseline = await self._experiments.get_by_id(baseline_id)
             if baseline is None or baseline.project_id != command.project_id:
                 raise ExperimentNotFoundError(baseline_id)
+            relative_eval = (
+                policy.latency is not None and policy.latency.max_increase_pct is not None
+            ) or (policy.cost is not None and policy.cost.max_increase_pct is not None)
+            if relative_eval:
+                baseline_inputs = await self._metric_inputs(baseline)
+            if self._metrics is not None and any(
+                rule.is_relative for rule in policy.experiment_metrics
+            ):
+                baseline_experiment_metrics = await self._metrics.get(baseline_id)
+        if need_compare:
+            assert baseline_id is not None
             comparison = await self._compare.execute(
                 command.experiment_id,
                 baseline_id,
@@ -235,6 +222,8 @@ class ReleaseCheck:
             regression_deltas=regression_deltas,
             experiment_metrics=experiment_metrics,
             groups=groups,
+            baseline=baseline_inputs,
+            baseline_experiment_metrics=baseline_experiment_metrics,
         )
         if (
             policy.regression is not None
@@ -260,3 +249,33 @@ class ReleaseCheck:
             baseline_experiment_id=baseline_id,
             checks=evaluation,
         )
+
+    async def _metric_inputs(self, experiment: Experiment) -> list[EvaluatorMetricInput]:
+        """Per-evaluator scores of the experiment's current (non-stale) runs."""
+        all_runs = await self._runs.list_runs_by_experiment(experiment.id)
+        try:
+            # Stale runs (outputs or test set changed after scoring) must not gate a
+            # release: their metrics show up as unavailable until re-scored.
+            selected = select_runs(
+                all_runs,
+                current_fingerprint=await current_fingerprint(self._fingerprints, experiment),
+                run_ids_with_results=await self._runs.list_run_ids_with_results(experiment.id),
+            )
+        except ValueError as exc:
+            raise InvalidCompareSelectionError(str(exc)) from exc
+
+        inputs: list[EvaluatorMetricInput] = []
+        for run in selected:
+            name = _evaluator_name(run)
+            if name is None:
+                continue
+            results = await self._runs.list_results(run.id)
+            inputs.append(
+                EvaluatorMetricInput(
+                    evaluator_id=run.evaluator_id,
+                    evaluator_name=name,
+                    mean_score=aggregate_results(results).mean_score,
+                    results=tuple(results),
+                )
+            )
+        return inputs
