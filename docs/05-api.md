@@ -445,7 +445,7 @@ Classification is higher-is-better. Aggregate `delta = candidate − baseline` i
 - `|delta| < 0.01` → `unchanged` (trivial band; bootstrap skipped)
 - otherwise bootstrap (`B=2000`, deterministic seed from evaluator + run ids + metric): CI entirely above 0 → `improved`; entirely below 0 → `regression`; CI includes 0 → `unchanged`
 
-Optional fields `ci_low`, `ci_high`, and `n_paired` are set when the bootstrap runs (or `n_paired` whenever item results are paired).
+Optional fields `ci_low`, `ci_high`, and `n_paired` are set when the bootstrap runs (or `n_paired` whenever item results are paired). `min_detectable_delta` (paired n >= 5) is the smallest mean drop the paired test detects with ~80% power at this sample size and noise (see `docs/08-cli-ci.md`, *Statistical power*).
 
 ### Item-level compare
 
@@ -468,7 +468,7 @@ Each item row includes `input`, `expected_output`, `baseline` / `candidate` side
 POST /projects/{project_id}/release-check
 ```
 
-Policy keys (except `regression`, `latency`, `cost`, `experiment_metrics`) are evaluator names. See `docs/02-domain-model.md` for rule semantics.
+Policy keys (except `regression`, `latency`, `cost`, `experiment_metrics`, `groups`, `critical`) are evaluator names. See `docs/02-domain-model.md` for rule semantics.
 
 Input:
 ```json
@@ -492,6 +492,14 @@ Relative bounds compare with the baseline experiment: `latency.max_increase_pct`
 `baseline_experiment_id` is required (400 otherwise) when `policy.regression` is set, when `groups.max_delta` is set without a top-level regression block, or when any relative bound is set, unless the experiment already has `baseline_experiment_id`.
 
 `policy.regression` fails a shared evaluator when compare status is `regression` (same paired bootstrap 95% CI as `/compare`). Optional `max_delta` is a mean-score safety floor (also fail when the CI includes 0 but the mean drop is below the floor). Omit `max_delta` for bootstrap-only gating (`"regression": {}`). Compare status `insufficient_n` (paired n < 5) produces a check with status `unavailable` and fails the gate. Set `regression.allow_insufficient_n: true` to soft-pass those evaluators (small demo sets only). Latency p95 fails when any result has `missing_output: true` without `latency_ms`.
+
+Item-level rules (CLI semantics in `docs/08-cli-ci.md`):
+
+- `critical: {"by": "critical", "metrics": [...], "max_failures": 0}` → `critical.<metric>.failures`: dataset items whose metadata `by` is true must PASS (every repeat). No item marked → `critical.<by>.items` `unavailable`.
+- `regression.max_new_failures`: an integer (every quality metric) or `{metric: limit}` → `regression.<metric>.new_failures`: items PASS on the baseline (majority of repeats) and not PASS on the candidate.
+- `regression.max_detectable_delta: 0.1` → `regression.<metric>.min_detectable_delta`: fails when the test set cannot detect a drop of that size.
+
+Item-level checks carry `items`: up to 20 failing test cases `{dataset_item_id, input, candidate_label, baseline_label}` (`actual` is the full count).
 
 Response (HTTP 200 for both pass and fail):
 ```json

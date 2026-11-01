@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import math
 import uuid
-from collections.abc import Mapping
+from collections.abc import Iterable, Mapping, Set
 from dataclasses import dataclass, field
 from typing import Any, Literal
 
@@ -30,12 +30,23 @@ _RELATIVE_METRIC_KEYS = frozenset(
 _LATENCY_KEYS = frozenset({"p95_max_ms", INCREASE_PCT_KEY})
 _COST_KEYS = frozenset({"max_per_request_usd", INCREASE_PCT_KEY})
 _MIN_KEYS = frozenset({"min"})
-_REGRESSION_KEYS = frozenset({"max_delta", "allow_insufficient_n"})
+_REGRESSION_KEYS = frozenset(
+    {"max_delta", "allow_insufficient_n", "max_new_failures", "max_detectable_delta"}
+)
+_CRITICAL_KEYS = frozenset({"by", "metrics", "max_failures"})
 _EXPERIMENT_METRIC_KEYS = frozenset({"min", "max"}) | _RELATIVE_METRIC_KEYS
 _GROUP_KEYS = frozenset({"by", "min_items", "metrics", "max_delta"})
 EXPERIMENT_METRICS_KEY = "experiment_metrics"
 GROUPS_KEY = "groups"
+CRITICAL_KEY = "critical"
 DEFAULT_GROUP_MIN_ITEMS = 5
+DEFAULT_CRITICAL_KEY = "critical"
+# Evaluators that measure speed / spend, not answer quality. Item-level rules
+# (critical items, new failures) skip them unless they are named explicitly: one slow
+# request on a shared CI runner should not count as a broken answer.
+OPERATIONAL_EVALUATORS = frozenset({"latency", "cost", "token_usage"})
+# Test cases listed per item-level check (report / JUnit / API); the count is complete.
+MAX_CHECK_ITEMS = 20
 
 
 class InvalidPolicyError(ValueError):
@@ -68,8 +79,45 @@ class CostMeanRule:
 
 @dataclass(frozen=True, slots=True)
 class RegressionRule:
+    """Candidate vs baseline.
+
+    ``max_delta``: mean floor next to the bootstrap verdict. ``max_new_failures``: test
+    cases that passed on the baseline and fail now (per evaluator); an int applies to
+    every quality evaluator, a mapping names evaluators. ``max_detectable_delta``: the
+    test set must be large enough to detect a mean drop of this size (~80% power).
+    """
+
     max_delta: float | None = None
     allow_insufficient_n: bool = False
+    max_new_failures: int | Mapping[str, int] | None = None
+    max_detectable_delta: float | None = None
+
+    def new_failures_limit(self, evaluator_name: str) -> int | None:
+        limit = self.max_new_failures
+        if limit is None:
+            return None
+        if isinstance(limit, int):
+            return None if evaluator_name in OPERATIONAL_EVALUATORS else limit
+        return limit.get(evaluator_name)
+
+
+@dataclass(frozen=True, slots=True)
+class CriticalRule:
+    """Must-pass test cases: items whose metadata ``by`` field is true.
+
+    Each critical item must PASS every evaluator (``metrics`` narrows them) in every
+    repeat; ``max_failures`` tolerates that many failing critical items per evaluator.
+    Absolute: needs no baseline.
+    """
+
+    by: str = DEFAULT_CRITICAL_KEY
+    metrics: tuple[str, ...] | None = None
+    max_failures: int = 0
+
+    def applies_to(self, evaluator_name: str) -> bool:
+        if self.metrics is None:
+            return evaluator_name not in OPERATIONAL_EVALUATORS
+        return evaluator_name in self.metrics
 
 
 @dataclass(frozen=True, slots=True)
@@ -124,6 +172,7 @@ class ReleasePolicy:
     regression: RegressionRule | None
     experiment_metrics: tuple[ExperimentMetricRule, ...] = ()
     groups: GroupRule | None = None
+    critical: CriticalRule | None = None
 
     def needs_baseline(self) -> bool:
         """True when any rule compares the candidate with a baseline experiment."""
@@ -144,11 +193,23 @@ class ReleasePolicy:
 
 
 @dataclass(frozen=True, slots=True)
+class CheckItem:
+    """A test case behind an item-level check (critical failure, new failure)."""
+
+    dataset_item_id: uuid.UUID
+    input: str | None = None
+    candidate_label: str | None = None
+    baseline_label: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
 class PolicyCheck:
     metric: str
     actual: float | None
     threshold: float | None
     status: CheckStatus
+    # Item-level checks: the failing test cases (at most MAX_CHECK_ITEMS).
+    items: tuple[CheckItem, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -171,13 +232,17 @@ class RegressionDeltaInput:
     mean_score_delta: float | None
     insufficient_n: bool = False
     compare_status: str | None = None
+    n_paired: int | None = None
+    min_detectable_delta: float | None = None
 
 
 def strip_meta_keys(raw: dict[str, Any]) -> dict[str, Any]:
     return {k: v for k, v in raw.items() if k not in META_KEYS}
 
 
-_NON_MIN_BLOCKS = frozenset({"regression", "latency", "cost", EXPERIMENT_METRICS_KEY, GROUPS_KEY})
+_NON_MIN_BLOCKS = frozenset(
+    {"regression", "latency", "cost", EXPERIMENT_METRICS_KEY, GROUPS_KEY, CRITICAL_KEY}
+)
 
 
 def strip_baseline_rules(raw: dict[str, Any]) -> dict[str, Any]:
@@ -228,6 +293,7 @@ def parse_release_policy(raw: dict[str, Any]) -> ReleasePolicy:
     regression: RegressionRule | None = None
     experiment_metrics: tuple[ExperimentMetricRule, ...] = ()
     groups: GroupRule | None = None
+    critical: CriticalRule | None = None
 
     for key, value in raw.items():
         if key in META_KEYS:
@@ -243,6 +309,9 @@ def parse_release_policy(raw: dict[str, Any]) -> ReleasePolicy:
         if key == GROUPS_KEY:
             groups = _parse_groups(value)
             continue
+        if key == CRITICAL_KEY:
+            critical = _parse_critical(value)
+            continue
         if key == "latency":
             latency = _parse_latency(value)
             continue
@@ -257,6 +326,7 @@ def parse_release_policy(raw: dict[str, Any]) -> ReleasePolicy:
         and cost is None
         and regression is None
         and not experiment_metrics
+        and critical is None
     ):
         raise InvalidPolicyError("policy must define at least one rule")
 
@@ -267,6 +337,7 @@ def parse_release_policy(raw: dict[str, Any]) -> ReleasePolicy:
         regression=regression,
         experiment_metrics=experiment_metrics,
         groups=groups,
+        critical=critical,
     )
     if (
         groups is not None
@@ -345,7 +416,63 @@ def _parse_regression(value: dict[str, Any]) -> RegressionRule:
         if "max_delta" in value
         else None
     )
-    return RegressionRule(max_delta=max_delta, allow_insufficient_n=allow)
+    max_detectable = _optional_float("regression", value, "max_detectable_delta")
+    if max_detectable is not None and max_detectable <= 0:
+        raise InvalidPolicyError("policy.regression.max_detectable_delta must be > 0")
+    return RegressionRule(
+        max_delta=max_delta,
+        allow_insufficient_n=allow,
+        max_new_failures=_parse_new_failures(value.get("max_new_failures")),
+        max_detectable_delta=max_detectable,
+    )
+
+
+def _require_count(block: str, value: Any) -> int:
+    if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+        raise InvalidPolicyError(f"policy.{block} must be a non-negative integer")
+    return value
+
+
+def _parse_new_failures(value: Any) -> int | dict[str, int] | None:
+    if value is None:
+        return None
+    block = "regression.max_new_failures"
+    if isinstance(value, dict):
+        if not value:
+            raise InvalidPolicyError(f"policy.{block} must name at least one metric")
+        out: dict[str, int] = {}
+        for name, limit in value.items():
+            if not isinstance(name, str) or not name.strip():
+                raise InvalidPolicyError(f"policy.{block} keys must be metric names")
+            out[name.strip()] = _require_count(f"{block}.{name}", limit)
+        return out
+    return _require_count(block, value)
+
+
+def _parse_names(block: str, value: Any) -> tuple[str, ...] | None:
+    if value is None:
+        return None
+    if (
+        not isinstance(value, list)
+        or not value
+        or not all(isinstance(m, str) and m.strip() for m in value)
+    ):
+        raise InvalidPolicyError(f"policy.{block} must be a non-empty list of names")
+    return tuple(m.strip() for m in value)
+
+
+def _parse_critical(value: dict[str, Any]) -> CriticalRule:
+    unknown = set(value) - _CRITICAL_KEYS
+    if unknown:
+        raise InvalidPolicyError(f"policy.critical has unsupported keys: {sorted(unknown)}")
+    by = value.get("by", DEFAULT_CRITICAL_KEY)
+    if not isinstance(by, str) or not by.strip():
+        raise InvalidPolicyError("policy.critical.by must be a dataset metadata field")
+    return CriticalRule(
+        by=by.strip(),
+        metrics=_parse_names("critical.metrics", value.get("metrics")),
+        max_failures=_require_count("critical.max_failures", value.get("max_failures", 0)),
+    )
 
 
 def _parse_experiment_metrics(value: dict[str, Any]) -> tuple[ExperimentMetricRule, ...]:
@@ -568,10 +695,13 @@ def evaluate_policy(
     groups: list[GroupInput] | None = None,
     baseline: list[EvaluatorMetricInput] | tuple[EvaluatorMetricInput, ...] | None = None,
     baseline_experiment_metrics: Mapping[str, float] | None = None,
+    critical_item_ids: Set[uuid.UUID] | None = None,
+    item_inputs: Mapping[uuid.UUID, str | None] | None = None,
 ) -> PolicyEvaluation:
     """Apply ``policy``. ``baseline`` / ``baseline_experiment_metrics`` feed the relative
-    latency, cost and run-metric bounds (``max_increase_pct`` …); without them those
-    checks are ``unavailable``."""
+    latency, cost and run-metric bounds (``max_increase_pct`` …) and the new-failure
+    count; without them those checks are ``unavailable``. ``critical_item_ids`` are the
+    dataset items marked critical, ``item_inputs`` label the failing test cases."""
     checks: list[PolicyCheck] = []
     by_name = _by_name(candidate)
     base_by_name = _by_name(baseline or ())
@@ -631,6 +761,32 @@ def evaluate_policy(
         else:
             for delta in regression_deltas:
                 checks.append(_eval_regression(policy.regression, delta))
+            if policy.regression.max_detectable_delta is not None:
+                checks.extend(
+                    _eval_detectable_delta(policy.regression.max_detectable_delta, delta)
+                    for delta in regression_deltas
+                    if delta.evaluator_name not in OPERATIONAL_EVALUATORS
+                )
+        if policy.regression.max_new_failures is not None:
+            checks.extend(
+                evaluate_new_failures(
+                    policy.regression,
+                    candidate=candidate,
+                    baseline=baseline or (),
+                    regression_deltas=regression_deltas,
+                    item_inputs=item_inputs or {},
+                )
+            )
+
+    if policy.critical is not None:
+        checks.extend(
+            evaluate_critical_checks(
+                policy.critical,
+                candidate=candidate,
+                critical_item_ids=critical_item_ids,
+                item_inputs=item_inputs or {},
+            )
+        )
 
     checks.extend(evaluate_group_checks(policy, groups or []))
 
@@ -899,4 +1055,194 @@ def _eval_regression(rule: RegressionRule, delta: RegressionDeltaInput) -> Polic
         actual=actual,
         threshold=rule.max_delta,
         status="passed" if actual >= rule.max_delta else "failed",
+    )
+
+
+def _label(result: EvaluationResultRecord) -> str:
+    return (result.label or "").strip().upper()
+
+
+def _item_rows(
+    results: Iterable[EvaluationResultRecord],
+) -> dict[uuid.UUID, list[EvaluationResultRecord]]:
+    """Applicable (non-SKIPPED) results per dataset item, all repeats."""
+    by_item: dict[uuid.UUID, list[EvaluationResultRecord]] = {}
+    for result in results:
+        if _label(result) == "SKIPPED":
+            continue
+        by_item.setdefault(result.dataset_item_id, []).append(result)
+    return by_item
+
+
+def _majority_pass(rows: list[EvaluationResultRecord]) -> bool:
+    """Item verdict over its repeats, as in the compare page: PASS when half pass."""
+    return sum(1 for r in rows if _label(r) == "PASS") * 2 >= len(rows)
+
+
+def _verdict(rows: list[EvaluationResultRecord]) -> str:
+    labels = {_label(r) for r in rows}
+    if labels == {"PASS"}:
+        return "PASS"
+    if len(rows) > 1:
+        passed = sum(1 for r in rows if _label(r) == "PASS")
+        return f"FAIL ({passed}/{len(rows)} PASS)" if passed else "FAIL"
+    return next(iter(labels)) or "FAIL"
+
+
+def _item_order(item_id: uuid.UUID) -> str:
+    return str(item_id)
+
+
+def evaluate_critical_checks(
+    rule: CriticalRule,
+    *,
+    candidate: list[EvaluatorMetricInput] | tuple[EvaluatorMetricInput, ...],
+    critical_item_ids: Set[uuid.UUID] | None,
+    item_inputs: Mapping[uuid.UUID, str | None],
+) -> list[PolicyCheck]:
+    """``critical.<metric>.failures``: critical items that did not PASS, per evaluator.
+
+    Strict: with repeats every applicable repeat must PASS (a critical answer that is
+    right two times out of three is not reliable). A dataset without critical items, or
+    a named metric the run did not score, is ``unavailable`` (fails the gate) so a typo
+    in ``by`` / ``metrics`` cannot pass silently.
+    """
+    threshold = float(rule.max_failures)
+    if not critical_item_ids:
+        return [
+            PolicyCheck(
+                metric=f"{CRITICAL_KEY}.{rule.by}.items",
+                actual=0.0,
+                threshold=None,
+                status="unavailable",
+            )
+        ]
+    checks: list[PolicyCheck] = []
+    by_name = _by_name(candidate)
+    names = list(rule.metrics) if rule.metrics is not None else sorted(by_name)
+    for name in names:
+        if not rule.applies_to(name):
+            continue
+        metric = by_name.get(name)
+        if metric is None:
+            checks.append(
+                PolicyCheck(
+                    metric=f"{CRITICAL_KEY}.{name}.failures",
+                    actual=None,
+                    threshold=threshold,
+                    status="unavailable",
+                )
+            )
+            continue
+        rows = _item_rows(r for r in metric.results if r.dataset_item_id in critical_item_ids)
+        if not rows:
+            continue  # metric does not apply to any critical item (all SKIPPED)
+        failing = [
+            CheckItem(
+                dataset_item_id=item_id,
+                input=item_inputs.get(item_id),
+                candidate_label=_verdict(item_rows),
+            )
+            for item_id, item_rows in sorted(rows.items(), key=lambda kv: _item_order(kv[0]))
+            if any(_label(r) != "PASS" for r in item_rows)
+        ]
+        checks.append(
+            PolicyCheck(
+                metric=f"{CRITICAL_KEY}.{name}.failures",
+                actual=float(len(failing)),
+                threshold=threshold,
+                status="passed" if len(failing) <= rule.max_failures else "failed",
+                items=tuple(failing[:MAX_CHECK_ITEMS]),
+            )
+        )
+    if not checks:
+        checks.append(
+            PolicyCheck(
+                metric=f"{CRITICAL_KEY}.{rule.by}.items",
+                actual=float(len(critical_item_ids)),
+                threshold=None,
+                status="unavailable",
+            )
+        )
+    return checks
+
+
+def evaluate_new_failures(
+    rule: RegressionRule,
+    *,
+    candidate: list[EvaluatorMetricInput] | tuple[EvaluatorMetricInput, ...],
+    baseline: list[EvaluatorMetricInput] | tuple[EvaluatorMetricInput, ...],
+    regression_deltas: list[RegressionDeltaInput] | tuple[RegressionDeltaInput, ...],
+    item_inputs: Mapping[uuid.UUID, str | None],
+) -> list[PolicyCheck]:
+    """``regression.<metric>.new_failures``: items PASS on the baseline, not PASS now.
+
+    Item verdicts use the majority of repeats on both sides, like the compare page.
+    Items SKIPPED on either side do not count. Evaluators the compare marked as not
+    comparable (``config_mismatch``) are ``unavailable``.
+    """
+    cand_by_name = _by_name(candidate)
+    base_by_name = _by_name(baseline)
+    status_by_name = {d.evaluator_name: d.compare_status for d in regression_deltas}
+    names: list[str]
+    if isinstance(rule.max_new_failures, Mapping):
+        names = list(rule.max_new_failures)
+    else:
+        names = sorted(set(cand_by_name) | set(base_by_name))
+    checks: list[PolicyCheck] = []
+    for name in names:
+        limit = rule.new_failures_limit(name)
+        if limit is None:
+            continue
+        metric_id = f"regression.{name}.new_failures"
+        cand = cand_by_name.get(name)
+        base = base_by_name.get(name)
+        if (
+            cand is None
+            or base is None
+            or status_by_name.get(name) in ("config_mismatch", "unavailable")
+        ):
+            checks.append(
+                PolicyCheck(
+                    metric=metric_id, actual=None, threshold=float(limit), status="unavailable"
+                )
+            )
+            continue
+        cand_rows = _item_rows(cand.results)
+        base_rows = _item_rows(base.results)
+        failing: list[CheckItem] = []
+        for item_id in sorted(set(cand_rows) & set(base_rows), key=_item_order):
+            if _majority_pass(base_rows[item_id]) and not _majority_pass(cand_rows[item_id]):
+                failing.append(
+                    CheckItem(
+                        dataset_item_id=item_id,
+                        input=item_inputs.get(item_id),
+                        candidate_label=_verdict(cand_rows[item_id]),
+                        baseline_label=_verdict(base_rows[item_id]),
+                    )
+                )
+        checks.append(
+            PolicyCheck(
+                metric=metric_id,
+                actual=float(len(failing)),
+                threshold=float(limit),
+                status="passed" if len(failing) <= limit else "failed",
+                items=tuple(failing[:MAX_CHECK_ITEMS]),
+            )
+        )
+    return checks
+
+
+def _eval_detectable_delta(max_mde: float, delta: RegressionDeltaInput) -> PolicyCheck:
+    """``regression.<metric>.min_detectable_delta``: is the test set large enough to see
+    a mean drop of ``max_mde``? Unavailable when the compare could not pair the runs."""
+    metric = f"regression.{delta.evaluator_name}.min_detectable_delta"
+    mde = delta.min_detectable_delta
+    if mde is None or delta.compare_status in ("config_mismatch", "unavailable"):
+        return PolicyCheck(metric=metric, actual=mde, threshold=max_mde, status="unavailable")
+    return PolicyCheck(
+        metric=metric,
+        actual=mde,
+        threshold=max_mde,
+        status="passed" if mde <= max_mde else "failed",
     )

@@ -238,3 +238,41 @@ test("describeCheck covers relative bounds vs baseline", () => {
   });
   assert.equal(plainMax.title, "Run metric cost_usd");
 });
+
+test("describeCheck covers item-level and power checks", () => {
+  const critical = describeCheck({
+    metric: "critical.must_contain.failures",
+    actual: 2,
+    threshold: 0,
+    status: "failed",
+  });
+  assert.equal(critical.title, "Required phrases on critical test cases");
+  assert.equal(critical.actual, "2 failing");
+  assert.equal(critical.target, "≤ 0 failing");
+  assert.equal(critical.isRegression, false);
+  const none = describeCheck({
+    metric: "critical.critical.items",
+    actual: 0,
+    threshold: null,
+    status: "unavailable",
+  });
+  assert.equal(none.outcome, "unavailable");
+  assert.match(none.title, /metadata critical/);
+  const flips = describeCheck({
+    metric: "regression.hit_at_k.new_failures",
+    actual: 1,
+    threshold: 0,
+    status: "failed",
+  });
+  assert.match(flips.title, /passing on baseline, failing now/);
+  assert.equal(flips.actual, "1");
+  assert.ok(flips.isRegression);
+  const power = describeCheck({
+    metric: "regression.hit_at_k.min_detectable_delta",
+    actual: 0.313,
+    threshold: 0.15,
+    status: "failed",
+  });
+  assert.equal(power.actual, "0.31");
+  assert.equal(power.target, "≤ 0.15");
+});

@@ -223,6 +223,7 @@ def _metric_response(metric: MetricComparison) -> MetricComparisonResponse:
         ci_low=metric.ci_low,
         ci_high=metric.ci_high,
         n_paired=metric.n_paired,
+        min_detectable_delta=metric.min_detectable_delta,
     )
 
 

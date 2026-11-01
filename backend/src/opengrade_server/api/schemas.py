@@ -646,6 +646,7 @@ class MetricComparisonResponse(BaseModel):
     ci_low: float | None = None
     ci_high: float | None = None
     n_paired: int | None = None
+    min_detectable_delta: float | None = None
 
 
 class CompareRunRefResponse(BaseModel):
@@ -728,6 +729,31 @@ class RegressionRuleBody(BaseModel):
 
     max_delta: float | None = None
     allow_insufficient_n: bool = False
+    # Test cases PASS on the baseline and not PASS now: one limit for every quality
+    # metric, or per metric name.
+    max_new_failures: int | dict[str, int] | None = None
+    # The test set must detect a mean drop of this size (~80% power), per metric.
+    max_detectable_delta: float | None = Field(default=None, gt=0)
+
+    @model_validator(mode="after")
+    def _non_negative_failures(self) -> Self:
+        limits = self.max_new_failures
+        values = list(limits.values()) if isinstance(limits, dict) else [limits]
+        if any(v is not None and v < 0 for v in values):
+            raise ValueError("regression.max_new_failures must be >= 0")
+        if isinstance(limits, dict) and not limits:
+            raise ValueError("regression.max_new_failures must name at least one metric")
+        return self
+
+
+class CriticalRuleBody(BaseModel):
+    """Must-pass test cases: dataset items whose metadata ``by`` field is true."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    by: str = Field(default="critical", min_length=1, max_length=200)
+    metrics: list[str] | None = Field(default=None, min_length=1)
+    max_failures: int = Field(default=0, ge=0)
 
 
 class ExperimentMetricRuleBody(BaseModel):
@@ -783,6 +809,7 @@ class ReleasePolicyBody(BaseModel):
     regression: RegressionRuleBody | None = None
     experiment_metrics: dict[str, ExperimentMetricRuleBody] | None = None
     groups: GroupRuleBody | None = None
+    critical: CriticalRuleBody | None = None
     # Optional meta keys (stripped before evaluation); accepted so they are not
     # treated as absolute-min evaluator rules.
     api_base_url: str | None = None
@@ -804,6 +831,7 @@ class ReleasePolicyBody(BaseModel):
             or self.cost is not None
             or self.regression is not None
             or bool(self.experiment_metrics)
+            or self.critical is not None
         )
         if not has_rules:
             raise ValueError("policy must define at least one rule")
@@ -819,11 +847,21 @@ class ReleaseCheckRequest(BaseModel):
     baseline_experiment_id: uuid.UUID | None = None
 
 
+class ReleaseCheckCaseResponse(BaseModel):
+    """A test case behind an item-level check (critical or new failure)."""
+
+    dataset_item_id: uuid.UUID
+    input: str | None = None
+    candidate_label: str | None = None
+    baseline_label: str | None = None
+
+
 class ReleaseCheckItemResponse(BaseModel):
     metric: str
     actual: float | None
     threshold: float | None
     status: str
+    items: list[ReleaseCheckCaseResponse] = Field(default_factory=list)
 
 
 class ReleaseCheckResponse(BaseModel):

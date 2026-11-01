@@ -129,6 +129,51 @@ export function describeCheck(check: ReleaseCheckItemResponse): CheckView {
       isRegression: false,
     };
   }
+  const count = (value: number | null) => (value == null ? "—" : String(Math.round(value)));
+  const critical = /^critical\.(.+)\.(failures|items)$/.exec(id);
+  if (critical) {
+    const [, metric, kind] = critical;
+    if (kind === "items") {
+      return {
+        key: id,
+        title: `Critical test cases (metadata ${metric})`,
+        actual: "none marked",
+        target: "at least one critical test case",
+        outcome,
+        isRegression: false,
+      };
+    }
+    return {
+      key: id,
+      title: `${metricLabel(metric!)} on critical test cases`,
+      actual: `${count(check.actual)} failing`,
+      target: `≤ ${count(check.threshold)} failing`,
+      outcome,
+      isRegression: false,
+    };
+  }
+  const newFailures = /^regression\.(.+)\.new_failures$/.exec(id);
+  if (newFailures) {
+    return {
+      key: id,
+      title: `${metricLabel(newFailures[1]!)}: cases passing on baseline, failing now`,
+      actual: count(check.actual),
+      target: `≤ ${count(check.threshold)}`,
+      outcome,
+      isRegression: true,
+    };
+  }
+  const detectable = /^regression\.(.+)\.min_detectable_delta$/.exec(id);
+  if (detectable) {
+    return {
+      key: id,
+      title: `${metricLabel(detectable[1]!)}: smallest drop the test set can detect`,
+      actual: formatScore(check.actual),
+      target: `≤ ${formatScore(check.threshold)}`,
+      outcome,
+      isRegression: false,
+    };
+  }
   const regression = /^regression\.(.+)\.mean_score$/.exec(id);
   if (regression) {
     return {

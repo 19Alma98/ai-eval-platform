@@ -291,6 +291,7 @@ export type MetricComparison = {
   ci_low?: number | null;
   ci_high?: number | null;
   n_paired?: number | null;
+  min_detectable_delta?: number | null;
 };
 
 export type CompareRunRef = {
@@ -397,11 +398,20 @@ export type EvaluateResponse = {
   runs: EvaluationRun[];
 };
 
+/** A test case behind an item-level check (critical item, new failure vs baseline). */
+export type ReleaseCheckCase = {
+  dataset_item_id: string;
+  input?: string | null;
+  candidate_label?: string | null;
+  baseline_label?: string | null;
+};
+
 export type ReleaseCheckItemResponse = {
   metric: string;
   actual: number | null;
   threshold: number | null;
   status: string;
+  items?: ReleaseCheckCase[];
 };
 
 export type ReleaseCheckResponse = {

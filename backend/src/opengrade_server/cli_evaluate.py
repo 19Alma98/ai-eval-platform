@@ -21,7 +21,9 @@ import uvicorn
 
 from opengrade_server.config import get_settings
 from opengrade_server.domain.experiment_output import MAX_REPEATS
+from opengrade_server.regression.aggregate import items_needed
 from opengrade_server.regression.policy import (
+    OPERATIONAL_EVALUATORS,
     InvalidPolicyError,
     parse_release_policy,
     strip_baseline_rules,
@@ -354,7 +356,8 @@ class EmbeddedServer:
 
         from opengrade_server.main import create_app
 
-        app = create_app(mount_packaged_ui=False)
+        # Same process as the SDK: keep the server's own spans out of the run's traces.
+        app = create_app(mount_packaged_ui=False, self_telemetry=False)
         config = uvicorn.Config(
             app,
             host=self.host,
@@ -529,6 +532,51 @@ def fetch_alias(client: Any, project_id: str, alias: str) -> AliasTarget | None:
 
 def same_exam(target: AliasTarget, dataset_id: str | None, metrics_set_id: str | None) -> bool:
     return target.dataset_id == dataset_id and target.metrics_set_id == metrics_set_id
+
+
+DEFAULT_DETECTABLE_DELTA = 0.05
+
+
+def detectable_delta_target(policy: dict[str, Any] | None) -> float:
+    """Mean drop the test set should be able to detect: ``regression.max_detectable_delta``,
+    else ``|regression.max_delta|``, else 0.05."""
+    regression = (policy or {}).get("regression")
+    if isinstance(regression, dict):
+        for key in ("max_detectable_delta", "max_delta"):
+            value = regression.get(key)
+            if isinstance(value, int | float) and not isinstance(value, bool) and value != 0:
+                return abs(float(value))
+    return DEFAULT_DETECTABLE_DELTA
+
+
+def power_notes(comparison: list[dict[str, Any]], policy: dict[str, Any] | None) -> list[str]:
+    """Warn when the test set is too small to detect a drop of the target size.
+
+    The bootstrap only fails on a statistically significant drop: below that size a real
+    regression passes unless ``max_delta`` catches the mean. Diagnostic only.
+    """
+    target = detectable_delta_target(policy)
+    weak = [
+        row
+        for row in comparison
+        if isinstance(row.get("min_detectable_delta"), int | float)
+        and row["min_detectable_delta"] > target
+        and row.get("metric") not in OPERATIONAL_EVALUATORS
+    ]
+    if not weak:
+        return []
+    n_paired = max(int(row.get("n_paired") or 0) for row in weak)
+    worst = max(float(row["min_detectable_delta"]) for row in weak)
+    needed = items_needed(worst, n_paired, target)
+    per_metric = ", ".join(f"{row['metric']} {row['min_detectable_delta']:.2f}" for row in weak)
+    note = (
+        f"Small test set: with {n_paired} paired test cases the regression check reliably "
+        f"detects only mean drops of at least {per_metric} (target {target:.2f}). "
+        "Smaller drops pass unless they exceed max_delta"
+    )
+    if needed:
+        note += f"; about {needed} test cases would be needed"
+    return [note + "."]
 
 
 def without_baseline_rules(policy: dict[str, Any]) -> dict[str, Any]:

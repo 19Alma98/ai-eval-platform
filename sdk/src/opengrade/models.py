@@ -190,6 +190,10 @@ class MetricComparisonResponse(_ApiModel):
     baseline: float | None = None
     delta: float | None = None
     status: str | None = None
+    ci_low: float | None = None
+    ci_high: float | None = None
+    n_paired: int | None = None
+    min_detectable_delta: float | None = None
 
 
 class ExperimentMetricComparisonResponse(_ApiModel):

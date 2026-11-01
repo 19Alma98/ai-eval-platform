@@ -32,7 +32,8 @@ def validate_group_key(key: str) -> str:
     return cleaned
 
 
-def _lookup(metadata: Mapping[str, Any], path: str) -> Any:
+def lookup_metadata(metadata: Mapping[str, Any], path: str) -> Any:
+    """Value at a dotted ``path`` in item metadata, ``None`` when any part is missing."""
     value: Any = metadata
     for part in path.split("."):
         if not isinstance(value, Mapping) or part not in value:
@@ -60,7 +61,7 @@ def item_groups(items: Iterable[DatasetItem], key: str) -> dict[str, set[uuid.UU
     path = validate_group_key(key)
     groups: dict[str, set[uuid.UUID]] = {}
     for item in items:
-        for label in _labels(_lookup(item.metadata, path)):
+        for label in _labels(lookup_metadata(item.metadata, path)):
             groups.setdefault(label, set()).add(item.id)
     if len(groups) > MAX_GROUPS:
         raise InvalidGroupKeyError(

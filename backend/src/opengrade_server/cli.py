@@ -31,6 +31,7 @@ from opengrade_server.cli_evaluate import (
     fetch_alias,
     fetch_regressed_items,
     post_release_check,
+    power_notes,
     resolve_evaluate_config,
     resolve_task,
     same_exam,
@@ -363,6 +364,28 @@ def _print_checks(body: dict[str, Any]) -> None:
             str(check.get("status", "")),
         )
     console.print(table)
+    _print_check_items(body)
+
+
+def _print_check_items(body: dict[str, Any]) -> None:
+    """Test cases behind failing item-level checks (critical / new failures)."""
+    for check in body.get("checks", []):
+        items: list[dict[str, Any]] = check.get("items") or []
+        if check.get("status") == "passed" or not items:
+            continue
+        actual = check.get("actual")
+        total = int(actual) if isinstance(actual, int | float) else len(items)
+        shown = f"{len(items)} of {total}" if total > len(items) else str(total)
+        console.print(f"[bold]{check.get('metric')}[/bold] ({shown}):", soft_wrap=True)
+        for item in items:
+            change = str(item.get("candidate_label") or "FAIL")
+            if item.get("baseline_label"):
+                change = f"{item['baseline_label']} → {change}"
+            console.print(
+                Text.assemble(("  ✗ ", "red"), _clip(item.get("input") or item["dataset_item_id"])),
+                soft_wrap=True,
+            )
+            console.print(f"      {change}", soft_wrap=True, markup=False)
 
 
 def _clip(value: Any, limit: int = 160) -> str:
@@ -718,6 +741,8 @@ def evaluate_cmd(
                     "baseline": row.baseline,
                     "delta": row.delta,
                     "status": row.status,
+                    "n_paired": getattr(row, "n_paired", None),
+                    "min_detectable_delta": getattr(row, "min_detectable_delta", None),
                 }
                 for row in result.comparison.metrics
                 if row.metric == "mean_score"
@@ -725,6 +750,9 @@ def evaluate_cmd(
             if gate_baseline_id and result.comparison is not None
             else []
         )
+        for note in power_notes(comparison, cfg.policy):
+            notes.append(note)
+            log.print(f"[yellow]Statistical power:[/yellow] {note}", soft_wrap=True)
         payload: dict[str, Any] = {
             "experiment_id": result.id,
             "name": result.experiment.name,

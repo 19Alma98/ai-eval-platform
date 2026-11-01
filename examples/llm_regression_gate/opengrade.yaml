@@ -1,0 +1,97 @@
+# LLM regression gate: "the PR must be at least as good as the last accepted main run",
+# for a pipeline whose answers change from run to run (sampling LLM) and whose quality
+# is partly scored by an LLM judge.
+#
+#   PR:            opengrade evaluate --config opengrade.yaml --require-baseline
+#   push to main:  opengrade evaluate --config opengrade.yaml --promote main
+#
+# Compared with examples/ci_regression_gate (deterministic), this config adds:
+#   repeats             each question runs 3 times, so one unlucky sample is not a regression
+#   pinned judge        judge model + temperature 0: a judge change is an exam change,
+#                       never a silent shift in scores
+#   critical            must-pass questions (security) that may never fail, in any repeat
+#   max_new_failures    retrieval may not lose a single question that main got right
+#   statistical power   a warning (or a failing check) when the gold set is too small
+#                       to detect the drop you care about
+#
+# The alias lives in the server DB: in CI use a shared server (api_base_url / --base-url)
+# or a durable --backend-store-uri (see the GitHub workflow next to this file).
+# api_base_url: https://opengrade.internal
+
+project: llm-regression-gate
+
+evaluate:
+  task: rag_app:task
+  dataset: gold.jsonl
+  name: rag-llm-ci
+  task_type: rag_qa
+  baseline: alias:main
+  repeats: 3                 # 24 questions x 3 = 72 LLM calls + judge calls per run
+  max_concurrency: 4
+  init: true                 # trace the OpenAI calls: token usage (and cost) per item
+  params:                    # stored on the experiment, shown in the compare UI
+    app_model: gemma4:e2b
+    prompt: v1
+  # Pin the judge. Changing it (model, prompt version, config) makes the scores of
+  # candidate and baseline incomparable: compare reports config_mismatch and the gate
+  # fails until main re-bootstraps the baseline with the new judge.
+  judge:
+    model: ollama/gemma4:e2b           # CI: openai/gpt-4o-mini (or any LiteLLM model id)
+    api_base: http://localhost:11434   # CI: remove for a cloud judge
+    # api_key_env: LLM_API_KEY         # CI: name of the env var holding the judge key
+  metrics:
+    - hit_at_k
+    - must_contain
+    - {kind: groundedness, config: {temperature: 0}}
+    - {kind: correctness, config: {temperature: 0}}
+    - latency
+
+# ---- Policy -------------------------------------------------------------------------
+# Absolute floors.
+hit_at_k:
+  min: 0.9
+must_contain:
+  min: 0.75
+groundedness:
+  min: 0.7
+correctness:
+  min: 0.7
+latency:
+  p95_max_ms: 20000
+  max_increase_pct: 50       # LLM latency on shared runners is noisy: keep it generous
+
+experiment_metrics:
+  opengrade.error_rate:      # timeouts / API errors of the task
+    max: 0.05
+    max_increase: 0.02
+
+# cost:                      # needs token usage *and* a price (cloud models)
+#   max_per_request_usd: 0.002
+#   max_increase_pct: 20     # a prompt that doubles the context doubles the bill
+
+# Relative to the baseline.
+regression:
+  max_delta: -0.05           # mean drop larger than 0.05 fails, significant or not
+  # Item level: retrieval is deterministic, so any question main retrieved correctly
+  # and the PR does not is a real bug. Not set for judge metrics: with a sampling LLM a
+  # question flipping PASS→FAIL is often noise; the bootstrap judges those in aggregate.
+  max_new_failures:
+    hit_at_k: 0
+  # Statistical power. Every run with a baseline prints how large a mean drop this gold
+  # set can detect (~80% power); with 24 questions it is about 0.25, so the bootstrap
+  # alone would let a 0.10 drop through and max_delta above is what catches it.
+  # Uncomment to fail the gate instead of warning (needs ~70+ questions, more when the
+  # LLM is noisy):
+  # max_detectable_delta: 0.10
+
+# Must-pass questions: dataset items with "critical": true (security answers).
+critical:
+  by: critical
+  metrics: [hit_at_k, must_contain]   # deterministic checks on the answer; judges are noisier
+  max_failures: 0
+
+# Same floors / regression check per category, so one category collapsing is not hidden.
+groups:
+  by: category
+  min_items: 5
+  metrics: [hit_at_k, must_contain, groundedness]

@@ -1,0 +1,102 @@
+# Copy to .github/workflows/llm-regression-gate.yml in your app repo and adapt.
+#
+# Same flow as examples/ci_regression_gate/github-workflow.yml.example (PR compared with
+# alias:main, push to main promotes), plus what a real LLM pipeline needs:
+#
+#   - app model and judge keys from secrets (never in opengrade.yaml)
+#   - a pinned judge: in opengrade.yaml set evaluate.judge.model to a cloud model,
+#     e.g. openai/gpt-4o-mini, drop api_base and set api_key_env: LLM_API_KEY
+#   - a job timeout: repeats x questions x (app call + judge calls) can take minutes
+#   - one gate run at a time per branch (judge calls cost money)
+#
+# Exit codes: 0 pass | 1 gate failed | 2 config error | 3 infra error (LLM / judge down).
+# Exit 3 is not a quality verdict: re-run the job instead of merging.
+
+name: LLM regression gate
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, labeled, unlabeled]
+  push:
+    branches: [main]
+
+concurrency:
+  group: llm-gate-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  pull-requests: write   # sticky PR comment
+  checks: write          # JUnit test report
+
+jobs:
+  gate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      # Application under test (OpenAI-compatible endpoint).
+      RAG_LLM_BASE_URL: https://api.openai.com/v1
+      RAG_LLM_MODEL: gpt-4o-mini
+      RAG_LLM_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+      # Judge, read through evaluate.judge.api_key_env.
+      LLM_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+      OPENGRADE_BASE_URL: ${{ vars.OPENGRADE_BASE_URL }}  # shared server; empty → cache
+      IS_MAIN: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+      EXAM_CHANGE: ${{ contains(github.event.pull_request.labels.*.name, 'opengrade:exam-change') }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+
+      - uses: astral-sh/setup-uv@v4
+      - run: uv sync   # app deps + opengrade-ai[ui,openai]
+
+      - name: Restore baseline store
+        if: env.OPENGRADE_BASE_URL == ''
+        uses: actions/cache/restore@v4
+        with:
+          path: .opengrade/ci.db
+          key: opengrade-llm-baseline-${{ github.run_id }}
+          restore-keys: opengrade-llm-baseline-
+
+      - name: Evaluate + regression gate
+        run: |
+          mkdir -p .opengrade
+          args=(--config opengrade.yaml --version "${GITHUB_SHA::7}"
+                --report-md .opengrade/report.md --junit .opengrade/junit.xml)
+          if [ -n "$OPENGRADE_BASE_URL" ]; then
+            args+=(--base-url "$OPENGRADE_BASE_URL")
+          else
+            args+=(--backend-store-uri "sqlite+aiosqlite:///$PWD/.opengrade/ci.db")
+          fi
+          if [ "$IS_MAIN" = "true" ]; then
+            args+=(--promote main)
+          elif [ "$EXAM_CHANGE" != "true" ]; then
+            args+=(--require-baseline)
+          fi
+          uv run opengrade evaluate "${args[@]}"
+
+      - name: Job summary
+        if: always() && hashFiles('.opengrade/report.md') != ''
+        run: cat .opengrade/report.md >> "$GITHUB_STEP_SUMMARY"
+
+      - name: PR comment
+        if: always() && github.event_name == 'pull_request' && hashFiles('.opengrade/report.md') != ''
+        uses: marocchino/sticky-pull-request-comment@v2
+        with:
+          header: opengrade-llm-gate
+          path: .opengrade/report.md
+
+      - name: JUnit report
+        if: always() && hashFiles('.opengrade/junit.xml') != ''
+        uses: mikepenz/action-junit-report@v4
+        with:
+          report_paths: .opengrade/junit.xml
+          check_name: OpenGrade LLM quality gate
+
+      - name: Save baseline store (main only)
+        if: always() && env.OPENGRADE_BASE_URL == '' && env.IS_MAIN == 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: .opengrade/ci.db
+          key: opengrade-llm-baseline-${{ github.run_id }}
