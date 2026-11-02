@@ -38,6 +38,13 @@ def default_reply(step: str, user: str) -> dict[str, Any]:
             "verdicts": [{"reasoning": "ok", "verdict": "supported", "doc_ids": [], "quote": None}]
             * claim_count(user)
         }
+    if step == "classify_refusal":
+        return {
+            "reasoning": "ok",
+            "answer_refused": False,
+            "reference_refused": False if "REFERENCE ANSWER:" in user else None,
+            "answerable_from_documents": True if "DOCUMENTS:" in user else None,
+        }
     if step.startswith("rubric") or step == "custom_judge_rubric":
         return {"reasoning": "ok", "level": 5}
     if step == "custom_judge_binary":

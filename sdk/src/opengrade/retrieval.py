@@ -28,6 +28,8 @@ ANSWER_METRIC_KINDS = frozenset(
         "groundedness",
         "correctness",
         "answer_relevance",
+        "citation_accuracy",
+        "refusal",
         "must_contain",
         "exact_match",
         "contains",

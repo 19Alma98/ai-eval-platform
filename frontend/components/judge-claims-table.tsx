@@ -15,6 +15,7 @@ const VERDICT_LABELS: Record<string, string> = {
   missing: "Missing",
   relevant: "Relevant",
   not_relevant: "Not relevant",
+  invalid_citation: "Unknown source",
 };
 
 function verdictLabel(verdict: string): string {

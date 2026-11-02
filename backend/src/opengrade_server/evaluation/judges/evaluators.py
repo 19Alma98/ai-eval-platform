@@ -38,6 +38,8 @@ JUDGE_KINDS = (
     "correctness",
     "context_precision",
     "context_recall",
+    "citation_accuracy",
+    "refusal",
 )
 
 _METHODS: dict[str, frozenset[str]] = {
@@ -46,6 +48,8 @@ _METHODS: dict[str, frozenset[str]] = {
     "answer_relevance": frozenset({"rubric"}),
     "context_precision": frozenset({"claims", "rubric"}),
     "context_recall": frozenset({"claims", "rubric"}),
+    "citation_accuracy": frozenset({"claims"}),
+    "refusal": frozenset({"classify", "phrases"}),
 }
 _DEFAULT_METHOD = {
     "groundedness": "claims",
@@ -53,6 +57,8 @@ _DEFAULT_METHOD = {
     "answer_relevance": "rubric",
     "context_precision": "claims",
     "context_recall": "claims",
+    "citation_accuracy": "claims",
+    "refusal": "classify",
 }
 _SCORINGS = frozenset({"recall", "f1"})
 DEFAULT_MAX_CLAIMS = 30
@@ -640,6 +646,11 @@ def create_llm_judge(
     claim_cache: JudgeClaimCacheRepository | None = None,
 ) -> _LlmJudge:
     cls = _JUDGES.get(kind)
+    if cls is None:
+        # Imported here: rag_checks subclasses _LlmJudge from this module.
+        from opengrade_server.evaluation.judges.rag_checks import RAG_CHECK_JUDGES
+
+        cls = RAG_CHECK_JUDGES.get(kind)
     if cls is None:
         raise ValueError(f"Unknown LLM judge kind: {kind}")
     return cls(config, llm, defaults=defaults, claim_cache=claim_cache)

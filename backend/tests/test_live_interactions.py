@@ -312,7 +312,9 @@ def test_filter_goldless_entries() -> None:
     ]
     filtered = filter_goldless_entries(entries)
     assert [e.kind for e in filtered] == ["groundedness"]
-    assert GOLDLESS_METRIC_KINDS == frozenset({"groundedness", "answer_relevance"})
+    assert GOLDLESS_METRIC_KINDS == frozenset(
+        {"groundedness", "answer_relevance", "citation_accuracy", "refusal"}
+    )
 
 
 @pytest.mark.asyncio

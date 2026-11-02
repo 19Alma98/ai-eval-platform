@@ -42,6 +42,18 @@ const CATALOG: Record<string, MetricInfo> = {
     description: "Does the answer actually address the question asked?",
     category: "generation",
   },
+  citation_accuracy: {
+    label: "Citation accuracy",
+    description:
+      "Do the sources the answer cites ([doc-id], [1]) exist and support the sentence that cites them?",
+    category: "generation",
+  },
+  refusal: {
+    label: "Correct refusal",
+    description:
+      "Does the assistant decline when the answer is not in its documents, and answer when it is?",
+    category: "generation",
+  },
   must_contain: {
     label: "Required phrases",
     description: "Does the answer include the phrases the test case requires?",

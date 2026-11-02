@@ -29,6 +29,8 @@ _LLM_JUDGE_KINDS = frozenset(
         "correctness",
         "context_precision",
         "context_recall",
+        "citation_accuracy",
+        "refusal",
     }
 )
 _JUDGE_METHODS: dict[str, frozenset[str]] = {
@@ -37,6 +39,8 @@ _JUDGE_METHODS: dict[str, frozenset[str]] = {
     "answer_relevance": frozenset({"rubric"}),
     "context_precision": frozenset({"claims", "rubric"}),
     "context_recall": frozenset({"claims", "rubric"}),
+    "citation_accuracy": frozenset({"claims"}),
+    "refusal": frozenset({"classify", "phrases"}),
 }
 
 

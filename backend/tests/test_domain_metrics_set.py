@@ -34,9 +34,16 @@ def test_default_rag_set_includes_core_retrieval_and_judge_metrics() -> None:
         "groundedness",
         "answer_relevance",
         "correctness",
+        "citation_accuracy",
+        "refusal",
         "latency",
     ]
     by_kind = {e.kind: e for e in DEFAULT_RAG_SET_ENTRIES}
+    # Opt-in judges: seeded with thresholds so evaluate(metrics=["refusal"]) inherits them.
+    assert by_kind["citation_accuracy"].enabled is False
+    assert by_kind["citation_accuracy"].threshold == 0.8
+    assert by_kind["refusal"].enabled is False
+    assert by_kind["refusal"].threshold == 1.0
     assert by_kind["context_recall"].threshold == 0.7
     assert by_kind["answer_relevance"].threshold == 0.7
     assert by_kind["context_recall"].enabled is True

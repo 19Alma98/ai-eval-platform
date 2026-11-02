@@ -32,6 +32,7 @@ describe("verdictTone", () => {
     assert.equal(verdictTone("supported"), "ok");
     assert.equal(verdictTone("covered"), "ok");
     assert.equal(verdictTone("contradicted"), "fail");
+    assert.equal(verdictTone("invalid_citation"), "fail");
     assert.equal(verdictTone("not_supported"), "warn");
     assert.equal(verdictTone("missing"), "warn");
   });
