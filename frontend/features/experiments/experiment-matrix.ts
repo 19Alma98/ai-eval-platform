@@ -203,22 +203,3 @@ export function varyingParams(rows: MatrixRow[]): Record<string, string[]> {
   }
   return out;
 }
-
-export function trendSeries(
-  rows: MatrixRow[],
-  columns: MetricColumn[],
-): Array<Record<string, number | string | null>> {
-  return [...rows]
-    .sort(
-      (a, b) =>
-        new Date(a.experiment.created_at).getTime() - new Date(b.experiment.created_at).getTime(),
-    )
-    .map((row) => {
-      const point: Record<string, number | string | null> = {
-        label: row.label,
-        id: row.experiment.id,
-      };
-      for (const col of columns) point[col.key] = row.metrics[col.key]?.mean ?? null;
-      return point;
-    });
-}

@@ -34,9 +34,12 @@ _LAZY: dict[str, tuple[str, str]] = {
     "Experiment": ("opengrade.experiment", "Experiment"),
     "ExperimentResult": ("opengrade.experiment", "ExperimentResult"),
     "ItemRun": ("opengrade.experiment", "ItemRun"),
+    "SweepResult": ("opengrade.sweeps", "SweepResult"),
+    "SweepRun": ("opengrade.sweeps", "SweepRun"),
     "aset_project": ("opengrade._context", "aset_project"),
     "bind_evaluation": ("opengrade._eval_run", "bind_evaluation"),
     "evaluate": ("opengrade.experiment", "evaluate"),
+    "evaluate_retrieval": ("opengrade.retrieval", "evaluate_retrieval"),
     "get_async_client": ("opengrade._context", "get_async_client"),
     "get_client": ("opengrade._context", "get_client"),
     "get_project": ("opengrade._context", "get_project"),
@@ -45,6 +48,7 @@ _LAZY: dict[str, tuple[str, str]] = {
     "set_project": ("opengrade._context", "set_project"),
     "set_retrieval_documents": ("opengrade._eval_run", "set_retrieval_documents"),
     "start_experiment": ("opengrade.experiment", "start_experiment"),
+    "sweep": ("opengrade.sweeps", "sweep"),
 }
 
 __all__ = [
@@ -59,6 +63,8 @@ __all__ = [
     "Experiment",
     "ExperimentResult",
     "ItemRun",
+    "SweepResult",
+    "SweepRun",
     "LocalMetric",
     "Sample",
     "Score",
@@ -66,6 +72,7 @@ __all__ = [
     "bind_evaluation",
     "current_trace_id",
     "evaluate",
+    "evaluate_retrieval",
     "flush",
     "get_async_client",
     "get_client",
@@ -87,6 +94,7 @@ __all__ = [
     "set_retrieval_documents",
     "set_tracking_uri",
     "start_experiment",
+    "sweep",
     "trace",
     "trace_async",
 ]

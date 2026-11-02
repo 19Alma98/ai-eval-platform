@@ -150,6 +150,20 @@ const RUN_METRIC_LABELS: Record<string, { label: string; format: (v: number) => 
   "opengrade.latency_p95_ms": { label: "Latency p95", format: formatDurationMs },
 };
 
+/** Display name of an experiment-level metric: "Latency p95" for SDK run metrics, else the key. */
+export function runMetricLabel(key: string): string {
+  return RUN_METRIC_LABELS[key]?.label ?? key;
+}
+
+/** Format an experiment-level metric value (ms, %, or a plain number). */
+export function formatRunMetric(key: string, value: number | null | undefined): string {
+  if (value == null || Number.isNaN(value)) return "—";
+  const known = RUN_METRIC_LABELS[key];
+  if (known) return known.format(value);
+  if (key.endsWith("_ms")) return formatDurationMs(value);
+  return value.toLocaleString("en-US", { maximumFractionDigits: Math.abs(value) >= 100 ? 0 : 4 });
+}
+
 export function runMetricEntries(metrics: Record<string, number>): [string, string][] {
   const builtIn: [string, string][] = [];
   const custom: [string, string][] = [];

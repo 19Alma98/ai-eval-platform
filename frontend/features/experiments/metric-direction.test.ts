@@ -18,6 +18,13 @@ describe("isLowerBetter", () => {
     assert.equal(isLowerBetter("logged:cost_usd"), true);
   });
 
+  it("treats error rates and token counts as lower-is-better", () => {
+    assert.equal(isLowerBetter("opengrade.error_rate"), true);
+    assert.equal(isLowerBetter("logged:opengrade.error_rate"), true);
+    assert.equal(isLowerBetter("total_tokens"), true);
+    assert.equal(isLowerBetter("token_usage"), false);
+  });
+
   it("leaves quality metrics as higher-is-better", () => {
     assert.equal(isLowerBetter("groundedness"), false);
     assert.equal(isLowerBetter("hit_at_k"), false);

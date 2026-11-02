@@ -38,3 +38,10 @@ def experiment_item_url(
 
 def trace_url(base: str, trace_id: str, project_id: str | None) -> str:
     return _url(base, f"/traces/{quote(trace_id, safe='')}", project_id)
+
+
+def experiments_compare_url(base: str, experiment_ids: list[str], project_id: str | None) -> str:
+    """Compare-all view pinned to ``experiment_ids`` (matrix, charts, pairwise diff)."""
+    if not experiment_ids:
+        return _url(base, "/experiments/compare", project_id)
+    return _url(base, "/experiments/compare", project_id, ids=",".join(experiment_ids))
