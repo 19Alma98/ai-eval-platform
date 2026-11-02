@@ -235,7 +235,7 @@ with Client("http://localhost:8000") as client:
 
 Control-plane methods return **Pydantic** models (see `opengrade.models`); use attributes or `.model_dump()` for a dict. Prefer `with Client(...)` / `client.close()` so the shared `httpx2` connection pool is released.
 
-Namespaces: `projects`, `datasets` (`create`, `create_with_items`, `add_item`, `get`, `list`, `import_items`), `experiments` (`create`, `get`, `list_outputs`, `upsert_outputs`, `evaluate_pack`, `summary`, `compare`), `metrics_packs` (`ensure`, `get`), `metrics_sets` (`list`, `get`, `create`), `live_runs` (`submit`, `list`, `get`, `promote`, `rescore`), `app_configs` (same methods as `AppConfigClient`). Non-2xx responses raise `OpengradeAPIError` (with parsed FastAPI `detail` when present).
+Namespaces: `projects`, `datasets` (`create`, `create_with_items`, `add_item`, `get`, `list`, `import_items`), `experiments` (`create`, `get`, `list_outputs`, `upsert_outputs`, `evaluate_pack`, `summary`, `compare`), `metrics_packs` (`ensure`, `get`), `metrics_sets` (`list`, `get`, `create`), `live_runs` (`submit`, `list`, `get`, `promote`, `rescore`), `app_configs` (`create_app_config`, `list_app_configs`, `set_alias`, `get_aliases`). Non-2xx responses raise `OpengradeAPIError` (with parsed FastAPI `detail` when present).
 
 ### Async control plane (`AsyncClient`)
 
@@ -403,12 +403,13 @@ def run_item(question: str) -> str:
 
 ### Registry (app configs)
 
-`AppConfigClient` remains available for standalone use; `client.app_configs` exposes the same API:
+Versioned prompt + model configs live under `client.app_configs`:
 
 ```python
-from opengrade import AppConfigClient
+import opengrade
 
-registry = AppConfigClient("http://localhost:8000")
+project_id = opengrade.set_project("demo").id
+registry = opengrade.get_client().app_configs
 created = registry.create_app_config(
     project_id,
     "rag-faq",
@@ -419,7 +420,7 @@ latest = registry.list_app_configs(project_id, latest=True)
 registry.set_alias(project_id, "baseline", created.id)
 ```
 
-Methods: `create_app_config`, `list_app_configs` (`name`, `latest`), `set_alias`, `get_aliases`.
+Methods: `create_app_config`, `list_app_configs` (`name`, `latest`), `set_alias`, `get_aliases`. Constructing `AppConfigClient(...)` directly still works but is deprecated (`DeprecationWarning`).
 
 End-to-end prompt A/B on the People Ops RAG example (same model, two App Config prompts): `python scripts/prompt_ab_demo.py` — see `examples/hr_it_assistant/README.md`.
 

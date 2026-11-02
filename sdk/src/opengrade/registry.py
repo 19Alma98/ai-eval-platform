@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import warnings
 from typing import Any
 from urllib.parse import quote
 
@@ -10,6 +11,9 @@ from opengrade.models import AppConfigAliasResponse, AppConfigResponse
 
 
 class AppConfigClient:
+    """App config registry calls. Use ``opengrade.get_client().app_configs`` instead of
+    constructing this class directly (standalone construction is deprecated)."""
+
     def __init__(
         self,
         base_url: str,
@@ -17,6 +21,12 @@ class AppConfigClient:
         timeout: float = 30.0,
         transport: httpx2.BaseTransport | None = None,
     ) -> None:
+        warnings.warn(
+            "AppConfigClient(...) is deprecated; use opengrade.get_client().app_configs "
+            "(or Client(...).app_configs), which exposes the same methods.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
         self._http = _HttpTransport(base_url, timeout=timeout, transport=transport)
         self._owns_http = True
 
