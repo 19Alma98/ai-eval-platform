@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import uuid
-from collections.abc import Collection
+from collections.abc import Collection, Sequence
 from datetime import datetime
 from typing import Protocol
 
@@ -59,7 +59,15 @@ class TraceRepository(Protocol):
         limit: int = 50,
         environment: str | None = None,
         version: str | None = None,
+        user_id: str | None = None,
+        session_id: str | None = None,
+        tags: Sequence[str] = (),
+        metadata: Sequence[tuple[str, str]] = (),
     ) -> list[Trace]: ...
+
+    async def attribute_facets(
+        self, project_id: uuid.UUID, *, limit: int = 50
+    ) -> dict[str, list[tuple[str, int]]]: ...
 
     async def list_with_spans_in_range(
         self,

@@ -12,22 +12,28 @@ from opengrade_server.api.deps import (
     get_list_trace_scores,
     get_list_traces,
     get_resolve_trace_live_links,
+    get_trace_facets,
 )
 from opengrade_server.api.routes.trace_scores import trace_score_response
 from opengrade_server.api.schemas import (
     SpanResponse,
     TraceDetailResponse,
+    TraceFacetsResponse,
+    TraceFacetValueResponse,
     TraceListResponse,
     TraceSummaryResponse,
 )
 from opengrade_server.application.trace_scores import ListTraceScores
 from opengrade_server.application.traces import (
     GetTrace,
+    GetTraceFacets,
     InvalidTraceCursorError,
+    InvalidTraceFilterError,
     ListTraces,
     ProjectMissingError,
     ResolveTraceLiveLinks,
     TraceNotFoundError,
+    parse_metadata_filters,
 )
 from opengrade_server.domain.trace import Trace
 from opengrade_server.domain.trace_score import TraceScore
@@ -72,6 +78,7 @@ def _to_summary(
         version=trace.version,
         user_id=trace.user_id,
         session_id=trace.session_id,
+        tags=list(trace.tags),
         # `@opengrade.trace` records {"args", "kwargs"}: show the question, not the envelope.
         input_preview=_preview(question_from_input(trace.input) if trace.input else None),
         output_preview=_preview(answer_from_output(trace.output) if trace.output else None),
@@ -98,6 +105,7 @@ def _to_detail(
         version=trace.version,
         user_id=trace.user_id,
         session_id=trace.session_id,
+        tags=list(trace.tags),
         spans=[
             SpanResponse(
                 span_id=span.span_id,
@@ -128,6 +136,16 @@ async def list_traces(
     limit: int = Query(default=50, ge=1, le=200),
     environment: str | None = Query(default=None, max_length=200),
     version: str | None = Query(default=None, max_length=200),
+    user_id: str | None = Query(default=None, max_length=200),
+    session_id: str | None = Query(default=None, max_length=200),
+    tag: list[str] = Query(
+        default_factory=list, max_length=20, description="Repeat for AND: every tag must match"
+    ),
+    metadata: list[str] = Query(
+        default_factory=list,
+        max_length=20,
+        description="key:value on trace metadata; repeat for AND",
+    ),
     use_case: ListTraces = Depends(get_list_traces),
 ) -> TraceListResponse:
     if status_filter is not None and status_filter not in _TRACE_STATUSES:
@@ -135,6 +153,12 @@ async def list_traces(
             status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail=f"status must be one of: {', '.join(sorted(_TRACE_STATUSES))}",
         )
+    try:
+        metadata_pairs = parse_metadata_filters(metadata)
+    except InvalidTraceFilterError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(exc)
+        ) from exc
     try:
         page = await use_case.execute(
             project_id,
@@ -146,6 +170,10 @@ async def list_traces(
             limit=limit,
             environment=environment,
             version=version,
+            user_id=user_id or None,
+            session_id=session_id or None,
+            tags=[t.strip() for t in tag if t.strip()],
+            metadata=metadata_pairs,
         )
     except ProjectMissingError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
@@ -161,6 +189,25 @@ async def list_traces(
             for trace in page.traces
         ],
         next_cursor=page.next_cursor,
+    )
+
+
+@router.get("/facets", response_model=TraceFacetsResponse)
+async def trace_facets(
+    project_id: uuid.UUID,
+    limit: int = Query(default=50, ge=1, le=200),
+    use_case: GetTraceFacets = Depends(get_trace_facets),
+) -> TraceFacetsResponse:
+    """Tags, metadata keys, users and sessions seen in the project, most used first."""
+    try:
+        facets = await use_case.execute(project_id, limit=limit)
+    except ProjectMissingError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    return TraceFacetsResponse(
+        **{
+            name: [TraceFacetValueResponse(value=v, count=n) for v, n in rows]
+            for name, rows in facets.items()
+        }
     )
 
 

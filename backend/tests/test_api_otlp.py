@@ -4,7 +4,7 @@ import gzip
 import json
 import uuid
 import zlib
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Sequence
 from datetime import UTC, datetime
 
 import pytest
@@ -75,6 +75,10 @@ class InMemoryTraceRepository:
         limit: int = 50,
         environment: str | None = None,
         version: str | None = None,
+        user_id: str | None = None,
+        session_id: str | None = None,
+        tags: Sequence[str] = (),
+        metadata: Sequence[tuple[str, str]] = (),
     ) -> list[Trace]:
         items = [
             t
@@ -82,6 +86,10 @@ class InMemoryTraceRepository:
             if pid == project_id
             and environment in (None, t.environment)
             and version in (None, t.version)
+            and user_id in (None, t.user_id)
+            and session_id in (None, t.session_id)
+            and all(tag in t.tags for tag in tags)
+            and all(str(t.metadata.get(k)) == v for k, v in metadata)
         ]
         if status is not None:
             items = [t for t in items if t.status == status]
@@ -113,6 +121,7 @@ class InMemoryTraceRepository:
                     user_id=t.user_id,
                     session_id=t.session_id,
                     spans=(),
+                    tags=t.tags,
                 )
             )
         return result

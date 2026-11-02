@@ -110,6 +110,7 @@ from opengrade_server.application.trace_scores import (
 )
 from opengrade_server.application.traces import (
     GetTrace,
+    GetTraceFacets,
     IngestNormalizedTraces,
     ListTraces,
     ResolveProject,
@@ -843,6 +844,13 @@ def get_list_traces(
     live_links: ResolveTraceLiveLinks = Depends(get_resolve_trace_live_links),
 ) -> ListTraces:
     return ListTraces(repository, projects, trace_scores, live_links)
+
+
+def get_trace_facets(
+    repository: SqlAlchemyTraceRepository = Depends(get_trace_repository),
+    projects: SqlAlchemyProjectRepository = Depends(get_project_repository),
+) -> GetTraceFacets:
+    return GetTraceFacets(repository, projects)
 
 
 def get_production_monitoring(

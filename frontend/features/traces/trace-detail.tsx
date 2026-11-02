@@ -27,6 +27,7 @@ import { buildRagView, hasRagContent } from "./rag-view";
 import { SpanSidebar } from "./span-sidebar";
 import { traceUsage } from "./span-metrics";
 import { TraceWaterfall } from "./trace-waterfall";
+import { metadataEntries, tracesFilteredHref } from "./attribute-filters";
 import { useTrace, useTraceLiveInteraction } from "./use-traces";
 
 async function copyLink(href: string) {
@@ -75,6 +76,8 @@ export function TraceDetailView({ projectId, traceId }: { projectId: string; tra
     ? new Date(trace.end_time).getTime() - new Date(trace.start_time).getTime()
     : null;
 
+  const userMetadata = metadataEntries(trace.metadata);
+
   function openSpan(spanId: string) {
     setSelectedSpanId(spanId);
     setTab("timeline");
@@ -113,8 +116,9 @@ export function TraceDetailView({ projectId, traceId }: { projectId: string; tra
               <MetaItem label="Session">
                 <Link
                   className="hover:text-primary hover:underline"
+                  title="All traces of this session"
                   href={withProjectQuery(
-                    `/traces?range=all&q=${encodeURIComponent(trace.session_id)}`,
+                    tracesFilteredHref({ kind: "session", value: trace.session_id }),
                     projectId,
                   )}
                 >
@@ -122,7 +126,53 @@ export function TraceDetailView({ projectId, traceId }: { projectId: string; tra
                 </Link>
               </MetaItem>
             ) : null}
-            {trace.user_id ? <MetaItem label="User">{trace.user_id}</MetaItem> : null}
+            {trace.user_id ? (
+              <MetaItem label="User">
+                <Link
+                  className="hover:text-primary hover:underline"
+                  title="All traces of this user"
+                  href={withProjectQuery(
+                    tracesFilteredHref({ kind: "user", value: trace.user_id }),
+                    projectId,
+                  )}
+                >
+                  {trace.user_id}
+                </Link>
+              </MetaItem>
+            ) : null}
+            {trace.tags && trace.tags.length > 0 ? (
+              <MetaItem label="Tags">
+                <span className="inline-flex flex-wrap gap-1">
+                  {trace.tags.map((tag) => (
+                    <Link
+                      key={tag}
+                      className="rounded bg-surface-2 px-1.5 py-0.5 text-xs hover:text-primary"
+                      title={`All traces tagged ${tag}`}
+                      href={withProjectQuery(
+                        tracesFilteredHref({ kind: "tag", value: tag }),
+                        projectId,
+                      )}
+                    >
+                      #{tag}
+                    </Link>
+                  ))}
+                </span>
+              </MetaItem>
+            ) : null}
+            {userMetadata.map(([key, value]) => (
+              <MetaItem key={key} label={key}>
+                <Link
+                  className="hover:text-primary hover:underline"
+                  title={`All traces with ${key}=${value}`}
+                  href={withProjectQuery(
+                    tracesFilteredHref({ kind: "meta", value: `${key}:${value}` }),
+                    projectId,
+                  )}
+                >
+                  {value}
+                </Link>
+              </MetaItem>
+            ))}
             <span className="inline-flex items-center gap-1 font-mono text-xs">
               {truncateId(trace.trace_id, 16)}
               <CopyTechnicalId id={trace.trace_id} label="Copy trace ID" />

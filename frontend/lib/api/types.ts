@@ -52,6 +52,7 @@ export type TraceDetail = {
   version?: string | null;
   user_id: string | null;
   session_id: string | null;
+  tags?: string[];
   spans: Span[];
   scores?: TraceScore[];
   live_interaction_id?: string | null;
@@ -70,6 +71,7 @@ export type TraceSummary = {
   version?: string | null;
   user_id: string | null;
   session_id: string | null;
+  tags?: string[];
   input_preview: string | null;
   output_preview: string | null;
   scores: TraceScore[];
@@ -79,6 +81,16 @@ export type TraceSummary = {
 export type TraceListResponse = {
   items: TraceSummary[];
   next_cursor: string | null;
+};
+
+export type TraceFacetValue = { value: string; count: number };
+
+/** Tags, metadata keys, users and sessions seen in the project, most used first. */
+export type TraceFacets = {
+  tags: TraceFacetValue[];
+  metadata_keys: TraceFacetValue[];
+  users: TraceFacetValue[];
+  sessions: TraceFacetValue[];
 };
 
 export type Dataset = {

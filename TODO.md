@@ -28,7 +28,6 @@ Priority: **P0** blocks a public release, **P1** fix before promoting it, **P2**
 - [ ] **PII redaction**: capture currently grabs every argument incl. `self`/secrets. Per-arg
   include/exclude, redaction hook, global capture switch.
 - [ ] **Sampling** (head sampling) and configurable span size limits.
-- [ ] `with opengrade.span(...)` context manager.
 - [ ] `AsyncClient` parity (datasets, experiments), `aevaluate`.
 - [ ] Pagination on SDK list calls; `set_project` / `evaluate` scan all projects/datasets/experiments.
 - [ ] Experiments list: dataset-version column/filter and metric columns (the Compare-all charts
@@ -40,7 +39,11 @@ Priority: **P0** blocks a public release, **P1** fix before promoting it, **P2**
   list Scores column, "load more" beyond 50, time-range/metadata filters, auto-refresh on
   Overview/Monitoring/Traces.
 - [ ] Drill-down from alarms / chart points to the traces that caused them.
-- [ ] Filters persisted in the URL (live-runs, trace search, matrix rows); CSV/JSON export.
+- [ ] Filters persisted in the URL (live-runs, matrix rows; the trace list already keeps its
+  tag / metadata / user / session filters there); CSV/JSON export.
+- [ ] Trace attribute index covers traces ingested after migration `0024_trace_tags` only; older
+  traces keep their `user_id` / `session_id` filters but not tag / metadata ones (no backfill).
+- [ ] Session view: one page per `session_id` showing the conversation turn by turn.
 - [ ] Retention/TTL and per-project quotas (see "OTLP high volume" below).
 - [ ] Custom time range / timezone and compare-to-previous-period on monitoring.
 
@@ -50,8 +53,6 @@ Priority: **P0** blocks a public release, **P1** fix before promoting it, **P2**
   filter (name, environment, attribute), not only on RAG question/answer live interactions.
 - [ ] **Span-attribute metrics**: aggregate a numeric span attribute as a time series and allow it in
   alert rules (`ALERT_METRICS` is a fixed list).
-- [ ] **SDK helpers** `set_user` / `set_session` / `set_tags` (the server already reads `user.id` /
-  `session.id`), trace search by attribute/tag.
 - [ ] **Trace-structure checks**: assertions on span order / counts / errors (retriever before LLM,
   max N tool calls), agent trajectory evaluation beyond `tool_call_success`.
 - [ ] **RAG answer checks still open** (citation accuracy and correct refusal shipped as

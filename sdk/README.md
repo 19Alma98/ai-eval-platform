@@ -81,6 +81,9 @@ Runnable example: [`examples/sdk_hello/`](../examples/sdk_hello/README.md) (Olla
 | `opengrade.get_project()` | Project set via `set_project` / `aset_project`, or `None` |
 | `opengrade.init(...)` | OTLP exporter, project headers, optional `instrument="auto"` \| list \| `False` |
 | `@opengrade.trace` / `@opengrade.trace_async` | Parent CHAIN span; optional input/output capture (32 KiB cap) |
+| `with opengrade.span(name, kind=...)` | Child span for a block of code (`with` / `async with`): retrieve, rerank, tool call… |
+| `opengrade.set_user` / `set_session` / `set_tags` / `set_metadata` | User, session, tags and key/value metadata of the current trace (filterable in the UI) |
+| `opengrade.using_attributes(...)` | Same attributes for every span opened in a block (e.g. in a request middleware) |
 | `opengrade.set_input` / `set_output` | Override OpenInference I/O on the current span (no OTEL import) |
 | `opengrade.set_attribute` / `set_attributes` | Custom attributes on the current span |
 | `opengrade.set_error(...)` | Mark current span ERROR |
@@ -96,6 +99,61 @@ Runnable example: [`examples/sdk_hello/`](../examples/sdk_hello/README.md) (Olla
 | `opengrade.AsyncClient(...)` | Async control-plane client (projects, live_runs, trace_scores, health) |
 
 App code should use these helpers instead of importing OpenTelemetry directly.
+
+### Spans inside a function (`opengrade.span`)
+
+`@opengrade.trace` covers a whole function; `opengrade.span` traces one block inside it, so each stage
+of a pipeline shows up as its own step in the trace timeline:
+
+```python
+@opengrade.trace
+def answer(question: str) -> str:
+    with opengrade.span("retrieve", kind="RETRIEVER", input=question) as s:
+        docs = retriever.search(question)
+        s.set_output([d.id for d in docs])
+    with opengrade.span("rerank", kind="RERANKER", attributes={"rerank.top_k": 3}) as s:
+        docs = reranker.rank(question, docs)[:3]
+        s.set_output([d.id for d in docs])
+    opengrade.set_retrieval_documents(docs)  # still feeds retrieval metrics / judges
+    return generate(question, docs)
+```
+
+- `kind` is an OpenInference span kind: `CHAIN` (default), `LLM`, `RETRIEVER`, `RERANKER`, `EMBEDDING`,
+  `TOOL`, `AGENT`, `GUARDRAIL`, `EVALUATOR`, `PROMPT` (case-insensitive; other values are sent as-is
+  with a warning).
+- The handle has `set_input`, `set_output`, `set_attribute(s)`, `set_error`, `trace_id`, `span_id`.
+  `set_output` on a span does not change the experiment output (use `opengrade.set_output` for that).
+- An exception in the block marks the span ERROR and propagates. `async with` works the same way.
+- Outside any traced call, the span is a root span; with `init(live=True)` it becomes a live
+  interaction like an outermost `@opengrade.trace` (`live=False` opts out).
+
+### Users, sessions, tags and metadata
+
+```python
+@opengrade.trace
+def answer(question: str, user, chat_id: str) -> str:
+    opengrade.set_user(user.id)
+    opengrade.set_session(chat_id)  # all turns of a conversation share it
+    opengrade.set_tags("beta", "rerank-v2")  # accumulates across calls
+    opengrade.set_metadata(tenant=user.tenant, prompt_version="v3")
+    ...
+
+
+# Or for every span opened in a block (blocks nest; tags and metadata accumulate):
+with opengrade.using_attributes(user_id=user.id, session_id=chat_id, tags=["beta"]):
+    answer(question)
+```
+
+- They use the OpenInference keys `user.id`, `session.id`, `tag.tags` and `metadata` (JSON), so any
+  span of the trace works and auto-instrumented spans inside `using_attributes` get them too (when
+  `openinference-instrumentation` is installed).
+- The setters act on the current span and are no-ops outside a traced call.
+- Metadata values should be scalars (others are stored as JSON text); keys starting with `_` are
+  reserved. Limits: 50 tags, 50 metadata keys, 500 chars per value.
+- In the UI (Production → Traces) filter with `tag:beta`, `tenant:acme`, `user:…` or `session:…`;
+  click a tag, user, session or metadata value on a trace to see all matching traces. API:
+  `GET /projects/{id}/traces?tag=beta&metadata=tenant:acme&user_id=…&session_id=…` (repeat `tag` /
+  `metadata`; all must match), `GET /projects/{id}/traces/facets` for the values seen.
 
 ## Experiments (`evaluate` / `start_experiment`)
 

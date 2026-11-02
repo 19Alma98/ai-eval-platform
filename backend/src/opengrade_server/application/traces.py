@@ -3,6 +3,7 @@ from __future__ import annotations
 import base64
 import binascii
 import uuid
+from collections.abc import Sequence
 from dataclasses import dataclass, field
 from datetime import datetime
 
@@ -132,6 +133,10 @@ class ListTraces:
         limit: int = 50,
         environment: str | None = None,
         version: str | None = None,
+        user_id: str | None = None,
+        session_id: str | None = None,
+        tags: Sequence[str] = (),
+        metadata: Sequence[tuple[str, str]] = (),
     ) -> TraceListPage:
         if await self._projects.get_by_id(project_id) is None:
             raise ProjectMissingError(project_id=project_id)
@@ -148,6 +153,10 @@ class ListTraces:
             limit=limit + 1,
             environment=environment,
             version=version,
+            user_id=user_id,
+            session_id=session_id,
+            tags=tags,
+            metadata=metadata,
         )
         page = rows[:limit]
         next_cursor = encode_trace_cursor(page[-1]) if len(rows) > limit and page else None
@@ -191,3 +200,34 @@ class ResolveProject:
         if project is None:
             raise ProjectMissingError(slug=project_slug)
         return project.id
+
+
+class InvalidTraceFilterError(ValueError):
+    pass
+
+
+def parse_metadata_filters(raw: Sequence[str]) -> list[tuple[str, str]]:
+    """``key:value`` strings (split on the first ``:``) to pairs; both sides required."""
+    pairs: list[tuple[str, str]] = []
+    for item in raw:
+        key, sep, value = item.partition(":")
+        key, value = key.strip(), value.strip()
+        if not sep or not key or not value:
+            raise InvalidTraceFilterError(f"metadata filter must be key:value, got {item!r}")
+        pairs.append((key, value))
+    return pairs
+
+
+class GetTraceFacets:
+    """Tags, metadata keys, users and sessions seen in a project, most used first."""
+
+    def __init__(self, repository: TraceRepository, projects: ProjectRepository) -> None:
+        self._repository = repository
+        self._projects = projects
+
+    async def execute(
+        self, project_id: uuid.UUID, *, limit: int = 50
+    ) -> dict[str, list[tuple[str, int]]]:
+        if await self._projects.get_by_id(project_id) is None:
+            raise ProjectMissingError(project_id=project_id)
+        return await self._repository.attribute_facets(project_id, limit=limit)
