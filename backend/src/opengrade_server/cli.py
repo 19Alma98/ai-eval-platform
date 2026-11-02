@@ -743,6 +743,8 @@ def evaluate_cmd(
                     "status": row.status,
                     "n_paired": getattr(row, "n_paired", None),
                     "min_detectable_delta": getattr(row, "min_detectable_delta", None),
+                    "ci_low": getattr(row, "ci_low", None),
+                    "ci_high": getattr(row, "ci_high", None),
                 }
                 for row in result.comparison.metrics
                 if row.metric == "mean_score"

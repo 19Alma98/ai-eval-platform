@@ -1,0 +1,42 @@
+# Non-inferiority gate: "the PR must be shown to be at least as good as main".
+#
+#   PR:            opengrade evaluate --config opengrade.yaml --require-baseline
+#   push to main:  opengrade evaluate --config opengrade.yaml --promote main
+#
+# Same pipeline and gold set as examples/ci_regression_gate (20 questions). The only
+# policy difference from opengrade.classic.yaml is regression.non_inferiority_margin.
+#
+# The alias lives in the server DB: in CI use a shared server (api_base_url / --base-url)
+# or a durable --backend-store-uri.
+# api_base_url: https://opengrade.internal
+
+project: non-inferiority-gate
+
+evaluate:
+  task: rag_app:task
+  dataset: ../ci_regression_gate/gold.jsonl
+  metrics: [hit_at_k, must_contain, latency]
+  name: rag-ci
+  task_type: rag_qa
+  max_concurrency: 4
+  baseline: alias:main
+
+# ---- Policy -------------------------------------------------------------------------
+# Absolute floors, as in any gate.
+hit_at_k:
+  min: 0.8
+must_contain:
+  min: 0.8
+
+regression:
+  # Default check: fail on a *proven* drop (95% paired bootstrap CI entirely below 0).
+  # On a small or noisy test set most real drops are not proven, so they pass.
+  #
+  # Non-inferiority reverses the burden of proof: the PR passes only when the data shows
+  # it is at most `margin` worse than main, i.e. the lower bound of the same 95% CI is
+  # >= -margin. Check: regression.<metric>.non_inferiority (actual = CI lower bound).
+  #
+  # Unchanged deterministic code: every paired difference is 0, CI [0, 0] → passes.
+  # Pick the margin as the largest drop you would accept without discussion; with a
+  # sampling LLM use repeats, or the run-to-run noise alone can widen the CI past it.
+  non_inferiority_margin: 0.05

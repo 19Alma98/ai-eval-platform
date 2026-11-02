@@ -216,6 +216,7 @@ class ReleaseCheck:
                             compare_status=metric.status,
                             n_paired=metric.n_paired,
                             min_detectable_delta=metric.min_detectable_delta,
+                            ci_low=metric.ci_low,
                         )
                     )
 

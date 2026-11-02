@@ -154,6 +154,41 @@ regression:
 
 Latency / cost / token-usage evaluators are not checked. Repeats reduce the noise `s` but not the flip term: only more test cases lower the floor `z²/(n + z²)`.
 
+#### Non-inferiority (`regression.non_inferiority_margin`)
+
+The bootstrap check above fails only on a *proven* drop. On a small or noisy test set
+most real drops are not proven, so "not worse" really means "not shown to be worse".
+`non_inferiority_margin` reverses the burden of proof. The candidate must be *shown* to
+be at most `margin` worse than the baseline:
+
+```yaml
+regression:
+  non_inferiority_margin: 0.03   # lower bound of the 95% paired CI of Δ must be >= -0.03
+```
+
+Check: `regression.<metric>.non_inferiority`, with `actual` = the lower bound of the 95%
+paired bootstrap CI of the mean change (candidate − baseline) and `threshold` = `-margin`.
+It is `unavailable` (and fails the gate) when the runs cannot be paired (fewer than 5
+paired items, `config_mismatch`). Latency / cost / token-usage evaluators are not checked.
+The check is added next to `regression.<metric>.mean_score`, which still fails on a
+proven drop and on `max_delta`. Per-group checks keep the default test.
+
+The compare (`GET /experiments/{id}/compare/{baseline}`, `--json` `comparison[]`, the
+Markdown "95% CI" column) now reports `ci_low` / `ci_high` for every paired metric, also
+when the change is below the 0.01 "unchanged" threshold.
+
+Practical notes:
+
+- A deterministic pipeline with unchanged answers has CI `[0, 0]` and always passes.
+- The CI shrinks with the number of test cases. With 20 items a single broken answer
+  gives a lower bound of about −0.15. The power warning targets the margin and estimates
+  how many test cases are needed.
+- With a sampling LLM, use `repeats` and a pinned judge, or noise alone can push the
+  lower bound past the margin and fail PRs that changed nothing.
+
+Runnable example (same PR: passes the default policy, fails with a margin):
+[`examples/non_inferiority_gate/`](../examples/non_inferiority_gate/README.md).
+
 #### Reports: job summary, PR comment, JUnit
 
 ```bash
@@ -259,6 +294,8 @@ opengrade ui
 See `.github/workflows/release-gate.yml.example` and `examples/opengrade.yaml`.
 
 Runnable "PR must not be worse than `main`" example (deterministic, no LLM): [`examples/ci_regression_gate/`](../examples/ci_regression_gate/README.md) — local demo script plus a GitHub Actions workflow that keeps the baseline on a shared server or in the Actions cache.
+
+Non-inferiority (the PR must be *shown* not worse, not just "not proven worse"): [`examples/non_inferiority_gate/`](../examples/non_inferiority_gate/README.md).
 
 Same gate for a real LLM pipeline scored by an LLM judge (noise, `repeats`, pinned judge, critical questions, power warning): [`examples/llm_regression_gate/`](../examples/llm_regression_gate/README.md).
 

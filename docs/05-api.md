@@ -498,6 +498,7 @@ Item-level rules (CLI semantics in `docs/08-cli-ci.md`):
 - `critical: {"by": "critical", "metrics": [...], "max_failures": 0}` → `critical.<metric>.failures`: dataset items whose metadata `by` is true must PASS (every repeat). No item marked → `critical.<by>.items` `unavailable`.
 - `regression.max_new_failures`: an integer (every quality metric) or `{metric: limit}` → `regression.<metric>.new_failures`: items PASS on the baseline (majority of repeats) and not PASS on the candidate.
 - `regression.max_detectable_delta: 0.1` → `regression.<metric>.min_detectable_delta`: fails when the test set cannot detect a drop of that size.
+- `regression.non_inferiority_margin: 0.03` → `regression.<metric>.non_inferiority`: `actual` is the lower bound of the 95% paired bootstrap CI of the mean change. Fails when it is below `-0.03`, i.e. when the candidate is not *shown* to be at most 0.03 worse. Compare rows now carry `ci_low` / `ci_high` for every paired metric.
 
 Item-level checks carry `items`: up to 20 failing test cases `{dataset_item_id, input, candidate_label, baseline_label}` (`actual` is the full count).
 

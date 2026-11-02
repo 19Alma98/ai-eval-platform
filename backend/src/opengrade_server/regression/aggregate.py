@@ -396,8 +396,10 @@ def compare_evaluator_metrics(
                     mde = min_detectable_delta(diffs)
                     if n_paired < MIN_APPLICABLE_ITEMS:
                         status = "insufficient_n"
-                    elif status != "unchanged":
-                        # Non-trivial aggregate delta: require CI to exclude 0.
+                    else:
+                        # The CI is reported for every paired comparison (the
+                        # non-inferiority rule reads its lower bound), but only a
+                        # non-trivial aggregate delta needs it to exclude 0.
                         metric_seed = (
                             seed
                             if seed is not None
@@ -409,7 +411,8 @@ def compare_evaluator_metrics(
                             )
                         )
                         ci_low, ci_high = paired_mean_ci(diffs, seed=metric_seed)
-                        status = _status_from_ci(ci_low, ci_high)
+                        if status != "unchanged":
+                            status = _status_from_ci(ci_low, ci_high)
                 elif min(candidate.n_applicable, baseline.n_applicable) < MIN_APPLICABLE_ITEMS:
                     status = "insufficient_n"
         rows.append(

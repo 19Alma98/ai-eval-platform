@@ -537,12 +537,20 @@ def same_exam(target: AliasTarget, dataset_id: str | None, metrics_set_id: str |
 DEFAULT_DETECTABLE_DELTA = 0.05
 
 
+def _non_inferiority_margin(policy: dict[str, Any] | None) -> float | None:
+    regression = (policy or {}).get("regression")
+    value = regression.get("non_inferiority_margin") if isinstance(regression, dict) else None
+    if isinstance(value, int | float) and not isinstance(value, bool) and value > 0:
+        return float(value)
+    return None
+
+
 def detectable_delta_target(policy: dict[str, Any] | None) -> float:
     """Mean drop the test set should be able to detect: ``regression.max_detectable_delta``,
-    else ``|regression.max_delta|``, else 0.05."""
+    else ``regression.non_inferiority_margin``, else ``|regression.max_delta|``, else 0.05."""
     regression = (policy or {}).get("regression")
     if isinstance(regression, dict):
-        for key in ("max_detectable_delta", "max_delta"):
+        for key in ("max_detectable_delta", "non_inferiority_margin", "max_delta"):
             value = regression.get(key)
             if isinstance(value, int | float) and not isinstance(value, bool) and value != 0:
                 return abs(float(value))
@@ -569,11 +577,21 @@ def power_notes(comparison: list[dict[str, Any]], policy: dict[str, Any] | None)
     worst = max(float(row["min_detectable_delta"]) for row in weak)
     needed = items_needed(worst, n_paired, target)
     per_metric = ", ".join(f"{row['metric']} {row['min_detectable_delta']:.2f}" for row in weak)
-    note = (
-        f"Small test set: with {n_paired} paired test cases the regression check reliably "
-        f"detects only mean drops of at least {per_metric} (target {target:.2f}). "
-        "Smaller drops pass unless they exceed max_delta"
-    )
+    if _non_inferiority_margin(policy) is not None:
+        # Non-inferiority puts the burden of proof the other way: a small or noisy test
+        # set does not let regressions through, it fails runs that did not get worse.
+        note = (
+            f"Small test set: with {n_paired} paired test cases the comparison resolves "
+            f"only mean changes of about {per_metric} (non-inferiority margin "
+            f"{target:.2f}). The non_inferiority check may fail even when nothing got "
+            "worse; add test cases (or repeats, if the pipeline is noisy) or widen the margin"
+        )
+    else:
+        note = (
+            f"Small test set: with {n_paired} paired test cases the regression check "
+            f"reliably detects only mean drops of at least {per_metric} (target "
+            f"{target:.2f}). Smaller drops pass unless they exceed max_delta"
+        )
     if needed:
         note += f"; about {needed} test cases would be needed"
     return [note + "."]

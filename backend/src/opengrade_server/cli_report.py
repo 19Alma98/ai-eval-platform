@@ -51,6 +51,7 @@ def _signed_pct(value: Any) -> str:
 
 _COUNT_SUFFIXES = (".failures", ".new_failures", ".items")
 _DETECTABLE_SUFFIX = ".min_detectable_delta"
+_NON_INFERIORITY_SUFFIX = ".non_inferiority"
 
 
 def _count(value: Any) -> str:
@@ -80,6 +81,8 @@ def _check_threshold(metric: str, threshold: Any) -> str:
         return f"≤ {_count(threshold)}"
     if metric.endswith(_DETECTABLE_SUFFIX):
         return f"≤ {_num(threshold)}"
+    if metric.endswith(_NON_INFERIORITY_SUFFIX):
+        return f"95% CI lower bound ≥ {_signed(threshold)}"
     if threshold is None:
         if ".regression." in metric or metric.startswith("regression."):
             return "no significant drop"
@@ -267,8 +270,15 @@ def render_markdown(payload: dict[str, Any], *, title: str = "OpenGrade quality 
     if comparison:
         # Smallest drop the paired test detects (~80% power) at this test-set size.
         power = any(row.get("min_detectable_delta") is not None for row in comparison)
-        head = "| Metric | Candidate | Baseline | Δ | Verdict |"
-        rule = "|---|---|---|---|---|"
+        # 95% paired bootstrap CI of Δ (what the non-inferiority rule reads).
+        has_ci = any(row.get("ci_low") is not None for row in comparison)
+        head = "| Metric | Candidate | Baseline | Δ |"
+        rule = "|---|---|---|---|"
+        if has_ci:
+            head += " 95% CI |"
+            rule += "---|"
+        head += " Verdict |"
+        rule += "---|"
         if power:
             head += " Detectable drop (n) |"
             rule += "---|"
@@ -278,8 +288,13 @@ def render_markdown(payload: dict[str, Any], *, title: str = "OpenGrade quality 
             cell = f"{_VERDICT_ICON.get(verdict, '')} {verdict}".strip()
             line = (
                 f"| {row.get('metric')} | {_num(row.get('candidate'))} "
-                f"| {_num(row.get('baseline'))} | {_signed(row.get('delta'))} | {cell} |"
+                f"| {_num(row.get('baseline'))} | {_signed(row.get('delta'))} |"
             )
+            if has_ci:
+                low, high = row.get("ci_low"), row.get("ci_high")
+                ci = f"[{_signed(low)}, {_signed(high)}]" if low is not None else "—"
+                line += f" {ci} |"
+            line += f" {cell} |"
             if power:
                 mde = row.get("min_detectable_delta")
                 n = row.get("n_paired")
@@ -307,10 +322,14 @@ def render_markdown(payload: dict[str, Any], *, title: str = "OpenGrade quality 
 
 
 def _regression_metric(check: str) -> str:
-    """``regression.hit_at_k.mean_score`` → ``hit_at_k`` (``""`` for other checks)."""
-    prefix, suffix = "regression.", ".mean_score"
-    if check.startswith(prefix) and check.endswith(suffix):
-        return check[len(prefix) : -len(suffix)]
+    """``regression.hit_at_k.mean_score`` (or ``.non_inferiority``) → ``hit_at_k``
+    (``""`` for other checks)."""
+    prefix = "regression."
+    if not check.startswith(prefix):
+        return ""
+    for suffix in (".mean_score", _NON_INFERIORITY_SUFFIX):
+        if check.endswith(suffix):
+            return check[len(prefix) : -len(suffix)]
     return ""
 
 

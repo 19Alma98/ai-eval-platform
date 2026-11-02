@@ -31,7 +31,13 @@ _LATENCY_KEYS = frozenset({"p95_max_ms", INCREASE_PCT_KEY})
 _COST_KEYS = frozenset({"max_per_request_usd", INCREASE_PCT_KEY})
 _MIN_KEYS = frozenset({"min"})
 _REGRESSION_KEYS = frozenset(
-    {"max_delta", "allow_insufficient_n", "max_new_failures", "max_detectable_delta"}
+    {
+        "max_delta",
+        "allow_insufficient_n",
+        "max_new_failures",
+        "max_detectable_delta",
+        "non_inferiority_margin",
+    }
 )
 _CRITICAL_KEYS = frozenset({"by", "metrics", "max_failures"})
 _EXPERIMENT_METRIC_KEYS = frozenset({"min", "max"}) | _RELATIVE_METRIC_KEYS
@@ -85,12 +91,17 @@ class RegressionRule:
     cases that passed on the baseline and fail now (per evaluator); an int applies to
     every quality evaluator, a mapping names evaluators. ``max_detectable_delta``: the
     test set must be large enough to detect a mean drop of this size (~80% power).
+    ``non_inferiority_margin``: the candidate must be *shown* to be at most this much
+    worse: the lower bound of the 95% paired bootstrap CI of the mean change must be
+    ``>= -margin``. The default bootstrap check fails only on a proven drop, so a small
+    or noisy test set passes; this one fails when "not worse" cannot be shown.
     """
 
     max_delta: float | None = None
     allow_insufficient_n: bool = False
     max_new_failures: int | Mapping[str, int] | None = None
     max_detectable_delta: float | None = None
+    non_inferiority_margin: float | None = None
 
     def new_failures_limit(self, evaluator_name: str) -> int | None:
         limit = self.max_new_failures
@@ -234,6 +245,8 @@ class RegressionDeltaInput:
     compare_status: str | None = None
     n_paired: int | None = None
     min_detectable_delta: float | None = None
+    # Lower bound of the 95% paired bootstrap CI of the mean change (candidate − baseline).
+    ci_low: float | None = None
 
 
 def strip_meta_keys(raw: dict[str, Any]) -> dict[str, Any]:
@@ -419,11 +432,15 @@ def _parse_regression(value: dict[str, Any]) -> RegressionRule:
     max_detectable = _optional_float("regression", value, "max_detectable_delta")
     if max_detectable is not None and max_detectable <= 0:
         raise InvalidPolicyError("policy.regression.max_detectable_delta must be > 0")
+    margin = _optional_float("regression", value, "non_inferiority_margin")
+    if margin is not None and not 0 < margin < 1:
+        raise InvalidPolicyError("policy.regression.non_inferiority_margin must be in (0, 1)")
     return RegressionRule(
         max_delta=max_delta,
         allow_insufficient_n=allow,
         max_new_failures=_parse_new_failures(value.get("max_new_failures")),
         max_detectable_delta=max_detectable,
+        non_inferiority_margin=margin,
     )
 
 
@@ -764,6 +781,12 @@ def evaluate_policy(
             if policy.regression.max_detectable_delta is not None:
                 checks.extend(
                     _eval_detectable_delta(policy.regression.max_detectable_delta, delta)
+                    for delta in regression_deltas
+                    if delta.evaluator_name not in OPERATIONAL_EVALUATORS
+                )
+            if policy.regression.non_inferiority_margin is not None:
+                checks.extend(
+                    _eval_non_inferiority(policy.regression.non_inferiority_margin, delta)
                     for delta in regression_deltas
                     if delta.evaluator_name not in OPERATIONAL_EVALUATORS
                 )
@@ -1245,4 +1268,30 @@ def _eval_detectable_delta(max_mde: float, delta: RegressionDeltaInput) -> Polic
         actual=mde,
         threshold=max_mde,
         status="passed" if mde <= max_mde else "failed",
+    )
+
+
+# Bootstrap percentiles are exact floats: do not fail on representation error at the bound.
+_NON_INFERIORITY_EPS = 1e-9
+
+
+def _eval_non_inferiority(margin: float, delta: RegressionDeltaInput) -> PolicyCheck:
+    """``regression.<metric>.non_inferiority``: lower 95% CI bound of the paired mean
+    change ``>= -margin``. Unavailable when the runs could not be paired (too few items,
+    different scoring config): non-inferiority cannot be shown there."""
+    metric = f"regression.{delta.evaluator_name}.non_inferiority"
+    threshold = -margin
+    ci_low = delta.ci_low
+    if (
+        ci_low is None
+        or delta.insufficient_n
+        or delta.compare_status in ("insufficient_n", "config_mismatch", "unavailable")
+    ):
+        return PolicyCheck(metric=metric, actual=ci_low, threshold=threshold, status="unavailable")
+    passed = ci_low >= threshold - _NON_INFERIORITY_EPS
+    return PolicyCheck(
+        metric=metric,
+        actual=ci_low,
+        threshold=threshold,
+        status="passed" if passed else "failed",
     )

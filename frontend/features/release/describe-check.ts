@@ -174,6 +174,17 @@ export function describeCheck(check: ReleaseCheckItemResponse): CheckView {
       isRegression: false,
     };
   }
+  const nonInferiority = /^regression\.(.+)\.non_inferiority$/.exec(id);
+  if (nonInferiority) {
+    return {
+      key: id,
+      title: `${metricLabel(nonInferiority[1]!)}: shown not worse than baseline`,
+      actual: formatDeltaPoints(check.actual),
+      target: `95% CI lower bound ≥ ${formatDeltaPoints(check.threshold)}`,
+      outcome,
+      isRegression: true,
+    };
+  }
   const regression = /^regression\.(.+)\.mean_score$/.exec(id);
   if (regression) {
     return {

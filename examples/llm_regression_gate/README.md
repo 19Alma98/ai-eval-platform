@@ -24,6 +24,7 @@ What [`opengrade.yaml`](opengrade.yaml) adds for an LLM (details in its comments
 | A security answer breaks while averages hold | `critical` (`"critical": true` in the gold set) |
 | One question breaks, another improves | `regression.max_new_failures` |
 | Gold set too small to see a drop | power warning, `max_detectable_delta` |
+| "Not proven worse" is not "as good" | `non_inferiority_margin` ([example](../non_inferiority_gate/README.md)) |
 
 CI: [`github-workflow.yml.example`](github-workflow.yml.example). Switch
 `evaluate.judge` to a cloud model first. More: [`docs/08-cli-ci.md`](../../docs/08-cli-ci.md).

@@ -734,6 +734,8 @@ class RegressionRuleBody(BaseModel):
     max_new_failures: int | dict[str, int] | None = None
     # The test set must detect a mean drop of this size (~80% power), per metric.
     max_detectable_delta: float | None = Field(default=None, gt=0)
+    # The lower bound of the 95% paired CI of the mean change must be >= -margin.
+    non_inferiority_margin: float | None = Field(default=None, gt=0, lt=1)
 
     @model_validator(mode="after")
     def _non_negative_failures(self) -> Self:
