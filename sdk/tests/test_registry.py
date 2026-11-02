@@ -1,12 +1,29 @@
 from __future__ import annotations
 
 import json
+import warnings
 from typing import Any
 
 import httpx2
 import pytest
 
+from opengrade.client import Client
 from opengrade.registry import AppConfigClient
+
+# Standalone AppConfigClient(...) is deprecated; the method tests below still exercise it.
+pytestmark = pytest.mark.filterwarnings("ignore::DeprecationWarning")
+
+
+def test_standalone_construction_warns() -> None:
+    with pytest.warns(DeprecationWarning, match="get_client\\(\\).app_configs"):
+        AppConfigClient("http://localhost:8000").close()
+
+
+def test_client_app_configs_does_not_warn() -> None:
+    with warnings.catch_warnings():
+        warnings.simplefilter("error", DeprecationWarning)
+        with Client("http://localhost:8000") as client:
+            assert isinstance(client.app_configs, AppConfigClient)
 
 
 @pytest.fixture
