@@ -19,6 +19,8 @@ from opengrade.models import (
     DatasetResponse,
     EvaluateResponse,
     EvaluationRunResponse,
+    EvaluatorPreviewResponse,
+    EvaluatorResponse,
     ExperimentAliasEventResponse,
     ExperimentAliasResponse,
     ExperimentCompareResponse,
@@ -576,6 +578,68 @@ class _MetricsSetsResource:
         )
 
 
+class _EvaluatorsResource:
+    """Project evaluators (server metrics). Custom LLM judges: ``config.kind="custom_judge"``.
+
+    Prefer ``opengrade.LlmJudge`` for judges: it creates/reuses the evaluator for you.
+    """
+
+    def __init__(self, http: _HttpTransport) -> None:
+        self._http = http
+
+    def list(self, project_id: str | None = None) -> builtins.list[EvaluatorResponse]:
+        project_id = resolve_project_id(project_id)
+        return self._http.request_model_list(
+            "GET",
+            f"/api/v1/projects/{project_id}/evaluators",
+            response_model=EvaluatorResponse,
+        )
+
+    def create(
+        self,
+        project_id: str | None = None,
+        *,
+        name: str,
+        type: str,
+        config: dict[str, Any],
+        version: int = 1,
+    ) -> EvaluatorResponse:
+        project_id = resolve_project_id(project_id)
+        return self._http.request_model(
+            "POST",
+            f"/api/v1/projects/{project_id}/evaluators",
+            body={"name": name, "type": type, "config": config, "version": version},
+            response_model=EvaluatorResponse,
+        )
+
+    def preview(
+        self,
+        project_id: str | None = None,
+        *,
+        config: dict[str, Any],
+        output: Any,
+        input: Any = None,
+        expected_output: Any = None,
+        documents: builtins.list[dict[str, Any]] | None = None,
+        metadata: dict[str, Any] | None = None,
+    ) -> EvaluatorPreviewResponse:
+        """Run ``config`` on one sample without saving anything (calls the judge model)."""
+        project_id = resolve_project_id(project_id)
+        sample: dict[str, Any] = {
+            "input": input,
+            "output": output,
+            "expected_output": expected_output,
+            "documents": documents,
+            "metadata": metadata or {},
+        }
+        return self._http.request_model(
+            "POST",
+            f"/api/v1/projects/{project_id}/evaluators/preview",
+            body={"config": config, "sample": sample},
+            response_model=EvaluatorPreviewResponse,
+        )
+
+
 _ALERT_FIELDS = (
     "name",
     "metric",
@@ -589,6 +653,10 @@ _ALERT_FIELDS = (
     "webhook_format",
     "repeat_minutes",
     "enabled",
+    "environment",
+    "version",
+    "condition",
+    "baseline_minutes",
 )
 
 
@@ -620,9 +688,25 @@ class _AlertsResource:
         webhook_format: str = "json",
         repeat_minutes: int | None = None,
         enabled: bool = True,
+        environment: str | None = None,
+        version: str | None = None,
+        condition: str = "threshold",
+        baseline_minutes: int | None = None,
     ) -> AlertRuleResponse:
         """``metric``: error_rate, latency_p50_ms/p90/p99, traffic, cost_usd, total_tokens,
-        needs_review, score_mean or score_fail_rate (with ``score_name``)."""
+        needs_review, score_mean or score_fail_rate (with ``score_name``).
+
+        ``condition``:
+
+        - ``"threshold"``: the metric vs ``threshold``.
+        - ``"change"`` (drift): relative change vs the previous ``baseline_minutes``
+          (default: one window). ``threshold=-0.2, operator="lt"`` fires on a 20% drop.
+        - ``"anomaly"``: z-score vs the past windows of the previous ``baseline_minutes``
+          (default: 24 windows). ``threshold=3, operator="abs"`` fires on a 3-sigma
+          spike or drop.
+
+        ``operator``: ``"gt"``, ``"lt"`` or ``"abs"`` (either direction; change/anomaly).
+        """
         project_id = resolve_project_id(project_id)
         fields: dict[str, Any] = {
             "name": name,
@@ -637,6 +721,10 @@ class _AlertsResource:
             "webhook_format": webhook_format,
             "repeat_minutes": repeat_minutes,
             "enabled": enabled,
+            "environment": environment,
+            "version": version,
+            "condition": condition,
+            "baseline_minutes": baseline_minutes,
         }
         body = {k: v for k, v in fields.items() if v is not None}
         return self._http.request_model(
@@ -811,6 +899,7 @@ class Client:
         self.experiments = _ExperimentsResource(self._http)
         self.metrics_packs = _MetricsPacksResource(self._http)
         self.metrics_sets = _MetricsSetsResource(self._http)
+        self.evaluators = _EvaluatorsResource(self._http)
         self.live_runs = _LiveRunsResource(self._http)
         self.alerts = _AlertsResource(self._http)
         self.trace_scores = _TraceScoresResource(self._http)

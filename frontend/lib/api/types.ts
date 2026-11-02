@@ -696,7 +696,7 @@ export type AlertRule = {
   project_id: string;
   name: string;
   metric: AlertMetric;
-  operator: "gt" | "lt";
+  operator: AlertOperator;
   threshold: number;
   window_minutes: number;
   min_samples: number;
@@ -714,12 +714,25 @@ export type AlertRule = {
   updated_at: string;
   environment?: string | null;
   version?: string | null;
+  condition?: AlertCondition;
+  baseline_minutes?: number | null;
+  /** Raw metric now and its baseline (change / anomaly rules). */
+  last_observed?: number | null;
+  last_baseline?: number | null;
 };
+
+/** gt / lt, or abs = either direction (change / anomaly rules only). */
+export type AlertOperator = "gt" | "lt" | "abs";
+/** threshold: the metric itself; change: relative change vs the previous period (drift);
+ * anomaly: z-score vs past windows. */
+export type AlertCondition = "threshold" | "change" | "anomaly";
 
 export type AlertRuleInput = {
   name: string;
   metric: AlertMetric;
-  operator: "gt" | "lt";
+  operator: AlertOperator;
+  condition?: AlertCondition;
+  baseline_minutes?: number | null;
   threshold: number;
   window_minutes: number;
   min_samples?: number | null;

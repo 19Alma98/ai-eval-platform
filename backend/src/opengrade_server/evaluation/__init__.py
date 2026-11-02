@@ -4,7 +4,12 @@ from __future__ import annotations
 
 from opengrade_server.domain.repositories import JudgeClaimCacheRepository
 from opengrade_server.evaluation.deterministic import register_deterministic_evaluators
-from opengrade_server.evaluation.judges import JUDGE_KINDS, make_llm_judge_factory
+from opengrade_server.evaluation.judges import (
+    CUSTOM_JUDGE_KIND,
+    JUDGE_KINDS,
+    make_custom_judge_factory,
+    make_llm_judge_factory,
+)
 from opengrade_server.evaluation.protocol import (
     EvaluationResult,
     EvaluationSample,
@@ -35,6 +40,9 @@ def bootstrap_evaluators(
                     kind, llm, default_model=default_model, claim_cache=claim_cache
                 ),
             )
+        register_evaluator(
+            CUSTOM_JUDGE_KIND, make_custom_judge_factory(llm, default_model=default_model)
+        )
 
 
 __all__ = [

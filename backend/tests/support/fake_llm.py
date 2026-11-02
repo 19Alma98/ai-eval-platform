@@ -38,8 +38,10 @@ def default_reply(step: str, user: str) -> dict[str, Any]:
             "verdicts": [{"reasoning": "ok", "verdict": "supported", "doc_ids": [], "quote": None}]
             * claim_count(user)
         }
-    if step.startswith("rubric"):
+    if step.startswith("rubric") or step == "custom_judge_rubric":
         return {"reasoning": "ok", "level": 5}
+    if step == "custom_judge_binary":
+        return {"reasoning": "ok", "verdict": "pass"}
     raise AssertionError(f"unexpected judge step: {step!r}")
 
 

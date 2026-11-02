@@ -5,13 +5,26 @@ window (the same numbers as the Production page). A rule that starts breaching i
 threshold fires once, a rule that recovers resolves once; ``repeat_minutes`` re-sends
 while it keeps firing. Each notification is logged as an alert event and, when a
 webhook is configured (per rule, else ``ALERT_WEBHOOK_URL``), POSTed to it.
+
+Conditions:
+
+- ``threshold``: the metric over the window vs a fixed number.
+- ``change`` (drift): relative change of the metric vs the ``baseline_minutes`` right
+  before the window, e.g. groundedness mean down 20% vs the previous week.
+- ``anomaly``: z-score of the metric vs the same metric over the past windows of the
+  same size (``baseline_minutes / window_minutes`` of them), e.g. p90 latency 3 standard
+  deviations above what the last 24 hours looked like. Past windows are aligned to
+  multiples of ``window_minutes`` so their monitoring numbers can be cached.
 """
 
 from __future__ import annotations
 
 import asyncio
 import logging
+import math
+import statistics
 import uuid
+from collections import OrderedDict
 from dataclasses import dataclass, replace
 from datetime import UTC, datetime, timedelta
 from typing import Any, Protocol
@@ -20,6 +33,7 @@ from opengrade_server.application.monitoring import GetProductionMonitoring, Pro
 from opengrade_server.application.projects import ProjectNotFoundError
 from opengrade_server.domain.alert import (
     DEFAULT_MIN_SAMPLES,
+    MIN_ANOMALY_BUCKETS,
     SAMPLED_METRICS,
     AlertEvent,
     AlertRule,
@@ -41,6 +55,10 @@ _METRIC_LABELS = {
     "score_mean": "mean",
     "score_fail_rate": "fail rate",
 }
+
+
+# Metrics that are sums over the window (not rates / percentiles / means).
+TOTAL_METRICS = frozenset({"traffic", "cost_usd", "total_tokens"})
 
 
 class AlertRuleNotFoundError(Exception):
@@ -93,6 +111,42 @@ def read_metric(rule: AlertRule, monitoring: ProductionMonitoring) -> MetricRead
     return MetricReading(sum(v * w for v, w in weighted) / total, samples)
 
 
+@dataclass(frozen=True, slots=True)
+class RuleReading:
+    """What a rule compares with its threshold.
+
+    ``value`` is the metric (threshold rules), the relative change (change rules) or the
+    z-score (anomaly rules); ``observed`` / ``baseline`` are the raw metric now and its
+    baseline (None for threshold rules).
+    """
+
+    value: float | None
+    samples: int
+    observed: float | None = None
+    baseline: float | None = None
+    baseline_std: float | None = None
+    baseline_windows: int = 0
+
+
+def relative_change(observed: float | None, baseline: float | None) -> float | None:
+    """(observed - baseline) / |baseline|; None when either is missing or baseline is 0."""
+    if observed is None or baseline is None or baseline == 0:
+        return None
+    return (observed - baseline) / abs(baseline)
+
+
+def z_score(observed: float, history: list[float]) -> tuple[float, float, float]:
+    """(z, mean, std) of ``observed`` against ``history`` (at least 2 values).
+
+    The std has a floor of 1% of |mean| (and 1e-9) so a perfectly flat history does not
+    turn a tiny wobble into an infinite z-score.
+    """
+    mean = statistics.fmean(history)
+    std = statistics.stdev(history)
+    floor = max(abs(mean) * 0.01, 1e-9)
+    return (observed - mean) / max(std, floor), mean, std
+
+
 def metric_label(rule: AlertRule) -> str:
     label = _METRIC_LABELS.get(rule.metric, rule.metric)
     if rule.score_name:
@@ -101,9 +155,19 @@ def metric_label(rule: AlertRule) -> str:
     return label
 
 
+def format_metric(rule: AlertRule, value: float | None) -> str:
+    """Format a raw metric value (ignores the rule's condition)."""
+    return format_value(replace(rule, condition="threshold"), value)
+
+
 def format_value(rule: AlertRule, value: float | None) -> str:
+    """Format what the rule compares: the metric, a relative change or a z-score."""
     if value is None:
         return "no data"
+    if rule.condition == "change":
+        return f"{value * 100:+.1f}%"
+    if rule.condition == "anomaly":
+        return f"z={value:+.1f}"
     if rule.metric in {"error_rate", "score_fail_rate"}:
         return f"{value * 100:.1f}%"
     if rule.metric.startswith("latency_"):
@@ -125,8 +189,28 @@ def _window(minutes: int) -> str:
     return f"{minutes} min"
 
 
-def alert_message(rule: AlertRule, kind: str, value: float | None, project_name: str) -> str:
-    op = ">" if rule.operator == "gt" else "<"
+def _op(rule: AlertRule) -> str:
+    if rule.operator == "abs":
+        return "beyond ±"
+    return ">" if rule.operator == "gt" else "<"
+
+
+def _threshold_text(rule: AlertRule) -> str:
+    if rule.operator == "abs":
+        if rule.condition == "change":
+            return f"{rule.threshold * 100:.1f}%"
+        return f"{rule.threshold:.1f}"
+    return format_value(rule, rule.threshold)
+
+
+def alert_message(
+    rule: AlertRule,
+    kind: str,
+    value: float | None,
+    project_name: str,
+    reading: RuleReading | None = None,
+) -> str:
+    op = _op(rule)
     head = {
         "firing": "FIRING",
         "repeat": "STILL FIRING",
@@ -139,14 +223,29 @@ def alert_message(rule: AlertRule, kind: str, value: float | None, project_name:
         if value
     )
     where = f" [{scope}]" if scope else ""
+    prefix = f"[OpenGrade] {head} {project_name}{where} / {rule.name}: {metric_label(rule)}"
+    if rule.condition == "threshold":
+        return (
+            f"{prefix} {format_value(rule, value)} (alert when {op} "
+            f"{_threshold_text(rule)}, last {_window(rule.window_minutes)})"
+        )
+    observed = reading.observed if reading is not None else rule.last_observed
+    baseline = reading.baseline if reading is not None else rule.last_baseline
+    period = _window(rule.baseline_minutes or rule.window_minutes)
+    if rule.condition == "change":
+        compared = f"previous {period}"
+        what = "change"
+    else:
+        compared = f"the {rule.anomaly_buckets} windows of the previous {period}"
+        what = "z-score"
     return (
-        f"[OpenGrade] {head} {project_name}{where} / {rule.name}: {metric_label(rule)} "
-        f"{format_value(rule, value)} (alert when {op} {format_value(rule, rule.threshold)}, "
-        f"last {_window(rule.window_minutes)})"
+        f"{prefix} {format_metric(rule, observed)} vs {format_metric(rule, baseline)} "
+        f"baseline ({format_value(rule, value)}; alert when {what} {op} "
+        f"{_threshold_text(rule)}, last {_window(rule.window_minutes)} vs {compared})"
     )
 
 
-def next_state(rule: AlertRule, reading: MetricReading) -> str:
+def next_state(rule: AlertRule, reading: MetricReading | RuleReading) -> str:
     if reading.value is None or reading.samples < rule.min_samples:
         return "no_data"
     return "firing" if rule.breached(reading.value) else "ok"
@@ -170,6 +269,7 @@ class RuleEvaluation:
     value: float | None
     samples: int
     event: AlertEvent | None
+    reading: RuleReading | None = None
 
 
 class AlertDispatcher:
@@ -196,12 +296,16 @@ class AlertDispatcher:
         value: float | None,
         samples: int,
         project_name: str,
+        reading: RuleReading | None = None,
     ) -> AlertEvent:
-        message = alert_message(rule, kind, value, project_name)
+        message = alert_message(rule, kind, value, project_name, reading)
         url = rule.webhook_url or self._default_webhook_url
         status, error = "skipped", None
         if url:
             payload = self._payload(rule, kind, value, samples, project_name, message)
+            if rule.condition != "threshold" and rule.webhook_format == "json":
+                payload["observed"] = reading.observed if reading else rule.last_observed
+                payload["baseline"] = reading.baseline if reading else rule.last_baseline
             try:
                 error = await self._notifier.send(url, payload)
             except Exception as exc:  # noqa: BLE001 — delivery must never break evaluation
@@ -251,12 +355,42 @@ class AlertDispatcher:
                 "window_minutes": rule.window_minutes,
                 "environment": rule.environment,
                 "version": rule.version,
+                "condition": rule.condition,
+                "baseline_minutes": rule.baseline_minutes,
             },
             "value": value,
             "samples": samples,
             "url": link,
             "at": datetime.now(UTC).isoformat(),
         }
+
+
+# Monitoring numbers of past, aligned baseline windows: (project, env, version, start,
+# minutes) -> ProductionMonitoring. Shared across evaluation passes (one per minute).
+_BASELINE_CACHE: OrderedDict[
+    tuple[uuid.UUID, str | None, str | None, datetime, int], ProductionMonitoring
+] = OrderedDict()
+_BASELINE_CACHE_MAX = 4096
+# A window this recent may still receive late spans / judge scores: not cached.
+_BASELINE_SETTLE = timedelta(minutes=15)
+
+
+def clear_baseline_cache() -> None:
+    _BASELINE_CACHE.clear()
+
+
+def anomaly_windows(rule: AlertRule, now: datetime) -> list[tuple[datetime, datetime]]:
+    """Past windows (oldest first) an anomaly rule compares the current window with.
+
+    They end at the last multiple of ``window_minutes`` (since the epoch) before the
+    current window starts, so the same windows recur from one minute to the next.
+    """
+    width = timedelta(minutes=rule.window_minutes)
+    epoch = datetime(1970, 1, 1, tzinfo=UTC)
+    current_start = now - width
+    aligned_end = epoch + ((current_start - epoch) // width) * width
+    n = rule.anomaly_buckets
+    return [(aligned_end - (n - i) * width, aligned_end - (n - i - 1) * width) for i in range(n)]
 
 
 class EvaluateAlertRules:
@@ -284,39 +418,137 @@ class EvaluateAlertRules:
         else:
             rules = await self._alerts.list_enabled_rules()
         out: list[RuleEvaluation] = []
-        # One monitoring pass per (project, window): rules on the same window share it.
-        cache: dict[tuple[uuid.UUID, int, str | None, str | None], ProductionMonitoring | None] = {}
+        # One monitoring pass per (project, period): rules on the same period share it.
+        cache: dict[
+            tuple[uuid.UUID, datetime, datetime, str | None, str | None],
+            ProductionMonitoring | None,
+        ] = {}
         names: dict[uuid.UUID, str] = {}
         for rule in rules:
-            key = (rule.project_id, rule.window_minutes, rule.environment, rule.version)
-            if key not in cache:
-                try:
-                    cache[key] = await self._monitoring.execute(
-                        rule.project_id,
-                        since=now - timedelta(minutes=rule.window_minutes),
-                        until=now,
-                        environment=rule.environment,
-                        version=rule.version,
-                    )
-                except ProjectNotFoundError:
-                    cache[key] = None
-            monitoring = cache[key]
-            if monitoring is None:
+            try:
+                reading = await self._reading(rule, now, cache)
+            except ProjectNotFoundError:
+                continue
+            if reading is None:
                 continue
             if rule.project_id not in names:
                 project = await self._projects.get_by_id(rule.project_id)
                 names[rule.project_id] = project.name if project else str(rule.project_id)
-            out.append(await self._evaluate(rule, monitoring, now, names[rule.project_id]))
+            out.append(await self._evaluate(rule, reading, now, names[rule.project_id]))
         return out
+
+    async def _monitoring_for(
+        self,
+        rule: AlertRule,
+        since: datetime,
+        until: datetime,
+        cache: dict[
+            tuple[uuid.UUID, datetime, datetime, str | None, str | None],
+            ProductionMonitoring | None,
+        ],
+    ) -> ProductionMonitoring | None:
+        key = (rule.project_id, since, until, rule.environment, rule.version)
+        if key not in cache:
+            try:
+                cache[key] = await self._monitoring.execute(
+                    rule.project_id,
+                    since=since,
+                    until=until,
+                    environment=rule.environment,
+                    version=rule.version,
+                )
+            except ProjectNotFoundError:
+                cache[key] = None
+        return cache[key]
+
+    async def _past_window(
+        self,
+        rule: AlertRule,
+        since: datetime,
+        until: datetime,
+        now: datetime,
+        cache: dict[
+            tuple[uuid.UUID, datetime, datetime, str | None, str | None],
+            ProductionMonitoring | None,
+        ],
+    ) -> ProductionMonitoring | None:
+        minutes = int((until - since).total_seconds() // 60)
+        key = (rule.project_id, rule.environment, rule.version, since, minutes)
+        hit = _BASELINE_CACHE.get(key)
+        if hit is not None:
+            _BASELINE_CACHE.move_to_end(key)
+            return hit
+        monitoring = await self._monitoring_for(rule, since, until, cache)
+        if monitoring is not None and until <= now - _BASELINE_SETTLE:
+            _BASELINE_CACHE[key] = monitoring
+            while len(_BASELINE_CACHE) > _BASELINE_CACHE_MAX:
+                _BASELINE_CACHE.popitem(last=False)
+        return monitoring
+
+    async def _reading(
+        self,
+        rule: AlertRule,
+        now: datetime,
+        cache: dict[
+            tuple[uuid.UUID, datetime, datetime, str | None, str | None],
+            ProductionMonitoring | None,
+        ],
+    ) -> RuleReading | None:
+        """None when the project is gone."""
+        window_start = now - timedelta(minutes=rule.window_minutes)
+        current = await self._monitoring_for(rule, window_start, now, cache)
+        if current is None:
+            return None
+        reading = read_metric(rule, current)
+        if rule.condition == "threshold":
+            return RuleReading(reading.value, reading.samples)
+        if rule.condition == "change":
+            baseline_start = window_start - timedelta(minutes=rule.baseline_minutes or 0)
+            past = await self._monitoring_for(rule, baseline_start, window_start, cache)
+            if past is None:
+                return None
+            base = read_metric(rule, past)
+            if base.samples < rule.min_samples:
+                # Too little history to compare with: no data, not "no change".
+                return RuleReading(None, reading.samples, reading.value, base.value)
+            base_value = base.value
+            if base_value is not None and rule.metric in TOTAL_METRICS:
+                # Totals grow with the period: scale the baseline to one window.
+                base_value *= rule.window_minutes / (rule.baseline_minutes or rule.window_minutes)
+            change = relative_change(reading.value, base_value)
+            return RuleReading(
+                change, reading.samples, reading.value, base_value, baseline_windows=1
+            )
+        history: list[float] = []
+        for since, until in anomaly_windows(rule, now):
+            past = await self._past_window(rule, since, until, now, cache)
+            if past is None:
+                return None
+            point = read_metric(rule, past)
+            if point.value is not None and point.samples >= rule.min_samples:
+                history.append(point.value)
+        if reading.value is None or len(history) < MIN_ANOMALY_BUCKETS:
+            mean = statistics.fmean(history) if history else None
+            return RuleReading(
+                None, reading.samples, reading.value, mean, baseline_windows=len(history)
+            )
+        z, mean, std = z_score(reading.value, history)
+        return RuleReading(
+            z if math.isfinite(z) else None,
+            reading.samples,
+            reading.value,
+            mean,
+            baseline_std=std,
+            baseline_windows=len(history),
+        )
 
     async def _evaluate(
         self,
         rule: AlertRule,
-        monitoring: ProductionMonitoring,
+        reading: RuleReading,
         now: datetime,
         project_name: str,
     ) -> RuleEvaluation:
-        reading = read_metric(rule, monitoring)
         state = next_state(rule, reading)
         kind = notification_kind(rule, state, now)
         event = None
@@ -327,18 +559,25 @@ class EvaluateAlertRules:
                 value=reading.value,
                 samples=reading.samples,
                 project_name=project_name,
+                reading=reading,
             )
         updated = await self._alerts.update_rule(
             replace(
                 rule,
                 state=state,
                 last_value=reading.value,
+                last_observed=reading.observed,
+                last_baseline=reading.baseline,
                 last_evaluated_at=now,
                 last_notified_at=now if event is not None else rule.last_notified_at,
             )
         )
         return RuleEvaluation(
-            rule=updated, value=reading.value, samples=reading.samples, event=event
+            rule=updated,
+            value=reading.value,
+            samples=reading.samples,
+            event=event,
+            reading=reading,
         )
 
 
@@ -361,11 +600,21 @@ class AlertRuleFields:
     enabled: bool | None = None
     environment: str | None = None
     version: str | None = None
+    condition: str | None = None
+    baseline_minutes: int | None = None
     clear: frozenset[str] = frozenset()
 
 
 _CLEARABLE = frozenset(
-    {"score_name", "score_source", "webhook_url", "repeat_minutes", "environment", "version"}
+    {
+        "score_name",
+        "score_source",
+        "webhook_url",
+        "repeat_minutes",
+        "environment",
+        "version",
+        "baseline_minutes",
+    }
 )
 _CONDITION_FIELDS = frozenset(
     {
@@ -378,6 +627,8 @@ _CONDITION_FIELDS = frozenset(
         "score_source",
         "environment",
         "version",
+        "condition",
+        "baseline_minutes",
     }
 )
 
@@ -414,6 +665,8 @@ class ManageAlertRules:
             enabled=True if fields.enabled is None else fields.enabled,
             environment=fields.environment,
             version=fields.version,
+            condition=fields.condition or "threshold",
+            baseline_minutes=fields.baseline_minutes,
         )
         return await self._alerts.add_rule(rule)
 
@@ -450,6 +703,8 @@ class ManageAlertRules:
                 "enabled",
                 "environment",
                 "version",
+                "condition",
+                "baseline_minutes",
             )
             if (value := getattr(fields, name)) is not None
         }
@@ -458,10 +713,22 @@ class ManageAlertRules:
         if "metric" in changes and "min_samples" not in changes:
             sampled = changes["metric"] in SAMPLED_METRICS
             changes["min_samples"] = DEFAULT_MIN_SAMPLES if sampled else 0
+        if ("condition" in changes or "window_minutes" in changes) and (
+            "baseline_minutes" not in changes
+        ):
+            # Re-derive the default comparison period for the new condition / window.
+            changes["baseline_minutes"] = None
         updated = replace(rule, **changes, updated_at=datetime.now(UTC)).validated()
         if changed_condition or ("enabled" in changes and not changes["enabled"]):
             # A new condition starts from scratch: no stale "firing" or "resolved".
-            updated = replace(updated, state="no_data", last_value=None, last_notified_at=None)
+            updated = replace(
+                updated,
+                state="no_data",
+                last_value=None,
+                last_observed=None,
+                last_baseline=None,
+                last_notified_at=None,
+            )
         return await self._alerts.update_rule(updated)
 
     async def delete(self, rule_id: uuid.UUID) -> None:

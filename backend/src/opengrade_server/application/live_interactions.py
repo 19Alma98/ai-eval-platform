@@ -39,6 +39,12 @@ from opengrade_server.domain.repositories import (
 )
 from opengrade_server.domain.retrieval import normalize_documents
 from opengrade_server.domain.trace_score import TraceScore, trace_score_is_failed
+from opengrade_server.evaluation.judges.custom import (
+    CUSTOM_JUDGE_KIND,
+    custom_judge_is_live,
+    custom_judge_needs_reference,
+    custom_judge_threshold,
+)
 from opengrade_server.evaluation.judges.errors import JUDGE_OUTPUT_INVALID
 from opengrade_server.evaluation.judges.warnings import (
     JUDGE_MODEL_UNSUITABLE,
@@ -153,6 +159,56 @@ async def _ensure_goldless_evaluator_ids(
         in_use.add(evaluator.id)
         resolved.append(replace(entry, evaluator_id=evaluator.id))
     return resolved
+
+
+async def _live_entries(
+    metrics_set: MetricsSet, evaluators: EvaluatorRepository
+) -> list[MetricsSetEntry]:
+    """Enabled entries that can score live traffic (no reference answer), in set order.
+
+    Built-in gold-less judges by kind, plus project custom judges that do not read the
+    reference answer.
+    """
+    builtin = {id(e) for e in filter_goldless_entries(list(metrics_set.entries))}
+    out: list[MetricsSetEntry] = []
+    for entry in metrics_set.entries:
+        if id(entry) in builtin:
+            out.append(entry)
+            continue
+        if not entry.enabled or entry.evaluator_id is None:
+            continue
+        entity = await evaluators.get_by_id(entry.evaluator_id)
+        if entity is None:
+            continue
+        config = {**entity.config, **entry.config}
+        if str(entity.config.get("kind", "")).strip() == CUSTOM_JUDGE_KIND and (
+            not custom_judge_needs_reference(config)
+        ):
+            out.append(entry)
+    # Custom judges marked ``live`` score production traffic even when they are not in
+    # the metrics set (latest version per name; an entry of the set wins).
+    taken = {e.kind for e in out} | {e.evaluator_id for e in out}
+    latest: dict[str, Any] = {}
+    for entity in await evaluators.list_by_project(metrics_set.project_id):
+        current = latest.get(entity.name)
+        if current is None or entity.version > current.version:
+            latest[entity.name] = entity
+    for name in sorted(latest):
+        entity = latest[name]
+        if not custom_judge_is_live(entity.config) or name in taken or entity.id in taken:
+            continue
+        out.append(
+            MetricsSetEntry(
+                id=uuid.uuid4(),
+                kind=name,
+                enabled=True,
+                threshold=custom_judge_threshold(entity.config),
+                config={},
+                evaluator_id=entity.id,
+                is_default=False,
+            )
+        )
+    return out
 
 
 def score_is_failed(score: LiveInteractionScore) -> bool:
@@ -281,14 +337,15 @@ class ScoreLiveInteraction:
 
         try:
             metrics_set = await self._resolve_metrics_set(interaction)
-            goldless = filter_goldless_entries(list(metrics_set.entries))
+            goldless = await _live_entries(metrics_set, self._evaluators)
             if not goldless:
                 interaction = await self._live.update(
                     interaction.with_status(
                         "scored",
                         metrics_set_id=metrics_set.id,
                         score_warning="No gold-less metrics enabled in the metrics set "
-                        f"(allowlist: {', '.join(sorted(GOLDLESS_METRIC_KINDS))})",
+                        f"(allowlist: {', '.join(sorted(GOLDLESS_METRIC_KINDS))}, or a custom "
+                        "judge that does not read the reference answer)",
                         error_message=None,
                         scored_at=datetime.now(UTC),
                     )

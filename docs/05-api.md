@@ -274,7 +274,33 @@ Errors: 404 project, experiment or alias not found; 400 empty alias name; 409 ex
 ```http
 GET /projects/{project_id}/evaluators
 POST /projects/{project_id}/evaluators
+POST /projects/{project_id}/evaluators/preview   # run a config on one sample, nothing stored
 ```
+
+**Custom LLM judges.** `type: "llm_judge"`, `config.kind: "custom_judge"`:
+
+```json
+{
+  "kind": "custom_judge",
+  "criteria": "The answer is polite and professional, with no slang.",
+  "scale": "1-5",
+  "levels": {"5": "warm and formal", "1": "rude"},
+  "fields": ["input", "output"],
+  "examples": [{"output": "yo dude", "level": 1, "reasoning": "slang"}],
+  "model": "gpt-4o-mini",
+  "temperature": 0,
+  "live": true,
+  "threshold": 0.5
+}
+```
+
+- `criteria` (required, ≤ 4000 chars) is the only text the project writes; the server wraps it in a fixed prompt that tells the judge to treat the graded fields as data, not instructions.
+- `scale`: `1-5` (score `(level-1)/4`) or `binary` (pass = 1, fail = 0). `levels` (1-5 only) overrides the default level descriptions; `examples` (≤ 5) are few-shot graded examples.
+- `fields`: what the judge reads, from `input`, `output` (required), `expected`, `documents`, `metadata`. A missing field SKIPs the item instead of calling the judge.
+- `live: true` also scores production traffic (live interactions): the latest version of each live judge runs next to the built-in gold-less judges, with `threshold` as pass mark. A live judge cannot read `expected`. A custom judge that is an entry of the project's metrics set runs live too, unless it reads `expected`.
+- In experiments, add the judge to a metrics set as an entry whose `kind` is the judge name and `evaluator_id` its id (UI: Metrics → set → "Add a custom judge"; SDK: `opengrade.LlmJudge`). Evaluators are immutable: a changed config is a new `version`.
+
+`preview` body: `{"config": {...}, "sample": {"input", "output", "expected_output", "documents", "metadata"}}` → `score`, `label`, `explanation`, `metadata`, `system_prompt` (custom judges). Calls the judge model; 400 for an invalid config or unknown kind.
 
 ## Metrics sets
 
@@ -398,7 +424,16 @@ DELETE /alert-rules/{rule_id}
 POST   /alert-rules/{rule_id}/test                    # send a test notification
 ```
 
-Body: `name`, `metric` (`error_rate`, `latency_p50_ms` / `latency_p90_ms` / `latency_p99_ms`, `traffic`, `cost_usd`, `total_tokens`, `needs_review`, `score_mean`, `score_fail_rate`), `operator` (`gt` / `lt`), `threshold` (rates are 0–1), `window_minutes` (5–10080, default 60), `min_samples` (default 10 for rates/percentiles/scores, else 0), `score_name` + optional `score_source` (`judge`, `sdk`, `human`) for `score_*`, `webhook_url`, `webhook_format` (`json` or `slack`), `repeat_minutes`, `enabled`.
+Body: `name`, `metric` (`error_rate`, `latency_p50_ms` / `latency_p90_ms` / `latency_p99_ms`, `traffic`, `cost_usd`, `total_tokens`, `needs_review`, `score_mean`, `score_fail_rate`), `operator` (`gt` / `lt`, or `abs` = either direction for change / anomaly), `threshold` (rates are 0–1), `condition` (`threshold` default, `change`, `anomaly`), `baseline_minutes` (change / anomaly), `window_minutes` (5–10080, default 60), `min_samples` (default 10 for rates/percentiles/scores, else 0), `score_name` + optional `score_source` (`judge`, `sdk`, `human`) for `score_*`, `webhook_url`, `webhook_format` (`json` or `slack`), `repeat_minutes`, `enabled`.
+
+Conditions:
+
+- `threshold`: the metric over the window vs `threshold`.
+- `change` (drift): relative change `(current - baseline) / |baseline|` vs the `baseline_minutes` right before the window (default: one window; e.g. `10080` = previous week). `threshold: -0.2, operator: lt` fires on a 20% drop. Totals (`traffic`, `cost_usd`, `total_tokens`) are scaled to one window before comparing. A baseline of 0 or with fewer than `min_samples` samples is `no_data`.
+- `anomaly`: z-score `(current - mean) / std` of the metric vs the past windows of the same size inside `baseline_minutes` (3–48 windows, default 24; windows aligned to multiples of `window_minutes` and cached). Windows with fewer than `min_samples` samples are left out; fewer than 3 usable windows is `no_data`. The std has a floor of 1% of the mean. `threshold: 3, operator: abs` fires on a 3-sigma spike or drop.
+- `needs_review` only supports `threshold`.
+
+For change / anomaly rules `last_value` is the relative change / z-score; `last_observed` and `last_baseline` hold the raw metric and its baseline (also in the `json` webhook payload as `observed` / `baseline`, and on `/alert-rules/evaluate` results).
 
 State: `ok`, `firing`, or `no_data` (fewer than `min_samples`). Becoming `firing` notifies once, going back to `ok` sends `resolved`; `repeat_minutes` re-sends while firing. Changing the condition resets the state. Every notification is logged as an alert event with its delivery status (`sent`, `failed`, `skipped` when no webhook). Webhook: the rule's URL, else `ALERT_WEBHOOK_URL`. The `json` payload has `text` (Slack-compatible), `event`, `project`, `rule`, `value`, `samples`, `url`, `at`; `slack` sends only `text`. Set `PUBLIC_BASE_URL` to include a link to the Production page.
 

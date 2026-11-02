@@ -357,6 +357,32 @@ class CreateEvaluatorRequest(BaseModel):
         return self
 
 
+class PreviewSample(BaseModel):
+    input: Any | None = None
+    output: Any | None = None
+    expected_output: Any | None = None
+    documents: list[dict[str, Any]] | None = None
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+
+class PreviewEvaluatorRequest(BaseModel):
+    config: dict[str, Any]
+    sample: PreviewSample
+
+    @model_validator(mode="after")
+    def _validate_config(self) -> Self:
+        _validate_judge_config(str(self.config.get("kind", "")), self.config)
+        return self
+
+
+class PreviewEvaluatorResponse(BaseModel):
+    score: float | None
+    label: str | None
+    explanation: str | None
+    metadata: dict[str, Any]
+    system_prompt: str | None = None
+
+
 class EvaluatorResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -1184,8 +1210,10 @@ class CreateAlertRuleRequest(BaseModel):
 
     name: str = Field(min_length=1, max_length=200)
     metric: AlertMetricName
-    operator: Literal["gt", "lt"] = "gt"
+    operator: Literal["gt", "lt", "abs"] = "gt"
     threshold: float
+    condition: Literal["threshold", "change", "anomaly"] = "threshold"
+    baseline_minutes: int | None = Field(default=None, ge=5, le=30 * 24 * 60)
     window_minutes: int = Field(default=60, ge=5, le=7 * 24 * 60)
     min_samples: int | None = Field(default=None, ge=0)
     score_name: str | None = Field(default=None, max_length=200)
@@ -1205,8 +1233,10 @@ class UpdateAlertRuleRequest(BaseModel):
 
     name: str | None = Field(default=None, min_length=1, max_length=200)
     metric: AlertMetricName | None = None
-    operator: Literal["gt", "lt"] | None = None
+    operator: Literal["gt", "lt", "abs"] | None = None
     threshold: float | None = None
+    condition: Literal["threshold", "change", "anomaly"] | None = None
+    baseline_minutes: int | None = Field(default=None, ge=5, le=30 * 24 * 60)
     window_minutes: int | None = Field(default=None, ge=5, le=7 * 24 * 60)
     min_samples: int | None = Field(default=None, ge=0)
     score_name: str | None = Field(default=None, max_length=200)
@@ -1242,6 +1272,10 @@ class AlertRuleResponse(BaseModel):
     updated_at: datetime
     environment: str | None = None
     version: str | None = None
+    condition: str = "threshold"
+    baseline_minutes: int | None = None
+    last_observed: float | None = None
+    last_baseline: float | None = None
 
 
 class AlertEventResponse(BaseModel):
@@ -1262,6 +1296,9 @@ class AlertEvaluationResponse(BaseModel):
     value: float | None
     samples: int
     event: AlertEventResponse | None
+    observed: float | None = None
+    baseline: float | None = None
+    baseline_windows: int = 0
 
 
 class ReleaseFacetValueResponse(BaseModel):

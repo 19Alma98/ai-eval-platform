@@ -27,6 +27,15 @@ import {
 } from "@/lib/metrics-catalog";
 import { withProjectQuery } from "@/lib/project-href";
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { useEvaluators } from "@/features/experiments/use-experiments";
+import { judgesNotInSet } from "./custom-judge";
+import {
   metricsSetQueryOptions,
   useDeleteMetricsSetEntry,
   useMetricsSet,
@@ -69,6 +78,7 @@ export function MetricsSetDetailView({
   const patch = usePatchMetricsSet(metricsSetId, projectId);
   const version = useVersionMetricsSet(metricsSetId, projectId);
   const removeEntry = useDeleteMetricsSetEntry(metricsSetId, projectId);
+  const evaluators = useEvaluators(projectId);
   const queryOpts = metricsSetQueryOptions(metricsSetId);
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [thresholdDraft, setThresholdDraft] = useState<Record<string, string>>(
@@ -313,6 +323,25 @@ export function MetricsSetDetailView({
 
   const listHref = withProjectQuery("/metrics", projectId);
 
+  const addJudge = (evaluatorId: string) => {
+    const judge = (evaluators.data ?? []).find((e) => e.id === evaluatorId);
+    if (!judge || editsBlocked) return;
+    saveEntries([
+      ...metricsSet.entries,
+      {
+        id: `new-${judge.id}`,
+        kind: judge.name,
+        enabled: true,
+        threshold: 0.5,
+        config: {},
+        evaluator_id: judge.id,
+        is_default: false,
+        created_at: new Date().toISOString(),
+      },
+    ]);
+  };
+  const addableJudges = judgesNotInSet(evaluators.data ?? [], metricsSet.entries);
+
   return (
     <div className="flex flex-col gap-4">
       <PageHeader
@@ -400,6 +429,29 @@ export function MetricsSetDetailView({
           aria-label="Metrics in this set"
         />
       )}
+
+      {addableJudges.length > 0 ? (
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-sm text-muted-foreground">Add a custom judge:</span>
+          <Select
+            value=""
+            onValueChange={(v) => {
+              if (v) addJudge(v);
+            }}
+          >
+            <SelectTrigger aria-label="Add a custom judge" className="w-56">
+              <SelectValue placeholder="Choose a judge" />
+            </SelectTrigger>
+            <SelectContent>
+              {addableJudges.map((judge) => (
+                <SelectItem key={judge.id} value={judge.id}>
+                  {judge.name} · v{judge.version}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+      ) : null}
     </div>
   );
 }

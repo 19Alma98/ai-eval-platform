@@ -1923,6 +1923,10 @@ def _alert_rule_to_domain(row: AlertRuleModel) -> AlertRule:
         updated_at=row.updated_at,
         environment=row.environment,
         version=row.version,
+        condition=row.condition,
+        baseline_minutes=row.baseline_minutes,
+        last_observed=row.last_observed,
+        last_baseline=row.last_baseline,
     )
 
 
@@ -1962,6 +1966,10 @@ _ALERT_RULE_FIELDS = (
     "updated_at",
     "environment",
     "version",
+    "condition",
+    "baseline_minutes",
+    "last_observed",
+    "last_baseline",
 )
 
 

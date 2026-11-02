@@ -178,6 +178,30 @@ opengrade.evaluate(dataset="gold-v1", task=answer_question, metrics=["hit_at_k",
 - `version` is stored in the metric config: bump it when the code changes, so compare reports a config mismatch instead of a misleading delta.
 - When the task fails on an item, that item counts as FAIL (score 0). When the metric raises, the item is ERROR. A local metric name must not match a server evaluator name (409). If the submission fails, `result.metrics` falls back to the in-process mean.
 
+### Custom LLM judges
+
+When "good" is a quality an LLM has to judge (tone, format, policy, completeness), describe it in plain language instead of writing a prompt and a parser. The server runs the judge, so its scores are stored, shown in the UI, compared with the baseline and gated by the release check like built-in metrics.
+
+```python
+tone = opengrade.LlmJudge(
+    "tone",
+    criteria="The answer is polite and professional, uses no slang and never blames the user.",
+    scale="binary",  # or "1-5" (score 0, .25, .5, .75, 1)
+    fields=("input", "output"),  # + "expected", "documents", "metadata"
+    threshold=0.5,
+    # levels={5: "warm and formal", 1: "rude"}, examples=[{"output": "yo", "verdict": "fail"}],
+    # model="gpt-4o-mini",  # default: the server's LLM_MODEL
+)
+
+print(tone.preview(input="Can I carry over PTO?", output="lol no").explanation)  # try it, nothing stored
+opengrade.evaluate(dataset="gold-v1", task=answer_question, metrics=["groundedness", tone])
+```
+
+- The judge is stored as a project evaluator (`custom_judge`); `evaluate` reuses it while the config is unchanged and creates a new version when it changes, so different criteria are never compared as the same metric.
+- `live=True` also scores production traffic from `init(live=True)`, next to the built-in judges (a live judge cannot read `expected`). `evaluate` registers the judge; for production only, call `tone.register()` once (e.g. at startup). You can then alert on its `score_fail_rate` / `score_mean`.
+- Missing inputs (no answer, no reference for `expected`, no documents for `documents`) SKIP the item. Judge failures are ERROR with the reason.
+- UI: Metrics → **Custom judges** (with a "Grade sample" preview), and "Add a custom judge" on a metrics set.
+
 ### Params and run metrics
 ```python
 with opengrade.start_experiment("v2", dataset="gold-v1", params={"model": "gemma4"}) as exp:
@@ -286,7 +310,7 @@ with Client("http://localhost:8000") as client:
 
 Control-plane methods return **Pydantic** models (see `opengrade.models`); use attributes or `.model_dump()` for a dict. Prefer `with Client(...)` / `client.close()` so the shared `httpx2` connection pool is released.
 
-Namespaces: `projects`, `datasets` (`create`, `create_with_items`, `add_item`, `get`, `list`, `import_items`), `experiments` (`create`, `get`, `list_outputs`, `upsert_outputs`, `evaluate_pack`, `summary`, `compare`), `metrics_packs` (`ensure`, `get`), `metrics_sets` (`list`, `get`, `create`), `live_runs` (`submit`, `list`, `get`, `promote`, `rescore`), `app_configs` (`create_app_config`, `list_app_configs`, `set_alias`, `get_aliases`). Non-2xx responses raise `OpengradeAPIError` (with parsed FastAPI `detail` when present).
+Namespaces: `projects`, `datasets` (`create`, `create_with_items`, `add_item`, `get`, `list`, `import_items`), `experiments` (`create`, `get`, `list_outputs`, `upsert_outputs`, `evaluate_pack`, `summary`, `compare`), `metrics_packs` (`ensure`, `get`), `metrics_sets` (`list`, `get`, `create`), `evaluators` (`list`, `create`, `preview`), `alerts`, `live_runs` (`submit`, `list`, `get`, `promote`, `rescore`), `app_configs` (`create_app_config`, `list_app_configs`, `set_alias`, `get_aliases`). Non-2xx responses raise `OpengradeAPIError` (with parsed FastAPI `detail` when present).
 
 ### Async control plane (`AsyncClient`)
 
@@ -398,7 +422,7 @@ opengrade.log_feedback(True, trace_id=trace_id, user_id="user-42", comment="grea
 
 ### Alerts
 
-The server checks alert rules every minute on production data and notifies a webhook (Slack or any URL) when one fires or resolves. Create them in the UI (Production → Alerts) or as code:
+The server checks alert rules every minute on production data and notifies a webhook (Slack or any URL) when one fires or resolves. A rule compares the metric with a fixed `threshold` (default), with the previous period (`condition="change"`: drift, threshold is a relative change) or with its recent history (`condition="anomaly"`: threshold is a z-score). Create them in the UI (Production → Alerts) or as code:
 
 ```python
 client = opengrade.get_client()
@@ -410,6 +434,26 @@ client.alerts.create(
     window_minutes=60,
     webhook_url="https://hooks.slack.com/services/...",
     webhook_format="slack",
+)
+# Drift: groundedness mean down 20% vs the previous week.
+client.alerts.create(
+    name="Groundedness drift",
+    metric="score_mean",
+    score_name="groundedness",
+    condition="change",
+    operator="lt",
+    threshold=-0.2,
+    window_minutes=60,
+    baseline_minutes=7 * 24 * 60,
+)
+# Anomaly: p90 latency 3 standard deviations away from the last 24 hours (hourly windows).
+client.alerts.create(
+    name="Latency anomaly",
+    metric="latency_p90_ms",
+    condition="anomaly",
+    operator="abs",
+    threshold=3,
+    window_minutes=60,
 )
 client.alerts.list()  # with state: ok / firing / no_data
 client.alerts.events()  # notification log

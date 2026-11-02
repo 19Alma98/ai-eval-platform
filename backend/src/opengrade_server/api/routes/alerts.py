@@ -48,6 +48,10 @@ def _rule_response(rule: AlertRule) -> AlertRuleResponse:
         updated_at=rule.updated_at,
         environment=rule.environment,
         version=rule.version,
+        condition=rule.condition,
+        baseline_minutes=rule.baseline_minutes,
+        last_observed=rule.last_observed,
+        last_baseline=rule.last_baseline,
     )
 
 
@@ -121,6 +125,9 @@ async def evaluate_alert_rules(
             value=r.value,
             samples=r.samples,
             event=_event_response(r.event) if r.event else None,
+            observed=r.reading.observed if r.reading else None,
+            baseline=r.reading.baseline if r.reading else None,
+            baseline_windows=r.reading.baseline_windows if r.reading else 0,
         )
         for r in results
     ]
