@@ -1,5 +1,5 @@
 import { apiGet } from "./client";
-import type { TraceDetail, TraceListResponse } from "./types";
+import type { TraceDetail, TraceFacets, TraceListResponse } from "./types";
 
 export function getTrace(projectId: string, traceId: string) {
   return apiGet<TraceDetail>(
@@ -17,6 +17,10 @@ export function listTraces(
     limit?: number;
     environment?: string | null;
     version?: string | null;
+    userId?: string | null;
+    sessionId?: string | null;
+    tags?: string[];
+    metadata?: string[]; // "key:value"
   },
 ) {
   const params = new URLSearchParams();
@@ -27,8 +31,16 @@ export function listTraces(
   if (opts?.since) params.set("since", opts.since);
   if (opts?.cursor) params.set("cursor", opts.cursor);
   if (opts?.limit != null) params.set("limit", String(opts.limit));
+  if (opts?.userId) params.set("user_id", opts.userId);
+  if (opts?.sessionId) params.set("session_id", opts.sessionId);
+  for (const tag of opts?.tags ?? []) params.append("tag", tag);
+  for (const pair of opts?.metadata ?? []) params.append("metadata", pair);
   const qs = params.toString();
   return apiGet<TraceListResponse>(
     `/api/v1/projects/${projectId}/traces${qs ? `?${qs}` : ""}`,
   );
+}
+
+export function getTraceFacets(projectId: string) {
+  return apiGet<TraceFacets>(`/api/v1/projects/${projectId}/traces/facets`);
 }

@@ -2,7 +2,7 @@
 
 import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
 import { getLiveInteraction } from "@/lib/api/live-runs";
-import { getTrace, listTraces } from "@/lib/api/traces";
+import { getTrace, getTraceFacets, listTraces } from "@/lib/api/traces";
 
 export type TraceFilters = {
   status?: string;
@@ -10,6 +10,10 @@ export type TraceFilters = {
   since?: string;
   environment?: string | null;
   version?: string | null;
+  userId?: string | null;
+  sessionId?: string | null;
+  tags?: string[];
+  metadata?: string[];
 };
 
 export function tracesQueryKey(projectId: string, filters: TraceFilters) {
@@ -21,6 +25,10 @@ export function tracesQueryKey(projectId: string, filters: TraceFilters) {
     filters.since ?? "",
     filters.environment ?? "",
     filters.version ?? "",
+    filters.userId ?? "",
+    filters.sessionId ?? "",
+    (filters.tags ?? []).join("\u0000"),
+    (filters.metadata ?? []).join("\u0000"),
   ] as const;
 }
 
@@ -33,6 +41,16 @@ export function useTraces(projectId: string | null, filters: TraceFilters) {
     initialPageParam: null as string | null,
     getNextPageParam: (last) => last.next_cursor,
     enabled: Boolean(projectId),
+  });
+}
+
+/** Filter suggestions; changes slowly, so cached for a minute. */
+export function useTraceFacets(projectId: string | null) {
+  return useQuery({
+    queryKey: ["trace-facets", projectId ?? ""],
+    queryFn: () => getTraceFacets(projectId!),
+    enabled: Boolean(projectId),
+    staleTime: 60_000,
   });
 }
 

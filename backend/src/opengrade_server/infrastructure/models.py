@@ -99,6 +99,9 @@ class TraceModel(Base):
     user_id: Mapped[str | None] = mapped_column(String(200), nullable=True)
     session_id: Mapped[str | None] = mapped_column(String(200), nullable=True)
     version: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    tags: Mapped[list[str]] = mapped_column(
+        PortableJSON, nullable=False, server_default="[]", default=list
+    )
 
     spans: Mapped[list[SpanModel]] = relationship(
         "SpanModel",
@@ -106,6 +109,29 @@ class TraceModel(Base):
         cascade="all, delete-orphan",
         passive_deletes=True,
     )
+
+
+class TraceAttributeModel(Base):
+    """Search index for trace tags (``key="tag"``) and scalar metadata (``metadata.<key>``).
+
+    Rebuilt from the trace row on every upsert; deleted with the trace.
+    """
+
+    __tablename__ = "trace_attributes"
+    __table_args__ = (
+        UniqueConstraint("trace_pk", "key", "value", name="uq_trace_attributes_trace_key_value"),
+        Index("ix_trace_attributes_project_key_value", "project_id", "key", "value"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    trace_pk: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey("traces.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    project_id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), nullable=False)
+    key: Mapped[str] = mapped_column(String(210), nullable=False)
+    value: Mapped[str] = mapped_column(String(500), nullable=False)
 
 
 class SpanModel(Base):

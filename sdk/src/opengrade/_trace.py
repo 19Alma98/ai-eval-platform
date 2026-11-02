@@ -3,6 +3,7 @@ from __future__ import annotations
 import functools
 import inspect
 import json
+import logging
 from collections.abc import AsyncIterator, Callable, Iterator, Sequence
 from contextlib import contextmanager
 from typing import Any, cast, overload
@@ -10,7 +11,7 @@ from typing import Any, cast, overload
 from opentelemetry import trace as otel_trace
 from opentelemetry.trace import Span, Status, StatusCode
 
-from opengrade import _live, _production
+from opengrade import _live, _production, _trace_attrs
 from opengrade._config import MAX_CAPTURE_BYTES
 from opengrade._run_context import record_input, record_output
 from opengrade.metrics import LocalMetric
@@ -124,6 +125,11 @@ def current_trace_id() -> str | None:
     return format(ctx.trace_id, "032x")
 
 
+def _start_attributes(span: Span, kind: str) -> None:
+    span.set_attribute("openinference.span.kind", kind)
+    _trace_attrs.apply_scoped(span)
+
+
 @contextmanager
 def _span_session(
     span_name: str,
@@ -140,7 +146,7 @@ def _span_session(
     with tracer.start_as_current_span(
         span_name, record_exception=False, set_status_on_exception=False
     ) as span:
-        span.set_attribute("openinference.span.kind", kind)
+        _start_attributes(span, kind)
         if capture_input and span.is_recording():
             span.set_attribute("input.value", _serialize_args(args, kwargs))
         live_token = _live.mark_if_live(span, live)
@@ -286,7 +292,7 @@ def _wrap_sync_gen[**P, R](
 
         tracer = otel_trace.get_tracer(_TRACER_NAME)
         with tracer.start_as_current_span(span_name) as span:
-            span.set_attribute("openinference.span.kind", kind)
+            _start_attributes(span, kind)
             if capture_input and span.is_recording():
                 span.set_attribute("input.value", _serialize_args(args, kwargs))
             live_token = _live.mark_if_live(span, live)
@@ -337,7 +343,7 @@ def _wrap_async_gen[**P, R](
 
         tracer = otel_trace.get_tracer(_TRACER_NAME)
         with tracer.start_as_current_span(span_name) as span:
-            span.set_attribute("openinference.span.kind", kind)
+            _start_attributes(span, kind)
             if capture_input and span.is_recording():
                 span.set_attribute("input.value", _serialize_args(args, kwargs))
             live_token = _live.mark_if_live(span, live)
@@ -558,3 +564,165 @@ def trace_async[**P, R](
         name = None
         return decorator(fn)
     return decorator
+
+
+# OpenInference span kinds (``openinference.span.kind``); anything else is sent as-is.
+SPAN_KINDS = frozenset(
+    {
+        "CHAIN",
+        "LLM",
+        "RETRIEVER",
+        "RERANKER",
+        "EMBEDDING",
+        "TOOL",
+        "AGENT",
+        "GUARDRAIL",
+        "EVALUATOR",
+        "PROMPT",
+    }
+)
+
+_warned_kinds: set[str] = set()
+
+
+def _normalize_kind(kind: str) -> str:
+    normalized = (kind or "CHAIN").strip().upper() or "CHAIN"
+    if normalized not in SPAN_KINDS and normalized not in _warned_kinds:
+        _warned_kinds.add(normalized)
+        logging.getLogger("opengrade").warning(
+            "opengrade: span kind %r is not an OpenInference kind (%s); sent as-is",
+            kind,
+            ", ".join(sorted(SPAN_KINDS)),
+        )
+    return normalized
+
+
+class SpanHandle:
+    """The span opened by ``opengrade.span``; every method is a no-op when not recording."""
+
+    __slots__ = ("_span",)
+
+    def __init__(self, span: Span | None) -> None:
+        self._span = span
+
+    @property
+    def is_recording(self) -> bool:
+        return self._span is not None and self._span.is_recording()
+
+    @property
+    def trace_id(self) -> str | None:
+        if self._span is None:
+            return None
+        ctx = self._span.get_span_context()
+        return format(ctx.trace_id, "032x") if ctx.is_valid else None
+
+    @property
+    def span_id(self) -> str | None:
+        if self._span is None:
+            return None
+        ctx = self._span.get_span_context()
+        return format(ctx.span_id, "016x") if ctx.is_valid else None
+
+    def set_input(self, value: object) -> None:
+        """Set ``input.value`` on this span (the experiment / production input is unchanged)."""
+        if self.is_recording:
+            assert self._span is not None
+            self._span.set_attribute("input.value", truncate_value(value))
+
+    def set_output(self, value: object) -> None:
+        """Set ``output.value`` on this span (the experiment output is unchanged)."""
+        if self.is_recording:
+            assert self._span is not None
+            self._span.set_attribute("output.value", truncate_value(value))
+
+    def set_attribute(self, key: str, value: object) -> None:
+        if self.is_recording:
+            assert self._span is not None
+            self._span.set_attribute(key, _attr_value(value))
+
+    def set_attributes(self, attrs: dict[str, object] | None = None, **kwargs: object) -> None:
+        for key, value in {**(attrs or {}), **kwargs}.items():
+            self.set_attribute(key, value)
+
+    def set_error(self, description: str, *, exception: BaseException | None = None) -> None:
+        if not self.is_recording:
+            return
+        assert self._span is not None
+        if exception is not None:
+            self._span.record_exception(exception)
+        self._span.set_status(Status(StatusCode.ERROR, description))
+
+
+class span:  # noqa: N801 — used like a function: ``with opengrade.span(...)``
+    """Trace a block of code as a child span (sync ``with`` or ``async with``).
+
+    ::
+
+        with opengrade.span("rerank", kind="RERANKER", input=query) as s:
+            ranked = reranker.rank(query, docs)
+            s.set_output([d.id for d in ranked])
+            s.set_attribute("rerank.top_k", 5)
+
+    ``kind`` is an OpenInference span kind (``CHAIN``, ``LLM``, ``RETRIEVER``,
+    ``RERANKER``, ``EMBEDDING``, ``TOOL``, ``AGENT``, ``GUARDRAIL``, ...). An exception
+    raised in the block marks the span ERROR and propagates. Like ``@opengrade.trace``,
+    the outermost span outside an experiment becomes a live interaction when
+    ``init(live=True)``; pass ``live=False`` to opt out.
+    """
+
+    __slots__ = ("_name", "_kind", "_input", "_attributes", "_live", "_cm", "_span", "_live_token")
+
+    def __init__(
+        self,
+        name: str,
+        kind: str = "CHAIN",
+        *,
+        input: object = None,  # noqa: A002 — mirrors OpenInference ``input.value``
+        attributes: dict[str, object] | None = None,
+        live: bool | None = None,
+    ) -> None:
+        self._name = name or "span"
+        self._kind = _normalize_kind(kind)
+        self._input = input
+        self._attributes = attributes
+        self._live = live
+        self._cm: Any = None
+        self._span: Span | None = None
+        self._live_token: Any = None
+
+    def __enter__(self) -> SpanHandle:
+        if self._cm is not None:
+            raise RuntimeError("opengrade.span(...) is not reentrant; create a new one")
+        if _production.in_metric():
+            return SpanHandle(None)  # metrics run with instrumentation suppressed
+        tracer = otel_trace.get_tracer(_TRACER_NAME)
+        self._cm = tracer.start_as_current_span(
+            self._name, record_exception=False, set_status_on_exception=False
+        )
+        current = self._cm.__enter__()
+        self._span = current
+        handle = SpanHandle(current)
+        _start_attributes(current, self._kind)
+        if self._input is not None:
+            handle.set_input(self._input)
+        if self._attributes:
+            handle.set_attributes(self._attributes)
+        self._live_token = _live.mark_if_live(current, self._live)
+        return handle
+
+    def __exit__(self, exc_type: Any, exc: BaseException | None, tb: Any) -> None:
+        cm, current = self._cm, self._span
+        self._cm = self._span = None
+        if cm is None or current is None:
+            return
+        _live.unmark(self._live_token)
+        self._live_token = None
+        if isinstance(exc, Exception):
+            _record_error(current, exc)
+        cm.__exit__(exc_type, exc, tb)
+
+    async def __aenter__(self) -> SpanHandle:
+        return self.__enter__()
+
+    async def __aexit__(self, exc_type: Any, exc: BaseException | None, tb: Any) -> None:
+        self.__exit__(exc_type, exc, tb)

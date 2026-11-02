@@ -405,7 +405,15 @@ GET /projects/{project_id}/monitoring?since=&until=&environment=&version=   # fi
 GET /projects/{project_id}/monitoring/facets?since=&until=                  # environments + versions seen, with trace counts
 GET /projects/{project_id}/monitoring/versions?since=&until=&environment=   # health per version (top 10 by traffic)
 GET /projects/{project_id}/traces?environment=&version=                     # trace list filters
+GET /projects/{project_id}/traces?user_id=&session_id=&tag=&metadata=key:value  # attribute filters
+GET /projects/{project_id}/traces/facets?limit=                              # tags, metadata keys, users, sessions seen
 ```
+
+Attribute filters: `tag` and `metadata` repeat, and every value must match (AND). `metadata` is
+`key:value` split on the first colon (422 otherwise) and matches the trace's scalar metadata
+exactly (booleans as `true`/`false`). `search` also matches tag and metadata values. Trace list
+and detail responses carry `tags`; detail `metadata` holds the merged OpenInference `metadata`
+plus the extracted `model` / `provider`.
 
 With a filter, live-judge scores only count for answers whose source trace matches it. Alert rules accept `environment` and `version` to watch one deployment or release.
 

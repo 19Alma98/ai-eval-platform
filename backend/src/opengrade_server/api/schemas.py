@@ -159,6 +159,7 @@ class TraceDetailResponse(BaseModel):
     version: str | None = None
     user_id: str | None = None
     session_id: str | None = None
+    tags: list[str] = Field(default_factory=list)
     spans: list[SpanResponse]
     scores: list[TraceScoreResponse] = Field(default_factory=list)
     live_interaction_id: uuid.UUID | None = None
@@ -177,6 +178,7 @@ class TraceSummaryResponse(BaseModel):
     version: str | None = None
     user_id: str | None = None
     session_id: str | None = None
+    tags: list[str] = Field(default_factory=list)
     input_preview: str | None = None
     output_preview: str | None = None
     scores: list[TraceScoreResponse] = Field(default_factory=list)
@@ -186,6 +188,20 @@ class TraceSummaryResponse(BaseModel):
 class TraceListResponse(BaseModel):
     items: list[TraceSummaryResponse]
     next_cursor: str | None = None
+
+
+class TraceFacetValueResponse(BaseModel):
+    value: str
+    count: int
+
+
+class TraceFacetsResponse(BaseModel):
+    """Values seen in the project, most used first (filter suggestions)."""
+
+    tags: list[TraceFacetValueResponse] = Field(default_factory=list)
+    metadata_keys: list[TraceFacetValueResponse] = Field(default_factory=list)
+    users: list[TraceFacetValueResponse] = Field(default_factory=list)
+    sessions: list[TraceFacetValueResponse] = Field(default_factory=list)
 
 
 class LatencyPercentilesResponse(BaseModel):

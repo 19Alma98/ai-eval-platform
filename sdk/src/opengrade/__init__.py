@@ -16,8 +16,16 @@ from opengrade._trace import (
     set_error,
     set_input,
     set_output,
+    span,
     trace,
     trace_async,
+)
+from opengrade._trace_attrs import (
+    set_metadata,
+    set_session,
+    set_tags,
+    set_user,
+    using_attributes,
 )
 from opengrade.feedback import log_feedback, log_score, score_trace
 from opengrade.metrics import LocalMetric, Sample, Score, metric
@@ -91,14 +99,20 @@ __all__ = [
     "set_attributes",
     "set_error",
     "set_input",
+    "set_metadata",
     "set_output",
     "set_project",
     "set_retrieval_documents",
+    "set_session",
+    "set_tags",
     "set_tracking_uri",
+    "set_user",
+    "span",
     "start_experiment",
     "sweep",
     "trace",
     "trace_async",
+    "using_attributes",
 ]
 
 

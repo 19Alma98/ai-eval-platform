@@ -109,4 +109,5 @@ def redact_trace(trace: Trace, *, content_capture_enabled: bool) -> Trace:
         user_id=trace.user_id,
         session_id=trace.session_id,
         spans=spans,
+        tags=trace.tags,
     )

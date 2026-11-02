@@ -2,11 +2,11 @@ from __future__ import annotations
 
 import logging
 import uuid
-from collections.abc import Collection
+from collections.abc import Collection, Sequence
 from datetime import UTC, datetime
 from typing import Any, cast
 
-from sqlalchemy import Select, case, delete, func, select, update
+from sqlalchemy import Select, and_, case, delete, exists, func, select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.engine import CursorResult
@@ -31,7 +31,14 @@ from opengrade_server.domain.live_interaction import (
 from opengrade_server.domain.live_overview import LiveInRangeResult, LiveInteractionInRange
 from opengrade_server.domain.metrics_set import MetricsSet, MetricsSetEntry
 from opengrade_server.domain.project import Project
-from opengrade_server.domain.trace import Span, Trace
+from opengrade_server.domain.trace import (
+    MAX_TRACE_TAGS,
+    METADATA_KEY_PREFIX,
+    TAG_KEY,
+    Span,
+    Trace,
+    trace_attribute_pairs,
+)
 from opengrade_server.domain.trace_score import TraceScore, TraceScoreSummaryRow
 from opengrade_server.infrastructure.models import (
     AlertEventModel,
@@ -56,6 +63,7 @@ from opengrade_server.infrastructure.models import (
     MetricsSetModel,
     ProjectModel,
     SpanModel,
+    TraceAttributeModel,
     TraceModel,
     TraceScoreModel,
 )
@@ -115,6 +123,7 @@ def _trace_to_domain(row: TraceModel, *, include_spans: bool = True) -> Trace:
         session_id=row.session_id,
         spans=spans,
         version=row.version,
+        tags=tuple(str(t) for t in (row.tags or [])),
     )
 
 
@@ -194,6 +203,17 @@ def _filter_release(
     return stmt
 
 
+def _has_attribute(project_id: uuid.UUID, key: str, value: str) -> Any:
+    return exists().where(
+        and_(
+            TraceAttributeModel.trace_pk == TraceModel.id,
+            TraceAttributeModel.project_id == project_id,
+            TraceAttributeModel.key == key,
+            TraceAttributeModel.value == value,
+        )
+    )
+
+
 class SqlAlchemyTraceRepository:
     def __init__(self, session: AsyncSession) -> None:
         self._session = session
@@ -216,6 +236,7 @@ class SqlAlchemyTraceRepository:
             user_id=trace.user_id,
             session_id=trace.session_id,
             version=trace.version,
+            tags=list(trace.tags),
         )
         stmt = stmt.on_conflict_do_nothing(index_elements=["project_id", "trace_id"])
         await self._session.execute(stmt)
@@ -262,6 +283,10 @@ class SqlAlchemyTraceRepository:
             existing.session_id = trace.session_id
         if trace.version is not None:
             existing.version = trace.version
+        merged_tags = list(existing.tags or [])
+        merged_tags.extend(t for t in trace.tags if t not in merged_tags)
+        existing.tags = merged_tags[:MAX_TRACE_TAGS]
+        await self._sync_attributes(existing)
 
         by_span_id = {span.span_id: span for span in existing.spans}
         for span in trace.spans:
@@ -299,6 +324,45 @@ class SqlAlchemyTraceRepository:
         assert refreshed is not None
         return refreshed
 
+    async def _sync_attributes(self, row: TraceModel) -> None:
+        """Make the search index match the trace's merged tags and metadata."""
+        wanted = trace_attribute_pairs(_trace_to_domain(row, include_spans=False))
+        current_rows = (
+            (
+                await self._session.execute(
+                    select(TraceAttributeModel).where(TraceAttributeModel.trace_pk == row.id)
+                )
+            )
+            .scalars()
+            .all()
+        )
+        current = {(r.key, r.value): r for r in current_rows}
+        for pair, attr_row in current.items():
+            if pair not in wanted:
+                await self._session.delete(attr_row)
+        missing = sorted(wanted - current.keys())
+        if not missing:
+            return
+        # Concurrent batches of one trace may add the same pair: ignore duplicates.
+        bind = self._session.get_bind()
+        insert_fn = pg_insert if bind.dialect.name == "postgresql" else sqlite_insert
+        await self._session.execute(
+            insert_fn(TraceAttributeModel)
+            .values(
+                [
+                    {
+                        "id": uuid.uuid4(),
+                        "trace_pk": row.id,
+                        "project_id": row.project_id,
+                        "key": key,
+                        "value": value,
+                    }
+                    for key, value in missing
+                ]
+            )
+            .on_conflict_do_nothing(index_elements=["trace_pk", "key", "value"])
+        )
+
     async def get_by_trace_id(self, project_id: uuid.UUID, trace_id: str) -> Trace | None:
         result = await self._session.execute(
             select(TraceModel)
@@ -324,12 +388,25 @@ class SqlAlchemyTraceRepository:
         limit: int = 50,
         environment: str | None = None,
         version: str | None = None,
+        user_id: str | None = None,
+        session_id: str | None = None,
+        tags: Sequence[str] = (),
+        metadata: Sequence[tuple[str, str]] = (),
     ) -> list[Trace]:
         stmt = _filter_release(
             select(TraceModel).where(TraceModel.project_id == project_id), environment, version
         )
         if status is not None:
             stmt = stmt.where(TraceModel.status == status)
+        if user_id is not None:
+            stmt = stmt.where(TraceModel.user_id == user_id)
+        if session_id is not None:
+            stmt = stmt.where(TraceModel.session_id == session_id)
+        # Every tag and every metadata pair must match (AND).
+        for key, value in [(TAG_KEY, t) for t in tags] + [
+            (f"{METADATA_KEY_PREFIX}{k}", v) for k, v in metadata
+        ]:
+            stmt = stmt.where(_has_attribute(project_id, key, value))
         if search and search.strip():
             pattern = f"%{escape_like(search.strip())}%"
             stmt = stmt.where(
@@ -337,6 +414,12 @@ class SqlAlchemyTraceRepository:
                 | TraceModel.trace_id.ilike(pattern, escape="\\")
                 | TraceModel.session_id.ilike(pattern, escape="\\")
                 | TraceModel.user_id.ilike(pattern, escape="\\")
+                # Tag and metadata values too, e.g. a tenant name or a tag.
+                | exists().where(
+                    TraceAttributeModel.trace_pk == TraceModel.id,
+                    TraceAttributeModel.project_id == project_id,
+                    TraceAttributeModel.value.ilike(pattern, escape="\\"),
+                )
             )
         if start_time is not None:
             stmt = stmt.where(TraceModel.start_time >= start_time)
@@ -379,9 +462,46 @@ class SqlAlchemyTraceRepository:
                 session_id=t.session_id,
                 spans=(),
                 version=t.version,
+                tags=t.tags,
             )
             for t in traces
         ]
+
+    async def attribute_facets(
+        self, project_id: uuid.UUID, *, limit: int = 50
+    ) -> dict[str, list[tuple[str, int]]]:
+        """Most used tags, metadata keys, users and sessions (for filter suggestions)."""
+        attr = TraceAttributeModel
+        tag_rows = await self._session.execute(
+            select(attr.value, func.count())
+            .where(attr.project_id == project_id, attr.key == TAG_KEY)
+            .group_by(attr.value)
+            .order_by(func.count().desc(), attr.value)
+            .limit(limit)
+        )
+        key_rows = await self._session.execute(
+            select(attr.key, func.count())
+            .where(attr.project_id == project_id, attr.key.startswith(METADATA_KEY_PREFIX))
+            .group_by(attr.key)
+            .order_by(func.count().desc(), attr.key)
+            .limit(limit)
+        )
+        facets: dict[str, list[tuple[str, int]]] = {
+            "tags": [(str(v), int(n)) for v, n in tag_rows.all()],
+            "metadata_keys": [
+                (str(k).removeprefix(METADATA_KEY_PREFIX), int(n)) for k, n in key_rows.all()
+            ],
+        }
+        for name, column in (("users", TraceModel.user_id), ("sessions", TraceModel.session_id)):
+            rows = await self._session.execute(
+                select(column, func.count())
+                .where(TraceModel.project_id == project_id, column.is_not(None))
+                .group_by(column)
+                .order_by(func.count().desc(), column)
+                .limit(limit)
+            )
+            facets[name] = [(str(v), int(n)) for v, n in rows.all()]
+        return facets
 
     async def list_with_spans_in_range(
         self,

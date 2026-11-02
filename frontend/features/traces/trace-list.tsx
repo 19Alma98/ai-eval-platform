@@ -23,7 +23,15 @@ import {
   useReleaseFilter,
 } from "@/features/monitoring/release-filter";
 import { useReleaseFacets } from "@/features/monitoring/use-monitoring";
-import { useTraces } from "./use-traces";
+import { AttributeFilterBar, TagChips } from "./attribute-filter-bar";
+import {
+  type AttributeFilters,
+  addChip,
+  hasAttributeFilters,
+  readAttributeFilters,
+  writeAttributeFilters,
+} from "./attribute-filters";
+import { useTraceFacets, useTraces } from "./use-traces";
 
 type StatusFilter = "all" | "error";
 type RangeFilter = Preset | "all";
@@ -82,17 +90,29 @@ export function TraceList({ projectId }: { projectId: string }) {
   );
   const facetsSince = since ?? last30Days;
   const facets = useReleaseFacets(projectId, facetsSince);
+  const attributeFacets = useTraceFacets(projectId);
+  const searchKey = searchParams.toString();
+  // Recomputed only when the URL changes so the query key stays stable.
+  const attributes = useMemo(
+    () => readAttributeFilters(new URLSearchParams(searchKey)),
+    [searchKey],
+  );
   const query = useTraces(projectId, {
     status: status === "error" ? "error" : undefined,
     search: deferredSearch || undefined,
     since,
     environment: release.environment,
     version: release.version,
+    userId: attributes.user,
+    sessionId: attributes.session,
+    tags: attributes.tags,
+    metadata: attributes.metadata,
   });
   const rows = useMemo(() => query.data?.pages.flatMap((p) => p.items) ?? [], [query.data]);
   const anyScores = rows.some((r) => r.scores.length > 0);
   const anyJudged = rows.some((r) => r.live_interaction_id);
   const anyVersion = rows.some((r) => r.version);
+  const anyTags = rows.some((r) => (r.tags?.length ?? 0) > 0);
 
   const setParam = useCallback(
     (key: string, value: string | null) => {
@@ -102,6 +122,19 @@ export function TraceList({ projectId }: { projectId: string }) {
       router.replace(`${pathname}?${params.toString()}`);
     },
     [pathname, router, searchParams],
+  );
+
+  const setAttributes = useCallback(
+    (next: AttributeFilters) => {
+      const params = writeAttributeFilters(new URLSearchParams(searchParams.toString()), next);
+      router.replace(`${pathname}?${params.toString()}`);
+    },
+    [pathname, router, searchParams],
+  );
+
+  const filterByTag = useCallback(
+    (tag: string) => setAttributes(addChip(attributes, { kind: "tag", value: tag })),
+    [attributes, setAttributes],
   );
 
   const onRowActivate = useCallback(
@@ -168,6 +201,19 @@ export function TraceList({ projectId }: { projectId: string }) {
             },
           ]
         : []),
+      ...(anyTags
+        ? [
+            {
+              id: "tags",
+              header: "Tags",
+              headerClassName: "w-[180px]",
+              wrap: true,
+              cell: (row: TraceSummary) => (
+                <TagChips tags={row.tags ?? []} onSelect={filterByTag} />
+              ),
+            },
+          ]
+        : []),
       ...(anyScores
         ? [
             {
@@ -201,11 +247,14 @@ export function TraceList({ projectId }: { projectId: string }) {
           ]
         : []),
     ],
-    [anyJudged, anyScores, anyVersion, projectId],
+    [anyJudged, anyScores, anyTags, anyVersion, filterByTag, projectId],
   );
 
   const filtersActive =
-    status !== "all" || deferredSearch !== "" || Boolean(release.environment || release.version);
+    status !== "all" ||
+    deferredSearch !== "" ||
+    Boolean(release.environment || release.version) ||
+    hasAttributeFilters(attributes);
 
   return (
     <div className="flex flex-col gap-4">
@@ -259,13 +308,20 @@ export function TraceList({ projectId }: { projectId: string }) {
         </div>
         <Input
           type="search"
-          placeholder="Search name, trace, session or user ID…"
+          placeholder="Search name, IDs, tags, metadata…"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           className="h-8 max-w-xs"
           aria-label="Search traces"
         />
         <ReleaseFilterControls facets={facets.data} filter={release} onChange={setRelease} />
+        <AttributeFilterBar
+          // Remount on project change so a half-typed filter does not carry over.
+          key={projectId}
+          filters={attributes}
+          facets={attributeFacets.data}
+          onChange={setAttributes}
+        />
       </div>
 
       {query.isLoading ? (
@@ -280,7 +336,7 @@ export function TraceList({ projectId }: { projectId: string }) {
         filtersActive ? (
           <EmptyState
             title="Nothing matches"
-            description="No traces match these filters. Clear the search or the status filter, or try a longer time range."
+            description="No traces match these filters. Clear the search, the status or attribute filters, or try a longer time range. Tags, metadata, users and sessions come from opengrade.set_tags / set_metadata / set_user / set_session."
           />
         ) : (
           <EmptyState
