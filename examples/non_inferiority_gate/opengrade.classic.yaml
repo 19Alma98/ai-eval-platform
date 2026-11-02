@@ -1,0 +1,19 @@
+# Same exam as opengrade.yaml, with the default regression check only (no
+# non_inferiority_margin): used by run_demo.sh to show what that check lets through.
+project: non-inferiority-gate
+
+evaluate:
+  task: rag_app:task
+  dataset: ../ci_regression_gate/gold.jsonl
+  metrics: [hit_at_k, must_contain, latency]
+  name: rag-ci
+  task_type: rag_qa
+  max_concurrency: 4
+  baseline: alias:main
+
+hit_at_k:
+  min: 0.8
+must_contain:
+  min: 0.8
+
+regression: {}   # default bootstrap check only: fails on a proven drop

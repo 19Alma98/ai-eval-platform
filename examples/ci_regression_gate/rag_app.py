@@ -9,6 +9,9 @@ Two env knobs simulate code changes a PR could make:
 - ``RAG_TOP_K`` (default 3): how many documents the retriever returns.
 - ``RAG_TOKENIZER`` (default ``normalized``): ``raw`` simulates a buggy refactor that
   stops lowercasing / stripping punctuation, so many queries stop matching their document.
+- ``RAG_DROP_DOC`` (default empty): comma-separated document ids left out of the index,
+  e.g. ``travel``: a PR whose ingestion change silently loses one document (used by
+  ``examples/non_inferiority_gate``).
 """
 
 from __future__ import annotations
@@ -48,8 +51,11 @@ def _tokens(text: str) -> set[str]:
 def retrieve(question: str) -> list[dict[str, Any]]:
     top_k = int(os.getenv("RAG_TOP_K", "3"))
     query = _tokens(question)
+    dropped = {d.strip() for d in os.getenv("RAG_DROP_DOC", "").split(",") if d.strip()}
     scored = []
     for doc_id, text in KB.items():
+        if doc_id in dropped:
+            continue
         overlap = len(query & (_tokens(text) | {doc_id}))
         if overlap:
             scored.append((overlap, doc_id, text))

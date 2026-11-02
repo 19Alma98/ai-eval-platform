@@ -73,7 +73,9 @@ Rules of thumb:
 - At least **5 paired items per metric** (and per group, `min_items`) are needed for the
   regression check; below that it is reported as `unavailable`, which fails the gate.
   The power warning tells you how far you are from meaningful statistics; set
-  `regression.max_detectable_delta` to make it a failing check.
+  `regression.max_detectable_delta` to make it a failing check, or
+  `regression.non_inferiority_margin` to require the PR to be *shown* not worse
+  ([`non_inferiority_gate`](../non_inferiority_gate/README.md)).
 - If the pipeline is non-deterministic (real LLM), set `evaluate.repeats: 3` so noise does
   not look like a regression. Full walkthrough with a real model and an LLM judge:
   [`examples/llm_regression_gate/`](../llm_regression_gate/README.md).

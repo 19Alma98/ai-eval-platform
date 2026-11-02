@@ -35,6 +35,9 @@ def paired_mean_ci(
         raise ValueError("n_boot must be >= 1")
     if not 0.0 < alpha < 1.0:
         raise ValueError("alpha must be in (0, 1)")
+    if all(d == diffs[0] for d in diffs):
+        # Every resample has the same mean (e.g. a deterministic pipeline, no change).
+        return float(diffs[0]), float(diffs[0])
 
     rng = random.Random(seed)
     n = len(diffs)

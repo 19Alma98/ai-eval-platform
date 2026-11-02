@@ -275,4 +275,13 @@ test("describeCheck covers item-level and power checks", () => {
   });
   assert.equal(power.actual, "0.31");
   assert.equal(power.target, "≤ 0.15");
+  const nonInferior = describeCheck({
+    metric: "regression.hit_at_k.non_inferiority",
+    actual: -0.15,
+    threshold: -0.03,
+    status: "failed",
+  });
+  assert.match(nonInferior.title, /shown not worse than baseline/);
+  assert.match(nonInferior.target, /^95% CI lower bound ≥ /);
+  assert.ok(nonInferior.isRegression);
 });
