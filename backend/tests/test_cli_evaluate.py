@@ -502,3 +502,77 @@ def task(item):
 
     off = runner.invoke(app, [*common, "--json", "--show-regressions", "0"])
     assert "regressed_items" not in json.loads(off.stdout)
+
+
+def test_evaluate_critical_items_new_failures_and_power_note(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.syspath_prepend(str(tmp_path))
+    config, task_py = _write_bootstrap_files(tmp_path)
+    rows = [
+        {"input": f"q{i}", "expected_output": "a", "expected_doc_ids": ["d1"], "critical": i == 0}
+        for i in range(6)
+    ]
+    (tmp_path / "gold.json").write_text(json.dumps(rows), encoding="utf-8")
+    # BREAK=1 makes q0 (critical) and q3 retrieve the wrong document.
+    task_py.write_text(
+        """
+import os
+import opengrade
+
+def task(item):
+    broken = os.environ.get("BREAK") == "1" and item.input in ("q0", "q3")
+    opengrade.set_retrieval_documents([{"id": "zz" if broken else "d1", "text": "doc"}])
+    return f"answer to {item.input}"
+""",
+        encoding="utf-8",
+    )
+    config.write_text(
+        config.read_text(encoding="utf-8").replace(
+            "  max_concurrency: 1\n", "  max_concurrency: 1\n  baseline: alias:main\n"
+        )
+        + "regression:\n  max_delta: -0.5\n  max_new_failures: 0\n"
+        + "critical:\n  by: critical\n",
+        encoding="utf-8",
+    )
+    store = f"sqlite+aiosqlite:///{(tmp_path / 'store.db').as_posix()}"
+    common = ["evaluate", "--config", str(config), "--backend-store-uri", store]
+
+    boot = runner.invoke(app, [*common, "--promote", "main", "--json"])
+    assert boot.exit_code == EXIT_PASS, boot.output
+    first = json.loads(boot.stdout)
+    assert {c["metric"]: c["status"] for c in first["checks"]}["critical.hit_at_k.failures"] == (
+        "passed"
+    )
+
+    same = runner.invoke(app, [*common, "--json"])
+    assert same.exit_code == EXIT_PASS, same.output
+    payload = json.loads(same.stdout)
+    row = next(r for r in payload["comparison"] if r["metric"] == "hit_at_k")
+    assert row["n_paired"] == 6 and row["min_detectable_delta"] > 0.5
+    assert any(n.startswith("Small test set: with 6 paired test cases") for n in payload["notes"])
+
+    monkeypatch.setenv("BREAK", "1")
+    md, xml = tmp_path / "gate.md", tmp_path / "gate.xml"
+    worse = runner.invoke(app, [*common, "--json", "--report-md", str(md), "--junit", str(xml)])
+    assert worse.exit_code == EXIT_GATE_FAILED, worse.output
+    checks = {c["metric"]: c for c in json.loads(worse.stdout)["checks"]}
+    critical = checks["critical.hit_at_k.failures"]
+    assert (critical["status"], critical["actual"]) == ("failed", 1.0)
+    assert [i["input"] for i in critical["items"]] == ["q0"]
+    flips = checks["regression.hit_at_k.new_failures"]
+    assert (flips["status"], flips["actual"]) == ("failed", 2.0)
+    assert {(i["input"], i["baseline_label"], i["candidate_label"]) for i in flips["items"]} == {
+        ("q0", "PASS", "FAIL"),
+        ("q3", "PASS", "FAIL"),
+    }
+    report = md.read_text(encoding="utf-8")
+    assert "#### `critical.hit_at_k.failures` (1)" in report
+    assert "| 1 | q0 | FAIL |" in report
+    assert "Detectable drop (n)" in report
+    assert "- q3: PASS → FAIL" in xml.read_text(encoding="utf-8")
+
+    text = runner.invoke(app, common)
+    assert "regression.hit_at_k.new_failures (2):" in text.output
+    assert "PASS → FAIL" in text.output

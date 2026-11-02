@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 import uuid
 from collections.abc import Iterable, Sequence, Set
 from dataclasses import dataclass, replace
@@ -11,6 +12,8 @@ from opengrade_server.regression.bootstrap import comparison_seed, paired_mean_c
 
 DELTA_THRESHOLD = 0.01
 MIN_APPLICABLE_ITEMS = 5
+# z(1 - alpha/2) + z(power) for a two-sided alpha of 0.05 and 80% power.
+MDE_Z = 1.959964 + 0.841621
 
 MetricStatus = Literal[
     "regression", "improved", "unchanged", "unavailable", "config_mismatch", "insufficient_n"
@@ -47,6 +50,8 @@ class MetricComparison:
     ci_low: float | None = None
     ci_high: float | None = None
     n_paired: int | None = None
+    # Smallest mean drop the paired test would flag with ~80% power at this sample size.
+    min_detectable_delta: float | None = None
 
 
 def _run_recency(run: EvaluationRun) -> datetime:
@@ -260,6 +265,52 @@ def paired_item_diffs(
     return [cand[i] - base[i] for i in shared]
 
 
+def _std(values: Sequence[float]) -> float:
+    if len(values) < 2:
+        return 0.0
+    mean = sum(values) / len(values)
+    return math.sqrt(sum((v - mean) ** 2 for v in values) / (len(values) - 1))
+
+
+def min_detectable_delta(diffs: Sequence[float]) -> float | None:
+    """Approximate smallest mean drop the paired comparison detects with ~80% power.
+
+    Model: a drop of ``d`` (scores in 0..1) is ``d·n`` test cases going from pass to
+    fail on top of the run-to-run noise ``s``. The paired differences then have
+    variance ``s² + d(1−d)`` and
+    the drop is detected when ``d ≥ z·sqrt(s² + d(1−d)) / sqrt(n)`` with
+    ``z = z_0.975 + z_0.80``. Solved for ``d``::
+
+        d = (z² + sqrt(z⁴ + 4(n + z²)·z²·s²)) / (2(n + z²))
+
+    Without noise (deterministic pipeline) this is ``z² / (n + z²)``: about 0.25 for 24
+    test cases, 0.07 for 100. It is a normal approximation that tells "this test set is
+    too small to see a drop of X", not an exact power analysis of the bootstrap.
+
+    The noise ``s²`` is the variance of the observed differences minus the part the
+    observed mean change ``m`` explains under the same model (``|m|(1−|m|)``), so a run
+    that did regress does not report its own regression as noise.
+    """
+    n = len(diffs)
+    if n < MIN_APPLICABLE_ITEMS:
+        return None
+    z2 = MDE_Z**2
+    shift = min(abs(sum(diffs) / n), 1.0)
+    noise = max(0.0, _std(diffs) ** 2 - shift * (1.0 - shift))
+    return (z2 + math.sqrt(z2 * z2 + 4 * (n + z2) * z2 * noise)) / (2 * (n + z2))
+
+
+def items_needed(min_detectable: float, n: int, target: float) -> int | None:
+    """Test cases needed to detect a drop of ``target`` with the noise behind
+    ``min_detectable`` at ``n`` items (inverse of ``min_detectable_delta``)."""
+    if n < 1 or not 0 < target < 1 or min_detectable <= 0:
+        return None
+    z2 = MDE_Z**2
+    # Noise implied by (min_detectable, n): d²(n + z²) = z²(d + s²).
+    noise = max(0.0, min_detectable**2 * (n + z2) / z2 - min_detectable)
+    return math.ceil(z2 * (target + noise) / target**2 - z2)
+
+
 def collapse_repeats(rows: Sequence[EvaluationResultRecord]) -> EvaluationResultRecord:
     """One record standing for an item's repeats (the record itself when there is one).
 
@@ -328,6 +379,7 @@ def compare_evaluator_metrics(
         ci_low: float | None = None
         ci_high: float | None = None
         n_paired: int | None = None
+        mde: float | None = None
         if config_mismatch:
             # Scores measured under different configs: a delta would be meaningless.
             delta, status = None, "config_mismatch"
@@ -341,6 +393,7 @@ def compare_evaluator_metrics(
                         metric=metric_name,
                     )
                     n_paired = len(diffs)
+                    mde = min_detectable_delta(diffs)
                     if n_paired < MIN_APPLICABLE_ITEMS:
                         status = "insufficient_n"
                     elif status != "unchanged":
@@ -371,6 +424,7 @@ def compare_evaluator_metrics(
                 ci_low=ci_low,
                 ci_high=ci_high,
                 n_paired=n_paired,
+                min_detectable_delta=mde,
             )
         )
     return rows

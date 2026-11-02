@@ -1,6 +1,8 @@
 import asyncio
-from collections.abc import AsyncIterator
+import inspect
+from collections.abc import AsyncIterator, MutableMapping
 from contextlib import asynccontextmanager, suppress
+from typing import Any
 
 from fastapi import FastAPI, Response, status
 from fastapi.responses import JSONResponse
@@ -67,13 +69,46 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
     await dispose_db()
 
 
-def create_app(*, mount_packaged_ui: bool = True) -> FastAPI:
+OTLP_TRACES_PATH = "/v1/traces"
+
+
+def _is_otlp_ingest(scope: MutableMapping[str, Any]) -> bool:
+    return bool(scope.get("path") == OTLP_TRACES_PATH)
+
+
+def _telemetry_kwargs(*, self_telemetry: bool) -> dict[str, Any]:
+    """FastAPI native OpenTelemetry settings (FastAPI >= 0.142; older versions have none).
+
+    OTLP ingest requests are never traced: when the server shares a tracer provider with
+    an exporter pointing back at itself, each export would create spans that are exported
+    again, a feedback loop. ``self_telemetry=False`` turns the server's own telemetry
+    off: the embedded server of ``opengrade evaluate`` runs in the same process as the
+    SDK, whose global tracer provider would otherwise record every API call of the run
+    as a trace of the project under test.
+    """
+    if "telemetry" not in inspect.signature(FastAPI.__init__).parameters:
+        return {}
+    if not self_telemetry:
+        return {
+            "telemetry": {
+                "tracing": False,
+                "operation_spans": False,
+                "metrics": False,
+                "logs": False,
+                "auto_configure": False,
+            }
+        }
+    return {"telemetry": {"exclude": _is_otlp_ingest}}
+
+
+def create_app(*, mount_packaged_ui: bool = True, self_telemetry: bool = True) -> FastAPI:
     configure_request_id_logging()
     _ensure_evaluators_registered()
     app = FastAPI(
         title="OpenGrade",
         version=__version__,
         lifespan=lifespan,
+        **_telemetry_kwargs(self_telemetry=self_telemetry),
     )
     register_exception_handlers(app)
     # Last added = outermost. Request ID wraps JSON guard.

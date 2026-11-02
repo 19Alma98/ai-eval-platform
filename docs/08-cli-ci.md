@@ -109,6 +109,51 @@ When the run has a baseline, the output lists up to `N` test cases (default 10) 
 
 A case counts as worse when its score drops by more than the compare threshold, item by item, so the list can be non-empty while the aggregate `regression` check passes (some cases up, some down). It is diagnostic only: it never changes the gate result, and a failure to fetch it is a warning.
 
+#### Must-pass test cases (`critical`)
+
+Some questions may never be answered wrong, whatever the averages say (security, compliance, pricing). Mark them in the gold set with a metadata flag and add a `critical` block:
+
+```jsonl
+{"input": "How often must passwords be rotated?", "must_contain": ["90 days"], "critical": true}
+```
+
+```yaml
+critical:
+  by: critical               # metadata key (dotted paths work); true / "true" / "yes" / 1
+  metrics: [must_contain]    # optional; default: every quality metric of the run
+  max_failures: 0            # default 0
+```
+
+Check per metric: `critical.<metric>.failures` (number of critical test cases that did not PASS, threshold `max_failures`). It is strict: with `repeats` every repeat must PASS. SKIPPED results do not count. Latency / cost / token-usage evaluators are left out unless named in `metrics`. The rule needs no baseline, so it also runs (and blocks the promotion) on the first run of `main`. A dataset with no item marked by `by`, or a `metrics` name the run did not score, is `unavailable` and fails the gate, so a typo cannot pass silently. The failing test cases are listed under the check (CLI output, Markdown report, JUnit failure, `items` in the API response).
+
+#### Test cases that broke (`regression.max_new_failures`)
+
+`regression` compares means: one test case going from PASS to FAIL while another goes from FAIL to PASS leaves the mean unchanged and the bootstrap check green. `max_new_failures` counts, per metric, the test cases that **pass on the baseline and fail on the candidate**:
+
+```yaml
+regression:
+  max_delta: -0.05
+  max_new_failures: 0              # every quality metric
+  # max_new_failures: {hit_at_k: 0, must_contain: 2}   # or per metric
+```
+
+Check: `regression.<metric>.new_failures` (count, threshold the limit), with the cases listed like `critical`. With repeats an item's verdict is the majority of its repeats on each side (as on the compare page). An integer limit skips the latency / cost / token-usage evaluators (one slow request on a shared runner is not a broken answer); name them in the mapping form to include them. Metrics the compare marks `config_mismatch` are `unavailable`. With a sampling LLM, per-item flips on judge metrics are often noise: prefer the mapping form on deterministic metrics (retrieval, required phrases) and let the bootstrap judge the noisy ones in aggregate.
+
+#### Statistical power (`min_detectable_delta`, `regression.max_detectable_delta`)
+
+The bootstrap only fails on a *statistically significant* drop. With a small gold set a real drop is often not significant: it passes unless `max_delta` catches the mean. Every comparison now reports, per metric, `min_detectable_delta`: the smallest mean drop the paired test detects with ~80% power at this test-set size and noise (`GET /experiments/{id}/compare/{baseline}`, `--json` `comparison[]`, the Markdown "Detectable drop (n)" column).
+
+Model (scores in 0..1): a drop of `d` is `d·n` test cases flipping from pass to fail on top of the run-to-run noise `s` seen between the two runs, detected when `d ≥ z·sqrt(s² + d(1−d))/sqrt(n)` with `z = z₀.₉₇₅ + z₀.₈₀ ≈ 2.8`. Without noise this is `z²/(n + z²)`: about 0.28 for 20 test cases, 0.07 for 100, 0.025 for 300. It is a normal approximation meant to answer "is this test set big enough?", not an exact power analysis.
+
+`opengrade evaluate` prints a warning (also in `notes` and the report) when the detectable drop is larger than the target: `regression.max_detectable_delta`, else `|regression.max_delta|`, else 0.05, with an estimate of how many test cases would be needed. To fail the gate instead:
+
+```yaml
+regression:
+  max_detectable_delta: 0.10   # check regression.<metric>.min_detectable_delta <= 0.10
+```
+
+Latency / cost / token-usage evaluators are not checked. Repeats reduce the noise `s` but not the flip term: only more test cases lower the floor `z²/(n + z²)`.
+
 #### Reports: job summary, PR comment, JUnit
 
 ```bash
@@ -214,6 +259,8 @@ opengrade ui
 See `.github/workflows/release-gate.yml.example` and `examples/opengrade.yaml`.
 
 Runnable "PR must not be worse than `main`" example (deterministic, no LLM): [`examples/ci_regression_gate/`](../examples/ci_regression_gate/README.md) — local demo script plus a GitHub Actions workflow that keeps the baseline on a shared server or in the Actions cache.
+
+Same gate for a real LLM pipeline scored by an LLM judge (noise, `repeats`, pinned judge, critical questions, power warning): [`examples/llm_regression_gate/`](../examples/llm_regression_gate/README.md).
 
 Preferred (evaluate + gate in one step):
 

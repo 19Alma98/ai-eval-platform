@@ -47,6 +47,15 @@ experiment_metrics:
 # regression (paired bootstrap CI below 0), or when the mean drops more than 0.05.
 regression:
   max_delta: -0.05
+  # Item level: no test case that passes on main may fail on the PR. The mean can hold
+  # (one case up, one down) while a specific answer breaks; this catches it.
+  max_new_failures: 0
+  # max_detectable_delta: 0.15   # fail when the gold set is too small to see this drop
+
+# Must-pass test cases: gold items with "critical": true (here: the password policy).
+# Each must PASS every quality metric; no baseline needed, so it also guards main.
+critical:
+  by: critical
 
 # Same checks per question category: a global mean can hide one category collapsing.
 groups:

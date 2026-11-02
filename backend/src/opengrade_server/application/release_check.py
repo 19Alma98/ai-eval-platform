@@ -15,6 +15,7 @@ from opengrade_server.application.scoring_inputs import (
     CurrentScoringFingerprint,
     current_fingerprint,
 )
+from opengrade_server.domain.dataset import DatasetItem
 from opengrade_server.domain.evaluation import EvaluationRun
 from opengrade_server.domain.experiment import Experiment
 from opengrade_server.domain.repositories import (
@@ -25,7 +26,7 @@ from opengrade_server.domain.repositories import (
     ProjectRepository,
 )
 from opengrade_server.regression.aggregate import aggregate_results, select_runs
-from opengrade_server.regression.groups import results_in
+from opengrade_server.regression.groups import lookup_metadata, results_in
 from opengrade_server.regression.policy import (
     EvaluatorMetricInput,
     GroupInput,
@@ -61,6 +62,35 @@ class ReleaseCheckCommand:
     experiment_id: uuid.UUID
     policy: dict[str, Any]
     baseline_experiment_id: uuid.UUID | None = None
+
+
+_INPUT_PREVIEW_CHARS = 300
+_TRUE_STRINGS = frozenset({"true", "yes", "1"})
+
+
+def _is_marked(value: Any) -> bool:
+    """Metadata flag for critical items: ``true``, ``1`` or the strings true / yes / 1."""
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, int | float):
+        return value == 1
+    if isinstance(value, str):
+        return value.strip().lower() in _TRUE_STRINGS
+    return False
+
+
+def _input_preview(value: Any) -> str | None:
+    if value is None:
+        return None
+    if isinstance(value, dict):
+        for key in ("question", "input", "query"):
+            if isinstance(value.get(key), str):
+                value = value[key]
+                break
+    text = " ".join(str(value).split())
+    if len(text) > _INPUT_PREVIEW_CHARS:
+        text = text[: _INPUT_PREVIEW_CHARS - 1] + "…"
+    return text
 
 
 def _evaluator_name(run: EvaluationRun) -> str | None:
@@ -123,10 +153,15 @@ class ReleaseCheck:
             baseline = await self._experiments.get_by_id(baseline_id)
             if baseline is None or baseline.project_id != command.project_id:
                 raise ExperimentNotFoundError(baseline_id)
-            relative_eval = (
-                policy.latency is not None and policy.latency.max_increase_pct is not None
-            ) or (policy.cost is not None and policy.cost.max_increase_pct is not None)
-            if relative_eval:
+            # Rules that read the baseline's per-item results, not just its aggregates.
+            needs_baseline_results = (
+                (policy.latency is not None and policy.latency.max_increase_pct is not None)
+                or (policy.cost is not None and policy.cost.max_increase_pct is not None)
+                or (
+                    policy.regression is not None and policy.regression.max_new_failures is not None
+                )
+            )
+            if needs_baseline_results:
                 baseline_inputs = await self._metric_inputs(baseline)
             if self._metrics is not None and any(
                 rule.is_relative for rule in policy.experiment_metrics
@@ -170,6 +205,7 @@ class ReleaseCheck:
                                 mean_score_delta=metric.delta,
                                 insufficient_n=True,
                                 compare_status=metric.status,
+                                n_paired=metric.n_paired,
                             )
                         )
                         continue
@@ -178,6 +214,8 @@ class ReleaseCheck:
                             evaluator_name=name,
                             mean_score_delta=metric.delta,
                             compare_status=metric.status,
+                            n_paired=metric.n_paired,
+                            min_detectable_delta=metric.min_detectable_delta,
                         )
                     )
 
@@ -216,6 +254,20 @@ class ReleaseCheck:
                 )
                 for value, item_ids in by_value.items()
             ]
+        critical_item_ids: set[uuid.UUID] | None = None
+        item_inputs: dict[uuid.UUID, str | None] = {}
+        needs_items = policy.critical is not None or (
+            policy.regression is not None and policy.regression.max_new_failures is not None
+        )
+        if needs_items:
+            items = await self._dataset_items(experiment, required=policy.critical is not None)
+            item_inputs = {item.id: _input_preview(item.input) for item in items}
+            if policy.critical is not None:
+                critical_item_ids = {
+                    item.id
+                    for item in items
+                    if _is_marked(lookup_metadata(item.metadata, policy.critical.by))
+                }
         evaluation = evaluate_policy(
             policy_for_eval,
             candidate=candidate,
@@ -224,6 +276,8 @@ class ReleaseCheck:
             groups=groups,
             baseline=baseline_inputs,
             baseline_experiment_metrics=baseline_experiment_metrics,
+            critical_item_ids=critical_item_ids,
+            item_inputs=item_inputs,
         )
         if (
             policy.regression is not None
@@ -249,6 +303,13 @@ class ReleaseCheck:
             baseline_experiment_id=baseline_id,
             checks=evaluation,
         )
+
+    async def _dataset_items(self, experiment: Experiment, *, required: bool) -> list[DatasetItem]:
+        if self._datasets is None:
+            if required:
+                raise InvalidPolicyError("policy.critical is not available here")
+            return []
+        return await self._datasets.list_items(experiment.dataset_id)
 
     async def _metric_inputs(self, experiment: Experiment) -> list[EvaluatorMetricInput]:
         """Per-evaluator scores of the experiment's current (non-stale) runs."""

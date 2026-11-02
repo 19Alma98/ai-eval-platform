@@ -39,11 +39,16 @@ Test cases worse than baseline (4):
   …
 regression.hit_at_k.mean_score       -0.20   -0.05   failed
 regression.must_contain.mean_score   -0.20   -0.05   failed
+regression.hit_at_k.new_failures      4       0      failed
+critical.hit_at_k.failures            1       0      failed
 groups.category=it.hit_at_k.min       0.67    0.8    failed
 groups.category=finance.hit_at_k.min  0.67    0.8    failed
 Alias 'main' not moved: the gate failed
 Result: FAILED
 ```
+
+`new_failures` and `critical` would block it even if the means held. The run also warns
+that 20 questions only detect drops of ~0.28, which is why `max_delta` stays in the policy.
 
 Each step also writes `reports/stepN.md` (what the job summary / PR comment shows)
 and `reports/stepN.xml` (JUnit, one test case per check).
@@ -56,6 +61,8 @@ and `reports/stepN.xml` (JUnit, one test case per check).
 | `latency.p95_max_ms` | Is it fast enough? (`max_increase_pct` adds "not slower than main by more than N%") |
 | `experiment_metrics` | Run-level numbers: `opengrade.error_rate` must stay under 5% **and** not grow vs main (`max_increase: 0.0`). |
 | `regression` | Is any metric **worse than the baseline**? Fails on a statistically significant drop (paired bootstrap, CI entirely below 0) **or** a mean drop larger than `max_delta`. |
+| `regression.max_new_failures` | Did a test case that passes on main **start failing**? Catches one answer breaking while another improves (the mean does not move). |
+| `critical` | Must-pass test cases (`"critical": true` in the gold set): each must PASS every quality metric. Needs no baseline. |
 | `groups.by: category` | Same checks per question category, so one category collapsing is not hidden by the global mean. |
 
 Keep both kinds of rules: `regression` alone can drift down over many small
@@ -65,9 +72,11 @@ Rules of thumb:
 
 - At least **5 paired items per metric** (and per group, `min_items`) are needed for the
   regression check; below that it is reported as `unavailable`, which fails the gate.
-  Aim for 30+ gold items for meaningful statistics.
+  The power warning tells you how far you are from meaningful statistics; set
+  `regression.max_detectable_delta` to make it a failing check.
 - If the pipeline is non-deterministic (real LLM), set `evaluate.repeats: 3` so noise does
-  not look like a regression.
+  not look like a regression. Full walkthrough with a real model and an LLM judge:
+  [`examples/llm_regression_gate/`](../llm_regression_gate/README.md).
 - Changing the dataset or the metrics set makes the comparison meaningless: that run skips
   `regression` (`Exam changed`) and re-bases when it passes.
 

@@ -49,7 +49,21 @@ def _signed_pct(value: Any) -> str:
     return f"{value:+.1f}%"
 
 
+_COUNT_SUFFIXES = (".failures", ".new_failures", ".items")
+_DETECTABLE_SUFFIX = ".min_detectable_delta"
+
+
+def _count(value: Any) -> str:
+    if isinstance(value, int | float) and not isinstance(value, bool) and math.isfinite(value):
+        return str(int(value))
+    return "—"
+
+
 def _check_value(metric: str, value: Any) -> str:
+    if metric.endswith(_COUNT_SUFFIXES):
+        return _count(value)
+    if metric.endswith(_DETECTABLE_SUFFIX):
+        return _num(value)
     if metric.endswith("_pct"):
         return _signed_pct(value)
     if ".regression." in metric or metric.startswith("regression."):
@@ -60,6 +74,12 @@ def _check_value(metric: str, value: Any) -> str:
 def _check_threshold(metric: str, threshold: Any) -> str:
     if metric == BASELINE_REQUIRED_CHECK:
         return "a comparable baseline"
+    if metric.endswith(".items"):
+        return "at least one critical test case"
+    if metric.endswith(_COUNT_SUFFIXES):
+        return f"≤ {_count(threshold)}"
+    if metric.endswith(_DETECTABLE_SUFFIX):
+        return f"≤ {_num(threshold)}"
     if threshold is None:
         if ".regression." in metric or metric.startswith("regression."):
             return "no significant drop"
@@ -154,6 +174,36 @@ def _regressed_items_section(payload: dict[str, Any]) -> list[str]:
     return lines
 
 
+def _case_change(item: dict[str, Any]) -> str:
+    candidate = html.escape(str(item.get("candidate_label") or "FAIL"))
+    if item.get("baseline_label"):
+        return f"{html.escape(str(item['baseline_label']))} → {candidate}"
+    return candidate
+
+
+def _check_items_section(checks: list[dict[str, Any]]) -> list[str]:
+    """Test cases behind failing item-level checks (critical items, new failures)."""
+    lines: list[str] = []
+    for check in checks:
+        items: list[dict[str, Any]] = list(check.get("items") or [])
+        if check.get("status") == "passed" or not items:
+            continue
+        total = check.get("actual")
+        count = int(total) if isinstance(total, int | float) else len(items)
+        shown = f"{len(items)} of {count}" if count > len(items) else str(count)
+        lines += [
+            f"#### `{check.get('metric')}` ({shown})",
+            "",
+            "| # | Input | Verdict |",
+            "|---|---|---|",
+        ]
+        for n, item in enumerate(items, start=1):
+            text = item.get("input") or item.get("dataset_item_id")
+            lines.append(f"| {n} | {_cell(text)} | {_case_change(item)} |")
+        lines.append("")
+    return lines
+
+
 def _check_rows(checks: list[dict[str, Any]]) -> list[str]:
     rows = ["| Check | Actual | Threshold | Status |", "|---|---|---|---|"]
     for check in checks:
@@ -210,23 +260,32 @@ def render_markdown(payload: dict[str, Any], *, title: str = "OpenGrade quality 
         lines.append("")
         if failed:
             lines += ["### Failing checks", "", *_check_rows(failed), ""]
+            lines += _check_items_section(failed)
 
     comparison: list[dict[str, Any]] = list(payload.get("comparison") or [])
     metrics: dict[str, Any] = dict(payload.get("metrics") or {})
     if comparison:
-        lines += [
-            "### Metrics vs baseline",
-            "",
-            "| Metric | Candidate | Baseline | Δ | Verdict |",
-            "|---|---|---|---|---|",
-        ]
+        # Smallest drop the paired test detects (~80% power) at this test-set size.
+        power = any(row.get("min_detectable_delta") is not None for row in comparison)
+        head = "| Metric | Candidate | Baseline | Δ | Verdict |"
+        rule = "|---|---|---|---|---|"
+        if power:
+            head += " Detectable drop (n) |"
+            rule += "---|"
+        lines += ["### Metrics vs baseline", "", head, rule]
         for row in comparison:
             verdict = str(row.get("status") or "—")
             cell = f"{_VERDICT_ICON.get(verdict, '')} {verdict}".strip()
-            lines.append(
+            line = (
                 f"| {row.get('metric')} | {_num(row.get('candidate'))} "
                 f"| {_num(row.get('baseline'))} | {_signed(row.get('delta'))} | {cell} |"
             )
+            if power:
+                mde = row.get("min_detectable_delta")
+                n = row.get("n_paired")
+                line += f" {'≥ ' + _num(mde) if mde is not None else '—'}"
+                line += f" ({n}) |" if n else " |"
+            lines.append(line)
         lines.append("")
     elif metrics:
         lines += ["### Metrics", "", "| Metric | Mean |", "|---|---|"]
@@ -253,6 +312,14 @@ def _regression_metric(check: str) -> str:
     if check.startswith(prefix) and check.endswith(suffix):
         return check[len(prefix) : -len(suffix)]
     return ""
+
+
+def _junit_case(item: dict[str, Any]) -> str:
+    text = _clip(" ".join(_text(item.get("input") or item.get("dataset_item_id")).split()), 200)
+    change = str(item.get("candidate_label") or "FAIL")
+    if item.get("baseline_label"):
+        change = f"{item['baseline_label']} → {change}"
+    return f"- {text}: {change}"
 
 
 def render_junit(payload: dict[str, Any], *, suite: str = "opengrade quality gate") -> str:
@@ -292,7 +359,10 @@ def render_junit(payload: dict[str, Any], *, suite: str = "opengrade quality gat
         else:
             message = f"{status}: no data to evaluate (fails the gate); required {threshold}"
         failure = ET.SubElement(case, "failure", message=message, type=str(status))
-        failure.text = "\n".join([message, *cases_by_metric.get(_regression_metric(metric), [])])
+        own_cases = [_junit_case(item) for item in check.get("items") or []]
+        failure.text = "\n".join(
+            [message, *own_cases, *cases_by_metric.get(_regression_metric(metric), [])]
+        )
     ET.indent(root)
     return '<?xml version="1.0" encoding="UTF-8"?>\n' + ET.tostring(root, encoding="unicode") + "\n"
 

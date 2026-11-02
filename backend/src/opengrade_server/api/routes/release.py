@@ -6,6 +6,7 @@ from fastapi import APIRouter, Depends
 
 from opengrade_server.api.deps import get_release_check
 from opengrade_server.api.schemas import (
+    ReleaseCheckCaseResponse,
     ReleaseCheckItemResponse,
     ReleaseCheckRequest,
     ReleaseCheckResponse,
@@ -42,6 +43,15 @@ async def release_check(
                 actual=check.actual,
                 threshold=check.threshold,
                 status=check.status,
+                items=[
+                    ReleaseCheckCaseResponse(
+                        dataset_item_id=item.dataset_item_id,
+                        input=item.input,
+                        candidate_label=item.candidate_label,
+                        baseline_label=item.baseline_label,
+                    )
+                    for item in check.items
+                ],
             )
             for check in result.checks.checks
         ],
