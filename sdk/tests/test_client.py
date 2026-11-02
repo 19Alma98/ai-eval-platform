@@ -375,6 +375,7 @@ def test_alerts_resource_sends_only_set_fields() -> None:
             "window_minutes": 60,
             "webhook_format": "json",
             "enabled": True,
+            "condition": "threshold",
         },
     )
     assert seen[1] == ("PATCH", "/api/v1/alert-rules/r1", {"webhook_url": None})

@@ -7,6 +7,7 @@ from typing import Any
 from opengrade_server.application.projects import ProjectNotFoundError
 from opengrade_server.domain.evaluator import Evaluator
 from opengrade_server.domain.repositories import EvaluatorRepository, ProjectRepository
+from opengrade_server.evaluation.judges.custom import CUSTOM_JUDGE_KIND
 from opengrade_server.evaluation.registry import get_evaluator_factory
 
 
@@ -57,6 +58,8 @@ class CreateEvaluator:
         except KeyError as exc:
             raise UnknownEvaluatorKindError(kind) from exc
 
+        if kind == CUSTOM_JUDGE_KIND and command.type != "llm_judge":
+            raise ValueError("custom_judge evaluators must have type 'llm_judge'")
         factory = get_evaluator_factory(kind)
         factory(command.config)
 

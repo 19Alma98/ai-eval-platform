@@ -22,10 +22,20 @@ import {
 } from "@/components/ui/select";
 import { createAlertRule, updateAlertRule } from "@/lib/api/alerts";
 import { formatErrorForUi } from "@/lib/api/client";
-import type { AlertMetric, AlertRule, AlertRuleInput } from "@/lib/api/types";
+import type {
+  AlertCondition,
+  AlertMetric,
+  AlertOperator,
+  AlertRule,
+  AlertRuleInput,
+} from "@/lib/api/types";
 import {
   ALERT_METRICS,
+  BASELINE_OPTIONS,
+  CONDITION_OPTIONS,
+  conditionDefaults,
   metricOption,
+  signedThreshold,
   thresholdFromInput,
   thresholdToInput,
   WINDOW_OPTIONS,
@@ -39,9 +49,12 @@ export type ScoreChoice = { name: string; source: string };
 type Draft = {
   name: string;
   metric: AlertMetric;
-  operator: "gt" | "lt";
+  condition: AlertCondition;
+  operator: AlertOperator;
   threshold: string;
   windowMinutes: number;
+  /** Change rules: comparison period; 0 = same length as the window. */
+  baselineMinutes: number;
   scoreName: string;
   scoreSource: string;
   webhookUrl: string;
@@ -54,12 +67,21 @@ type Draft = {
 function draftFrom(rule: AlertRule | null, preset?: Partial<AlertRuleInput>): Draft {
   const metric = rule?.metric ?? preset?.metric ?? "score_fail_rate";
   const option = metricOption(metric);
+  const condition = rule?.condition ?? preset?.condition ?? "threshold";
+  const windowMinutes = rule?.window_minutes ?? preset?.window_minutes ?? 60;
+  const baseline = rule?.baseline_minutes ?? null;
   return {
     name: rule?.name ?? preset?.name ?? "",
     metric,
+    condition,
     operator: rule?.operator ?? preset?.operator ?? option.defaultOperator,
-    threshold: thresholdToInput(metric, rule?.threshold ?? preset?.threshold ?? option.defaultThreshold),
-    windowMinutes: rule?.window_minutes ?? preset?.window_minutes ?? 60,
+    threshold: thresholdToInput(
+      metric,
+      rule?.threshold ?? preset?.threshold ?? option.defaultThreshold,
+      condition,
+    ),
+    windowMinutes,
+    baselineMinutes: baseline == null || baseline === windowMinutes ? 0 : baseline,
     scoreName: rule?.score_name ?? preset?.score_name ?? "",
     scoreSource: rule?.score_source ?? preset?.score_source ?? ANY_SOURCE,
     webhookUrl: rule?.webhook_url ?? "",
@@ -111,22 +133,45 @@ export function AlertRuleDialog({
   }
 
   function setMetric(metric: AlertMetric) {
-    const next = metricOption(metric);
-    setDraft((d) => ({
-      ...d,
-      metric,
-      operator: next.defaultOperator,
-      threshold: thresholdToInput(metric, next.defaultThreshold),
-    }));
+    setDraft((d) => {
+      const condition = metric === "needs_review" ? "threshold" : d.condition;
+      const defaults = conditionDefaults(metric, condition);
+      return {
+        ...d,
+        metric,
+        condition,
+        operator: defaults.operator,
+        threshold: thresholdToInput(metric, defaults.threshold, condition),
+      };
+    });
+  }
+
+  function setCondition(condition: AlertCondition) {
+    setDraft((d) => {
+      const defaults = conditionDefaults(d.metric, condition);
+      return {
+        ...d,
+        condition,
+        operator: defaults.operator,
+        threshold: thresholdToInput(d.metric, defaults.threshold, condition),
+      };
+    });
   }
 
   const save = useMutation({
     mutationFn: async () => {
-      const threshold = thresholdFromInput(draft.metric, draft.threshold);
-      if (threshold == null) throw new Error("Enter a number for the threshold");
+      const typed = thresholdFromInput(draft.metric, draft.threshold, draft.condition);
+      if (typed == null) throw new Error("Enter a number for the threshold");
+      const threshold = signedThreshold(draft.condition, draft.operator, typed);
       const body: AlertRuleInput = {
         name: draft.name.trim(),
         metric: draft.metric,
+        condition: draft.condition,
+        // Anomaly rules use the server default (24 past windows).
+        baseline_minutes:
+          draft.condition === "change" && draft.baselineMinutes > 0
+            ? draft.baselineMinutes
+            : null,
         operator: draft.operator,
         threshold,
         window_minutes: draft.windowMinutes,
@@ -211,6 +256,52 @@ export function AlertRuleDialog({
                 </Select>
               </Field>
             </div>
+            <Field label="Condition" htmlFor="alert-condition">
+              <Select
+                value={draft.condition}
+                onValueChange={(v) => v && setCondition(v as AlertCondition)}
+              >
+                <SelectTrigger id="alert-condition" className="w-full">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {CONDITION_OPTIONS.filter(
+                    (c) => c.value === "threshold" || draft.metric !== "needs_review",
+                  ).map((c) => (
+                    <SelectItem key={c.value} value={c.value}>
+                      {c.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <span className="text-xs text-muted-foreground">
+                {CONDITION_OPTIONS.find((c) => c.value === draft.condition)?.hint}
+                {draft.condition === "anomaly"
+                  ? " Compared with the 24 windows before the current one."
+                  : ""}
+              </span>
+            </Field>
+            {draft.condition === "change" ? (
+              <Field label="Compared with" htmlFor="alert-baseline">
+                <Select
+                  value={String(draft.baselineMinutes)}
+                  onValueChange={(v) => v != null && set("baselineMinutes", Number(v))}
+                >
+                  <SelectTrigger id="alert-baseline" className="w-full">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {BASELINE_OPTIONS.filter(
+                      (b) => b.minutes === 0 || b.minutes >= draft.windowMinutes,
+                    ).map((b) => (
+                      <SelectItem key={b.minutes} value={String(b.minutes)}>
+                        {b.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </Field>
+            ) : null}
             {option.needsScore ? (
               <div className="grid gap-3 sm:grid-cols-2">
                 <Field label="Score" htmlFor="alert-score">
@@ -252,19 +343,32 @@ export function AlertRuleDialog({
               <Field label="Fire when" htmlFor="alert-operator">
                 <Select
                   value={draft.operator}
-                  onValueChange={(v) => v && set("operator", v as "gt" | "lt")}
+                  onValueChange={(v) => v && set("operator", v as AlertOperator)}
                 >
                   <SelectTrigger id="alert-operator" className="w-full">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="gt">above</SelectItem>
-                    <SelectItem value="lt">below</SelectItem>
+                    <SelectItem value="gt">
+                      {draft.condition === "threshold" ? "above" : "goes up"}
+                    </SelectItem>
+                    <SelectItem value="lt">
+                      {draft.condition === "threshold" ? "below" : "goes down"}
+                    </SelectItem>
+                    {draft.condition !== "threshold" ? (
+                      <SelectItem value="abs">either way</SelectItem>
+                    ) : null}
                   </SelectContent>
                 </Select>
               </Field>
               <Field
-                label={`Threshold${option.unit === "percent" ? " (%)" : option.unit === "ms" ? " (ms)" : option.unit === "usd" ? " ($)" : ""}`}
+                label={
+                  draft.condition === "change"
+                    ? "Change (%), e.g. -20 or 20"
+                    : draft.condition === "anomaly"
+                      ? "Standard deviations (z), e.g. 3"
+                      : `Threshold${option.unit === "percent" ? " (%)" : option.unit === "ms" ? " (ms)" : option.unit === "usd" ? " ($)" : ""}`
+                }
                 htmlFor="alert-threshold"
               >
                 <Input

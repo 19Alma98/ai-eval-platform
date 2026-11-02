@@ -247,6 +247,23 @@ class MetricsPackResponse(_ApiModel):
     updated_at: datetime | str | None = None
 
 
+class EvaluatorResponse(_ApiModel):
+    id: str
+    project_id: str | None = None
+    name: str
+    type: str
+    config: dict[str, Any] = Field(default_factory=dict)
+    version: int = 1
+
+
+class EvaluatorPreviewResponse(_ApiModel):
+    score: float | None = None
+    label: str | None = None
+    explanation: str | None = None
+    metadata: dict[str, Any] = Field(default_factory=dict)
+    system_prompt: str | None = None
+
+
 class MetricsSetEntryResponse(_ApiModel):
     id: str | None = None
     kind: str
@@ -375,6 +392,12 @@ class AlertRuleResponse(_ApiModel):
     last_value: float | None = None
     last_evaluated_at: datetime | str | None = None
     last_notified_at: datetime | str | None = None
+    environment: str | None = None
+    version: str | None = None
+    condition: str = "threshold"
+    baseline_minutes: int | None = None
+    last_observed: float | None = None
+    last_baseline: float | None = None
 
 
 class AlertEventResponse(_ApiModel):

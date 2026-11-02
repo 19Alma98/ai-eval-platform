@@ -34,6 +34,7 @@ from opengrade._links import experiment_item_url, experiment_url, trace_url, ui_
 from opengrade._run_context import ACTIVE_RUN
 from opengrade._trace import current_trace_id, truncate_value
 from opengrade.client import Client
+from opengrade.judges import LlmJudge
 from opengrade.metrics import LocalMetric, Sample, Score, evaluate_metric
 from opengrade.models import (
     DatasetItemResponse,
@@ -54,13 +55,15 @@ ACTIVE_EXPERIMENT: ContextVar[Experiment | None] = ContextVar(
 )
 
 
-Metric = str | Mapping[str, Any] | LocalMetric | Callable[..., Any]
+Metric = str | Mapping[str, Any] | LlmJudge | LocalMetric | Callable[..., Any]
 """A server metric kind (``"groundedness"``), an entry dict
-(``{"kind": "hit_at_k", "threshold": 0.9, "config": {"k": 3}}``), a ``LocalMetric``
+(``{"kind": "hit_at_k", "threshold": 0.9, "config": {"k": 3}}``), a custom judge
+(``opengrade.LlmJudge``, run by the server), a ``LocalMetric``
 (``@opengrade.metric``) or a bare callable ``fn(sample)`` / ``fn(item, output)`` scored
 locally."""
 
 TASK_FAILED_EXPLANATION = "task raised before producing an output"
+_JUDGE_KEY = "_llm_judge"
 
 _UUID_RE = re.compile(r"^[0-9a-fA-F]{8}-?([0-9a-fA-F]{4}-?){3}[0-9a-fA-F]{12}$")
 _ITEM_KEYS = frozenset({"input", "expected_output", "context", "metadata"})
@@ -1134,6 +1137,8 @@ def _split_metrics(
     for index, metric in enumerate(metrics):
         if isinstance(metric, str):
             server.append({"kind": metric.strip()})
+        elif isinstance(metric, LlmJudge):
+            server.append({"kind": metric.name.strip(), _JUDGE_KEY: metric})
         elif isinstance(metric, Mapping):
             if not metric.get("kind"):
                 raise ValueError(f"metric dict needs a 'kind': {metric!r}")
@@ -1170,6 +1175,19 @@ def _resolve_metrics_set(client: Client, project_id: str, requested: list[dict[s
 
     entries: list[dict[str, Any]] = []
     for spec in requested:
+        judge = spec.get(_JUDGE_KEY)
+        if isinstance(judge, LlmJudge):
+            evaluator = judge.register(client, project_id)
+            entries.append(
+                {
+                    "kind": spec["kind"],
+                    "enabled": True,
+                    "threshold": judge.threshold,
+                    "config": {},
+                    "evaluator_id": evaluator.id,
+                }
+            )
+            continue
         base = defaults.get(spec["kind"], {"threshold": None, "config": {}})
         entry = {"kind": spec["kind"], "enabled": True, **base}
         entry.update({k: v for k, v in spec.items() if k != "kind"})

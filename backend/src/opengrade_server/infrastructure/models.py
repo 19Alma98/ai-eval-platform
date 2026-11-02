@@ -775,6 +775,10 @@ class AlertRuleModel(Base):
     last_notified_at: Mapped[datetime | None] = mapped_column(UtcDateTime(), nullable=True)
     environment: Mapped[str | None] = mapped_column(String(200), nullable=True)
     version: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    condition: Mapped[str] = mapped_column(String(16), nullable=False, server_default="threshold")
+    baseline_minutes: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    last_observed: Mapped[float | None] = mapped_column(Float, nullable=True)
+    last_baseline: Mapped[float | None] = mapped_column(Float, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         UtcDateTime(), nullable=False, server_default=func.now()
     )

@@ -1,15 +1,16 @@
 # Custom evaluators
 
-There are two ways to add a metric. Pick by where the code should run.
+There are three ways to add a metric. Pick by where the logic should live.
 
-| | SDK metric (`@opengrade.metric`) | Server evaluator (`register_evaluator`) |
-| --- | --- | --- |
-| Runs in | your process, during `opengrade.evaluate` / `@trace(metrics=…)` | the OpenGrade API, on `POST /experiments/{id}/evaluate` |
-| Change the server? | no | yes (contribution to `opengrade_server`) |
-| Usable from UI / metrics sets / re-score | listed under "Metrics computed in your code"; cannot be re-run by the server | yes |
-| Good for | app-specific checks, quick iteration | reusable metrics everyone should get |
+| | SDK metric (`@opengrade.metric`) | Custom LLM judge (`opengrade.LlmJudge`) | Server evaluator (`register_evaluator`) |
+| --- | --- | --- | --- |
+| What you write | Python code | criteria in plain language | Python code in `opengrade_server` |
+| Runs in | your process, during `opengrade.evaluate` / `@trace(metrics=…)` | the OpenGrade API (judge model) | the OpenGrade API, on `POST /experiments/{id}/evaluate` |
+| Change the server? | no | no (stored as a project evaluator) | yes (contribution) |
+| Usable from UI / metrics sets / re-score | listed under "Metrics computed in your code"; cannot be re-run by the server | yes; `live=True` also scores production traffic | yes |
+| Good for | deterministic, app-specific checks | subjective qualities: tone, format, policy, completeness | reusable metrics everyone should get |
 
-App-specific checks belong in the SDK: see [Custom metrics](../sdk/README.md#custom-metrics). The rest of this page is for contributors adding an evaluator to the server.
+App-specific checks belong in the SDK: see [Custom metrics](../sdk/README.md#custom-metrics) and [Custom LLM judges](../sdk/README.md#custom-llm-judges); the judge config is documented in [`05-api.md`](05-api.md#evaluators). The rest of this page is for contributors adding an evaluator to the server.
 
 ## The protocol
 

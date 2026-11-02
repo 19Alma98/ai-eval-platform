@@ -32,6 +32,7 @@ import { metricsSetDisplayName } from "@/lib/metrics-catalog";
 // Evaluators holding scores uploaded by the SDK (backend CLIENT_EVALUATOR_KIND).
 const CLIENT_EVALUATOR_KIND = "client";
 import { useEvaluators } from "@/features/experiments/use-experiments";
+import { CustomJudges } from "./custom-judges";
 import {
   metricsSetsQueryOptions,
   useCreateMetricsSet,
@@ -209,6 +210,7 @@ export function MetricsSetList({ projectId }: { projectId: string }) {
         />
       )}
 
+      <CustomJudges projectId={projectId} />
       <LocalMetrics projectId={projectId} />
     </div>
   );

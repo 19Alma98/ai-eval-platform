@@ -20,7 +20,7 @@ import {
 import { formatErrorForUi } from "@/lib/api/client";
 import type { AlertEvent, AlertRule } from "@/lib/api/types";
 import { cn } from "@/lib/cn";
-import { describeRule, formatAlertValue } from "./alert-format";
+import { describeReading, describeRule, formatRuleValue } from "./alert-format";
 import { AlertRuleDialog, type ScoreChoice } from "./alert-rule-dialog";
 import {
   alertEventsQueryKey,
@@ -273,7 +273,7 @@ function RuleRow({
           {rule.last_evaluated_at ? (
             <>
               {" · now "}
-              {formatAlertValue(rule.metric, rule.last_value)}
+              {describeReading(rule) ?? formatRuleValue(rule, rule.last_value)}
               {" · checked "}
               <RelativeTime date={rule.last_evaluated_at} />
             </>

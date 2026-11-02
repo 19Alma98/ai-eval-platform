@@ -21,7 +21,13 @@ AlertMetric = Literal[
     "score_mean",
     "score_fail_rate",
 ]
-AlertOperator = Literal["gt", "lt"]
+AlertOperator = Literal["gt", "lt", "abs"]
+# threshold: the metric itself vs ``threshold``.
+# change: relative change of the metric vs the previous ``baseline_minutes``
+#   ((current - baseline) / |baseline|; 0.3 = +30%) — drift.
+# anomaly: z-score of the metric vs the same-size windows of the previous
+#   ``baseline_minutes`` ((current - mean) / std) — spikes and drops.
+AlertCondition = Literal["threshold", "change", "anomaly"]
 AlertState = Literal["ok", "firing", "no_data"]
 AlertEventKind = Literal["firing", "resolved", "repeat", "test"]
 DeliveryStatus = Literal["sent", "failed", "skipped"]
@@ -47,11 +53,17 @@ SAMPLED_METRICS = frozenset(
     {"error_rate", "latency_p50_ms", "latency_p90_ms", "latency_p99_ms", *SCORE_METRICS}
 )
 
+ALERT_CONDITIONS: frozenset[str] = frozenset({"threshold", "change", "anomaly"})
 NAME_MAX_LENGTH = 200
 URL_MAX_LENGTH = 2000
 MIN_WINDOW_MINUTES = 5
 MAX_WINDOW_MINUTES = 7 * 24 * 60
 DEFAULT_MIN_SAMPLES = 10
+MAX_BASELINE_MINUTES = 30 * 24 * 60
+# Anomaly baselines: enough past windows for a mean / std, few enough to query.
+MIN_ANOMALY_BUCKETS = 3
+MAX_ANOMALY_BUCKETS = 48
+DEFAULT_ANOMALY_BUCKETS = 24
 
 
 class AlertRuleValidationError(ValueError):
@@ -102,6 +114,13 @@ class AlertRule:
     # Only traces of this deployment environment / release count (None = all).
     environment: str | None = None
     version: str | None = None
+    condition: str = "threshold"
+    # Comparison period before the current window (change / anomaly only).
+    baseline_minutes: int | None = None
+    # Last raw metric value and its baseline (mean of the past windows) — for change /
+    # anomaly rules ``last_value`` holds the relative change / z-score instead.
+    last_observed: float | None = None
+    last_baseline: float | None = None
 
     @classmethod
     def create(
@@ -122,6 +141,8 @@ class AlertRule:
         enabled: bool = True,
         environment: str | None = None,
         version: str | None = None,
+        condition: str = "threshold",
+        baseline_minutes: int | None = None,
     ) -> AlertRule:
         now = datetime.now(UTC)
         rule = cls(
@@ -151,6 +172,8 @@ class AlertRule:
             updated_at=now,
             environment=environment,
             version=version,
+            condition=condition,
+            baseline_minutes=baseline_minutes,
         )
         return rule.validated()
 
@@ -162,8 +185,19 @@ class AlertRule:
             raise AlertRuleValidationError(
                 f"metric must be one of {sorted(ALERT_METRICS)}, got {self.metric!r}"
             )
-        if self.operator not in {"gt", "lt"}:
-            raise AlertRuleValidationError("operator must be 'gt' or 'lt'")
+        if self.condition not in ALERT_CONDITIONS:
+            raise AlertRuleValidationError(
+                f"condition must be one of {sorted(ALERT_CONDITIONS)}, got {self.condition!r}"
+            )
+        if self.operator not in {"gt", "lt", "abs"}:
+            raise AlertRuleValidationError("operator must be 'gt', 'lt' or 'abs'")
+        if self.operator == "abs" and self.condition == "threshold":
+            raise AlertRuleValidationError(
+                "operator 'abs' (either direction) only applies to change / anomaly rules"
+            )
+        if self.operator == "abs" and self.threshold < 0:
+            raise AlertRuleValidationError("operator 'abs' needs a threshold >= 0")
+        baseline_minutes = self._validated_baseline()
         if not math.isfinite(self.threshold):
             raise AlertRuleValidationError("threshold must be finite")
         if not MIN_WINDOW_MINUTES <= self.window_minutes <= MAX_WINDOW_MINUTES:
@@ -195,9 +229,45 @@ class AlertRule:
             webhook_url=validate_webhook_url(self.webhook_url),
             environment=environment,
             version=version,
+            baseline_minutes=baseline_minutes,
         )
 
+    def _validated_baseline(self) -> int | None:
+        if self.condition == "threshold":
+            if self.baseline_minutes is not None:
+                raise AlertRuleValidationError(
+                    "baseline_minutes only applies to change / anomaly rules"
+                )
+            return None
+        if self.metric == "needs_review":
+            raise AlertRuleValidationError(
+                "needs_review is a backlog count: use a threshold rule for it"
+            )
+        if self.baseline_minutes is None:
+            buckets = 1 if self.condition == "change" else DEFAULT_ANOMALY_BUCKETS
+            return min(self.window_minutes * buckets, MAX_BASELINE_MINUTES)
+        if not self.window_minutes <= self.baseline_minutes <= MAX_BASELINE_MINUTES:
+            raise AlertRuleValidationError(
+                f"baseline_minutes must be between window_minutes ({self.window_minutes}) "
+                f"and {MAX_BASELINE_MINUTES}"
+            )
+        if self.condition == "anomaly":
+            buckets = self.baseline_minutes // self.window_minutes
+            if not MIN_ANOMALY_BUCKETS <= buckets <= MAX_ANOMALY_BUCKETS:
+                raise AlertRuleValidationError(
+                    "anomaly rules compare the window with "
+                    f"{MIN_ANOMALY_BUCKETS}-{MAX_ANOMALY_BUCKETS} past windows: "
+                    f"baseline_minutes / window_minutes is {buckets}"
+                )
+        return self.baseline_minutes
+
+    @property
+    def anomaly_buckets(self) -> int:
+        return (self.baseline_minutes or 0) // self.window_minutes
+
     def breached(self, value: float) -> bool:
+        if self.operator == "abs":
+            return abs(value) > self.threshold
         return value > self.threshold if self.operator == "gt" else value < self.threshold
 
 
