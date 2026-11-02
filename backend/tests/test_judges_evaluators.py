@@ -524,7 +524,6 @@ async def test_context_precision_prechecks_do_not_call_llm() -> None:
     assert (await judge.evaluate(_sample(context=None))).label == "SKIPPED"
     empty = await judge.evaluate(_sample(context={"documents": []}))
     assert (empty.label, empty.score) == ("FAIL", 0.0)
-    assert (await judge.evaluate(_sample(actual_output=None))).label == "SKIPPED"
     assert llm.calls == []
 
 
@@ -618,7 +617,6 @@ async def test_context_recall_prechecks_do_not_call_llm() -> None:
     assert (await judge.evaluate(_sample(context=None))).label == "SKIPPED"
     empty = await judge.evaluate(_sample(context={"documents": []}))
     assert (empty.label, empty.score) == ("FAIL", 0.0)
-    assert (await judge.evaluate(_sample(actual_output=None))).label == "SKIPPED"
     assert llm.calls == []
 
 
@@ -655,3 +653,28 @@ async def test_bootstrap_registers_new_judges() -> None:
         assert cr.prompt_version == prompts.prompt_version("context_recall", "claims")
     finally:
         clear_registry()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("kind", ["context_precision", "context_recall"])
+async def test_context_judges_score_retrieval_only_runs(kind: str) -> None:
+    """No generated answer (retrieval-only evaluation): the documents are still judged."""
+    llm = ScriptedJudgeLlm(
+        {
+            "verify_context_relevance": {"verdicts": [{"reasoning": "r", "verdict": "relevant"}]},
+            "extract_reference_claims": {"claims": ["26 days of PTO"]},
+            "verify_context_coverage": _coverage("covered"),
+        }
+    )
+    result = await _judge(kind, llm).evaluate(_sample(actual_output=None))
+    assert result.label is None
+    assert result.score == 1.0
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("kind", ["groundedness", "correctness", "answer_relevance"])
+async def test_answer_judges_still_skip_without_answer(kind: str) -> None:
+    llm = ScriptedJudgeLlm()
+    result = await _judge(kind, llm).evaluate(_sample(actual_output=None))
+    assert result.label == "SKIPPED"
+    assert llm.calls == []

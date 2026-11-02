@@ -83,7 +83,7 @@ Groundedness reads retrieved chunk text from run `context.documents` (populated 
 
 PASS/FAIL rule (offline runs and live scoring): an item passes only if the evaluator label is not `FAIL` **and** the score meets the entry threshold. The stored label is that effective verdict; when it overrides the evaluator's own label, the original is kept in `metadata.judge_label` (live: appended to the explanation). LLM judges never emit a label, so for them the verdict comes from the threshold alone. A run is `FAILED` if any item fails.
 
-LLM judges only receive the fields their rubric needs: `answer_relevance` gets input + answer, `groundedness` adds `context.documents`, `correctness` adds `expected_output`, `context_precision` and `context_recall` add `expected_output` + `context.documents`. Item `metadata` (e.g. `expected_doc_ids`) is never sent to a judge. Prompt versions are `{kind}.{method}.{sha256[:12]}` of the system templates that pair uses.
+LLM judges only receive the fields their rubric needs: `answer_relevance` gets input + answer, `groundedness` adds `context.documents`, `correctness` adds `expected_output`, `context_precision` and `context_recall` get input + `expected_output` + `context.documents` (no answer). Item `metadata` (e.g. `expected_doc_ids`) is never sent to a judge. Prompt versions are `{kind}.{method}.{sha256[:12]}` of the system templates that pair uses.
 
 Live scoring: a failing judge records an `ERROR` score for its kind without discarding the others (`score_warning` lists the failed kinds; status is `error` only if every judge failed).
 
@@ -120,7 +120,7 @@ Entry config keys (part of `config_hash`). Invalid values raise `ValueError` whe
 - **Context precision (claims):** for each retrieved document (rank order), verdict `relevant` / `not_relevant` vs question + `expected_output`. Score is average precision \(\sum_k (P@k \cdot v_k) / \sum v_k\); `0` when no document is relevant. Optional `config.k` truncates the document list; `max_claims` is also applied as a safety cap. Missing `expected_output` or `context` is `SKIPPED`; empty `context.documents` is a minimum-score `FAIL`.
 - **Context recall (claims):** extract gold claims from `expected_output` (same gold-claim cache keying as correctness, keyed by this judge's `prompt_version`), then verdict `covered` / `contradicted` / `missing` per claim against `context.documents`. Score is `covered / gold claims` (a contradicted claim is not covered but does **not** zero the whole score). Zero gold claims is `SKIPPED` (`no_gold_claims`). Missing `expected_output` or `context` is `SKIPPED`; empty `context.documents` is a minimum-score `FAIL`. Not gold-less: offline pack only.
 - **Rubric:** `{reasoning, level}` with `level` 1-5 and `score = (level - 1) / 4`.
-- Missing `actual_output` is `SKIPPED` for every judge; correctness, context_precision and context_recall also need `expected_output`.
+- Missing `actual_output` is `SKIPPED` for the answer judges (groundedness, correctness, answer_relevance). context_precision and context_recall never read the answer, so they also score retrieval-only runs (`opengrade.evaluate_retrieval`); they, and correctness, need `expected_output`.
 - PASS/FAIL comes only from the entry threshold.
 
 ### Determinism and versioning

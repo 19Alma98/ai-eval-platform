@@ -167,6 +167,9 @@ def _with_lists(head: str, records: list[dict[str, Any]], verdicts: tuple[str, .
 
 class _LlmJudge:
     kind: str
+    # Context judges grade the retrieved documents against the question and the reference
+    # answer only, so they also score retrieval-only runs (no generated answer).
+    requires_answer: bool = True
 
     def __init__(
         self,
@@ -206,7 +209,7 @@ class _LlmJudge:
             )
 
     def _precheck(self, sample: EvaluationSample) -> EvaluationResult | None:
-        if sample.actual_output is None:
+        if self.requires_answer and sample.actual_output is None:
             return skip("actual_output is missing", metadata=self._meta())
         return None
 
@@ -446,6 +449,7 @@ class AnswerRelevanceJudge(_LlmJudge):
 
 class ContextRecallJudge(_LlmJudge):
     kind = "context_recall"
+    requires_answer = False
 
     def _precheck(self, sample: EvaluationSample) -> EvaluationResult | None:
         early = super()._precheck(sample)
@@ -513,6 +517,7 @@ class ContextRecallJudge(_LlmJudge):
 
 class ContextPrecisionJudge(_LlmJudge):
     kind = "context_precision"
+    requires_answer = False
 
     def __init__(
         self,

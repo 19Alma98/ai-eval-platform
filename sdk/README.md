@@ -90,6 +90,8 @@ Runnable example: [`examples/sdk_hello/`](../examples/sdk_hello/README.md) (Olla
 | `opengrade.flush()` | Drain the batch span processor before exit |
 | `opengrade.evaluate(...)` | Run a task over a dataset, score, compare with a baseline → `ExperimentResult` |
 | `opengrade.start_experiment(...)` | Context manager for a manual item loop (`exp.items()`, `exp.run(item)`) |
+| `opengrade.sweep(...)` | One experiment per configuration of a grid (models, prompts, chunk sizes…), ranked → `SweepResult` |
+| `opengrade.evaluate_retrieval(...)` | Score only the retriever (hit@k, recall@k, MRR, optional context judges), no answer generated |
 | `opengrade.Client(...)` | Control-plane REST client (projects, datasets, experiments, …) |
 | `opengrade.AsyncClient(...)` | Async control-plane client (projects, live_runs, trace_scores, health) |
 
@@ -189,6 +191,55 @@ print(exp.result.experiment_metrics)
 - `log_metrics` stores one final number per key (no steps). Keys use letters, digits and `_ . - /`. They appear in `result.summary()` with the delta against the baseline, and can gate a release via the release-check policy: `{"experiment_metrics": {"cost_usd": {"max": 2.0}}}`.
 - `opengrade.log_params` / `opengrade.log_metrics` act on the active experiment: inside `with start_experiment(...)` and inside any item run (`exp.run(...)`, `run_task`, `evaluate()` tasks). Elsewhere they raise `RuntimeError`. With concurrency > 1, call `log_metrics`/`log_params` once outside per-item code: per-item calls overwrite each other (last write wins).
 - Every `finish()` logs `opengrade.error_rate`, `opengrade.latency_p50_ms` and `opengrade.latency_p95_ms` (the task's wall-clock latency as measured by the SDK, over the items that did not fail, nearest-rank percentiles).
+
+### Comparing configurations (`sweep`)
+
+Run the same test set over a grid of configurations and rank them in one call:
+
+```python
+def answer(item, params):  # each configuration's params come in as the second argument
+    docs = retrieve(item.input, top_k=params["top_k"])
+    opengrade.set_retrieval_documents(docs)
+    return generate(item.input, docs, model=params["model"])
+
+
+result = opengrade.sweep(
+    dataset="gold-v1",
+    task=answer,
+    grid={"model": ["gemma4", "llama3.3"], "top_k": [3, 5]},  # 4 experiments
+    # variants=[{"model": "gemma4", "top_k": 3}, ...],         # or an explicit list
+    metrics=["groundedness", "hit_at_k", "correctness"],
+    params={"prompt": "v3"},  # stored on every experiment
+    baseline="alias:main",  # optional: each configuration is compared with it
+)
+print(result.summary())  # leaderboard, best first, with latency p95 and error rate
+best = result.best("correctness")  # SweepRun: .params, .result (ExperimentResult)
+rows = result.to_records()  # list of dicts → pandas.DataFrame(rows)
+print(result.url)  # Compare view pinned to the sweep's experiments
+```
+
+- Every configuration is a normal experiment named `<sweep> [model=gemma4, top_k=3]`, with its configuration plus `sweep=<name>` stored as params. In the UI (**Experiments → Compare all**) filter on the `sweep` parameter, color the charts by any parameter, and plot quality against cost or latency.
+- `leaderboard(metric)` / `best(metric)` rank on a scored metric or a run metric (`opengrade.latency_p95_ms`, `cost_usd` from `log_metrics`); latency, cost, error and token metrics rank lower-is-better (override with `lower_is_better=`).
+- The test set is resolved (inline rows uploaded) once. Configurations run one after another; `max_concurrency` and `repeats` apply within each. A configuration that fails to run is reported in `result.errors` and the others still run (`raise_on_error=True` stops instead).
+- `retriever=` instead of `task=` sweeps a retrieval-only evaluation (see below), e.g. chunk sizes or embedding models: `opengrade.sweep(dataset=..., retriever=search, grid={"chunk_size": [256, 512]}, k=5)`.
+
+### Retrieval-only evaluation (`evaluate_retrieval`)
+
+Score the retrieval step without generating answers: cheap enough to run on every change to chunking, embeddings or reranking.
+
+```python
+def search(query: str):  # or search(item); return the ranked documents
+    return vector_store.similarity_search(query, k=10)
+
+
+result = opengrade.evaluate_retrieval(dataset="gold-v1", retriever=search, k=5)
+print(result.summary())  # hit_at_k, recall_at_k, mrr at cutoff 5 + retrieval latency
+```
+
+- The retriever gets the dataset item, or the question text when its first parameter is named `query`, `question`, `text` or `q`. Sync or async.
+- Documents can be dicts (`id`, `text`, …), strings, LangChain `Document` (`id` / `metadata["id"|"doc_id"|"source"]`) or LlamaIndex `NodeWithScore` (node id). Pass `doc_id=lambda doc: ...` to choose the id. Gold ids come from the item's `expected_doc_ids`; documents without an id get a text hash, which never matches them.
+- Default metrics: `hit_at_k`, `recall_at_k`, `mrr` with cutoff `k` (deterministic, no LLM). Add `"context_precision"` / `"context_recall"` to have the LLM judge rate relevance and coverage against `expected_output`. Metrics that grade an answer (`groundedness`, `correctness`, …) are rejected.
+- The experiment is stored with `params["eval_mode"] = "retrieval"`; `opengrade.latency_p50_ms` / `_p95_ms` measure the retriever alone.
 
 ## Control plane (`Client`)
 

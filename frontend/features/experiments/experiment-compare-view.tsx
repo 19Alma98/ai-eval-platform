@@ -5,6 +5,7 @@ import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useMemo, useState } from "react";
 import { ArrowRight } from "lucide-react";
+import { CompareChangesPanel } from "@/features/experiments/compare-changes-panel";
 import { CompareDetails } from "@/features/experiments/compare-details";
 import { CompareGroupsSection } from "@/features/experiments/compare-groups-section";
 import { CompareItemsTable } from "@/features/experiments/compare-items-table";
@@ -351,6 +352,11 @@ export function ExperimentCompareView({
               </Badge>
             ) : null}
           </div>
+          <CompareChangesPanel
+            candidateConfig={experiment.model_config ?? {}}
+            baselineConfig={baselineExperiment?.model_config ?? {}}
+            experimentMetrics={comparison.experiment_metrics ?? []}
+          />
           <CompareTable
             metrics={comparison.metrics}
             selectedEvaluatorId={selectedEvaluatorId}
@@ -361,9 +367,6 @@ export function ExperimentCompareView({
           <CompareDetails
             open={detailsOpen}
             onOpenChange={(open) => patchCompareUrl({ details: open })}
-            experimentMetrics={comparison.experiment_metrics ?? []}
-            candidateConfig={experiment.model_config ?? {}}
-            baselineConfig={baselineExperiment?.model_config ?? {}}
             visibleCols={visibleCols}
             onVisibleColsChange={(cols) => patchCompareUrl({ cols })}
           />

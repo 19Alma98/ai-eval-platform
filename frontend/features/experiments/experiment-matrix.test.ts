@@ -9,7 +9,6 @@ import {
   flattenParams,
   paramDiff,
   sortRows,
-  trendSeries,
   varyingParams,
   type MatrixRow,
 } from "./experiment-matrix";
@@ -102,20 +101,12 @@ describe("experiment matrix", () => {
     assert.deepEqual(flattenParams({ a: { b: 1 }, content_hash: "x" }), { "a.b": "1" });
   });
 
-  it("marks the best value and orders the trend by creation", () => {
+  it("marks the best value per column", () => {
     assert.deepEqual(bestByColumn(rows, columns), {
       groundedness: 0.9,
       recall_at_k: 0.8,
       "logged:latency_p50": 120,
     });
-    assert.deepEqual(
-      trendSeries(rows, columns).map((p) => [p.label, p.groundedness]),
-      [
-        ["v1", 0.7],
-        ["exp-b", 0.9],
-        ["exp-c", null],
-      ],
-    );
   });
 
   it("picks the lowest latency when several logged values exist", () => {

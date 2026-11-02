@@ -31,12 +31,11 @@ Priority: **P0** blocks a public release, **P1** fix before promoting it, **P2**
 - [ ] `with opengrade.span(...)` context manager.
 - [ ] `AsyncClient` parity (datasets, experiments), `aevaluate`.
 - [ ] Pagination on SDK list calls; `set_project` / `evaluate` scan all projects/datasets/experiments.
-- [ ] Experiments over time: x-axis by date, chart `log_metrics` (cost, p50/p95), dataset-version
-  column/filter, metric columns in the experiments list.
+- [ ] Experiments list: dataset-version column/filter and metric columns (the Compare-all charts
+  already plot any metric over time).
+- [ ] Synthetic test-set generation from a document corpus.
 - [ ] Experiment aliases in the UI: "baseline" badge on the experiment an alias points to, promote /
   roll back buttons, alias history (API + CLI `--promote` already shipped, `/experiment-aliases`).
-- [ ] Compare shows params and experiment-metric deltas (backend already returns
-  `ExperimentCompareResponse.experiment_metrics`), lower-is-better marking for latency/cost.
 - [ ] Live view: session/user grouping, filter by SDK metric / feedback, SDK metrics + feedback in the
   list Scores column, "load more" beyond 50, time-range/metadata filters, auto-refresh on
   Overview/Monitoring/Traces.
@@ -59,8 +58,6 @@ Priority: **P0** blocks a public release, **P1** fix before promoting it, **P2**
   max N tool calls), agent trajectory evaluation beyond `tool_call_success`.
 - [ ] **RAG metrics**: citation accuracy, correct refusal when the answer is not in the documents,
   multi-turn (session) evaluation; judge-vs-human agreement shown per judge.
-- [ ] **Experiment sweeps**: run a grid of configs in one call, quality vs cost/latency view,
-  retrieval-only evaluation (no generation) for chunking / embedding comparisons.
 - [ ] **Scheduled canary runs** of a gold subset against the live endpoint, alert on change.
 
 ## Deferred

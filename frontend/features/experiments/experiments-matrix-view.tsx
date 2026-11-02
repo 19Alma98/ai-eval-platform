@@ -1,6 +1,5 @@
 "use client";
 
-import dynamic from "next/dynamic";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useMemo, useState } from "react";
@@ -34,22 +33,14 @@ import {
   columnDecimals,
   filterRows,
   sortRows,
-  trendSeries,
   varyingParams,
   type MatrixFilters,
   type MatrixRow,
   type MetricColumn,
   type SortState,
 } from "./experiment-matrix";
+import { ExperimentChartsPanel } from "./experiment-charts-panel";
 import { useExperiments } from "./use-experiments";
-
-const TrendChart = dynamic(
-  () => import("./metric-trend-chart-inner").then((m) => m.MetricTrendChartInner),
-  {
-    ssr: false,
-    loading: () => <div className="h-[240px] animate-pulse rounded-md bg-surface-2" aria-hidden />,
-  },
-);
 
 const ALL = "__all__";
 
@@ -139,7 +130,6 @@ export function ExperimentsMatrixView({ projectId }: { projectId: string }) {
 
   const [sort, setSort] = useState<SortState>({ key: "created", dir: "desc" });
   const [selected, setSelected] = useState<Set<string>>(new Set());
-  const [trendMetric, setTrendMetric] = useState<string | null>(null);
 
   const filters: MatrixFilters = useMemo(() => {
     const rawParam = searchParams.get("param") ?? "";
@@ -152,14 +142,20 @@ export function ExperimentsMatrixView({ projectId }: { projectId: string }) {
     };
   }, [searchParams]);
 
-  const setParam = useCallback(
-    (key: string, value: string | null) => {
+  const setParams = useCallback(
+    (patch: Record<string, string | null>) => {
       const params = new URLSearchParams(searchParams.toString());
-      if (value == null) params.delete(key);
-      else params.set(key, value);
-      router.replace(`${pathname}?${params.toString()}`);
+      for (const [key, value] of Object.entries(patch)) {
+        if (value == null) params.delete(key);
+        else params.set(key, value);
+      }
+      router.replace(`${pathname}?${params.toString()}`, { scroll: false });
     },
     [pathname, router, searchParams],
+  );
+  const setParam = useCallback(
+    (key: string, value: string | null) => setParams({ [key]: value }),
+    [setParams],
   );
 
   const { rows: allRows, columns } = useMemo(() => {
@@ -183,13 +179,6 @@ export function ExperimentsMatrixView({ projectId }: { projectId: string }) {
     () => new Map((datasetsQuery.data ?? []).map((d) => [d.id, `${d.name} · v${d.version}`])),
     [datasetsQuery.data],
   );
-  const trendColumns: MetricColumn[] = useMemo(() => {
-    const evaluatorCols = columns.filter((c) => c.kind === "evaluator");
-    if (trendMetric) return evaluatorCols.filter((c) => c.key === trendMetric);
-    return evaluatorCols.slice(0, 6);
-  }, [columns, trendMetric]);
-  const trend = useMemo(() => trendSeries(rows, trendColumns), [rows, trendColumns]);
-
   function onSort(key: string) {
     setSort((prev) =>
       prev.key === key
@@ -231,7 +220,7 @@ export function ExperimentsMatrixView({ projectId }: { projectId: string }) {
           { label: "Compare" },
         ]}
         title="Compare experiments"
-        description="Every experiment side by side, one column per metric. Sort by a metric, filter by model, prompt or any parameter, and pick two to see which questions got better or worse."
+        description="Every experiment side by side, one column per metric. Sort by a metric, filter by model, prompt or any parameter (a sweep shows up as the sweep parameter), chart any metric over time or two metrics against each other, and pick two experiments to see which questions got better or worse."
         actions={
           <>
             {selected.size > 0 ? (
@@ -371,30 +360,14 @@ export function ExperimentsMatrixView({ projectId }: { projectId: string }) {
             </table>
           </div>
 
-          {trendColumns.length > 0 && rows.length > 1 ? (
-            <section
-              aria-label="Metrics across versions"
-              className="flex flex-col gap-2 rounded-lg border border-border bg-surface p-4"
-            >
-              <div className="flex flex-wrap items-center gap-2">
-                <h2 className="text-sm font-semibold text-foreground">Metrics across versions</h2>
-                <span className="text-xs text-muted-foreground">oldest to newest</span>
-                <span className="flex-1" />
-                <FilterSelect
-                  label="Metric"
-                  value={trendMetric}
-                  options={columns
-                    .filter((c) => c.kind === "evaluator")
-                    .map((c) => ({ value: c.key, label: metricLabel(c.label) }))}
-                  onChange={setTrendMetric}
-                />
-              </div>
-              <TrendChart
-                data={trend}
-                columns={trendColumns.map((c) => ({ ...c, label: metricLabel(c.label) }))}
-              />
-            </section>
-          ) : null}
+          <ExperimentChartsPanel
+            rows={rows}
+            columns={columns}
+            varyingParams={params}
+            projectId={projectId}
+            searchParams={searchParams}
+            setParams={setParams}
+          />
         </>
       )}
     </div>
