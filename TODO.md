@@ -46,8 +46,6 @@ Priority: **P0** blocks a public release, **P1** fix before promoting it, **P2**
 
 ### Monitoring gaps (2026-11 review) — P2
 
-- [ ] **Custom LLM judges**: user-defined criteria / prompt / scale / judge model, usable offline and
-  on live traffic. Today only the five built-in RAG judges exist.
 - [ ] **Online evaluation rules**: run a judge or evaluator on a sampled subset of traces matching a
   filter (name, environment, attribute), not only on RAG question/answer live interactions.
 - [ ] **Span-attribute metrics**: aggregate a numeric span attribute as a time series and allow it in
@@ -56,9 +54,33 @@ Priority: **P0** blocks a public release, **P1** fix before promoting it, **P2**
   `session.id`), trace search by attribute/tag.
 - [ ] **Trace-structure checks**: assertions on span order / counts / errors (retriever before LLM,
   max N tool calls), agent trajectory evaluation beyond `tool_call_success`.
-- [ ] **RAG metrics**: citation accuracy, correct refusal when the answer is not in the documents,
-  multi-turn (session) evaluation; judge-vs-human agreement shown per judge.
+- [ ] **RAG answer checks still open** (citation accuracy and correct refusal shipped as
+  `citation_accuracy` / `refusal`): safety checks (PII in the output, toxicity, prompt injection in
+  retrieved documents); judge-vs-human agreement (kappa / % agreement) shown per judge.
 - [ ] **Scheduled canary runs** of a gold subset against the live endpoint, alert on change.
+
+### Conversational RAG (multi-turn) — P2
+
+Today the unit of evaluation is one question/answer pair; here it is the conversation. Order:
+offline first (1-2, builds on dataset → experiment → compare), then the production view (3),
+reusing the same judges.
+
+- [ ] **1. Multi-turn datasets**: task type `rag_chat`; an item holds the chat history (list of
+  `{role, content}` turns) plus the final user question; `expected_output` is the reference for the
+  last turn. CSV/JSONL import and `opengrade.evaluate` pass the history to the task
+  (`item.input` = `{"history": [...], "question": "..."}` or a dedicated `item.history`).
+- [ ] **2. Conversation judges**:
+  - query rewriting: the standalone/search query the app built is faithful to what the user means
+    given the history (needs the rewritten query recorded, e.g. on the RETRIEVER span or via an SDK
+    helper);
+  - consistency with earlier turns: no contradiction of what the assistant already said, no
+    forgotten constraints the user gave;
+  - conversation-level metrics: resolved or not, turns to resolution;
+  - existing judges (`groundedness`, `citation_accuracy`, `refusal`, …) keep scoring the last turn.
+- [ ] **3. "Conversations" section (UI + production)**: SDK `opengrade.set_session()` /
+  `set_user()` (the server already ingests `session.id` / `user.id` but nothing uses them), a view
+  that groups traces by session as a chat timeline, conversation judges run on the whole session
+  (sampled, after a session goes idle), session-level filters and alerts.
 
 ## Deferred
 

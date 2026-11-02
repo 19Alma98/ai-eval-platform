@@ -431,3 +431,52 @@ async def test_score_review_and_calibration(client: AsyncClient) -> None:
     empty_calib = await client.get(f"/api/v1/projects/{project_id}/live-interactions/calibration")
     assert empty_calib.status_code == 200
     assert empty_calib.json() == []
+
+
+@pytest.mark.asyncio
+async def test_live_citation_and_refusal_judges(client: AsyncClient) -> None:
+    proj = await client.post("/api/v1/projects", json={"name": "Cite", "slug": "cite"})
+    project_id = proj.json()["id"]
+    ms = await client.post(
+        f"/api/v1/projects/{project_id}/metrics-sets",
+        json={
+            "name": "rag-answer-checks",
+            "entries": [
+                {"kind": "citation_accuracy", "enabled": True, "threshold": 0.8},
+                {"kind": "refusal", "enabled": True, "threshold": 1.0},
+            ],
+        },
+    )
+    assert ms.status_code == 201, ms.text
+    bad = await client.post(
+        f"/api/v1/projects/{project_id}/metrics-sets",
+        json={
+            "name": "bad",
+            "entries": [{"kind": "refusal", "enabled": True, "config": {"method": "rubric"}}],
+        },
+    )
+    assert bad.status_code == 422
+
+    submit = await client.post(
+        f"/api/v1/projects/{project_id}/live-interactions",
+        json={
+            "question": "What is PTO?",
+            "answer": "PTO means paid time off [doc-1]. You also get a car [ghost].",
+            "documents": [{"id": "doc-1", "text": "PTO means paid time off"}],
+            "metrics_set_id": ms.json()["id"],
+        },
+    )
+    assert submit.status_code == 202, submit.text
+    scored = await client.post(f"/api/v1/live-interactions/{submit.json()['id']}/rescore")
+    assert scored.status_code == 200, scored.text
+    scores = {s["kind"]: s for s in scored.json()["scores"]}
+    citation = scores["citation_accuracy"]
+    assert citation["score"] == 0.5
+    assert [c["verdict"] for c in citation["metadata"]["claims"]] == [
+        "supported",
+        "invalid_citation",
+    ]
+    refusal = scores["refusal"]
+    assert refusal["metadata"]["answerable_source"] == "documents"
+    assert refusal["metadata"]["outcome"] == "correct_answer"
+    assert refusal["label"] == "PASS"

@@ -150,12 +150,33 @@ print(exp.result.summary())
 
 How it behaves:
 
-- **Metrics**: a string is a server metric kind (`hit_at_k`, `recall_at_k`, `mrr`, `must_contain`, `groundedness`, `correctness`, `answer_relevance`, `context_precision`, `context_recall`, `latency`). A dict sets threshold/config, for example `{"kind": "hit_at_k", "config": {"k": 3}}`. The SDK finds or creates a metrics set that holds exactly those kinds, using the project's defaults for anything you leave out. `metrics=None` uses the project default set. A Python metric runs locally (see *Custom metrics* below), and its scores are submitted to the platform (`POST /experiments/{id}/client-results`). From there they are aggregated, shown in the UI and compared with the baseline like server metrics.
+- **Metrics**: a string is a server metric kind (`hit_at_k`, `recall_at_k`, `mrr`, `must_contain`, `groundedness`, `correctness`, `answer_relevance`, `context_precision`, `context_recall`, `citation_accuracy`, `refusal`, `latency`). A dict sets threshold/config, for example `{"kind": "hit_at_k", "config": {"k": 3}}`. The SDK finds or creates a metrics set that holds exactly those kinds, using the project's defaults for anything you leave out. `metrics=None` uses the project default set. A Python metric runs locally (see *Custom metrics* below), and its scores are submitted to the platform (`POST /experiments/{id}/client-results`). From there they are aggregated, shown in the UI and compared with the baseline like server metrics.
 - **Datasets**: pass a registered name/id, a path to CSV/JSON/JSONL, a list or iterable of dicts, a pandas DataFrame, or a Polars DataFrame. Rows need an `input` column (or `question`). `expected_output` (or `expected_answer`), `context` and `metadata` map to item fields; any other column goes into `metadata` (so `expected_doc_ids` and `must_contain` work). A missing `input`/`question` raises `opengrade.DatasetColumnError` (CSV headers are checked up front). Inline rows are hashed into a dataset name, so re-running on the same rows reuses the same dataset. Generators are materialised before upload (no lazy streaming).
 - **Outputs** are uploaded with `PUT /experiments/{id}/outputs`, so this works without `opengrade.init()`. With tracing on, `finish()` waits for the OTLP traces to be bound (up to 30s) and merges their context in. Your explicit output always wins.
 - **Repeats**: `repeats=N` runs the task N times per item (each run is its own trace and output, `repeat` 0..N-1). Scores are averaged per item before aggregating, so every item weighs once and the baseline comparison still pairs items; the bootstrap CI then reflects run-to-run noise less. Items whose PASS/FAIL changes between repeats count as flaky (`result.flaky`, the `flaky` column in `summary()`, the UI scorecard). In a manual loop pass `exp.run(item, repeat=i)`. Max 100.
 - **Groups**: `group_by="category"` (a dataset-item metadata key, dotted paths allowed) adds per-group means and baseline deltas: `result.groups` and a `by category:` block in `summary()`. A drop on one kind of question shows up even when the overall mean holds. `client.experiments.summary(id, group_by=...)` / `compare(..., group_by=...)` return the same data; the release gate can enforce it with a `groups` policy block (see `docs/08-cli-ci.md`).
 - **Errors**: when a task raises, `evaluate` records it on the item (`result.errors`, `metadata.error`) and moves on. Pass `raise_on_error=True` to stop instead. When the `with` block raises, nothing is scored. Bad dataset columns raise `DatasetColumnError` before the run starts.
+
+### Citations and refusals
+
+Two server judges check behaviours that answer-quality scores miss:
+
+```python
+opengrade.evaluate(
+    dataset=[
+        {"input": "How many PTO days?", "expected_output": "20 days."},
+        # unanswerable from the knowledge base: the assistant should decline
+        {"input": "What is the CEO's salary?", "metadata": {"answerable": False}},
+    ],
+    task=answer_question,  # answers like "You get 20 days [pto]."
+    metrics=["citation_accuracy", "refusal"],
+)
+```
+
+- `citation_accuracy`: parses the answer's citation markers (`[pto]`, `[1]`, `[1, 3]`, `[^2]`; another style via `{"kind": "citation_accuracy", "config": {"pattern": r"\(source: ([^)]+)\)"}}`) and checks that every cited source was actually retrieved and supports the sentence that cites it. Score = supported cited sentences / cited sentences; an answer citing nothing fails (`require_citations: false` to skip instead), `min_coverage: 0.8` also fails answers where too few sentences carry a citation. Documents come from `set_retrieval_documents` / retriever spans and need an `id`.
+- `refusal`: did the assistant decline exactly when it should? Mark items with `metadata.answerable` (or `expected_refusal`), or give a reference answer that declines ("The documents do not say"). Without either (e.g. on live traffic) the judge reads the retrieved documents. `metadata.outcome` is `correct_answer`, `correct_refusal`, `over_refusal` or `missed_refusal`. `{"kind": "refusal", "config": {"method": "phrases"}}` matches refusal phrases (English/Italian, or your own `refusal_phrases`) without an LLM call.
+
+Both run on live traffic too (enable them in the project's metrics set; they ship disabled).
 
 ### Custom metrics
 

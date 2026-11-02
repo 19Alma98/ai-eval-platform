@@ -94,6 +94,8 @@ _DEFAULT_PACK_KINDS = (
     "groundedness",
     "answer_relevance",
     "correctness",
+    "citation_accuracy",
+    "refusal",
     "latency",
 )
 

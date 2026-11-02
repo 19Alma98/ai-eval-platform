@@ -10,7 +10,11 @@ JUDGE_STATUSES = frozenset({"pending", "running", "scored", "error", "unsampled"
 REVIEW_VERDICTS = frozenset({"agree", "disagree"})
 
 # Metrics kinds safe to run without expected_output / gold labels.
-GOLDLESS_METRIC_KINDS = frozenset({"groundedness", "answer_relevance"})
+# Judges that need no reference answer. refusal reads the retrieved documents on live traffic
+# (no dataset label), citation_accuracy checks citations against the cited documents.
+GOLDLESS_METRIC_KINDS = frozenset(
+    {"groundedness", "answer_relevance", "citation_accuracy", "refusal"}
+)
 
 
 class DuplicateExternalIdError(Exception):

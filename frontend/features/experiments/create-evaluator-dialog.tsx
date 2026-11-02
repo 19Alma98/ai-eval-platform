@@ -51,6 +51,16 @@ const EVALUATOR_PRESETS = [
     config: { kind: "answer_relevance" },
   },
   {
+    label: "Citation accuracy (LLM)",
+    type: "llm_judge",
+    config: { kind: "citation_accuracy" },
+  },
+  {
+    label: "Correct refusal (LLM)",
+    type: "llm_judge",
+    config: { kind: "refusal" },
+  },
+  {
     label: "Context precision (LLM)",
     type: "llm_judge",
     config: { kind: "context_precision" },

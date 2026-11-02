@@ -43,7 +43,7 @@ export function parseJudgeClaims(
 
 export function verdictTone(verdict: string): VerdictTone {
   if (verdict === "supported" || verdict === "covered") return "ok";
-  if (verdict === "contradicted") return "fail";
+  if (verdict === "contradicted" || verdict === "invalid_citation") return "fail";
   return "warn";
 }
 

@@ -35,6 +35,8 @@ TASK_TYPE_CATALOG: tuple[TaskTypeInfo, ...] = (
             "groundedness",
             "answer_relevance",
             "correctness",
+            "citation_accuracy",
+            "refusal",
             "latency",
         ),
     ),

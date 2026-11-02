@@ -549,6 +549,127 @@ RUBRICS: dict[str, str] = {
     ),
 }
 
+VERIFY_CITATIONS = _system(
+    "verify_citations",
+    _compose(
+        _section("Role", "You are an evaluation judge for citation accuracy."),
+        _section(
+            "Task",
+            "Each CLAIM ([C1], [C2], …) is a statement from an answer, followed by the ids of "
+            "the sources it cites. Decide whether the CITED sources support the statement.",
+        ),
+        _section(
+            "Steps",
+            _numbered(
+                "Read the documents, then each claim and the sources it cites.",
+                "Judge each claim using only the documents it cites (ignore the others).",
+                "For each claim, note short reasoning, verdict, the cited ids you relied on, "
+                "and a short quote.",
+                'Emit one object per claim in "verdicts", same order and length.',
+            ),
+        ),
+        _section(
+            "Rules",
+            _bullets(
+                _VERIFY_LENGTH_RULE,
+                "Use only the cited documents; never outside knowledge or uncited documents.",
+                "A statement is supported only if the cited documents back every fact in it.",
+                'List relied-on cited document ids in "doc_ids"; copy the shortest supporting or '
+                'contradicting passage into "quote" (null if none).',
+                "Keep reasoning short.",
+            ),
+        ),
+        _section(
+            "Labels",
+            _bullets(
+                '"supported": the cited documents state it, or it follows directly from them.',
+                '"contradicted": the cited documents state something incompatible with it.',
+                '"not_supported": the cited documents do not mention it, or support it only '
+                "partially (even if another, uncited document does).",
+            ),
+        ),
+        _section(
+            "Examples",
+            """\
+### Example — one correct and one wrong citation (N=2)
+Claims: [C1] Full-time staff get 20 PTO days. (cites: pto)
+[C2] Parking is free downtown. (cites: pto)
+Document pto mentions 20 PTO days and nothing about parking.
+Output:
+```json
+{"verdicts": [
+  {"reasoning": "stated in the cited doc", "verdict": "supported",
+   "doc_ids": ["pto"], "quote": "20 days"},
+  {"reasoning": "cited doc is about PTO, not parking", "verdict": "not_supported",
+   "doc_ids": [], "quote": null}
+]}
+```""",
+        ),
+        _section(
+            "Output",
+            _verify_output(
+                '{"verdicts": [{"reasoning": "<why>", "verdict": "supported" | '
+                '"contradicted" | "not_supported", "doc_ids": ["<id>"], '
+                '"quote": "<passage>" | null}, ...]}'
+            ),
+        ),
+    ),
+)
+
+CLASSIFY_REFUSAL = _system(
+    "classify_refusal",
+    _compose(
+        _section("Role", "You are an evaluation judge for answer abstention in a RAG assistant."),
+        _section(
+            "Task",
+            "Classify the ANSWER as a refusal or an answer. When a REFERENCE ANSWER is given, "
+            "classify it the same way. When DOCUMENTS are given, decide whether they contain "
+            "enough information to answer the QUESTION.",
+        ),
+        _section(
+            "Steps",
+            _numbered(
+                "Read the QUESTION.",
+                "Classify the ANSWER (and the REFERENCE ANSWER, if present).",
+                "If DOCUMENTS are present, decide whether they are enough to answer the question.",
+                "Emit the JSON object.",
+            ),
+        ),
+        _section(
+            "Rules",
+            _bullets(
+                "A refusal says the information is not available, unknown, or out of scope, "
+                "and does not give a substantive answer to the question. Pointing the user to "
+                "someone else (HR, support, a website) or asking for clarification without "
+                "answering is still a refusal.",
+                "An answer gives substantive content that responds to the question, even if it "
+                "is wrong, partial, or hedged.",
+                "Judge the form of the reply, not whether it is correct.",
+                "For the documents: answerable only if the documents state the facts needed; "
+                "never use outside knowledge.",
+                "Use null for every field whose input section is absent.",
+                "Keep reasoning short.",
+            ),
+        ),
+        _section(
+            "Examples",
+            """\
+### Example — answer refuses, documents do not cover the question
+```json
+{"reasoning": "the answer says the policy is not in the documents; the documents only cover PTO",
+ "answer_refused": true, "reference_refused": null, "answerable_from_documents": false}
+```""",
+        ),
+        _section(
+            "Output",
+            'Respond with JSON only: {"reasoning": "<why>", "answer_refused": true | false, '
+            '"reference_refused": true | false | null, '
+            '"answerable_from_documents": true | false | null}\n'
+            'Put "reasoning" first. No prose outside the JSON object.',
+        ),
+    ),
+)
+
 # System templates used per (kind, method). Keys are stable snapshot names.
 _CLAIMS_BUNDLES: dict[str, dict[str, str]] = {
     "groundedness": {
@@ -571,10 +692,21 @@ _CLAIMS_BUNDLES: dict[str, dict[str, str]] = {
 }
 
 
+# Judges whose methods are neither "rubric" nor "claims" (or that add their own claims bundle).
+_OTHER_BUNDLES: dict[tuple[str, str], dict[str, str]] = {
+    ("citation_accuracy", "claims"): {"verify_citations": VERIFY_CITATIONS},
+    ("refusal", "classify"): {"classify_refusal": CLASSIFY_REFUSAL},
+    # Deterministic phrase matching: no prompt, the phrases live in the entry config.
+    ("refusal", "phrases"): {},
+}
+
+
 def bundle_for(kind: str, method: str) -> dict[str, str]:
     """Return the system prompt texts that (kind, method) uses."""
     method = method.strip().lower()
     kind = kind.strip().lower()
+    if (kind, method) in _OTHER_BUNDLES:
+        return dict(_OTHER_BUNDLES[(kind, method)])
     if method == "rubric":
         if kind not in RUBRICS:
             raise ValueError(f"unknown rubric kind: {kind!r}")

@@ -28,7 +28,15 @@ from opengrade_server.domain.repositories import (
 )
 
 _LLM_JUDGE_KINDS = frozenset(
-    {"groundedness", "correctness", "answer_relevance", "context_precision", "context_recall"}
+    {
+        "groundedness",
+        "correctness",
+        "answer_relevance",
+        "context_precision",
+        "context_recall",
+        "citation_accuracy",
+        "refusal",
+    }
 )
 
 

@@ -48,6 +48,9 @@ DEFAULT_RAG_SET_ENTRIES: tuple[MetricsSetEntry, ...] = (
     _seed_entry("groundedness", enabled=True, threshold=0.7, config={}),
     _seed_entry("answer_relevance", enabled=True, threshold=0.7, config={}),
     _seed_entry("correctness", enabled=True, threshold=0.7, config={}),
+    # Opt-in: they only make sense for assistants that cite sources / are expected to decline.
+    _seed_entry("citation_accuracy", enabled=False, threshold=0.8, config={}),
+    _seed_entry("refusal", enabled=False, threshold=1.0, config={}),
     _seed_entry("latency", enabled=True, threshold=None, config={"max_ms": 5000}),
 )
 

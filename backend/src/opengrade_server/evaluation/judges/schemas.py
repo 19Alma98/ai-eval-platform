@@ -92,3 +92,29 @@ class RelevanceVerifyOut(BaseModel):
 class RubricOut(BaseModel):
     reasoning: str | None = None
     level: int = Field(ge=1, le=5)
+
+
+def _optional_bool(value: object) -> object:
+    if isinstance(value, str):
+        text = value.strip().lower()
+        if text in ("", "null", "none", "n/a"):
+            return None
+        if text in ("true", "yes"):
+            return True
+        if text in ("false", "no"):
+            return False
+    return value
+
+
+class RefusalOut(BaseModel):
+    reasoning: str | None = None
+    answer_refused: bool
+    reference_refused: bool | None = None
+    answerable_from_documents: bool | None = None
+
+    @field_validator(
+        "answer_refused", "reference_refused", "answerable_from_documents", mode="before"
+    )
+    @classmethod
+    def _bool(cls, value: object) -> object:
+        return _optional_bool(value)
