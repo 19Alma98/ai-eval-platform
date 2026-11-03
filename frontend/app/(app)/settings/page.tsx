@@ -1,11 +1,11 @@
 "use client";
 
-import { ApiKeysPanel } from "@/features/settings/api-keys-panel";
+import { SettingsPage } from "@/features/settings/settings-page";
 
-export default function SettingsPage() {
+export default function SettingsRoutePage() {
   return (
     <div className="mx-auto max-w-3xl">
-      <ApiKeysPanel />
+      <SettingsPage />
     </div>
   );
 }

@@ -799,3 +799,27 @@ export type VersionSummary = {
   traces_truncated: boolean;
   metrics: { name: string; source: string; n: number; mean: number | null; fail_rate: number | null }[];
 };
+
+export type ApiKeyScope = "admin" | "read" | "ingest";
+
+export type AuthStatus = {
+  auth_required: boolean;
+  authenticated: boolean;
+  /** Scope of the key behind this browser session; "admin" when auth is off. */
+  scope: ApiKeyScope | null;
+  key_name: string | null;
+};
+
+export type ApiKey = {
+  id: string;
+  name: string;
+  scope: ApiKeyScope;
+  /** First characters of the key, to tell keys apart. */
+  prefix: string;
+  created_at: string;
+  last_used_at: string | null;
+  revoked_at: string | null;
+};
+
+/** Returned once by POST /api-keys; the server keeps only a hash of `key`. */
+export type CreatedApiKey = ApiKey & { key: string };

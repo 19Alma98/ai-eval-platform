@@ -3,6 +3,7 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Suspense, useState } from "react";
 import { ApiKeyGate } from "@/components/api-key-gate";
+import { AuthProvider } from "@/lib/auth-context";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { Toaster } from "@/components/ui/sonner";
 import { TimeRangeProvider } from "@/lib/time-range-context";
@@ -27,9 +28,11 @@ export function Providers({ children }: { children: React.ReactNode }) {
       <ThemeProvider>
         <TimeRangeProvider>
           <TooltipProvider>
-            <ApiKeyGate>
-              <Suspense fallback={null}>{children}</Suspense>
-            </ApiKeyGate>
+            <AuthProvider>
+              <ApiKeyGate>
+                <Suspense fallback={null}>{children}</Suspense>
+              </ApiKeyGate>
+            </AuthProvider>
             <Toaster richColors closeButton position="bottom-right" />
           </TooltipProvider>
         </TimeRangeProvider>
