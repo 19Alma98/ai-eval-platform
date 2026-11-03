@@ -134,7 +134,7 @@ function DialogOverlay({
     <ModalOverlay
       data-slot="dialog-overlay"
       className={cn(
-        "fixed inset-0 z-50 bg-black/10 entering:animate-in entering:fade-in-0 exiting:animate-out exiting:fade-out-0",
+        "fixed inset-0 z-50 bg-black/20 entering:animate-in entering:fade-in-0 exiting:animate-out exiting:fade-out-0",
         className
       )}
       {...props}
@@ -142,6 +142,10 @@ function DialogOverlay({
   )
 }
 
+/**
+ * A full-height side panel anchored to the right edge: square, ruled header and footer,
+ * scrolls on its own. Callers set its width with `sm:max-w-*` (default `sm:max-w-md`).
+ */
 function DialogContent({
   className,
   children,
@@ -155,25 +159,35 @@ function DialogContent({
   return (
     <DialogOverlay>
       <Modal
-        className={cn(
-          "fixed top-1/2 left-1/2 z-50 w-full max-w-[calc(100%-2rem)] -translate-x-1/2 -translate-y-1/2 sm:max-w-sm"
-        )}
+        className="fixed inset-y-0 right-0 z-50 flex entering:animate-in entering:slide-in-from-right exiting:animate-out exiting:slide-out-to-right"
       >
         <RacDialog
           data-slot="dialog-content"
           className={cn(
-            "relative grid gap-4 rounded-xl bg-popover p-4 text-sm text-popover-foreground ring-1 ring-foreground/10 outline-none",
+            "relative flex h-full w-screen flex-col border-l border-border bg-background text-sm text-foreground outline-none sm:max-w-md",
             className
           )}
           {...props}
         >
-          {children}
+          {/* Scrolls inside the panel so the close button and the panel edge stay put. */}
+          <div
+            data-slot="dialog-body"
+            className={cn(
+              "flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-5",
+              // Forms wrapping header, body and footer fill the panel so the footer sits at the bottom.
+              "[&>form]:flex [&>form]:flex-1 [&>form]:flex-col",
+              // Panels without a footer still get bottom breathing room.
+              "[&:not(:has([data-slot=dialog-footer]))]:pb-5"
+            )}
+          >
+            {children}
+          </div>
           {showCloseButton ? (
             <Button
               slot="close"
               variant="ghost"
               size="icon-sm"
-              className="absolute top-2 right-2"
+              className="absolute top-4 right-4 z-20"
               aria-label="Close"
             >
               <XIcon />
@@ -189,7 +203,10 @@ function DialogHeader({ className, ...props }: React.ComponentProps<"div">) {
   return (
     <div
       data-slot="dialog-header"
-      className={cn("flex flex-col gap-2", className)}
+      className={cn(
+        "sticky top-0 z-10 -mx-5 flex flex-col gap-1.5 border-b border-border bg-background px-5 pt-5 pb-4 pr-14",
+        className
+      )}
       {...props}
     />
   )
@@ -207,7 +224,7 @@ function DialogFooter({
     <div
       data-slot="dialog-footer"
       className={cn(
-        "-mx-4 -mb-4 flex flex-col-reverse gap-2 rounded-b-xl border-t bg-muted/50 p-4 sm:flex-row sm:justify-end",
+        "sticky bottom-0 z-10 -mx-5 mt-auto flex flex-col-reverse gap-2 border-t border-border bg-background px-5 py-4 sm:flex-row sm:justify-end",
         className
       )}
       {...props}
@@ -230,7 +247,7 @@ function DialogTitle({
     <Heading
       slot="title"
       data-slot="dialog-title"
-      className={cn("text-base font-semibold", className)}
+      className={cn("font-serif text-lg font-medium tracking-tight", className)}
       {...props}
     />
   )
