@@ -1,9 +1,9 @@
-"""UI session endpoints: exchange the API key for an ``HttpOnly`` cookie.
+"""UI session endpoints: exchange an API key for an ``HttpOnly`` cookie.
 
 This is not a user login: there are no accounts. The browser cannot send the
 ``Authorization`` header for every asset and keeping the key in JavaScript storage would
 expose it to any script on the page, so the UI posts the key once and gets a signed,
-expiring cookie instead.
+expiring cookie instead. ``ingest`` keys cannot open the dashboard.
 """
 
 from __future__ import annotations
@@ -15,9 +15,9 @@ from opengrade_server.api.auth import (
     AUTH_SESSION_PATH,
     AUTH_STATUS_PATH,
     SESSION_COOKIE,
-    headers_authenticated,
     issue_session_token,
-    key_matches,
+    principal_for_key,
+    resolve_principal,
 )
 from opengrade_server.config import get_settings
 
@@ -27,6 +27,8 @@ router = APIRouter(tags=["auth"])
 class AuthStatusResponse(BaseModel):
     auth_required: bool
     authenticated: bool
+    scope: str | None = None
+    key_name: str | None = None
 
 
 class CreateSessionRequest(BaseModel):
@@ -41,10 +43,15 @@ def _request_headers(request: Request) -> dict[str, str]:
 async def auth_status(request: Request) -> AuthStatusResponse:
     settings = get_settings()
     if not settings.accepted_api_keys():
-        return AuthStatusResponse(auth_required=False, authenticated=True)
+        return AuthStatusResponse(auth_required=False, authenticated=True, scope="admin")
+    principal = await resolve_principal(_request_headers(request), settings)
+    if principal is None or principal.scope == "ingest":
+        return AuthStatusResponse(auth_required=True, authenticated=False)
     return AuthStatusResponse(
         auth_required=True,
-        authenticated=headers_authenticated(_request_headers(request), settings),
+        authenticated=True,
+        scope=principal.scope,
+        key_name=principal.name,
     )
 
 
@@ -54,9 +61,15 @@ async def create_session(body: CreateSessionRequest, request: Request) -> Respon
     response = Response(status_code=status.HTTP_204_NO_CONTENT)
     if not settings.accepted_api_keys():
         return response
-    if not key_matches(body.api_key, settings):
+    principal = await principal_for_key(body.api_key, settings)
+    if principal is None:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="invalid API key")
-    token, max_age = issue_session_token(settings)
+    if principal.scope == "ingest":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="ingest keys can only send traces; use a read or admin key for the dashboard",
+        )
+    token, max_age = issue_session_token(settings, principal.subject)
     response.set_cookie(
         SESSION_COOKIE,
         token,

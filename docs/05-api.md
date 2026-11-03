@@ -8,14 +8,18 @@ Base path:
 
 Off by default (trusted network). With `OPENGRADE_API_KEY` set on the server, every `/api/*`
 request and OTLP `POST /v1/traces` needs `Authorization: Bearer <key>` or the UI session cookie;
-otherwise `401` with `WWW-Authenticate: Bearer`. `/health` and `/ready` stay public.
-See [Security: API key](10-security-privacy.md#api-key).
+otherwise `401` with `WWW-Authenticate: Bearer`. A valid key outside its scope (`ingest`,
+`read`, `admin`) gets `403`. `/health` and `/ready` stay public.
+See [Security: API keys](10-security-privacy.md#api-keys).
 
 | Method | Path | Auth | Purpose |
 |---|---|---|---|
-| `GET` | `/api/v1/auth/status` | public | `{"auth_required": bool, "authenticated": bool}` |
-| `POST` | `/api/v1/auth/session` | public | body `{"api_key": "..."}` → `204` + `HttpOnly` session cookie; `401` on a wrong key |
+| `GET` | `/api/v1/auth/status` | public | `{"auth_required", "authenticated", "scope", "key_name"}` for this session |
+| `POST` | `/api/v1/auth/session` | public | body `{"api_key": "..."}` → `204` + `HttpOnly` session cookie; `401` wrong key, `403` ingest key |
 | `DELETE` | `/api/v1/auth/session` | public | clears the session cookie |
+| `GET` | `/api/v1/api-keys` | admin | keys without their secret: `id`, `name`, `scope`, `prefix`, `created_at`, `last_used_at`, `revoked_at` |
+| `POST` | `/api/v1/api-keys` | admin | body `{"name", "scope"}` → `201` with `key` (shown once); `409` when auth is off |
+| `DELETE` | `/api/v1/api-keys/{id}` | admin | revoke (`204`, idempotent); `404` unknown id |
 
 Do not block the platform MVP on SSO, sessions, or RBAC.
 

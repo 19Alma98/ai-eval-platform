@@ -39,3 +39,14 @@ def _reset_otlp_backpressure() -> Iterator[None]:
     reset_otlp_backpressure_for_tests()
     yield
     reset_otlp_backpressure_for_tests()
+
+
+@pytest.fixture(autouse=True)
+def _reset_api_key_cache() -> Iterator[None]:
+    from opengrade_server.application.api_keys import api_key_store
+
+    api_key_store.clear_cache()
+    api_key_store._touched.clear()
+    yield
+    api_key_store.clear_cache()
+    api_key_store._touched.clear()

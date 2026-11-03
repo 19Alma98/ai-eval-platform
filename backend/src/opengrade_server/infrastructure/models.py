@@ -840,3 +840,20 @@ class AlertEventModel(Base):
     created_at: Mapped[datetime] = mapped_column(
         UtcDateTime(), nullable=False, server_default=func.now()
     )
+
+
+class ApiKeyModel(Base):
+    """Per-client API keys (``read`` / ``ingest`` / ``admin``). Only the SHA-256 is stored."""
+
+    __tablename__ = "api_keys"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True)
+    name: Mapped[str] = mapped_column(String(200), nullable=False)
+    scope: Mapped[str] = mapped_column(String(16), nullable=False)
+    prefix: Mapped[str] = mapped_column(String(16), nullable=False)
+    key_hash: Mapped[str] = mapped_column(String(64), nullable=False, unique=True)
+    created_at: Mapped[datetime] = mapped_column(
+        UtcDateTime(), nullable=False, server_default=func.now()
+    )
+    last_used_at: Mapped[datetime | None] = mapped_column(UtcDateTime(), nullable=True)
+    revoked_at: Mapped[datetime | None] = mapped_column(UtcDateTime(), nullable=True)

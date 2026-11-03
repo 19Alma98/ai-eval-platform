@@ -1,32 +1,68 @@
 "use client";
 
 import { useQueryClient } from "@tanstack/react-query";
-import { type FormEvent, type ReactNode, useEffect, useState } from "react";
+import {
+  type FormEvent,
+  type ReactNode,
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useState,
+} from "react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { createSession, getAuthStatus } from "@/lib/api/auth";
+import { type AuthStatus, createSession, deleteSession, getAuthStatus } from "@/lib/api/auth";
 import { ApiError, UNAUTHORIZED_EVENT, formatErrorForUi } from "@/lib/api/client";
+
+type AuthContextValue = {
+  status: AuthStatus;
+  signOut: () => Promise<void>;
+};
+
+const OPEN_STATUS: AuthStatus = {
+  auth_required: false,
+  authenticated: true,
+  scope: "admin",
+  key_name: null,
+};
+
+const AuthContext = createContext<AuthContextValue>({
+  status: OPEN_STATUS,
+  signOut: async () => {},
+});
+
+/** Auth state of this browser session (scope and name of the key used to open the UI). */
+export function useAuth(): AuthContextValue {
+  return useContext(AuthContext);
+}
 
 type GateState = "checking" | "open" | "locked";
 
 /**
- * Asks for the server's API key when OPENGRADE_API_KEY is set. Not a user login: the
+ * Asks for an API key when OPENGRADE_API_KEY is set on the server. Not a user login: the
  * key is posted once and exchanged for an HttpOnly session cookie. Without a key
  * configured on the server the gate is invisible.
  */
 export function ApiKeyGate({ children }: { children: ReactNode }) {
   const queryClient = useQueryClient();
   const [state, setState] = useState<GateState>("checking");
+  const [status, setStatus] = useState<AuthStatus>(OPEN_STATUS);
   const [key, setKey] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
+  const apply = useCallback((next: AuthStatus) => {
+    setStatus(next);
+    setState(next.authenticated ? "open" : "locked");
+  }, []);
+
   useEffect(() => {
     let cancelled = false;
     getAuthStatus()
-      .then((status) => {
-        if (!cancelled) setState(status.authenticated ? "open" : "locked");
+      .then((next) => {
+        if (!cancelled) apply(next);
       })
       // Unreachable API: let the pages show their usual network errors.
       .catch(() => {
@@ -38,7 +74,13 @@ export function ApiKeyGate({ children }: { children: ReactNode }) {
       cancelled = true;
       window.removeEventListener(UNAUTHORIZED_EVENT, lock);
     };
-  }, []);
+  }, [apply]);
+
+  const signOut = useCallback(async () => {
+    await deleteSession();
+    queryClient.clear();
+    setState("locked");
+  }, [queryClient]);
 
   async function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -48,7 +90,7 @@ export function ApiKeyGate({ children }: { children: ReactNode }) {
     try {
       await createSession(key.trim());
       setKey("");
-      setState("open");
+      apply(await getAuthStatus());
       await queryClient.invalidateQueries();
     } catch (err) {
       setError(
@@ -62,7 +104,9 @@ export function ApiKeyGate({ children }: { children: ReactNode }) {
   }
 
   if (state === "checking") return null;
-  if (state === "open") return <>{children}</>;
+  if (state === "open") {
+    return <AuthContext.Provider value={{ status, signOut }}>{children}</AuthContext.Provider>;
+  }
 
   return (
     <main className="flex min-h-screen items-center justify-center px-4">
@@ -72,8 +116,10 @@ export function ApiKeyGate({ children }: { children: ReactNode }) {
       >
         <h1 className="text-base font-medium text-foreground">API key required</h1>
         <p className="mt-2 text-sm text-muted-foreground">
-          This OpenGrade server is protected. Paste the value of{" "}
-          <code className="font-mono text-xs">OPENGRADE_API_KEY</code> to open the dashboard.
+          This OpenGrade server is protected. Paste an API key with the{" "}
+          <span className="font-medium text-foreground">read</span> or{" "}
+          <span className="font-medium text-foreground">admin</span> scope to open the
+          dashboard.
         </p>
         <label htmlFor="opengrade-api-key" className="mt-4 block text-sm font-medium">
           API key

@@ -23,25 +23,14 @@ Priority: **P0** blocks a public release, **P1** fix before promoting it, **P2**
 
 ### Product gaps vs MLflow / Langfuse — P2
 
-- [ ] **Auth**: API keys in SDK + server — needed before any non-localhost container deployment
-  (see also "Optional auth" below). Design decided 2026-11-03:
-  - **No users.** API keys only; no accounts, passwords or roles. SSO, if ever needed, goes in a
-    reverse proxy in front (oauth2-proxy, Cloudflare Access). Users only if per-person permissions,
-    multi-tenant or verified audit become goals; a key can then belong to a user.
-  - **Scopes:** `admin` (everything, incl. key management, deletes, experiments, CI
-    `opengrade evaluate`), `read` (dashboard + every `GET`; no writes at all, not even reviews),
-    `ingest` (only `POST /v1/traces`, `POST /api/v1/trace-scores`,
-    `POST /api/v1/projects/{id}/live-interactions`; cannot open the UI). `ingest` is the key that
-    lives in production apps.
-  - **Phase 1 — done:** `OPENGRADE_API_KEY` = the `admin` key (+ `OPENGRADE_API_KEY_PREVIOUS` for
-    rotation), bearer on HTTP + OTLP in the SDK, API key prompt in the UI (not a user login:
-    key → `HttpOnly` HMAC session cookie). See `docs/10-security-privacy.md#api-key`.
-  - **Phase 2:** `api_keys` table in the server's own DB (no separate cloud auth service): name,
-    optional `project_id` (an `ingest` key bound to a project needs no slug lookup), `scope`,
-    `prefix`, SHA-256 `key_hash` only, `created_at`, `last_used_at`, `revoked_at`. Settings → API
-    keys page (key shown once, revoke, last used) + `opengrade keys create`. The env key stays as
-    the bootstrap admin key. Key name fills `trace_scores.author` / `live_score_reviews.reviewer`
-    server-side.
+- [ ] **Auth follow-ups** (API keys with `admin` / `read` / `ingest` scopes shipped; no user
+  accounts by design, see `docs/10-security-privacy.md#api-keys`):
+  - Key name → `trace_scores.author` / `live_score_reviews.reviewer` server-side, so actions are
+    attributed to the key instead of a client-supplied string.
+  - Optional project binding for `ingest` keys (`project_id` on the key, enforced on OTLP
+    `X-Project-Id` / `X-Project-Slug` and the project routes).
+  - Read-only UI: hide write buttons for `read` sessions instead of letting them fail with `403`.
+  - Rate limit failed key attempts (keys are 256-bit random, so brute force is impractical).
 - [ ] **PII redaction**: capture currently grabs every argument incl. `self`/secrets. Per-arg
   include/exclude, redaction hook, global capture switch.
 - [ ] **Sampling** (head sampling) and configurable span size limits.

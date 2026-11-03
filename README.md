@@ -7,7 +7,7 @@ Open-source platform for AI quality engineering: turn production traces into dat
 **Best fit:** RAG/FAQ, classification, structured extraction, tool calling with fixed schemas, plus latency/cost/error gates.  
 **Not a fit:** open-ended agents where “good” is subjective, or as a substitute for live APM. The platform measures what you define; it does not invent a quality oracle. Details: [`docs/00-project-overview.md`](docs/00-project-overview.md).
 
-**Deployment model (v0.1):** without `OPENGRADE_API_KEY` the server is open, so keep it on localhost or a private network. To expose it, set `OPENGRADE_API_KEY` on the server and in the apps that send traces (the SDK adds `Authorization: Bearer`; the dashboard asks for the key once) and serve it over HTTPS. Details: [`docs/10-security-privacy.md`](docs/10-security-privacy.md#api-key).
+**Deployment model (v0.1):** without `OPENGRADE_API_KEY` the server is open, so keep it on localhost or a private network. To expose it, set `OPENGRADE_API_KEY` on the server (the bootstrap admin key) and serve it over HTTPS; then create one key per app (`ingest`), person (`read`) or CI job (`admin`) under **Settings → API keys** or with `opengrade keys create`. The SDK sends `OPENGRADE_API_KEY` as `Authorization: Bearer`. Details: [`docs/10-security-privacy.md`](docs/10-security-privacy.md#api-keys).
 
 ![OpenGrade walkthrough: overview, traces, experiments, baseline compare, quality gate, production judge](docs/images/hero.gif)
 

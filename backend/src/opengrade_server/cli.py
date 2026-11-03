@@ -913,5 +913,108 @@ def evaluate_cmd(
             embedded.stop()
 
 
+keys_app = typer.Typer(
+    add_completion=False,
+    no_args_is_help=True,
+    help="Manage API keys (read / ingest / admin) in the server database.",
+)
+app.add_typer(keys_app, name="keys")
+
+BackendStoreOption = Annotated[
+    str | None,
+    typer.Option(
+        "--backend-store-uri",
+        help="SQLAlchemy async DB URL of the server (default: DATABASE_URL or ./opengrade.db)",
+    ),
+]
+
+
+def _run_with_db(backend_store_uri: str | None, op: Any) -> Any:
+    """Open the server database (running migrations), run ``op()`` and close it."""
+    import asyncio
+
+    from opengrade_server.infrastructure.db import bootstrap_schema, dispose_db, init_db
+
+    uri = backend_store_uri or os.environ.get("DATABASE_URL") or DEFAULT_SQLITE_URL
+    os.environ["DATABASE_URL"] = uri
+    get_settings.cache_clear()
+
+    async def run() -> Any:
+        init_db(get_settings())
+        try:
+            await bootstrap_schema()
+            return await op()
+        finally:
+            await dispose_db()
+
+    return asyncio.run(run())
+
+
+@keys_app.command("create")
+def keys_create(
+    name: Annotated[str, typer.Option("--name", help="What the key is for, e.g. 'prod chatbot'")],
+    scope: Annotated[
+        str, typer.Option("--scope", help="ingest (send traces), read (dashboard) or admin")
+    ] = "ingest",
+    backend_store_uri: BackendStoreOption = None,
+) -> None:
+    """Create a key and print it once (it is not stored)."""
+    from opengrade_server.application.api_keys import SCOPES, api_key_store
+
+    if scope not in SCOPES:
+        raise typer.BadParameter(f"scope must be one of {', '.join(SCOPES)}")
+    if not name.strip():
+        raise typer.BadParameter("name must not be empty")
+    record, key = _run_with_db(
+        backend_store_uri,
+        lambda: api_key_store.create(name=name.strip(), scope=scope),  # type: ignore[arg-type]
+    )
+    if not get_settings().accepted_api_keys():
+        console.print(
+            "[yellow]Warning:[/yellow] OPENGRADE_API_KEY is not set here; keys are only "
+            "checked when the server runs with it."
+        )
+    console.print(f"Created {record.scope} key [cyan]{record.name}[/cyan] ({record.id})")
+    console.print("Copy it now, it will not be shown again:")
+    print(key)
+
+
+@keys_app.command("list")
+def keys_list(backend_store_uri: BackendStoreOption = None) -> None:
+    """List keys (never the keys themselves)."""
+    from opengrade_server.application.api_keys import api_key_store
+
+    records = _run_with_db(backend_store_uri, api_key_store.list)
+    table = Table("id", "name", "scope", "prefix", "created", "last used", "status")
+    for r in records:
+        table.add_row(
+            str(r.id),
+            r.name,
+            r.scope,
+            r.prefix + "…",
+            r.created_at.strftime("%Y-%m-%d %H:%M"),
+            r.last_used_at.strftime("%Y-%m-%d %H:%M") if r.last_used_at else "never",
+            "revoked" if r.revoked_at else "active",
+        )
+    console.print(table)
+
+
+@keys_app.command("revoke")
+def keys_revoke(
+    key_id: Annotated[str, typer.Argument(help="Key id (see `opengrade keys list`)")],
+    backend_store_uri: BackendStoreOption = None,
+) -> None:
+    """Revoke a key. A running server stops accepting it within 30 seconds."""
+    from opengrade_server.application.api_keys import ApiKeyNotFoundError, api_key_store
+
+    parsed = _parse_uuid(key_id, "key id")
+    try:
+        record = _run_with_db(backend_store_uri, lambda: api_key_store.revoke(parsed))
+    except ApiKeyNotFoundError:
+        console.print(f"[red]No API key with id {parsed}[/red]")
+        raise typer.Exit(EXIT_CONFIG) from None
+    console.print(f"Revoked [cyan]{record.name}[/cyan] ({record.id})")
+
+
 if __name__ == "__main__":
     app()

@@ -7,7 +7,7 @@ import test_api_evaluation
 from opengrade_server.api.auth import (
     SESSION_COOKIE,
     issue_session_token,
-    session_token_valid,
+    session_subject,
 )
 from opengrade_server.config import Settings, get_settings
 
@@ -37,7 +37,12 @@ async def test_no_key_configured_keeps_api_open(
 
     assert (await client.get("/api/v1/projects")).status_code == 200
     status = await client.get("/api/v1/auth/status")
-    assert status.json() == {"auth_required": False, "authenticated": True}
+    assert status.json() == {
+        "auth_required": False,
+        "authenticated": True,
+        "scope": "admin",
+        "key_name": None,
+    }
 
 
 @pytest.mark.asyncio
@@ -66,7 +71,12 @@ async def test_health_ready_and_status_stay_public(client: AsyncClient, api_key:
     assert (await client.get("/health")).status_code == 200
     status = await client.get("/api/v1/auth/status")
     assert status.status_code == 200
-    assert status.json() == {"auth_required": True, "authenticated": False}
+    assert status.json() == {
+        "auth_required": True,
+        "authenticated": False,
+        "scope": None,
+        "key_name": None,
+    }
 
 
 @pytest.mark.asyncio
@@ -97,7 +107,12 @@ async def test_ui_session_cookie_flow(client: AsyncClient, api_key: str) -> None
 
     assert (await client.get("/api/v1/projects")).status_code == 200
     status = await client.get("/api/v1/auth/status")
-    assert status.json() == {"auth_required": True, "authenticated": True}
+    assert status.json() == {
+        "auth_required": True,
+        "authenticated": True,
+        "scope": "admin",
+        "key_name": "OPENGRADE_API_KEY",
+    }
 
     logout = await client.delete("/api/v1/auth/session")
     assert logout.status_code == 204
@@ -108,10 +123,21 @@ async def test_ui_session_cookie_flow(client: AsyncClient, api_key: str) -> None
 def test_session_token_expires_and_dies_with_key_rotation() -> None:
     settings = Settings(api_key="k1")
     token, max_age = issue_session_token(settings, now=1_000)
-    assert session_token_valid(token, settings, now=1_000 + max_age - 1)
-    assert not session_token_valid(token, settings, now=1_000 + max_age)
-    assert not session_token_valid(token, Settings(api_key="k2"), now=1_001)
-    assert session_token_valid(token, Settings(api_key="k2", api_key_previous="k1"), now=1_001)
-    assert not session_token_valid("garbage", settings, now=1_001)
-    tampered = f"{1_000 + 10 * max_age}.{token.partition('.')[2]}"
-    assert not session_token_valid(tampered, settings, now=1_001)
+    assert session_subject(token, settings, now=1_000 + max_age - 1) == "env"
+    assert session_subject(token, settings, now=1_000 + max_age) is None
+    assert session_subject(token, Settings(api_key="k2"), now=1_001) is None
+    rotated = Settings(api_key="k2", api_key_previous="k1")
+    assert session_subject(token, rotated, now=1_001) == "env"
+    assert session_subject("garbage", settings, now=1_001) is None
+    subject, expires, signature = token.split(".")
+    assert (
+        session_subject(f"{subject}.{1_000 + 10 * max_age}.{signature}", settings, now=1_001)
+        is None
+    )
+    # The subject is signed too: a cookie for one key cannot be relabelled as another.
+    assert (
+        session_subject(
+            f"00000000-0000-0000-0000-000000000000.{expires}.{signature}", settings, now=1_001
+        )
+        is None
+    )

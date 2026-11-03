@@ -576,3 +576,12 @@ def task(item):
     text = runner.invoke(app, common)
     assert "regression.hit_at_k.new_failures (2):" in text.output
     assert "PASS → FAIL" in text.output
+
+
+def test_client_auth_headers_from_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    from opengrade_server.cli_evaluate import client_auth_headers
+
+    monkeypatch.delenv("OPENGRADE_API_KEY", raising=False)
+    assert client_auth_headers() == {}
+    monkeypatch.setenv("OPENGRADE_API_KEY", " og_abc ")
+    assert client_auth_headers() == {"Authorization": "Bearer og_abc"}

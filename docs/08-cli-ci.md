@@ -21,6 +21,21 @@ Defaults to SQLite at `sqlite+aiosqlite:///./opengrade.db`. Override with `--bac
 
 Loads `.env` from the process working directory when present (Pydantic Settings) and prints judge model / API key presence / `LLM_API_BASE` / content-capture at startup. Exits with code `2` if the bind port already accepts connections (e.g. Docker on `:8000`) — stop the other process or pass `--port`.
 
+### API keys
+
+```text
+opengrade keys create --name NAME [--scope ingest|read|admin] [--backend-store-uri URI]
+opengrade keys list   [--backend-store-uri URI]
+opengrade keys revoke KEY_ID [--backend-store-uri URI]
+```
+
+Manage per-client API keys directly in the server database (same `--backend-store-uri` /
+`DATABASE_URL` as `opengrade ui`); the same actions are in the dashboard under **Settings**.
+`create` prints the key once: only its hash is stored. A running server stops accepting a key
+revoked from the CLI within 30 seconds (at once when revoked from the dashboard). Keys are only
+checked when the server runs with `OPENGRADE_API_KEY`. See
+[Security: API keys](10-security-privacy.md#api-keys).
+
 ### Evaluate (exam + optional gate)
 
 ```text
@@ -305,6 +320,8 @@ Preferred (evaluate + gate in one step):
 - name: RAG evaluate + quality gate
   env:
     LLM_API_KEY: ${{ secrets.LLM_API_KEY }}
+    # Only when evaluating against a protected remote server (--base-url): an admin key.
+    OPENGRADE_API_KEY: ${{ secrets.OPENGRADE_API_KEY }}
   run: opengrade evaluate --config opengrade.yaml --name "ci-${GITHUB_SHA::7}"
 ```
 
@@ -312,8 +329,14 @@ Standalone check against an experiment that already exists on a remote API:
 
 ```yaml
 - name: Run AI evaluation gate
+  env:
+    OPENGRADE_API_KEY: ${{ secrets.OPENGRADE_API_KEY }}  # admin key if the server is protected
   run: opengrade check --policy opengrade.yaml
 ```
+
+`opengrade evaluate` and `opengrade check` send `OPENGRADE_API_KEY` as a bearer token to a
+remote server. They create experiments and run the release check, so the key needs the `admin`
+scope.
 
 Exit codes:
 - 0 = pass
