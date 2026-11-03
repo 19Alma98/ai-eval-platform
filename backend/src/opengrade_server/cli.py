@@ -159,6 +159,17 @@ def print_ui_startup_banner(uri: str, settings: Settings) -> None:
             "is not scored)"
         )
 
+    if settings.accepted_api_keys():
+        console.print(
+            "API key auth: [cyan]on[/cyan] (OPENGRADE_API_KEY; clients send "
+            "Authorization: Bearer, the UI asks for the key once)"
+        )
+    else:
+        console.print(
+            "API key auth: [yellow]off[/yellow] (set OPENGRADE_API_KEY before exposing the "
+            "server beyond localhost)"
+        )
+
     for message in ui_config_warnings(settings):
         console.print(f"[yellow]Warning:[/yellow] {message}")
 

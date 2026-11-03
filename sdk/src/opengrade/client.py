@@ -890,9 +890,11 @@ class Client:
         *,
         timeout: float = 30.0,
         transport: httpx2.BaseTransport | None = None,
+        api_key: str | None = None,
     ) -> None:
+        """``api_key`` defaults to ``opengrade.set_api_key()`` / ``OPENGRADE_API_KEY``."""
         resolved = resolve_api_base_url(base_url)
-        self._http = _HttpTransport(resolved, timeout=timeout, transport=transport)
+        self._http = _HttpTransport(resolved, timeout=timeout, transport=transport, api_key=api_key)
         self.base_url = resolved
         self.projects = _ProjectsResource(self._http)
         self.datasets = _DatasetsResource(self._http)

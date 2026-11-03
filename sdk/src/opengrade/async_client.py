@@ -162,9 +162,13 @@ class AsyncClient:
         *,
         timeout: float = 30.0,
         transport: httpx2.AsyncBaseTransport | None = None,
+        api_key: str | None = None,
     ) -> None:
+        """``api_key`` defaults to ``opengrade.set_api_key()`` / ``OPENGRADE_API_KEY``."""
         resolved = resolve_api_base_url(base_url)
-        self._http = _AsyncHttpTransport(resolved, timeout=timeout, transport=transport)
+        self._http = _AsyncHttpTransport(
+            resolved, timeout=timeout, transport=transport, api_key=api_key
+        )
         self.base_url = resolved
         self.projects = _AsyncProjectsResource(self._http)
         self.live_runs = _AsyncLiveRunsResource(self._http)

@@ -11,7 +11,7 @@ from typing import Any, TypeVar
 import httpx2
 from pydantic import BaseModel
 
-from opengrade._config import get_tracking_uri
+from opengrade._config import auth_headers, get_tracking_uri
 from opengrade._errors import OpengradeAPIError, OpengradeConnectionError, OpengradeError
 
 T = TypeVar("T", bound=BaseModel)
@@ -81,6 +81,7 @@ class _HttpTransport:
         timeout: float = 30.0,
         transport: httpx2.BaseTransport | None = None,
         client: httpx2.Client | None = None,
+        api_key: str | None = None,
     ) -> None:
         self._base_url = base_url.rstrip("/")
         self._timeout = timeout
@@ -91,7 +92,10 @@ class _HttpTransport:
         kwargs: dict[str, Any] = {
             "base_url": self._base_url,
             "timeout": timeout,
-            "headers": {"Accept": "application/json"},
+            "headers": {
+                "Accept": "application/json",
+                **auth_headers(self._base_url, api_key),
+            },
         }
         if transport is not None:
             kwargs["transport"] = transport
@@ -199,6 +203,7 @@ class _AsyncHttpTransport:
         timeout: float = 30.0,
         transport: httpx2.AsyncBaseTransport | None = None,
         client: httpx2.AsyncClient | None = None,
+        api_key: str | None = None,
     ) -> None:
         self._base_url = base_url.rstrip("/")
         self._timeout = timeout
@@ -209,7 +214,10 @@ class _AsyncHttpTransport:
         kwargs: dict[str, Any] = {
             "base_url": self._base_url,
             "timeout": timeout,
-            "headers": {"Accept": "application/json"},
+            "headers": {
+                "Accept": "application/json",
+                **auth_headers(self._base_url, api_key),
+            },
         }
         if transport is not None:
             kwargs["transport"] = transport

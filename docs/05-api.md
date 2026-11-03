@@ -6,13 +6,16 @@ Base path:
 
 ## Authentication
 
-v0.1 does not require application-level authentication.
+Off by default (trusted network). With `OPENGRADE_API_KEY` set on the server, every `/api/*`
+request and OTLP `POST /v1/traces` needs `Authorization: Bearer <key>` or the UI session cookie;
+otherwise `401` with `WWW-Authenticate: Bearer`. `/health` and `/ready` stay public.
+See [Security: API key](10-security-privacy.md#api-key).
 
-Assumption: the API and OTLP ingestion endpoints run on a trusted network (localhost, private Docker/Kubernetes network, or operator-managed reverse proxy).
-
-Optional later (non-blocking for MVP):
-- static API key for machine clients;
-- accept an upstream identity header from a reverse proxy.
+| Method | Path | Auth | Purpose |
+|---|---|---|---|
+| `GET` | `/api/v1/auth/status` | public | `{"auth_required": bool, "authenticated": bool}` |
+| `POST` | `/api/v1/auth/session` | public | body `{"api_key": "..."}` → `204` + `HttpOnly` session cookie; `401` on a wrong key |
+| `DELETE` | `/api/v1/auth/session` | public | clears the session cookie |
 
 Do not block the platform MVP on SSO, sessions, or RBAC.
 

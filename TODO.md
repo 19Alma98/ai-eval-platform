@@ -33,11 +33,9 @@ Priority: **P0** blocks a public release, **P1** fix before promoting it, **P2**
     `ingest` (only `POST /v1/traces`, `POST /api/v1/trace-scores`,
     `POST /api/v1/projects/{id}/live-interactions`; cannot open the UI). `ingest` is the key that
     lives in production apps.
-  - **Phase 1:** `OPENGRADE_API_KEY` env var on the server = the `admin` key (unset = no auth, as
-    today); `OPENGRADE_API_KEY_PREVIOUS` also accepted during rotation. SDK sends
-    `Authorization: Bearer` on HTTP and OTLP. `/health` and `/ready` stay public. Constant-time
-    compare; never log the header. UI: login screen exchanges the key for an `HttpOnly`, `Secure`,
-    `SameSite=Strict` session cookie. Docs: HTTPS mandatory (TLS at the reverse proxy).
+  - **Phase 1 — done:** `OPENGRADE_API_KEY` = the `admin` key (+ `OPENGRADE_API_KEY_PREVIOUS` for
+    rotation), bearer on HTTP + OTLP in the SDK, API key prompt in the UI (not a user login:
+    key → `HttpOnly` HMAC session cookie). See `docs/10-security-privacy.md#api-key`.
   - **Phase 2:** `api_keys` table in the server's own DB (no separate cloud auth service): name,
     optional `project_id` (an `ingest` key bound to a project needs no slug lookup), `scope`,
     `prefix`, SHA-256 `key_hash` only, `created_at`, `last_used_at`, `revoked_at`. Settings → API

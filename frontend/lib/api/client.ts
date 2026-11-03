@@ -89,7 +89,13 @@ export function parseApiErrorBody(status: number, body: string): string {
   return trimmed;
 }
 
+/** Fired on any 401 so the API key prompt can reappear (key rotated, session expired). */
+export const UNAUTHORIZED_EVENT = "opengrade:unauthorized";
+
 export async function throwApiError(res: Response): Promise<never> {
+  if (res.status === 401 && typeof window !== "undefined") {
+    window.dispatchEvent(new Event(UNAUTHORIZED_EVENT));
+  }
   const rawBody = await res.text();
   const message = parseApiErrorBody(res.status, rawBody);
   throw new ApiError(res.status, message, undefined, rawBody);
