@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { ArrowDown } from "lucide-react";
+import { ArrowDown, ArrowRight, ChevronRight } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import {
   parseJudgeClaims,
@@ -19,6 +19,7 @@ import {
   type RagChunk,
   type RagView,
 } from "./rag-view";
+import { MessageList } from "./span-blocks";
 
 const TONE_TEXT: Record<VerdictTone, string> = {
   ok: "bg-status-ok-bg text-status-ok",
@@ -47,11 +48,13 @@ export function claimsFromInteraction(interaction: LiveInteraction | undefined):
 function Step({
   title,
   hint,
+  action,
   children,
   last = false,
 }: {
   title: string;
   hint?: string;
+  action?: React.ReactNode;
   children: React.ReactNode;
   last?: boolean;
 }) {
@@ -62,6 +65,7 @@ function Step({
           {title}
         </h2>
         {hint ? <span className="text-xs text-muted-foreground">{hint}</span> : null}
+        {action ? <span className="ml-auto">{action}</span> : null}
       </div>
       {children}
       {last ? null : (
@@ -183,90 +187,92 @@ export function RagPipeline({
   // The last retrieval stage holds the chunks the model actually saw.
   const shownStage = stageIndex ?? view.stages.length - 1;
   const stage = view.stages[shownStage];
+  // Not every app retrieves: a plain LLM call has no chunks step at all.
+  const hasRetrieval = view.stages.length > 0;
   const maxScore = Math.max(0, ...(stage?.chunks.map((c) => c.score ?? 0) ?? []));
 
   return (
     <div className="flex flex-col gap-3">
-      <Step title="Query">
+      <Step title={hasRetrieval ? "Query" : "Input"}>
         <p className="rounded-md border border-border bg-surface px-3 py-2 text-sm whitespace-pre-wrap">
           {view.query ?? <span className="text-muted-foreground">Not captured</span>}
         </p>
       </Step>
 
-      <Step
-        title="Retrieved chunks"
-        hint={stage ? `${stage.chunks.length} from ${stage.name}` : undefined}
-      >
-        {view.stages.length > 1 ? (
-          <div role="radiogroup" aria-label="Retrieval stage" className="flex flex-wrap gap-1">
-            {view.stages.map((s, i) => (
-              <button
-                key={s.spanId}
-                type="button"
-                role="radio"
-                aria-checked={i === shownStage}
-                onClick={() => setStageIndex(i)}
-                className={cn(
-                  "rounded border border-border px-2 py-0.5 text-xs text-muted-foreground hover:text-foreground",
-                  i === shownStage && "bg-row-selected text-foreground",
-                )}
-              >
-                {s.kind === "RERANKER" ? "Reranked" : "Retrieved"} · {s.name}
-              </button>
-            ))}
-          </div>
-        ) : null}
-        {!stage ? (
-          <p className="text-sm text-muted-foreground">No retrieval step was recorded.</p>
-        ) : stage.chunks.length === 0 ? (
-          <p className="text-sm text-status-warn">The retriever returned no chunks.</p>
-        ) : (
-          <ol className="flex flex-col gap-1.5">
-            {stage.chunks.map((chunk, i) => (
-              <ChunkCard
-                key={`${chunk.id}-${i}`}
-                chunk={chunk}
-                rank={i + 1}
-                maxScore={maxScore}
-                claims={claims}
-                activeClaim={activeClaim}
-              />
-            ))}
-          </ol>
-        )}
-      </Step>
+      {hasRetrieval ? (
+        <Step
+          title="Retrieved chunks"
+          hint={stage ? `${stage.chunks.length} from ${stage.name}` : undefined}
+        >
+          {view.stages.length > 1 ? (
+            <div role="radiogroup" aria-label="Retrieval stage" className="flex flex-wrap gap-1">
+              {view.stages.map((s, i) => (
+                <button
+                  key={s.spanId}
+                  type="button"
+                  role="radio"
+                  aria-checked={i === shownStage}
+                  onClick={() => setStageIndex(i)}
+                  className={cn(
+                    "rounded border border-border px-2 py-0.5 text-xs text-muted-foreground hover:text-foreground",
+                    i === shownStage && "bg-row-selected text-foreground",
+                  )}
+                >
+                  {s.kind === "RERANKER" ? "Reranked" : "Retrieved"} · {s.name}
+                </button>
+              ))}
+            </div>
+          ) : null}
+          {!stage ? null : stage.chunks.length === 0 ? (
+            <p className="text-sm text-status-warn">The retriever returned no chunks.</p>
+          ) : (
+            <ol className="flex flex-col gap-1.5">
+              {stage.chunks.map((chunk, i) => (
+                <ChunkCard
+                  key={`${chunk.id}-${i}`}
+                  chunk={chunk}
+                  rank={i + 1}
+                  maxScore={maxScore}
+                  claims={claims}
+                  activeClaim={activeClaim}
+                />
+              ))}
+            </ol>
+          )}
+        </Step>
+      ) : null}
 
-      <Step title="Prompt" hint={view.prompt.length ? `${view.prompt.length} messages` : undefined}>
+      <Step
+        title="Prompt"
+        hint={view.prompt.length ? `${view.prompt.length} messages` : undefined}
+        action={
+          view.promptSpanId && onOpenSpan ? (
+            <button
+              type="button"
+              className="inline-flex items-center gap-0.5 text-xs text-primary hover:underline"
+              onClick={() => onOpenSpan(view.promptSpanId!)}
+            >
+              Inspect LLM call
+              <ArrowRight className="size-3" aria-hidden />
+            </button>
+          ) : null
+        }
+      >
         {view.prompt.length === 0 ? (
           <p className="text-sm text-muted-foreground">No LLM call was recorded.</p>
         ) : (
-          <details className="rounded-md border border-border bg-surface px-3 py-2 text-sm">
-            <summary className="cursor-pointer text-muted-foreground">
+          <details className="group/prompt rounded-md border border-border bg-surface text-sm">
+            <summary className="flex cursor-pointer list-none items-center gap-2 px-3 py-2 text-muted-foreground hover:text-foreground [&::-webkit-details-marker]:hidden">
+              <ChevronRight
+                className="size-3.5 transition-transform group-open/prompt:rotate-90"
+                aria-hidden
+              />
               Show what the model received
-              {view.promptSpanId && onOpenSpan ? (
-                <button
-                  type="button"
-                  className="ml-2 text-xs text-primary hover:underline"
-                  onClick={(e) => {
-                    e.preventDefault();
-                    onOpenSpan(view.promptSpanId!);
-                  }}
-                >
-                  Open LLM step
-                </button>
-              ) : null}
             </summary>
-            <div className="mt-2 flex flex-col gap-2">
-              {view.prompt.map((m, i) => (
-                <div key={i} className="flex flex-col gap-0.5">
-                  <span className="text-[13px] font-medium text-muted-foreground">
-                    {m.role}
-                  </span>
-                  <p className="max-h-64 overflow-auto whitespace-pre-wrap rounded bg-surface-2 px-2 py-1 font-mono text-xs">
-                    {m.content}
-                  </p>
-                </div>
-              ))}
+            <div className="border-t border-border p-3">
+              <MessageList
+                messages={view.prompt.map((m) => ({ ...m, toolCalls: [] }))}
+              />
             </div>
           </details>
         )}

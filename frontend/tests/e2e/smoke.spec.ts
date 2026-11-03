@@ -207,24 +207,94 @@ test("LLM, tool and retrieval spans can be inspected", async ({ page, request })
     await page.getByRole("button", { name: new RegExp(`^${name}`) }).click();
     await expect(page.getByRole("heading", { level: 2, name })).toBeVisible();
   };
-
-  const attributes = page.getByRole("tabpanel", { name: "Attributes" });
-  const io = page.getByRole("tabpanel", { name: "Input / Output" });
+  const header = (name: string) =>
+    page.locator("header", { has: page.getByRole("heading", { level: 2, name }) });
+  const overview = page.getByRole("tabpanel", { name: "Overview" });
+  const attributes = page.getByRole("tabpanel", { name: /^Attributes/ });
 
   await open("chat_completion");
-  await expect(page.getByRole("definition").filter({ hasText: /^LLM$/ })).toBeVisible();
-  await expect(page.getByRole("definition").filter({ hasText: /^42$/ })).toBeVisible();
-  await expect(attributes.getByText("demo-model-1")).toBeVisible();
-  await page.getByRole("tab", { name: "Input / Output" }).click();
-  await expect(io.getByText("Summarise the forecast")).toBeVisible();
+  await expect(header("chat_completion").getByText("LLM call")).toBeVisible();
+  await expect(header("chat_completion").getByText("demo-model-1")).toBeVisible();
+  await expect(header("chat_completion").getByText("42", { exact: true })).toBeVisible();
+  await expect(overview.getByText("Summarise the forecast")).toBeVisible();
+  await expect(overview.getByText("Sunny, 24C.")).toBeVisible();
 
   await open("get_weather");
-  await expect(page.getByRole("definition").filter({ hasText: /^TOOL$/ })).toBeVisible();
-  await page.getByRole("tab", { name: "Input / Output" }).click();
-  await expect(io.getByText("sunny-24c")).toBeVisible();
+  await expect(header("get_weather").getByText("Tool call")).toBeVisible();
+  // `{"city":"Rome"}` is decoded into a key/value row, not shown as raw JSON.
+  await expect(overview.getByText("city", { exact: true })).toBeVisible();
+  await expect(overview.getByText("Rome", { exact: true })).toBeVisible();
+  await expect(overview.getByText("sunny-24c")).toBeVisible();
 
   await open("search_docs");
-  await expect(page.getByRole("definition").filter({ hasText: /^RETRIEVER$/ })).toBeVisible();
-  await page.getByRole("tab", { name: "Attributes" }).click();
-  await expect(attributes.getByText(/doc-weather/)).toBeVisible();
+  await expect(header("search_docs").getByText("Retrieval")).toBeVisible();
+  await expect(overview.getByText("doc-weather")).toBeVisible();
+  await page.getByRole("tab", { name: /^Attributes/ }).click();
+  await attributes.getByLabel("Filter attributes").fill("doc-weather");
+  await expect(attributes.getByText("retrieval.documents")).toBeVisible();
+});
+
+test("a trace without retrieval gets a summary, not a RAG view", async ({ page, request }) => {
+  const proj = await request.post(`${API}/api/v1/projects`, {
+    data: { name: "E2E Plain", slug: `e2e-plain-${Date.now()}` },
+  });
+  expect(proj.ok()).toBeTruthy();
+  const { id } = await proj.json();
+
+  // Shape of examples/sdk_hello: an @opengrade.trace CHAIN around one OpenAI call.
+  const traceId = "ef".repeat(16);
+  const rootId = "31".repeat(8);
+  const nanos = (msAgo: number) => `${Date.now() - msAgo}000000`;
+  const str = (key: string, value: string) => ({ key, value: { stringValue: value } });
+  const otlp = await request.post(`${API}/v1/traces`, {
+    headers: { "X-Project-Id": id },
+    data: {
+      resourceSpans: [
+        {
+          scopeSpans: [
+            {
+              spans: [
+                {
+                  traceId,
+                  spanId: rootId,
+                  name: "ask",
+                  startTimeUnixNano: nanos(3000),
+                  endTimeUnixNano: nanos(1000),
+                  status: { code: "STATUS_CODE_OK" },
+                  attributes: [
+                    str("openinference.span.kind", "CHAIN"),
+                    str("input.value", '{"args": ["ping"], "kwargs": {}}'),
+                    str("output.value", "pong"),
+                  ],
+                },
+                {
+                  traceId,
+                  spanId: "32".repeat(8),
+                  parentSpanId: rootId,
+                  name: "ChatCompletion",
+                  startTimeUnixNano: nanos(2900),
+                  endTimeUnixNano: nanos(1100),
+                  status: { code: "STATUS_CODE_OK" },
+                  attributes: [
+                    str("openinference.span.kind", "LLM"),
+                    str("llm.input_messages.0.message.role", "user"),
+                    str("llm.input_messages.0.message.content", "ping"),
+                    str("llm.output_messages.0.message.role", "assistant"),
+                    str("llm.output_messages.0.message.content", "pong"),
+                  ],
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    },
+  });
+  expect(otlp.ok()).toBeTruthy();
+
+  await page.goto(`/traces/${traceId}?project=${id}`);
+  await expect(page.getByRole("tab", { name: "Summary" })).toBeVisible();
+  await expect(page.getByRole("tab", { name: "RAG view" })).toHaveCount(0);
+  await expect(page.getByText("Retrieved chunks")).toHaveCount(0);
+  await expect(page.getByRole("button", { name: /Inspect LLM call/ })).toBeVisible();
 });
