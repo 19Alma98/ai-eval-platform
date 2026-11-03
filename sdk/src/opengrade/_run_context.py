@@ -20,8 +20,9 @@ ACTIVE_RUN: ContextVar[_Recorder | None] = ContextVar("opengrade_active_run", de
 class ProductionCapture:
     """What a ``@opengrade.trace(metrics=...)`` call recorded, for its production metrics.
 
-    ``span`` is the call's own span: only ``set_input`` on that span sets ``input``
-    (a nested call rewriting its own input must not change it); documents from nested
+    ``span`` is the call's own span: only ``set_input`` / ``set_output`` on that span set
+    ``input`` / ``output`` (a nested call rewriting its own I/O must not change them; without
+    ``set_output`` the metrics see the return value); documents from nested
     retrieval stages on the same thread do bubble up. ContextVars are not copied into
     threads the traced function starts, so ``set_retrieval_documents`` there is a no-op
     for this capture.
@@ -30,6 +31,8 @@ class ProductionCapture:
     span: object = None
     input: object = None
     has_input: bool = False
+    output: object = None
+    has_output: bool = False
     documents: list[dict[str, Any]] | None = None
 
 
@@ -38,10 +41,16 @@ PRODUCTION_CAPTURE: ContextVar[ProductionCapture | None] = ContextVar(
 )
 
 
-def record_output(value: object) -> None:
+def record_output(value: object, span: object = None) -> None:
+    """Record ``value`` as the experiment output, and as the production output when
+    ``span`` owns the open capture."""
     run = ACTIVE_RUN.get()
     if run is not None:
         run._capture_output(value)
+    capture = PRODUCTION_CAPTURE.get()
+    if capture is not None and span is not None and capture.span is span:
+        capture.output = value
+        capture.has_output = True
 
 
 def record_documents(documents: list[dict[str, Any]]) -> None:

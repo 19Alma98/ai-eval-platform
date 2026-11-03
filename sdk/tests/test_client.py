@@ -380,3 +380,45 @@ def test_alerts_resource_sends_only_set_fields() -> None:
     )
     assert seen[1] == ("PATCH", "/api/v1/alert-rules/r1", {"webhook_url": None})
     assert seen[2][0] == "DELETE"
+
+
+def test_live_interaction_exposes_trace_scores() -> None:
+    from opengrade.models import LiveInteractionResponse
+
+    live = LiveInteractionResponse.model_validate(
+        {
+            "id": "live-1",
+            "question": "Who is the CEO?",
+            "answer": "I don't know.",
+            "judge_status": "unsampled",
+            "trace_scores": [
+                {
+                    "id": "s-1",
+                    "trace_id": "ab" * 16,
+                    "name": "user_feedback",
+                    "value": 0.0,
+                    "label": "FAIL",
+                    "explanation": "I needed a real answer",
+                    "threshold": None,
+                    "source": "human",
+                    "author": "u-03",
+                    "metadata": {},
+                    "created_at": "2026-11-03T11:15:51Z",
+                    "updated_at": "2026-11-03T11:15:51Z",
+                }
+            ],
+        }
+    )
+    (score,) = live.trace_scores
+    assert (score.name, score.value, score.label, score.author) == (
+        "user_feedback",
+        0.0,
+        "FAIL",
+        "u-03",
+    )
+    assert (
+        LiveInteractionResponse.model_validate(
+            {"id": "x", "question": "q", "answer": "a", "judge_status": "pending"}
+        ).trace_scores
+        == []
+    )

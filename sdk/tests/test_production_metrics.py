@@ -119,6 +119,47 @@ def test_set_input_overrides_call_arguments(sent: Recorder) -> None:
     assert seen == ["q?"]
 
 
+def test_set_output_overrides_return_value(sent: Recorder) -> None:
+    seen: list[Any] = []
+
+    @opengrade.metric
+    def record(s: opengrade.Sample) -> float:
+        seen.append(s.output)
+        return 1.0
+
+    @opengrade.trace(name="handler", metrics=[record])
+    def handler(question: str) -> dict[str, Any]:
+        opengrade.set_output("the answer")
+        return {"answer": "the answer", "trace_id": opengrade.current_trace_id()}
+
+    handler("q?")
+    opengrade.flush()
+    assert seen == ["the answer"]
+
+
+def test_nested_set_output_does_not_overwrite_outer_output(sent: Recorder) -> None:
+    seen: list[Any] = []
+
+    @opengrade.metric
+    def record(s: opengrade.Sample) -> float:
+        seen.append(s.output)
+        return 1.0
+
+    @opengrade.trace(name="inner")
+    def inner(q: str) -> str:
+        opengrade.set_output("inner output")
+        return "inner"
+
+    @opengrade.trace(name="outer_output", metrics=[record])
+    def outer_output(q: str) -> str:
+        inner(q)
+        return "outer"
+
+    outer_output("q")
+    assert opengrade.flush()
+    assert seen == ["outer"]
+
+
 def test_metric_sees_snapshot_not_later_mutations(sent: Recorder) -> None:
     """Queued jobs must not observe mutations after the traced call returns."""
     release = threading.Event()

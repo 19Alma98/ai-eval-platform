@@ -341,6 +341,24 @@ class LiveInteractionScoreResponse(_ApiModel):
     metadata: dict[str, Any] = Field(default_factory=dict)
 
 
+class TraceScoreResponse(_ApiModel):
+    """A score stored on a trace: ``log_score``, ``log_feedback`` (``user_feedback``),
+    ``@opengrade.trace(metrics=...)`` results or a reviewer's annotation."""
+
+    id: str | None = None
+    trace_id: str | None = None
+    name: str
+    value: float | None = None
+    label: str | None = None
+    explanation: str | None = None
+    threshold: float | None = None
+    source: str | None = None
+    author: str | None = None
+    metadata: dict[str, Any] = Field(default_factory=dict)
+    created_at: datetime | str | None = None
+    updated_at: datetime | str | None = None
+
+
 class LiveJudgeWarningResponse(_ApiModel):
     kind: str
     warnings: list[str] = Field(default_factory=list)
@@ -362,6 +380,9 @@ class LiveInteractionResponse(_ApiModel):
     created_at: datetime | str | None = None
     scored_at: datetime | str | None = None
     scores: list[LiveInteractionScoreResponse] = Field(default_factory=list)
+    """Verdicts of the platform's evaluators (LLM judges) on this interaction."""
+    trace_scores: list[TraceScoreResponse] = Field(default_factory=list)
+    """Scores attached to the interaction's trace from the SDK or by reviewers."""
 
 
 class ListLiveInteractionsResponse(_ApiModel):

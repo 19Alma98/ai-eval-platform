@@ -16,6 +16,7 @@ import re
 from dataclasses import dataclass
 from typing import Any
 
+from opengrade_server.domain.rag_qa import label_answerable
 from opengrade_server.domain.repositories import JudgeClaimCacheRepository
 from opengrade_server.evaluation.judges import prompts
 from opengrade_server.evaluation.judges.claims import verify_support
@@ -215,20 +216,6 @@ def _choice_config(kind: str, config: dict[str, Any], key: str, choices: tuple[s
     return value
 
 
-def _as_bool(value: Any) -> bool | None:
-    if isinstance(value, bool):
-        return value
-    if isinstance(value, int | float) and value in (0, 1):
-        return bool(value)
-    if isinstance(value, str):
-        text = value.strip().lower()
-        if text in ("true", "yes", "y", "1", "si", "sì"):
-            return True
-        if text in ("false", "no", "n", "0"):
-            return False
-    return None
-
-
 # --- citation accuracy ----------------------------------------------------------------------
 
 
@@ -424,18 +411,6 @@ _SOURCE_TEXT = {
     "reference": "reference answer",
     "documents": "retrieved documents",
 }
-
-
-def label_answerable(metadata: dict[str, Any]) -> bool | None:
-    """``metadata.answerable`` wins; else the inverse of ``expected_refusal``/``should_refuse``."""
-    flag = _as_bool(metadata.get("answerable"))
-    if flag is not None:
-        return flag
-    for key in ("expected_refusal", "should_refuse"):
-        refuse = _as_bool(metadata.get(key))
-        if refuse is not None:
-            return not refuse
-    return None
 
 
 class RefusalJudge(_LlmJudge):
