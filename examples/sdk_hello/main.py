@@ -4,9 +4,8 @@ from __future__ import annotations
 
 import os
 
-from openai import OpenAI
-
 import opengrade
+from openai import OpenAI
 
 opengrade.set_tracking_uri(os.getenv("OPENGRADE_TRACKING_URI", "http://localhost:8000"))
 opengrade.set_project(os.getenv("OPENGRADE_PROJECT_SLUG", "demo"))

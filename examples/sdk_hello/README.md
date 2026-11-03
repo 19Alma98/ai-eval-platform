@@ -1,4 +1,4 @@
-# SDK hello (OpenAI-compatible → Ollama)
+# SDK hello (with Ollama)
 
 Minimal OpenGrade SDK example: emits one CHAIN span (`@opengrade.trace`) and an LLM child span from
 `openinference-instrumentation-openai`.
@@ -13,14 +13,11 @@ Minimal OpenGrade SDK example: emits one CHAIN span (`@opengrade.trace`) and an 
 ```bash
 cd sdk && uv sync --extra openai && cd ..
 cd examples/sdk_hello
-uv run --directory ../../sdk --with openai python main.py
+uv run --project ../../sdk --with openai python main.py
 # or: pip install -r requirements.txt && python main.py
 ```
 
-Expected UI: one trace under project **demo**, parent CHAIN + child LLM.
-
-`CONTENT_CAPTURE_ENABLED` on the API still controls whether the platform stores
-`input`/`output` bodies; the SDK emits attributes independently.
+Expected UI: one trace under project "**demo**", parent CHAIN + child LLM.
 
 ## Troubleshooting / failure modes
 
