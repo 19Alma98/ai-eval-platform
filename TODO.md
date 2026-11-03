@@ -8,10 +8,9 @@ Priority: **P0** blocks a public release, **P1** fix before promoting it, **P2**
 
 ### Packaging / release — P0
 
-- [ ] **Migrations not shipped / not run outside Docker** (`infrastructure/db.py:85`,
-  `pyproject.toml` packages only `src/opengrade_server`). `opengrade ui --backend-store-uri
-  postgresql+asyncpg://…` on an empty DB → 500 on every write. Fix: package Alembic inside
-  `opengrade_server`, run `upgrade head` programmatically on startup under an advisory lock. (confirmed)
+- [x] **Migrations not shipped / not run outside Docker** → Alembic moved to
+  `opengrade_server/migrations` (in the wheel; `publish.yml` checks it); server startup runs
+  `upgrade head` on SQLite and Postgres (advisory lock on Postgres). (fixed)
 - [ ] **Docker image not published** (`publish.yml` only does PyPI). Publish to GHCR/Docker Hub on tag,
   non-root user, documented env vars.
 

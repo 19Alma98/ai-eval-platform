@@ -107,7 +107,7 @@ python_version = "3.12"
 strict = true
 packages = ["opengrade_server"]
 mypy_path = "src"
-exclude = ["_ui"]
+exclude = ["_ui", "migrations"]
 
 [[tool.mypy.overrides]]
 module = ["asyncpg.*"]

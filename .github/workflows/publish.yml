@@ -99,6 +99,12 @@ jobs:
               if "opengrade_server/_ui/index.html" not in zf.namelist():
                   print("server wheel missing opengrade_server/_ui/index.html", file=sys.stderr)
                   sys.exit(1)
+              # Schema upgrades run from the installed package (`opengrade ui`, server startup).
+              names = zf.namelist()
+              revisions = [n for n in names if n.startswith("opengrade_server/migrations/versions/") and n.endswith(".py")]
+              if "opengrade_server/migrations/env.py" not in names or not revisions:
+                  print("server wheel missing Alembic migrations (opengrade_server/migrations)", file=sys.stderr)
+                  sys.exit(1)
               server_eps = dist_info(zf, "entry_points.txt")
               server_meta = Parser().parsestr(dist_info(zf, "METADATA"))
 
