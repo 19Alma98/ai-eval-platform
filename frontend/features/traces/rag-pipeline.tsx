@@ -187,58 +187,60 @@ export function RagPipeline({
   // The last retrieval stage holds the chunks the model actually saw.
   const shownStage = stageIndex ?? view.stages.length - 1;
   const stage = view.stages[shownStage];
+  // Not every app retrieves: a plain LLM call has no chunks step at all.
+  const hasRetrieval = view.stages.length > 0;
   const maxScore = Math.max(0, ...(stage?.chunks.map((c) => c.score ?? 0) ?? []));
 
   return (
     <div className="flex flex-col gap-3">
-      <Step title="Query">
+      <Step title={hasRetrieval ? "Query" : "Input"}>
         <p className="rounded-md border border-border bg-surface px-3 py-2 text-sm whitespace-pre-wrap">
           {view.query ?? <span className="text-muted-foreground">Not captured</span>}
         </p>
       </Step>
 
-      <Step
-        title="Retrieved chunks"
-        hint={stage ? `${stage.chunks.length} from ${stage.name}` : undefined}
-      >
-        {view.stages.length > 1 ? (
-          <div role="radiogroup" aria-label="Retrieval stage" className="flex flex-wrap gap-1">
-            {view.stages.map((s, i) => (
-              <button
-                key={s.spanId}
-                type="button"
-                role="radio"
-                aria-checked={i === shownStage}
-                onClick={() => setStageIndex(i)}
-                className={cn(
-                  "rounded border border-border px-2 py-0.5 text-xs text-muted-foreground hover:text-foreground",
-                  i === shownStage && "bg-row-selected text-foreground",
-                )}
-              >
-                {s.kind === "RERANKER" ? "Reranked" : "Retrieved"} · {s.name}
-              </button>
-            ))}
-          </div>
-        ) : null}
-        {!stage ? (
-          <p className="text-sm text-muted-foreground">No retrieval step was recorded.</p>
-        ) : stage.chunks.length === 0 ? (
-          <p className="text-sm text-status-warn">The retriever returned no chunks.</p>
-        ) : (
-          <ol className="flex flex-col gap-1.5">
-            {stage.chunks.map((chunk, i) => (
-              <ChunkCard
-                key={`${chunk.id}-${i}`}
-                chunk={chunk}
-                rank={i + 1}
-                maxScore={maxScore}
-                claims={claims}
-                activeClaim={activeClaim}
-              />
-            ))}
-          </ol>
-        )}
-      </Step>
+      {hasRetrieval ? (
+        <Step
+          title="Retrieved chunks"
+          hint={stage ? `${stage.chunks.length} from ${stage.name}` : undefined}
+        >
+          {view.stages.length > 1 ? (
+            <div role="radiogroup" aria-label="Retrieval stage" className="flex flex-wrap gap-1">
+              {view.stages.map((s, i) => (
+                <button
+                  key={s.spanId}
+                  type="button"
+                  role="radio"
+                  aria-checked={i === shownStage}
+                  onClick={() => setStageIndex(i)}
+                  className={cn(
+                    "rounded border border-border px-2 py-0.5 text-xs text-muted-foreground hover:text-foreground",
+                    i === shownStage && "bg-row-selected text-foreground",
+                  )}
+                >
+                  {s.kind === "RERANKER" ? "Reranked" : "Retrieved"} · {s.name}
+                </button>
+              ))}
+            </div>
+          ) : null}
+          {!stage ? null : stage.chunks.length === 0 ? (
+            <p className="text-sm text-status-warn">The retriever returned no chunks.</p>
+          ) : (
+            <ol className="flex flex-col gap-1.5">
+              {stage.chunks.map((chunk, i) => (
+                <ChunkCard
+                  key={`${chunk.id}-${i}`}
+                  chunk={chunk}
+                  rank={i + 1}
+                  maxScore={maxScore}
+                  claims={claims}
+                  activeClaim={activeClaim}
+                />
+              ))}
+            </ol>
+          )}
+        </Step>
+      ) : null}
 
       <Step
         title="Prompt"

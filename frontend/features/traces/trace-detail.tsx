@@ -244,7 +244,8 @@ export function TraceDetailView({ projectId, traceId }: { projectId: string; tra
       <Tabs value={activeTab} onValueChange={(v) => setTab(v)}>
         <TabsList variant="line">
           <TabsTrigger value="rag" isDisabled={!showRag}>
-            RAG view
+            {/* Only a trace that retrieved something is a RAG pipeline. */}
+            {ragView.stages.length > 0 ? "RAG view" : "Summary"}
           </TabsTrigger>
           <TabsTrigger value="timeline">Timeline</TabsTrigger>
         </TabsList>
