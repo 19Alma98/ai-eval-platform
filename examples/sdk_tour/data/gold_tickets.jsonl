@@ -1,0 +1,16 @@
+{"input": "I was charged twice for my Pro subscription this month, please refund one payment.", "expected_output": "billing"}
+{"input": "Can I get an invoice with my company VAT number on it?", "expected_output": "billing"}
+{"input": "How do I switch from monthly to annual payment?", "expected_output": "billing"}
+{"input": "My credit card expired, where do I update it?", "expected_output": "billing"}
+{"input": "The desktop app crashes every time I open a folder with many photos.", "expected_output": "technical"}
+{"input": "Uploads stop at 99% and then fail with an error.", "expected_output": "technical"}
+{"input": "The API returns 500 errors since this morning.", "expected_output": "technical"}
+{"input": "Offline folders are not syncing after I reconnect to wifi.", "expected_output": "technical"}
+{"input": "I can't log in, the password reset email never arrives.", "expected_output": "account"}
+{"input": "Please delete my account and all my data.", "expected_output": "account"}
+{"input": "I lost my phone and can't pass two-factor authentication anymore.", "expected_output": "account"}
+{"input": "How do I change the email address of my profile?", "expected_output": "account"}
+{"input": "We are 200 people, can we get a discount on the Business plan?", "expected_output": "sales"}
+{"input": "Can someone show our IT team a demo of the Admin console?", "expected_output": "sales"}
+{"input": "Do you offer an enterprise contract with a custom SLA?", "expected_output": "sales"}
+{"input": "We want to buy Business for our school, who can I talk to?", "expected_output": "sales"}
