@@ -102,38 +102,14 @@ def init_db(settings: Settings | None = None) -> async_sessionmaker[AsyncSession
     return _session_factory
 
 
-def _is_alembic_root(root: Path) -> bool:
-    return (root / "alembic.ini").is_file() and (root / "alembic").is_dir()
-
-
-def _resolve_alembic_root() -> Path:
-    """Pick the directory containing ``alembic.ini`` and ``alembic/``.
-
-    Editable installs resolve via ``__file__``; Docker copies migrations to
-    ``WORKDIR`` while the package lives in site-packages.
-    """
-    editable_root = Path(__file__).resolve().parents[3]
-    if _is_alembic_root(editable_root):
-        return editable_root
-    cwd = Path.cwd()
-    if _is_alembic_root(cwd):
-        return cwd
-    app_root = Path("/app")
-    if _is_alembic_root(app_root):
-        return app_root
-    return editable_root
+# Migrations ship inside the package so pip/uv installs can upgrade the schema
+# without a repo checkout (no alembic.ini needed at runtime).
+MIGRATIONS_DIR = Path(__file__).resolve().parents[1] / "migrations"
 
 
 def _alembic_config() -> Config:
-    backend_root = _resolve_alembic_root()
-    ini_path = backend_root / "alembic.ini"
-    cfg = Config(str(ini_path))
-    cfg.set_main_option("script_location", str(backend_root / "alembic"))
-    src_path = backend_root / "src"
-    if src_path.is_dir():
-        cfg.set_main_option("prepend_sys_path", str(src_path))
-    else:
-        cfg.set_main_option("prepend_sys_path", "")
+    cfg = Config()
+    cfg.set_main_option("script_location", str(MIGRATIONS_DIR))
     cfg.set_main_option("sqlalchemy.url", get_settings().database_url)
     return cfg
 
@@ -221,10 +197,16 @@ def run_migrations(settings: Settings | None = None) -> None:
 
 
 async def bootstrap_schema() -> None:
-    """Apply Alembic migrations for SQLite local mode. Postgres uses Docker entrypoint."""
+    """Bring the schema to Alembic head on startup (SQLite and Postgres).
+
+    Postgres upgrades hold an advisory lock, so concurrent starts (or the Docker
+    entrypoint's own ``opengrade_server.migrate`` run) serialize; at head it is a no-op.
+    """
     if _engine is None:
         raise RuntimeError("Database not initialized")
     if _engine.dialect.name != "sqlite":
+        async with _engine.connect() as conn:
+            await conn.run_sync(_postgres_locked_upgrade)
         return
 
     async with _engine.connect() as conn:

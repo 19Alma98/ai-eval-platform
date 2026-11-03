@@ -1,13 +1,14 @@
 from __future__ import annotations
 
 import importlib.util
-from pathlib import Path
 from types import SimpleNamespace
 from uuid import UUID, uuid4
 
+from opengrade_server.infrastructure.db import MIGRATIONS_DIR
+
 
 def _load_revision():
-    path = Path(__file__).resolve().parents[1] / "alembic" / "versions" / "0009_metrics_sets.py"
+    path = MIGRATIONS_DIR / "versions" / "0009_metrics_sets.py"
     spec = importlib.util.spec_from_file_location("rev_0009_metrics_sets", path)
     assert spec is not None and spec.loader is not None
     module = importlib.util.module_from_spec(spec)

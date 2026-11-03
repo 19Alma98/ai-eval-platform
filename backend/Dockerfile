@@ -24,8 +24,6 @@ COPY sdk/src /sdk/src
 COPY backend/pyproject.toml backend/README.md backend/hatch_build.py ./
 COPY backend/src ./src
 COPY --from=ui /frontend/out ./src/opengrade_server/_ui
-COPY backend/alembic ./alembic
-COPY backend/alembic.ini ./
 COPY backend/docker-entrypoint.sh ./
 
 RUN uv pip install --system --no-cache . \
