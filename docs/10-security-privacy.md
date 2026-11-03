@@ -92,7 +92,7 @@ Trace fields should be classified:
 - potentially sensitive content
 - secret/prohibited
 
-Input/output content is captured by default (live scoring and the RAG view need it); turn it off as described below.
+Input/output content is captured by default (live scoring and the response view need it); turn it off as described below.
 
 ## Content capture and redaction
 
