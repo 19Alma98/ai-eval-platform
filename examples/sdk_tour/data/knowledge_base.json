@@ -1,0 +1,15 @@
+[
+  {"id": "plans", "title": "Plans and pricing", "text": "Nimbus has three plans: Free, Pro and Business. The Pro plan costs 8 dollars per user per month and includes 2 TB of storage. The Business plan costs 15 dollars per user per month and includes unlimited storage."},
+  {"id": "free-plan", "title": "Free plan limits", "text": "The Free plan includes 5 GB of storage for one user. Free accounts that stay inactive for 12 months are deleted after an email warning."},
+  {"id": "upload-limits", "title": "File upload limits", "text": "The maximum size of a single uploaded file is 50 GB on paid plans. On the Free plan a single file can be at most 2 GB. Uploads larger than 100 MB are split into chunks and resumed automatically after a network error."},
+  {"id": "sharing", "title": "Sharing links", "text": "Anyone with a sharing link can view the file without a Nimbus account. Sharing links expire after 30 days by default. On the Business plan admins can set a password on sharing links."},
+  {"id": "trash", "title": "Trash and file recovery", "text": "Deleted files stay in the trash for 30 days and can be restored from the web app. After 30 days files in the trash are permanently erased and cannot be recovered."},
+  {"id": "versions", "title": "Version history", "text": "Nimbus keeps previous versions of every file. Pro accounts keep version history for 90 days and Business accounts for 1 year."},
+  {"id": "2fa", "title": "Two-factor authentication", "text": "To enable two-factor authentication open Settings, then Security, and scan the QR code with an authenticator app. Business admins can make two-factor authentication mandatory for every member."},
+  {"id": "password-reset", "title": "Password reset", "text": "To reset a forgotten password click Forgot password on the login page. The reset link is sent by email and is valid for 1 hour."},
+  {"id": "sso", "title": "Single sign-on", "text": "Single sign-on with SAML, Okta or Azure AD is available only on the Business plan. SSO is configured by an admin in the Admin console."},
+  {"id": "refunds", "title": "Refund policy", "text": "Annual subscriptions can be refunded in full within 14 days of purchase. Monthly subscriptions are not refunded but can be cancelled at any time."},
+  {"id": "api-limits", "title": "API rate limits", "text": "The Nimbus API allows 1000 requests per minute for each access token. Requests over the rate limit receive HTTP status 429 with a Retry-After header."},
+  {"id": "data-residency", "title": "Data residency", "text": "Business customers can store their data in the EU region, in Frankfurt, or in the US region. The region is chosen when the workspace is created and cannot be changed later."},
+  {"id": "offline", "title": "Offline access", "text": "The desktop app can make folders available offline. Offline changes are synced automatically when the device reconnects to the internet."}
+]

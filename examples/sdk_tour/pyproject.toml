@@ -1,0 +1,43 @@
+[project]
+name = "opengrade-sdk-tour"
+version = "0.1.0"
+description = "Guided tour of the OpenGrade Python SDK: tracing, RAG verification, architecture comparison and custom monitoring metrics."
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "opengrade-ai",
+]
+
+[project.optional-dependencies]
+# Real models through an OpenAI-compatible endpoint (Ollama, OpenAI, vLLM, ...),
+# auto-traced by the OpenInference instrumentor.
+llm = [
+    "opengrade-ai[openai]",
+    "openai>=1.50",
+]
+
+[dependency-groups]
+dev = ["pytest>=8.3.0", "ruff>=0.8.0"]
+
+[tool.uv]
+# Scripts + a local package imported from the project directory: nothing to build.
+package = false
+
+# Monorepo only: use the SDK from this repository. In your own project just run
+# `uv add opengrade-ai` (or `uv add 'opengrade-ai[openai]'`) and drop this block.
+[tool.uv.sources]
+opengrade-ai = { path = "../../sdk", editable = true }
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+
+[tool.ruff]
+target-version = "py312"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["nimbus_apps"]

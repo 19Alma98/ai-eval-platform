@@ -67,7 +67,7 @@ ask("ping")
 opengrade.flush()
 ```
 
-Runnable example: [`examples/sdk_hello/`](../examples/sdk_hello/README.md) (Ollama via OpenAI-compatible API).
+Runnable examples: [`examples/sdk_hello/`](../examples/sdk_hello/README.md) (Ollama via OpenAI-compatible API) and the guided [`examples/sdk_tour/`](../examples/sdk_tour/README.md) (tracing, RAG verification, architecture comparison, production metrics and alerts; runs offline).
 
 ### API summary
 

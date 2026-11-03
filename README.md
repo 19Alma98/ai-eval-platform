@@ -13,6 +13,8 @@ Open-source platform for AI quality engineering: turn production traces into dat
 
 **[Get started in 15 minutes →](docs/getting-started.md)** — `uv` + `opengrade ui`, first trace, optional scored experiment.
 
+**[SDK tour →](examples/sdk_tour/README.md)** — runnable, offline `uv` project: tracing, verifying a RAG against a gold set, comparing architectures and models, custom metrics and alerts in production.
+
 ## Quickstart (local UI)
 
 Zero external infra — SQLite file + packaged UI in one process:
