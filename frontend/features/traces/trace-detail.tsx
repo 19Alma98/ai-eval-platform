@@ -244,7 +244,7 @@ export function TraceDetailView({ projectId, traceId }: { projectId: string; tra
       <Tabs value={activeTab} onValueChange={(v) => setTab(v)}>
         <TabsList variant="line">
           <TabsTrigger value="rag" isDisabled={!showRag}>
-            RAG view
+            Response view
           </TabsTrigger>
           <TabsTrigger value="timeline">Timeline</TabsTrigger>
         </TabsList>
