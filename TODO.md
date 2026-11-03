@@ -23,8 +23,27 @@ Priority: **P0** blocks a public release, **P1** fix before promoting it, **P2**
 
 ### Product gaps vs MLflow / Langfuse — P2
 
-- [ ] **Auth**: API key (`OPENGRADE_API_KEY`) in SDK + server — needed before any non-localhost
-  container deployment (see also "Optional auth" below).
+- [ ] **Auth**: API keys in SDK + server — needed before any non-localhost container deployment
+  (see also "Optional auth" below). Design decided 2026-11-03:
+  - **No users.** API keys only; no accounts, passwords or roles. SSO, if ever needed, goes in a
+    reverse proxy in front (oauth2-proxy, Cloudflare Access). Users only if per-person permissions,
+    multi-tenant or verified audit become goals; a key can then belong to a user.
+  - **Scopes:** `admin` (everything, incl. key management, deletes, experiments, CI
+    `opengrade evaluate`), `read` (dashboard + every `GET`; no writes at all, not even reviews),
+    `ingest` (only `POST /v1/traces`, `POST /api/v1/trace-scores`,
+    `POST /api/v1/projects/{id}/live-interactions`; cannot open the UI). `ingest` is the key that
+    lives in production apps.
+  - **Phase 1:** `OPENGRADE_API_KEY` env var on the server = the `admin` key (unset = no auth, as
+    today); `OPENGRADE_API_KEY_PREVIOUS` also accepted during rotation. SDK sends
+    `Authorization: Bearer` on HTTP and OTLP. `/health` and `/ready` stay public. Constant-time
+    compare; never log the header. UI: login screen exchanges the key for an `HttpOnly`, `Secure`,
+    `SameSite=Strict` session cookie. Docs: HTTPS mandatory (TLS at the reverse proxy).
+  - **Phase 2:** `api_keys` table in the server's own DB (no separate cloud auth service): name,
+    optional `project_id` (an `ingest` key bound to a project needs no slug lookup), `scope`,
+    `prefix`, SHA-256 `key_hash` only, `created_at`, `last_used_at`, `revoked_at`. Settings → API
+    keys page (key shown once, revoke, last used) + `opengrade keys create`. The env key stays as
+    the bootstrap admin key. Key name fills `trace_scores.author` / `live_score_reviews.reviewer`
+    server-side.
 - [ ] **PII redaction**: capture currently grabs every argument incl. `self`/secrets. Per-arg
   include/exclude, redaction hook, global capture switch.
 - [ ] **Sampling** (head sampling) and configurable span size limits.
