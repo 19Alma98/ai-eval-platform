@@ -8,9 +8,6 @@ Priority: **P0** blocks a public release, **P1** fix before promoting it, **P2**
 
 ### Packaging / release — P0
 
-- [x] **Migrations not shipped / not run outside Docker** → Alembic moved to
-  `opengrade_server/migrations` (in the wheel; `publish.yml` checks it); server startup runs
-  `upgrade head` on SQLite and Postgres (advisory lock on Postgres). (fixed)
 - [ ] **Docker image not published** (`publish.yml` only does PyPI). Publish to GHCR/Docker Hub on tag,
   non-root user, documented env vars.
 
