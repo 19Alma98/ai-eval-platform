@@ -4,12 +4,58 @@
 
 The platform is **self-hosted and network-trusted by default**.
 
-Access control for v0.1 is an **infrastructure concern**:
-- bind to localhost for local demos;
-- place behind VPN / private cluster network;
-- terminate TLS and identity at a reverse proxy when exposing beyond trusted networks.
+Without `OPENGRADE_API_KEY` the server is open: bind it to localhost or keep it on a VPN /
+private cluster network.
 
-Built-in authentication, SSO, and RBAC are explicitly out of scope for MVP.
+To expose it beyond a trusted network, set an **API key** (see [API keys](#api-keys)) and
+terminate **TLS** at a reverse proxy (Caddy, Traefik, the cloud load balancer). Without HTTPS the
+key travels in clear text and protects nothing.
+
+There are **no user accounts**: keys identify machines (SDK, CI, OTel exporters) and the
+dashboard. SSO, if needed, goes in a reverse proxy in front (oauth2-proxy, Cloudflare Access).
+Beyond the three key scopes below, RBAC is out of scope.
+
+## API keys
+
+Set `OPENGRADE_API_KEY` on the server (a long random value, e.g. `openssl rand -hex 32`). It
+turns auth on and is the bootstrap **admin** key. Without it the server is open and no key is
+checked. Then:
+
+- every `/api/*` request and OTLP `POST /v1/traces` needs `Authorization: Bearer <key>`,
+  otherwise `401`; a valid key outside its scope gets `403`. `/health`, `/ready`, the auth
+  endpoints and the static UI files stay public;
+- the SDK sends the header when `OPENGRADE_API_KEY` is set in the app's environment (or via
+  `opengrade.set_api_key()` / `Client(api_key=...)`), on HTTP calls and OTLP export alike; it
+  warns once when the key would go over plain `http://` to a non-loopback host;
+- a plain OpenTelemetry exporter uses
+  `OTEL_EXPORTER_OTLP_HEADERS="Authorization=Bearer <key>"`;
+- the dashboard asks for a `read` or `admin` key once and exchanges it for a session cookie
+  (`HttpOnly`, `SameSite=Strict`, `Secure` over HTTPS, `OPENGRADE_UI_SESSION_HOURS`, default 12).
+  The cookie holds the key id, an expiry and an HMAC signed with the env key, never a key; it is
+  not a user login.
+
+### Per-client keys and scopes
+
+Create one key per app, CI job or person in the dashboard (**Settings**) or with
+`opengrade keys create`. Keys look like `og_…`; the server stores only their SHA-256 and shows
+the key once. Each key has a name and one scope:
+
+| Scope | Can | Cannot | For |
+|---|---|---|---|
+| `ingest` | `POST /v1/traces`, `POST /api/v1/projects/{id}/trace-scores`, `POST /api/v1/projects/{id}/live-interactions`, `GET /api/v1/projects` (slug lookup) | read data, change anything else, open the dashboard | apps in production |
+| `read` | every read-only request (`GET`), the dashboard | any write (incl. reviews, release check, alert preview), send traces, manage keys | people who only look |
+| `admin` | everything, incl. managing keys | — | CI (`opengrade evaluate` / `check`), administrators |
+
+Revoking a key rejects it at once (within 30 s when revoked from the CLI in another process) and
+ends the dashboard sessions opened with it. `last_used_at` shows which keys are still in use.
+
+**Rotating the env key:** set the new key in `OPENGRADE_API_KEY` and the old one in
+`OPENGRADE_API_KEY_PREVIOUS`, restart, move clients to the new key, then remove the previous
+one. Dashboard sessions are signed with the env key, so they end when the key they were signed
+with is no longer accepted. Per-client keys are not affected.
+
+There are **no user accounts**. If you need per-person audit, give each person a `read` or
+`admin` key with their name.
 
 ## Threat model
 
@@ -21,7 +67,7 @@ Primary risks:
 - arbitrary evaluator code
 - secret leakage
 - unsafe rendering of model output
-- accidental exposure of an unauthenticated stack on a public network
+- accidental exposure of an unauthenticated stack on a public network (no `OPENGRADE_API_KEY`)
 
 ## Rules
 
@@ -35,7 +81,7 @@ Primary risks:
 8. Provide redaction controls: server-wide at ingestion, per function in the SDK.
 9. Validate URLs if remote resources are ever supported.
 10. Use dependency scanning in CI.
-11. Document that public exposure without an external auth layer is unsupported.
+11. Public exposure requires `OPENGRADE_API_KEY` and HTTPS; never log the `Authorization` header.
 12. Make the content-capture default explicit and easy to turn off (it is on by default; see below).
 
 ## Data classification
@@ -97,7 +143,7 @@ Until then, use the two switches above, or put a redacting OpenTelemetry Collect
 
 These remain optional and should not reshape the domain core:
 
-- optional API key / reverse-proxy identity header
+- reverse-proxy identity header
 - workspace RBAC
 - SSO/OIDC
 - encryption-at-rest documentation

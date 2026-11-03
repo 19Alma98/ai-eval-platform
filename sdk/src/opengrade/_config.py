@@ -3,6 +3,7 @@ from __future__ import annotations
 import logging
 import os
 from dataclasses import dataclass
+from urllib.parse import urlsplit
 
 DEFAULT_TRACKING_URI = "http://localhost:8000"
 OTLP_TRACES_PATH = "/v1/traces"
@@ -13,6 +14,8 @@ MAX_CAPTURE_BYTES = 32 * 1024
 logger = logging.getLogger("opengrade")
 
 _TRACKING_URI: str | None = None
+_API_KEY: str | None = None
+_WARNED_PLAINTEXT_KEY = False
 _ACTIVE_PROJECT_ID: str | None = None
 _ACTIVE_PROJECT_SLUG: str | None = None
 
@@ -45,6 +48,53 @@ def get_tracking_uri() -> str:
     if value and value.strip():
         return _normalize_uri(value)
     return DEFAULT_TRACKING_URI
+
+
+def set_api_key(key: str | None) -> None:
+    """Set the platform API key used by ``Client()`` and OTLP export (``None`` clears it)."""
+    normalized = key.strip() if key is not None else None
+    global _API_KEY
+    if normalized != _API_KEY:
+        _API_KEY = normalized or None
+        from opengrade._context import _reset_client
+
+        _reset_client()
+
+
+def get_api_key() -> str | None:
+    """Resolve the platform API key: ``set_api_key()`` > ``OPENGRADE_API_KEY`` > none."""
+    if _API_KEY is not None:
+        return _API_KEY
+    value = (os.getenv("OPENGRADE_API_KEY") or "").strip()
+    return value or None
+
+
+def _is_loopback_host(host: str) -> bool:
+    return host in {"localhost", "127.0.0.1", "::1"} or host.endswith(".localhost")
+
+
+def auth_headers(url: str, api_key: str | None = None) -> dict[str, str]:
+    """``Authorization: Bearer`` header for ``url`` when a key is configured.
+
+    Warns once when the key would travel over plain HTTP to a non-loopback host.
+    """
+    key = api_key if api_key is not None else get_api_key()
+    if not key:
+        return {}
+    parsed = urlsplit(url)
+    global _WARNED_PLAINTEXT_KEY
+    if (
+        parsed.scheme == "http"
+        and not _is_loopback_host(parsed.hostname or "")
+        and not _WARNED_PLAINTEXT_KEY
+    ):
+        _WARNED_PLAINTEXT_KEY = True
+        logger.warning(
+            "opengrade: sending the API key over plain HTTP to %s; use https:// so it "
+            "cannot be read on the network",
+            parsed.hostname,
+        )
+    return {"Authorization": f"Bearer {key}"}
 
 
 def otlp_endpoint() -> str:
@@ -110,8 +160,10 @@ def _set_active_project(
 
 
 def _reset_for_tests() -> None:
-    global _TRACKING_URI, _ACTIVE_PROJECT_ID, _ACTIVE_PROJECT_SLUG
+    global _TRACKING_URI, _ACTIVE_PROJECT_ID, _ACTIVE_PROJECT_SLUG, _API_KEY, _WARNED_PLAINTEXT_KEY
     _TRACKING_URI = None
+    _API_KEY = None
+    _WARNED_PLAINTEXT_KEY = False
     _ACTIVE_PROJECT_ID = None
     _ACTIVE_PROJECT_SLUG = None
 

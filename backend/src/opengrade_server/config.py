@@ -54,6 +54,25 @@ class Settings(BaseSettings):
     # (unset = keep forever) and how often the purge runs.
     retention_days: int | None = Field(default=None, ge=1)
     retention_interval_hours: float = 24.0
+    # API key auth. Unset = no auth (localhost / trusted network). Set = every /api and
+    # OTLP request needs ``Authorization: Bearer <key>`` or a UI session cookie.
+    # The previous key is also accepted while clients are rotated to the new one.
+    api_key: str | None = Field(
+        default=None, validation_alias=AliasChoices("OPENGRADE_API_KEY", "api_key")
+    )
+    api_key_previous: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices("OPENGRADE_API_KEY_PREVIOUS", "api_key_previous"),
+    )
+    ui_session_hours: float = Field(
+        default=12.0,
+        gt=0,
+        validation_alias=AliasChoices("OPENGRADE_UI_SESSION_HOURS", "ui_session_hours"),
+    )
+
+    def accepted_api_keys(self) -> tuple[str, ...]:
+        keys = (self.api_key, self.api_key_previous)
+        return tuple(k.strip() for k in keys if k and k.strip())
 
 
 @lru_cache

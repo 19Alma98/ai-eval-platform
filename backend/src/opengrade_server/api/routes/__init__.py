@@ -1,7 +1,9 @@
 from fastapi import APIRouter
 
 from opengrade_server.api.routes.alerts import router as alerts_router
+from opengrade_server.api.routes.api_keys import router as api_keys_router
 from opengrade_server.api.routes.app_configs import router as app_configs_router
+from opengrade_server.api.routes.auth import router as auth_router
 from opengrade_server.api.routes.datasets import router as datasets_router
 from opengrade_server.api.routes.evaluators import router as evaluators_router
 from opengrade_server.api.routes.experiment_aliases import router as experiment_aliases_router
@@ -19,6 +21,8 @@ from opengrade_server.api.routes.trace_scores import router as trace_scores_rout
 from opengrade_server.api.routes.traces import router as traces_router
 
 api_router = APIRouter()
+api_router.include_router(auth_router)
+api_router.include_router(api_keys_router)
 api_router.include_router(projects_router)
 api_router.include_router(app_configs_router)
 api_router.include_router(traces_router)

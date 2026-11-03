@@ -8,6 +8,7 @@ from fastapi import FastAPI, Response, status
 from fastapi.responses import JSONResponse
 
 from opengrade_server import __version__
+from opengrade_server.api.auth import ApiKeyAuthMiddleware
 from opengrade_server.api.errors import register_exception_handlers
 from opengrade_server.api.json_guard import RejectNonFiniteJsonMiddleware
 from opengrade_server.api.request_id import RequestIdMiddleware, configure_request_id_logging
@@ -111,11 +112,13 @@ def create_app(*, mount_packaged_ui: bool = True, self_telemetry: bool = True) -
         **_telemetry_kwargs(self_telemetry=self_telemetry),
     )
     register_exception_handlers(app)
-    # Last added = outermost. Request ID wraps JSON guard.
+    # Last added = outermost: request ID > API key auth > JSON guard, so a request
+    # without a valid key is rejected before its body is read.
     app.add_middleware(
         RejectNonFiniteJsonMiddleware,
         max_body_bytes=get_settings().json_max_body_bytes,
     )
+    app.add_middleware(ApiKeyAuthMiddleware)
     app.add_middleware(RequestIdMiddleware)
     app.include_router(api_router)
 

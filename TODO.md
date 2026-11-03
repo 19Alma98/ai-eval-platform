@@ -23,8 +23,14 @@ Priority: **P0** blocks a public release, **P1** fix before promoting it, **P2**
 
 ### Product gaps vs MLflow / Langfuse — P2
 
-- [ ] **Auth**: API key (`OPENGRADE_API_KEY`) in SDK + server — needed before any non-localhost
-  container deployment (see also "Optional auth" below).
+- [ ] **Auth follow-ups** (API keys with `admin` / `read` / `ingest` scopes shipped; no user
+  accounts by design, see `docs/10-security-privacy.md#api-keys`):
+  - Key name → `trace_scores.author` / `live_score_reviews.reviewer` server-side, so actions are
+    attributed to the key instead of a client-supplied string.
+  - Optional project binding for `ingest` keys (`project_id` on the key, enforced on OTLP
+    `X-Project-Id` / `X-Project-Slug` and the project routes).
+  - Read-only UI: hide write buttons for `read` sessions instead of letting them fail with `403`.
+  - Rate limit failed key attempts (keys are 256-bit random, so brute force is impractical).
 - [ ] **PII redaction**: capture currently grabs every argument incl. `self`/secrets. Per-arg
   include/exclude, redaction hook, global capture switch.
 - [ ] **Sampling** (head sampling) and configurable span size limits.

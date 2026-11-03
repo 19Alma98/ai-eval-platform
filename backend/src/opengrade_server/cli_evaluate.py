@@ -404,6 +404,12 @@ class EmbeddedServer:
         get_settings.cache_clear()
 
 
+def client_auth_headers() -> dict[str, str]:
+    """``Authorization`` for calls to a remote server, from ``OPENGRADE_API_KEY``."""
+    key = (os.environ.get("OPENGRADE_API_KEY") or "").strip()
+    return {"Authorization": f"Bearer {key}"} if key else {}
+
+
 def post_release_check(
     *,
     base_url: str,
@@ -419,7 +425,7 @@ def post_release_check(
     if baseline_experiment_id:
         payload["baseline_experiment_id"] = str(UUID(baseline_experiment_id))
     url = f"{base_url.rstrip('/')}/api/v1/projects/{UUID(project_id)}/release-check"
-    response = httpx2.post(url, json=payload, timeout=60.0)
+    response = httpx2.post(url, json=payload, headers=client_auth_headers(), timeout=60.0)
     if response.status_code >= 500:
         raise RuntimeError(f"release-check HTTP {response.status_code}: {response.text}")
     if response.status_code >= 400:
@@ -456,6 +462,7 @@ def fetch_regressed_items(
         response = httpx2.get(
             url,
             params={"evaluator_id": str(UUID(evaluator_id)), "regressions_only": "true"},
+            headers=client_auth_headers(),
             timeout=60.0,
         )
         if response.status_code >= 400:

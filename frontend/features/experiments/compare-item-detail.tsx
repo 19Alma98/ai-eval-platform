@@ -10,7 +10,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import type { ItemComparisonRow, ItemSide } from "@/lib/api/types";
 import { formatScore } from "@/lib/format";
 import { CompareStatusCell } from "./compare-table";
@@ -84,7 +83,7 @@ export function CompareItemDetail({
 }: CompareItemDetailProps) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="flex max-h-[min(90vh,800px)] flex-col gap-4 sm:max-w-4xl">
+      <DialogContent className="sm:max-w-4xl">
         <DialogHeader>
           <DialogTitle className="flex flex-wrap items-center gap-2">
             Answer comparison
@@ -95,16 +94,14 @@ export function CompareItemDetail({
           </DialogDescription>
         </DialogHeader>
         {row ? (
-          <ScrollArea className="max-h-[calc(min(90vh,800px)-8rem)] pr-3">
-            <div className="flex flex-col gap-4 pb-2">
+          <div className="flex flex-col gap-4">
               <Block title="Question">{asText(row.input) || "—"}</Block>
               <Block title="Expected answer">{asText(row.expected_output) || "—"}</Block>
               <div className="grid gap-4 md:grid-cols-2">
                 <SideColumn title={`Baseline · ${baselineLabel}`} side={row.baseline} />
                 <SideColumn title={`Candidate · ${candidateLabel}`} side={row.candidate} />
               </div>
-            </div>
-          </ScrollArea>
+          </div>
         ) : null}
       </DialogContent>
     </Dialog>

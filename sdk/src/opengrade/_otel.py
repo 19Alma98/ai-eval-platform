@@ -15,7 +15,7 @@ from opentelemetry.sdk.trace.export import BatchSpanProcessor, SpanExporter, Spa
 from opentelemetry.util._once import Once
 
 from opengrade import _live, _production
-from opengrade._config import project_headers, resolve_config
+from opengrade._config import auth_headers, project_headers, resolve_config
 from opengrade.instrumentation import activate_instrumentors, deactivate_instrumentors
 
 logger = logging.getLogger("opengrade")
@@ -318,7 +318,7 @@ def init(
             version=version,
             environment=environment,
         )
-        headers = project_headers(config)
+        headers = {**project_headers(config), **auth_headers(config.endpoint)}
         release = release_attributes(config.version, config.environment)
         resource = Resource.create(
             {
