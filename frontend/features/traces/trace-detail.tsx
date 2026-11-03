@@ -256,10 +256,10 @@ export function TraceDetailView({ projectId, traceId }: { projectId: string; tra
         <TabsContent value="timeline" className="pt-2">
           <ResizablePanelGroup
             orientation="horizontal"
-            className="h-[min(720px,75vh)] min-h-[360px] rounded-md border border-border"
-            defaultLayout={{ waterfall: 58, sidebar: 42 }}
+            className="h-[min(860px,calc(100vh-220px))] min-h-[480px] rounded-md border border-border"
+            defaultLayout={{ waterfall: 40, sidebar: 60 }}
           >
-            <ResizablePanel id="waterfall" minSize={30}>
+            <ResizablePanel id="waterfall" minSize={25}>
               <TraceWaterfall
                 trace={trace}
                 selectedSpanId={effectiveSpanId}
@@ -267,7 +267,7 @@ export function TraceDetailView({ projectId, traceId }: { projectId: string; tra
               />
             </ResizablePanel>
             <ResizableHandle withHandle />
-            <ResizablePanel id="sidebar" minSize={25}>
+            <ResizablePanel id="sidebar" minSize={35}>
               <SpanSidebar span={selectedSpan} trace={trace} />
             </ResizablePanel>
           </ResizablePanelGroup>

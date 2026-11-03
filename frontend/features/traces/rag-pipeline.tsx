@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { ArrowDown } from "lucide-react";
+import { ArrowDown, ArrowRight, ChevronRight } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import {
   parseJudgeClaims,
@@ -19,6 +19,7 @@ import {
   type RagChunk,
   type RagView,
 } from "./rag-view";
+import { MessageList } from "./span-blocks";
 
 const TONE_TEXT: Record<VerdictTone, string> = {
   ok: "bg-status-ok-bg text-status-ok",
@@ -47,11 +48,13 @@ export function claimsFromInteraction(interaction: LiveInteraction | undefined):
 function Step({
   title,
   hint,
+  action,
   children,
   last = false,
 }: {
   title: string;
   hint?: string;
+  action?: React.ReactNode;
   children: React.ReactNode;
   last?: boolean;
 }) {
@@ -62,6 +65,7 @@ function Step({
           {title}
         </h2>
         {hint ? <span className="text-xs text-muted-foreground">{hint}</span> : null}
+        {action ? <span className="ml-auto">{action}</span> : null}
       </div>
       {children}
       {last ? null : (
@@ -236,37 +240,37 @@ export function RagPipeline({
         )}
       </Step>
 
-      <Step title="Prompt" hint={view.prompt.length ? `${view.prompt.length} messages` : undefined}>
+      <Step
+        title="Prompt"
+        hint={view.prompt.length ? `${view.prompt.length} messages` : undefined}
+        action={
+          view.promptSpanId && onOpenSpan ? (
+            <button
+              type="button"
+              className="inline-flex items-center gap-0.5 text-xs text-primary hover:underline"
+              onClick={() => onOpenSpan(view.promptSpanId!)}
+            >
+              Inspect LLM call
+              <ArrowRight className="size-3" aria-hidden />
+            </button>
+          ) : null
+        }
+      >
         {view.prompt.length === 0 ? (
           <p className="text-sm text-muted-foreground">No LLM call was recorded.</p>
         ) : (
-          <details className="rounded-md border border-border bg-surface px-3 py-2 text-sm">
-            <summary className="cursor-pointer text-muted-foreground">
+          <details className="group/prompt rounded-md border border-border bg-surface text-sm">
+            <summary className="flex cursor-pointer list-none items-center gap-2 px-3 py-2 text-muted-foreground hover:text-foreground [&::-webkit-details-marker]:hidden">
+              <ChevronRight
+                className="size-3.5 transition-transform group-open/prompt:rotate-90"
+                aria-hidden
+              />
               Show what the model received
-              {view.promptSpanId && onOpenSpan ? (
-                <button
-                  type="button"
-                  className="ml-2 text-xs text-primary hover:underline"
-                  onClick={(e) => {
-                    e.preventDefault();
-                    onOpenSpan(view.promptSpanId!);
-                  }}
-                >
-                  Open LLM step
-                </button>
-              ) : null}
             </summary>
-            <div className="mt-2 flex flex-col gap-2">
-              {view.prompt.map((m, i) => (
-                <div key={i} className="flex flex-col gap-0.5">
-                  <span className="text-[13px] font-medium text-muted-foreground">
-                    {m.role}
-                  </span>
-                  <p className="max-h-64 overflow-auto whitespace-pre-wrap rounded bg-surface-2 px-2 py-1 font-mono text-xs">
-                    {m.content}
-                  </p>
-                </div>
-              ))}
+            <div className="border-t border-border p-3">
+              <MessageList
+                messages={view.prompt.map((m) => ({ ...m, toolCalls: [] }))}
+              />
             </div>
           </details>
         )}

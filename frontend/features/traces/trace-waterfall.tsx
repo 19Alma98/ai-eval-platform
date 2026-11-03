@@ -394,7 +394,10 @@ function WaterfallRow({
           <span className={cn("shrink-0 text-[10px] uppercase", kindTextClass(span.kind))}>
             {span.kind}
           </span>
-          <StatusBadge status={span.status} className="ml-auto shrink-0 scale-90" />
+          {/* Only failures are worth a badge: an "OK" on every row is noise. */}
+          {span.status.toLowerCase() === "error" ? (
+            <StatusBadge status={span.status} className="ml-auto shrink-0 scale-90" />
+          ) : null}
         </button>
       </div>
       <div className="relative h-4 rounded-sm bg-muted/40">
