@@ -101,8 +101,8 @@ def set_input(value: object) -> None:
 
 
 def set_output(value: object) -> None:
-    """Set OpenInference ``output.value`` on the current span."""
-    record_output(value)
+    """Set OpenInference ``output.value`` on the current span (and production metrics' output)."""
+    record_output(value, _current_span())
     set_attribute("output.value", value)
 
 

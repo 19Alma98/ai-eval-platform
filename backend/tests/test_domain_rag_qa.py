@@ -50,3 +50,42 @@ def test_must_contain_keeps_commas_inside_phrases() -> None:
     )
     assert meta["expected_doc_ids"] == ["a", "b"]
     assert meta["must_contain"] == ["$1,000", "10:00-16:00, local time"]
+
+
+@pytest.mark.parametrize(
+    "label",
+    [{"answerable": False}, {"answerable": "false"}, {"expected_refusal": True}],
+)
+def test_unanswerable_item_needs_no_gold_docs_nor_reference(label: dict) -> None:
+    meta = validate_rag_qa_item(input="Who is the CEO?", expected_output=None, metadata=label)
+    assert "expected_doc_ids" not in meta
+    assert meta == label
+
+
+def test_unanswerable_item_drops_empty_gold_docs_and_keeps_given_ones() -> None:
+    empty = validate_rag_qa_item(
+        input="q",
+        expected_output="Not in the docs.",
+        metadata={"answerable": False, "expected_doc_ids": []},
+    )
+    assert "expected_doc_ids" not in empty
+    given = validate_rag_qa_item(
+        input="q",
+        expected_output=None,
+        metadata={"answerable": False, "expected_doc_ids": "faq|pricing"},
+    )
+    assert given["expected_doc_ids"] == ["faq", "pricing"]
+
+
+@pytest.mark.parametrize(
+    "metadata",
+    [{"answerable": True}, {"answerable": "maybe"}, {"expected_refusal": False}],
+)
+def test_answerable_or_unlabelled_items_still_need_gold_docs(metadata: dict) -> None:
+    with pytest.raises(ValueError, match="expected_doc_ids"):
+        validate_rag_qa_item(input="q", expected_output="a", metadata=metadata)
+
+
+def test_unanswerable_item_rejects_blank_reference() -> None:
+    with pytest.raises(ValueError, match="expected_output"):
+        validate_rag_qa_item(input="q", expected_output="  ", metadata={"answerable": False})

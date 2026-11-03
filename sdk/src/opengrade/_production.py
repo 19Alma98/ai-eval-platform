@@ -386,7 +386,7 @@ def after_call(
                 input=_snapshot(
                     capture.input if capture.has_input else call_input(metric_args, metric_kwargs)
                 ),
-                output=_snapshot(result),
+                output=_snapshot(capture.output if capture.has_output else result),
                 documents=_snapshot(list(capture.documents or [])),
                 trace_id=format(ctx.trace_id, "032x"),
             )

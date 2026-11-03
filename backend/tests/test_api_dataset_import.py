@@ -248,3 +248,37 @@ async def test_import_non_rag_qa_dataset_returns_400(client: AsyncClient) -> Non
         files={"file": ("items.csv", csv_body, "text/csv")},
     )
     assert resp.status_code == 400
+
+
+@pytest.mark.asyncio
+async def test_unanswerable_items_accepted_without_gold_docs(client: AsyncClient) -> None:
+    ds_id = await _rag_qa_dataset(client)
+    payload = [
+        {"question": "Q1?", "expected_answer": "A1", "expected_doc_ids": ["d1"]},
+        {"question": "Who is the CEO?", "answerable": False},
+        {"question": "Is there a phone line?", "expected_answer": "", "expected_refusal": True},
+    ]
+    resp = await client.post(
+        f"/api/v1/datasets/{ds_id}/items/import",
+        files={"file": ("items.json", __import__("json").dumps(payload), "application/json")},
+    )
+    assert resp.status_code == 200
+    assert resp.json()["created"] == 3
+    assert resp.json()["errors"] == []
+
+    single = await client.post(
+        f"/api/v1/datasets/{ds_id}/items",
+        json={"input": "What is the CEO's salary?", "metadata": {"answerable": False}},
+    )
+    assert single.status_code == 201, single.text
+    rejected = await client.post(
+        f"/api/v1/datasets/{ds_id}/items",
+        json={"input": "How many PTO days?", "expected_output": "20"},
+    )
+    assert rejected.status_code == 422
+    assert "expected_doc_ids" in rejected.text
+
+    items = (await client.get(f"/api/v1/datasets/{ds_id}")).json()["items"]
+    unanswerable = [i for i in items if "expected_doc_ids" not in i["metadata"]]
+    assert len(unanswerable) == 3
+    assert all(i["expected_output"] is None for i in unanswerable)

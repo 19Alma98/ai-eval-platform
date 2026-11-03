@@ -81,3 +81,22 @@ def test_row_to_item_fields_empty_must_contain_omitted() -> None:
         }
     )
     assert "must_contain" not in meta
+
+
+def test_csv_unanswerable_row_may_leave_answer_and_docs_empty() -> None:
+    raw = (
+        b"question,expected_answer,expected_doc_ids,answerable\nQ?,A,a,\nWho is the CEO?,,,false\n"
+    )
+    parsed = parse_import_payload(filename="x.csv", raw=raw)
+    _, answer, meta = row_to_item_fields(parsed.rows[0])
+    assert (answer, meta) == ("A", {"expected_doc_ids": ["a"]})
+    question, answer, meta = row_to_item_fields(parsed.rows[1])
+    assert (question, answer) == ("Who is the CEO?", None)
+    assert meta == {"answerable": "false"}
+
+
+def test_csv_answerable_row_still_needs_docs() -> None:
+    raw = b"question,expected_answer,expected_doc_ids\nQ?,A,\n"
+    parsed = parse_import_payload(filename="x.csv", raw=raw)
+    with pytest.raises(ValueError, match="expected_doc_ids"):
+        row_to_item_fields(parsed.rows[0])

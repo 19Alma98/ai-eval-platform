@@ -6,7 +6,7 @@ import json
 from dataclasses import dataclass
 from typing import Any
 
-from opengrade_server.domain.rag_qa import validate_rag_qa_item
+from opengrade_server.domain.rag_qa import ANSWERABLE_KEYS, validate_rag_qa_item
 
 _QUESTION_KEYS = ("question", "input")
 _ANSWER_KEYS = ("expected_answer", "expected_output")
@@ -105,16 +105,27 @@ def _first_present(row: dict[str, Any], *keys: str) -> Any:
     return None
 
 
-def row_to_item_fields(row: dict[str, Any]) -> tuple[str, str, dict[str, Any]]:
+def row_to_item_fields(row: dict[str, Any]) -> tuple[str, str | None, dict[str, Any]]:
+    """Question, reference answer and metadata of one import row.
+
+    ``answerable`` / ``expected_refusal`` / ``should_refuse`` columns are kept: a row
+    labelled unanswerable may leave ``expected_answer`` and ``expected_doc_ids`` empty.
+    """
     question = _first_present(row, "input", "question")
     answer = _first_present(row, "expected_output", "expected_answer")
+    if isinstance(answer, str) and not answer.strip():
+        answer = None  # empty CSV cell
     doc_ids = _coerce_expected_doc_ids(row.get("expected_doc_ids"))
     metadata: dict[str, Any] = {"expected_doc_ids": doc_ids}
     if "must_contain" in row:
         metadata["must_contain"] = _coerce_expected_doc_ids(row.get("must_contain"))
+    for key in ANSWERABLE_KEYS:
+        value = row.get(key)
+        if value is not None and not (isinstance(value, str) and not value.strip()):
+            metadata[key] = value
     meta = validate_rag_qa_item(
         input=question,
         expected_output=answer,
         metadata=metadata,
     )
-    return str(question).strip(), str(answer).strip(), meta
+    return str(question).strip(), None if answer is None else str(answer).strip(), meta
