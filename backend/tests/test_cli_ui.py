@@ -88,3 +88,14 @@ def test_content_capture_on_by_default(monkeypatch: pytest.MonkeyPatch) -> None:
     assert Settings(_env_file=None).content_capture_enabled is True  # type: ignore[call-arg]
     monkeypatch.setenv("CONTENT_CAPTURE_ENABLED", "false")
     assert Settings(_env_file=None).content_capture_enabled is False  # type: ignore[call-arg]
+
+
+@pytest.mark.parametrize("flag", ["--version", "-V"])
+def test_version_prints_both_packages(flag: str) -> None:
+    from importlib.metadata import version
+
+    result = runner.invoke(app, [flag])
+
+    assert result.exit_code == 0
+    assert f"opengrade-ai-server {version('opengrade-ai-server')}" in result.output
+    assert "opengrade-ai " in result.output

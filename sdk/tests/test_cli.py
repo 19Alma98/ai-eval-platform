@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+import sys
 import types
 
 import pytest
 
+import opengrade
 from opengrade import cli
 
 
@@ -39,3 +41,15 @@ def test_main_does_not_mask_broken_server_import(monkeypatch: pytest.MonkeyPatch
 
     with pytest.raises(ImportError, match="litellm"):
         cli.main()
+
+
+@pytest.mark.parametrize("flag", ["--version", "-V"])
+def test_version_works_without_server(
+    flag: str, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    monkeypatch.setattr(cli, "find_spec", lambda name: None)
+    monkeypatch.setattr(sys, "argv", ["opengrade", flag])
+
+    cli.main()
+
+    assert capsys.readouterr().out == f"opengrade-ai {opengrade.__version__}\n"

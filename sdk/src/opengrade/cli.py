@@ -15,6 +15,11 @@ INSTALL_HINT = (
 
 def main() -> None:
     if find_spec("opengrade_server") is None:
+        if sys.argv[1:] in (["--version"], ["-V"]):
+            from opengrade import __version__
+
+            sys.stdout.write(f"opengrade-ai {__version__}\n")
+            return
         sys.stderr.write(INSTALL_HINT)
         sys.exit(1)
     import_module("opengrade_server.cli").app()

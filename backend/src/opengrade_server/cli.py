@@ -82,8 +82,35 @@ console = Console()
 err_console = Console(stderr=True)
 
 
+def _package_version(dist: str) -> str:
+    from importlib.metadata import PackageNotFoundError, version
+
+    try:
+        return version(dist)
+    except PackageNotFoundError:
+        return "not installed"
+
+
+def _version_callback(value: bool) -> None:
+    if value:
+        console.print(f"opengrade-ai {_package_version('opengrade-ai')}")
+        console.print(f"opengrade-ai-server {_package_version('opengrade-ai-server')}")
+        raise typer.Exit()
+
+
 @app.callback()
-def _root() -> None:
+def _root(
+    version: Annotated[
+        bool,
+        typer.Option(
+            "--version",
+            "-V",
+            callback=_version_callback,
+            is_eager=True,
+            help="Show the installed OpenGrade versions and exit.",
+        ),
+    ] = False,
+) -> None:
     """OpenGrade CLI."""
 
 
@@ -252,7 +279,7 @@ def ui(
     print_ui_startup_banner(uri, settings)
 
     url = f"http://{host}:{port}"
-    console.print(f"AI Eval UI: [green]{url}[/green]  (API + OTLP on the same origin)")
+    console.print(f"OpenGrade UI: [green]{url}[/green]  (API + OTLP on the same origin)")
     if open_browser:
         webbrowser.open(url)
 
