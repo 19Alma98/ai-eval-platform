@@ -1,10 +1,15 @@
-"""Clean-install smoke test: exercise OpenGrade the way a new user does after `pip install`.
+"""Clean-install smoke test: exercise OpenGrade the way a new user does after installing it.
 
-Run it with the Python of a fresh virtual environment where only the published (or freshly
-built) packages are installed, from a directory outside this repository:
+Run it with the Python of a fresh environment where only the published (or freshly built)
+packages are installed, from a directory outside this repository. With uv:
 
-    python -m venv /tmp/og && /tmp/og/bin/pip install 'opengrade-ai[ui]'
-    cd /tmp && /tmp/og/bin/python /path/to/scripts/smoke_install.py
+    mkdir og && cd og && uv init --bare && uv add 'opengrade-ai[ui]'
+    .venv/bin/python -I /path/to/scripts/smoke_install.py
+
+or with pip:
+
+    python -m venv og && og/bin/pip install 'opengrade-ai[ui]'
+    og/bin/python -I /path/to/scripts/smoke_install.py
 
 What it checks, in order:
 

@@ -22,11 +22,11 @@ let CI block the regressions. The same metrics then keep watching the app in pro
 ## Try it in one minute
 
 ```bash
-pip install 'opengrade-ai[ui]'
-opengrade ui          # UI + API on http://127.0.0.1:8000, data in ./opengrade.db
+uvx --from 'opengrade-ai[ui]' opengrade ui   # UI + API on http://127.0.0.1:8000, data in ./opengrade.db
 ```
 
-One process, one SQLite file, no Docker. With `uv`: `uvx --from 'opengrade-ai[ui]' opengrade ui`.
+One process, one SQLite file, no Docker. In a project: `uv add 'opengrade-ai[ui]'` then
+`uv run opengrade ui`. With pip: `pip install 'opengrade-ai[ui]'` then `opengrade ui`.
 
 Then follow **[Getting started in 15 minutes →](docs/getting-started.md)** (first trace, first
 scored experiment) or the offline **[SDK tour →](examples/sdk_tour/README.md)** (no GPU, no API key).
@@ -180,7 +180,7 @@ cd sdk && uv sync && uv run pytest                    # SDK tests
 cd frontend && npm ci && npm run dev                  # UI dev server on :3000, proxies /api
 ```
 
-`scripts/smoke_install.py` checks a clean `pip install` of the built wheels (run on Linux, macOS
+`scripts/smoke_install.py` checks a clean install (`uv add` and `pip install`) of the built wheels (run on Linux, macOS
 and Windows by the *Install smoke* workflow, and against PyPI after each release). Releases are
 published from a `vX.Y.Z` tag: see [publishing](docs/08-cli-ci.md#publishing-to-pypi).
 
