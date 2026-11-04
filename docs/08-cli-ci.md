@@ -49,6 +49,52 @@ opengrade evaluate --config opengrade.yaml [flags…]
 | Embedded | No `api_base_url` / `--base-url` → temp SQLite + in-process API (pytest-like CI) |
 | Remote | `api_base_url` or `--base-url` set |
 
+#### Config file reference
+
+One YAML file holds the exam (`evaluate:` block), the gate rules (every other top-level block) and optional connection fields. `opengrade check` reads the same file and ignores `evaluate:`.
+
+```yaml
+# connection (optional; flags override)
+api_base_url: http://opengrade.internal:8000   # omit for the embedded, throwaway server
+project: demo
+
+evaluate:
+  task: my_app.rag:answer          # module:callable taking a dataset item (XOR script: path.py)
+  dataset: tests/gold.jsonl        # path or dataset name (XOR from_experiment)
+  metrics: [hit_at_k, groundedness, correctness, latency]
+  # from_experiment: alias:main    # reuse dataset + metrics set of an existing experiment
+  name: ci
+  baseline: alias:main
+  # promote: main                  # move the alias when the gate passes (main branch only)
+  # require_baseline: true         # fail when there is no comparable baseline (pull requests)
+  task_type: rag_qa
+  params: {model: gemma4}
+  version: "1.4.0"                 # default: short git SHA
+  max_concurrency: 4
+  repeats: 1
+  init: false                      # true: trace the task (tokens, cost, documents from spans)
+  judge:                           # LLM judge for this run (embedded mode)
+    model: openai/gpt-4o-mini
+    api_key_env: LLM_API_KEY       # name of the env var, never the key itself
+  # backend_store_uri: postgresql+asyncpg://…   # embedded mode on a durable database
+```
+
+#### Policy reference
+
+Every top-level key other than the connection fields and `evaluate` is a rule. Each rule produces one or more named checks (`hit_at_k.min`, `latency.p95`, `regression.groundedness.mean_score`, …); the gate fails when any check is `failed` or `unavailable`.
+
+| Block | Keys | Fails when | Baseline? |
+|---|---|---|---|
+| `<metric>` (e.g. `hit_at_k`) | `min` | mean score of that metric is below `min` | no |
+| `latency` | `p95_max_ms`, `max_increase_pct` | p95 latency above the ceiling / more than N% above the baseline p95 | only for `max_increase_pct` |
+| `cost` | `max_per_request_usd`, `max_increase_pct` | mean cost per request above the ceiling / more than N% above the baseline | only for `max_increase_pct` |
+| `experiment_metrics.<key>` | `min`, `max`, `max_increase`, `max_decrease`, `max_increase_pct`, `max_decrease_pct` | a run-level value (`opengrade.error_rate`, `cost_usd` from `log_metrics`, …) is out of bounds / changed too much | only for the relative keys |
+| `regression` | `max_delta`, `max_new_failures`, `max_detectable_delta`, `non_inferiority_margin`, `allow_insufficient_n` | a statistically significant drop vs the baseline; optional mean floor, broken test cases, power and non-inferiority checks | yes |
+| `critical` | `by`, `metrics`, `max_failures` | a test case marked as must-pass does not PASS | no |
+| `groups` | `by`, `min_items`, `metrics`, `max_delta` | the `min` and `regression` rules fail inside one group of test cases | for the regression part |
+
+Rules that need a baseline are dropped on a run without one (first run, exam changed), unless `--require-baseline` turns that into a failure. Each block is explained below; the server-side contract is in [REST API → Quality gate](05-api.md#quality-gate).
+
 Exam definition (XOR):
 
 - **`from_experiment`** (preferred): clone `dataset_id` + `metrics_set_id` from an existing experiment; baseline defaults to that id.

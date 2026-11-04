@@ -78,6 +78,7 @@ nav:
   - Home: README.md
   - User guide:
       - Getting started: getting-started.md
+      - How OpenGrade works: workflow.md
       - Python SDK: sdk.md
       - CLI and CI: 08-cli-ci.md
       - Metrics and judges: 03-evaluation-engine.md

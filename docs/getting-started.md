@@ -36,14 +36,14 @@ uv init --bare
 uv add 'opengrade-ai[ui,openai]' openai
 ```
 
-From this monorepo instead of PyPI (soft-launch / local wheels):
+Contributors only — install from a clone of this repository instead of PyPI:
 
 ```bash
 # repo root (Node/npm required for the UI bundle)
 python3 scripts/package_ui.py
 mkdir -p /tmp/opengrade-demo && cd /tmp/opengrade-demo
 uv init --bare
-uv add --editable /ABS/PATH/TO/ai_eval_platform/sdk --extra ui --extra openai
+uv add --editable /path/to/ai-eval-platform/sdk --extra ui --extra openai
 uv add openai
 ```
 
@@ -207,8 +207,9 @@ If LLM metrics are unavailable, check `LLM_MODEL` / `LLM_API_BASE` / `LLM_API_KE
 
 ## Next steps
 
-- CI exam + gate (one command): `opengrade evaluate --config opengrade.yaml` — see [`docs/08-cli-ci.md`](08-cli-ci.md) and `examples/opengrade.yaml`
+- How the pieces fit together (test sets, metrics, baselines, CI gate, production): [How OpenGrade works](workflow.md)
+- CI exam + gate (one command): `opengrade evaluate --config opengrade.yaml` — see [CLI and CI](08-cli-ci.md) and [`examples/opengrade.yaml`](../examples/opengrade.yaml)
 - Gate-only against an existing experiment: `opengrade check --policy opengrade.yaml`
-- Live answers / promote to test set: `scripts/live_run_demo.py`
+- Live answers / promote to test set: [`scripts/live_run_demo.py`](../scripts/live_run_demo.py)
 - Full SDK tour (RAG, sweeps, App Config prompt A/B): [examples/sdk_tour/README.md](../examples/sdk_tour/README.md)
-- SDK reference: [sdk/README.md](../sdk/README.md)
+- SDK guide: [Python SDK](../sdk/README.md)
