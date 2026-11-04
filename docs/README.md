@@ -1,8 +1,42 @@
-# OpenGrade — Docs
+# OpenGrade
 
 Self-hosted AI evaluation & observability. Open-source, not a hosted SaaS.
 
-**Scope:** CI regression gates for checkable AI apps (RAG, classification, structured extraction, fixed-schema tool calling). Not an oracle for open-ended agents — see fit / non-fit in [`00-project-overview.md`](00-project-overview.md).
+**Scope:** CI regression gates for checkable AI apps (RAG, classification, structured extraction, fixed-schema tool calling). Not an oracle for open-ended agents — see fit / non-fit in the [project overview](00-project-overview.md).
+
+![OpenGrade walkthrough: overview, traces, experiments, baseline compare, quality gate, production judge](images/hero.gif)
+
+```bash
+uv add 'opengrade-ai[ui]'
+uv run opengrade ui   # http://127.0.0.1:8000
+```
+
+**[Get started in 15 minutes →](getting-started.md)**
+
+## User guide
+
+For people adopting OpenGrade in their app and CI.
+
+1. [Getting started](getting-started.md) — 15 minutes: `uv` + UI + first trace (+ optional experiment)
+2. [Python SDK](sdk.md) — tracing, experiments, custom metrics and judges, control-plane client
+3. [CLI and CI](08-cli-ci.md) — `opengrade evaluate` / `opengrade check`, baselines, quality gates in GitHub Actions
+4. [Metrics and judges](03-evaluation-engine.md) — built-in evaluators, LLM judges, scoring
+5. [Custom evaluators](16-custom-evaluators.md) — adding a server-side evaluator
+6. [Security and API keys](10-security-privacy.md) — deployment model, keys, content capture
+7. [Examples](examples.md) — runnable demos, from a first trace to a PR regression gate
+8. [API reference](reference/index.md) — generated from the SDK docstrings
+
+Root [`README.md`](../README.md): quickstart with Docker Compose and ops notes.
+
+## Design notes
+
+Internal specifications and decisions, for contributors.
+
+- [Project overview](00-project-overview.md), [architecture](01-architecture.md), [domain model](02-domain-model.md)
+- [Tracing and OpenTelemetry](04-tracing-and-otel.md), [REST API](05-api.md), [database](06-database.md), [frontend](07-frontend.md)
+- [Testing strategy](09-testing.md), [roadmap](11-roadmap.md)
+- [MVP user stories](12-mvp-user-stories.md), [definition of done](15-definition-of-done.md)
+- Architecture decisions: [ADR-001](13-adr-001.md) (OpenTelemetry/OpenInference), [ADR-002](14-adr-002.md) (PostgreSQL first)
 
 ## Naming
 
@@ -12,14 +46,6 @@ Self-hosted AI evaluation & observability. Open-source, not a hosted SaaS.
 | `opengrade-ai` | PyPI SDK (`import opengrade`, console script `opengrade`) |
 | `opengrade-ai-server` | PyPI API + packaged UI (`opengrade_server`, `opengrade-server`) |
 | `opengrade ui` / `opengrade check` | CLI commands (need server / `[ui]` extra) |
-
-## Start here (adopters)
-
-1. [`getting-started.md`](getting-started.md) — 15 minutes: `uv` + UI + first trace (+ optional experiment)
-2. Root [`README.md`](../README.md) — quickstart (Compose or `opengrade ui`) and ops notes
-3. [`examples/sdk_hello/README.md`](../examples/sdk_hello/README.md) — instrument → see a trace
-4. [`examples/sdk_tour/README.md`](../examples/sdk_tour/README.md) — dataset → metrics → experiment → gate → App Config prompt A/B
-5. [`sdk/README.md`](../sdk/README.md) — SDK reference
 
 ## Glossary
 
@@ -34,24 +60,3 @@ Self-hosted AI evaluation & observability. Open-source, not a hosted SaaS.
 | **Trace** | OTLP/OpenInference span tree ingested at `/v1/traces` |
 
 Primary RAG loop: **Project → test set → metrics pack → evaluate → compare / quality gate**.
-
-## Technical specs (implementation)
-
-1. [`00-project-overview.md`](00-project-overview.md)
-2. [`01-architecture.md`](01-architecture.md)
-3. [`02-domain-model.md`](02-domain-model.md)
-4. [`03-evaluation-engine.md`](03-evaluation-engine.md)
-5. [`04-tracing-and-otel.md`](04-tracing-and-otel.md)
-6. [`05-api.md`](05-api.md)
-7. [`06-database.md`](06-database.md)
-8. [`07-frontend.md`](07-frontend.md)
-9. [`08-cli-ci.md`](08-cli-ci.md)
-10. [`09-testing.md`](09-testing.md)
-11. [`10-security-privacy.md`](10-security-privacy.md)
-12. [`11-roadmap.md`](11-roadmap.md)
-13. [`12-mvp-user-stories.md`](12-mvp-user-stories.md)
-14. [`16-custom-evaluators.md`](16-custom-evaluators.md) — contributor guide: adding an evaluator
-
-Architecture decisions: [`13-adr-001.md`](13-adr-001.md), [`14-adr-002.md`](14-adr-002.md).
-
-Completion criteria: [`15-definition-of-done.md`](15-definition-of-done.md).

@@ -245,8 +245,6 @@ The alias lives in the server's database: use a persistent server (`api_base_url
 
 `--json` output (stdout is one JSON document; diagnostics go to stderr) adds `version`, `git` / `baseline_git` (code revisions of the run and its baseline), `baseline_ref` (as configured, e.g. `alias:main`), the `baseline_id` actually used by the gate, `code_diff_url`, `compare_url`, `comparison` (per-evaluator candidate / baseline / delta / status), `regressed_items` / `regressed_items_total`, `experiment_metrics`, `notes`, and `promoted` (`{alias, experiment_id, previous_experiment_id, exam_changed}` or `null`). Aliases and their history are also available over the API (`/projects/{id}/experiment-aliases`, see `docs/05-api.md`) and the SDK (`client.experiments.set_alias / get_alias / alias_history`, `baseline="alias:main"`).
 
-Design: [`docs/superpowers/specs/2026-10-28-opengrade-evaluate-cli-design.md`](superpowers/specs/2026-10-28-opengrade-evaluate-cli-design.md).
-
 ### Quality gate only
 
 ```text

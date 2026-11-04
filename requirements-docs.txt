@@ -1,0 +1,6 @@
+# Docs site build (MkDocs Material + API reference from SDK docstrings).
+# Local preview: uv run --with-requirements requirements-docs.txt mkdocs serve
+mkdocs==1.6.1
+mkdocs-material==9.8.0
+mkdocstrings-python==2.0.10
+pymdown-extensions==12.3

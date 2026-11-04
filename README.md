@@ -82,6 +82,8 @@ Optional real models: `TOUR_MODEL=gemma4:e2b` (and `uv sync --extra llm`). CI ga
 
 Naming and glossary: [`docs/README.md`](docs/README.md).
 
+**Docs site:** the files in `docs/` plus `sdk/README.md` are built with MkDocs Material (config: [`mkdocs.yml`](mkdocs.yml)) and deployed by [`.github/workflows/docs.yml`](.github/workflows/docs.yml) on every push to `main`. Preview locally with `uv run --no-project --with-requirements requirements-docs.txt mkdocs serve`.
+
 Create a project:
 
 ```bash

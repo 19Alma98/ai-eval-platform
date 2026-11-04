@@ -67,7 +67,7 @@ ask("ping")
 opengrade.flush()
 ```
 
-Runnable examples: [`examples/sdk_hello/`](../examples/sdk_hello/README.md) (Ollama via OpenAI-compatible API) and the guided [`examples/sdk_tour/`](../examples/sdk_tour/README.md) (tracing, RAG verification, architecture comparison, production metrics and alerts; runs offline).
+Runnable examples: [`examples/sdk_hello/`](https://github.com/19Alma98/ai-eval-platform/blob/main/examples/sdk_hello/README.md) (Ollama via OpenAI-compatible API) and the guided [`examples/sdk_tour/`](https://github.com/19Alma98/ai-eval-platform/blob/main/examples/sdk_tour/README.md) (tracing, RAG verification, architecture comparison, production metrics and alerts; runs offline).
 
 ### API summary
 
@@ -212,7 +212,7 @@ How it behaves:
 - **Datasets**: pass a registered name/id, a path to CSV/JSON/JSONL, a list or iterable of dicts, a pandas DataFrame, or a Polars DataFrame. Rows need an `input` column (or `question`). `expected_output` (or `expected_answer`), `context` and `metadata` map to item fields; any other column goes into `metadata` (so `expected_doc_ids` and `must_contain` work). With the default `task_type="rag_qa"` every row needs `expected_output` and `expected_doc_ids`, except rows labelled unanswerable (`metadata.answerable: false` or `expected_refusal: true`), which may omit both. A missing `input`/`question` raises `opengrade.DatasetColumnError` (CSV headers are checked up front). Inline rows are hashed into a dataset name, so re-running on the same rows reuses the same dataset. Generators are materialised before upload (no lazy streaming).
 - **Outputs** are uploaded with `PUT /experiments/{id}/outputs`, so this works without `opengrade.init()`. With tracing on, `finish()` waits for the OTLP traces to be bound (up to 30s) and merges their context in. Your explicit output always wins.
 - **Repeats**: `repeats=N` runs the task N times per item (each run is its own trace and output, `repeat` 0..N-1). Scores are averaged per item before aggregating, so every item weighs once and the baseline comparison still pairs items; the bootstrap CI then reflects run-to-run noise less. Items whose PASS/FAIL changes between repeats count as flaky (`result.flaky`, the `flaky` column in `summary()`, the UI scorecard). In a manual loop pass `exp.run(item, repeat=i)`. Max 100.
-- **Groups**: `group_by="category"` (a dataset-item metadata key, dotted paths allowed) adds per-group means and baseline deltas: `result.groups` and a `by category:` block in `summary()`. A drop on one kind of question shows up even when the overall mean holds. `client.experiments.summary(id, group_by=...)` / `compare(..., group_by=...)` return the same data; the release gate can enforce it with a `groups` policy block (see `docs/08-cli-ci.md`).
+- **Groups**: `group_by="category"` (a dataset-item metadata key, dotted paths allowed) adds per-group means and baseline deltas: `result.groups` and a `by category:` block in `summary()`. A drop on one kind of question shows up even when the overall mean holds. `client.experiments.summary(id, group_by=...)` / `compare(..., group_by=...)` return the same data; the release gate can enforce it with a `groups` policy block (see [CLI and CI](https://github.com/19Alma98/ai-eval-platform/blob/main/docs/08-cli-ci.md#gate-per-group-groups)).
 - **Errors**: when a task raises, `evaluate` records it on the item (`result.errors`, `metadata.error`) and moves on. Pass `raise_on_error=True` to stop instead. When the `with` block raises, nothing is scored. Bad dataset columns raise `DatasetColumnError` before the run starts.
 
 ### Citations and refusals
@@ -569,7 +569,7 @@ with Client() as client:
     client.experiments.evaluate_pack(exp.id)
 ```
 
-See also [`scripts/live_run_demo.py`](../scripts/live_run_demo.py) (`--promote`).
+See also [`scripts/live_run_demo.py`](https://github.com/19Alma98/ai-eval-platform/blob/main/scripts/live_run_demo.py) (`--promote`).
 
 Eval binding still uses tracing attributes (no REST call):
 
@@ -601,7 +601,7 @@ registry.set_alias(project_id, "baseline", created.id)
 
 Methods: `create_app_config`, `list_app_configs` (`name`, `latest`), `set_alias`, `get_aliases`. Constructing `AppConfigClient(...)` directly still works but is deprecated (`DeprecationWarning`).
 
-End-to-end prompt A/B (same model, two App Config prompts): `uv run python 05_prompt_ab.py` in [`examples/sdk_tour`](../examples/sdk_tour/README.md).
+End-to-end prompt A/B (same model, two App Config prompts): `uv run python 05_prompt_ab.py` in [`examples/sdk_tour`](https://github.com/19Alma98/ai-eval-platform/blob/main/examples/sdk_tour/README.md).
 
 ## Tier-1 compatibility matrix
 
@@ -689,4 +689,4 @@ opengrade.flush()
 "
 ```
 
-See platform tracing docs: [`docs/04-tracing-and-otel.md`](../docs/04-tracing-and-otel.md).
+See platform tracing docs: [`docs/04-tracing-and-otel.md`](https://github.com/19Alma98/ai-eval-platform/blob/main/docs/04-tracing-and-otel.md).

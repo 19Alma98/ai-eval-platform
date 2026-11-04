@@ -1,0 +1,113 @@
+site_name: OpenGrade
+site_description: Self-hosted AI evaluation & observability — CI regression gates for checkable AI apps.
+repo_url: https://github.com/19Alma98/ai-eval-platform
+repo_name: 19Alma98/ai-eval-platform
+edit_uri: edit/main/docs/
+copyright: Apache-2.0
+
+docs_dir: docs
+site_dir: site
+strict: true
+
+theme:
+  name: material
+  features:
+    - navigation.tabs
+    - navigation.sections
+    - navigation.top
+    - navigation.indexes
+    - navigation.footer
+    - search.suggest
+    - search.highlight
+    - content.code.copy
+    - content.action.edit
+    - toc.follow
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: indigo
+      toggle:
+        icon: material/weather-night
+        name: Dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: indigo
+      toggle:
+        icon: material/weather-sunny
+        name: Light mode
+
+hooks:
+  # Rewrites links that point outside docs/ (examples, sdk/README.md, workflows)
+  # so the same Markdown works on GitHub and on the site.
+  - scripts/docs/links.py
+
+plugins:
+  - search
+  - mkdocstrings:
+      handlers:
+        python:
+          paths: [sdk/src]
+          options:
+            docstring_style: google
+            show_source: false
+            show_root_heading: true
+            show_root_full_path: false
+            show_signature_annotations: true
+            separate_signature: true
+            signature_crossrefs: true
+            members_order: source
+            filters: ["!^_"]
+            show_if_no_docstring: true
+            merge_init_into_class: true
+            heading_level: 2
+
+markdown_extensions:
+  - admonition
+  - attr_list
+  - md_in_html
+  - tables
+  - toc:
+      permalink: true
+  - pymdownx.details
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.inlinehilite
+  - pymdownx.superfences
+
+nav:
+  - Home: README.md
+  - User guide:
+      - Getting started: getting-started.md
+      - Python SDK: sdk.md
+      - CLI and CI: 08-cli-ci.md
+      - Metrics and judges: 03-evaluation-engine.md
+      - Custom evaluators: 16-custom-evaluators.md
+      - Security and API keys: 10-security-privacy.md
+      - Examples: examples.md
+  - API reference:
+      - reference/index.md
+      - Tracing: reference/tracing.md
+      - Experiments: reference/experiments.md
+      - Metrics and judges: reference/metrics.md
+      - Production scores and feedback: reference/feedback.md
+      - Control plane client: reference/client.md
+      - Configuration and errors: reference/config.md
+  - Design notes:
+      - Project overview: 00-project-overview.md
+      - Architecture: 01-architecture.md
+      - Domain model: 02-domain-model.md
+      - Tracing and OpenTelemetry: 04-tracing-and-otel.md
+      - REST API: 05-api.md
+      - Database: 06-database.md
+      - Frontend: 07-frontend.md
+      - Testing strategy: 09-testing.md
+      - Roadmap: 11-roadmap.md
+      - MVP user stories: 12-mvp-user-stories.md
+      - Definition of done: 15-definition-of-done.md
+      - Decisions:
+          - "ADR-001: OpenTelemetry/OpenInference": 13-adr-001.md
+          - "ADR-002: PostgreSQL first": 14-adr-002.md
+
+validation:
+  anchors: warn
+  unrecognized_links: warn
