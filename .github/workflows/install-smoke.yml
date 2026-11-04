@@ -15,6 +15,14 @@ on:
       - ".github/workflows/install-smoke.yml"
   push:
     branches: [main]
+    # Same filter as pull_request: a docs-only merge does not rebuild and reinstall the wheels.
+    paths:
+      - "backend/**"
+      - "sdk/**"
+      - "frontend/**"
+      - "scripts/smoke_install.py"
+      - "scripts/package*"
+      - ".github/workflows/install-smoke.yml"
   workflow_dispatch:
     inputs:
       source:
