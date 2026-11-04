@@ -171,3 +171,10 @@ jobs:
         with:
           packages-dir: dist/
           skip-existing: false
+
+  smoke-pypi:
+    needs: [build, publish]
+    uses: ./.github/workflows/install-smoke.yml
+    with:
+      source: pypi
+      version: ${{ needs.build.outputs.version }}
