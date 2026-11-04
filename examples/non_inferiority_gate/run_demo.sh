@@ -11,7 +11,6 @@
 # alias lives in ./ci.db; Markdown + JUnit reports of every step land in ./reports/.
 set -uo pipefail
 cd "$(dirname "$0")"
-export PYTHONPATH="$PWD/../ci_regression_gate${PYTHONPATH:+:$PYTHONPATH}"
 
 OPENGRADE=${OPENGRADE:-"uv run -q --project ../../backend opengrade"}
 STORE="sqlite+aiosqlite:///$PWD/ci.db"
