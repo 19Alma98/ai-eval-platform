@@ -1,0 +1,167 @@
+name: Install smoke
+
+# Clean-install test: install OpenGrade the way a user does (`pip install 'opengrade-ai[ui]'`) in
+# a fresh virtual environment, outside the repository, and run scripts/smoke_install.py:
+# `opengrade ui` starts, the SDK sends a trace, an experiment is scored, the CI gate passes and
+# blocks a regression.
+#
+# - Pull requests / pushes to main: tests the wheels built from this commit.
+# - After a release (called by publish.yml) or by hand: tests the version published on PyPI.
+
+on:
+  pull_request:
+    paths:
+      - "backend/**"
+      - "sdk/**"
+      - "frontend/**"
+      - "scripts/smoke_install.py"
+      - "scripts/package*"
+      - ".github/workflows/install-smoke.yml"
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      source:
+        description: "wheels = build from this commit, pypi = install a published version"
+        type: choice
+        options: [wheels, pypi]
+        default: wheels
+      version:
+        description: "PyPI version to test (source=pypi), e.g. 0.2.0"
+        type: string
+        default: ""
+  workflow_call:
+    inputs:
+      source:
+        type: string
+        default: pypi
+      version:
+        type: string
+        default: ""
+
+permissions:
+  contents: read
+
+concurrency:
+  group: install-smoke-${{ github.ref }}-${{ inputs.source || 'wheels' }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    if: (inputs.source || 'wheels') == 'wheels'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # hatch-vcs needs tags and history
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          version: "0.8.4"
+
+      - name: Set up Python
+        run: uv python install 3.12
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Package UI into opengrade_server
+        run: ./scripts/package-ui.sh
+
+      - name: Build wheels (release mode)
+        env:
+          OPENGRADE_RELEASE_BUILD: "1"
+        run: |
+          set -euo pipefail
+          (cd backend && uv build --wheel -o ../dist)
+          (cd sdk && uv build --wheel -o ../dist)
+          ls -la dist
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: smoke-wheels
+          path: dist/*.whl
+          if-no-files-found: error
+
+  smoke:
+    needs: build
+    # Runs after `build`, or without it when testing a PyPI release.
+    if: always() && (needs.build.result == 'success' || needs.build.result == 'skipped')
+    name: smoke (${{ matrix.os }}, py${{ matrix.python }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+        python: ["3.12", "3.13"]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 25
+    defaults:
+      run:
+        shell: bash
+    env:
+      SOURCE: ${{ inputs.source || 'wheels' }}
+      VERSION: ${{ inputs.version }}
+      PIP_DISABLE_PIP_VERSION_CHECK: "1"
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: scripts/smoke_install.py
+          sparse-checkout-cone-mode: false
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+
+      - name: Download wheels
+        if: env.SOURCE == 'wheels'
+        uses: actions/download-artifact@v4
+        with:
+          name: smoke-wheels
+          path: ${{ runner.temp }}/dist
+
+      - name: Fresh virtual environments outside the repository
+        run: |
+          set -euo pipefail
+          cd "$RUNNER_TEMP"
+          python -m venv venv-ui
+          python -m venv venv-sdk
+          if [[ "$RUNNER_OS" == "Windows" ]]; then bin=Scripts; else bin=bin; fi
+          echo "PY_UI=$RUNNER_TEMP/venv-ui/$bin/python" >> "$GITHUB_ENV"
+          echo "PY_SDK=$RUNNER_TEMP/venv-sdk/$bin/python" >> "$GITHUB_ENV"
+
+      - name: pip install 'opengrade-ai[ui]' and 'opengrade-ai'
+        run: |
+          set -euo pipefail
+          if [[ "$SOURCE" == "wheels" ]]; then
+            wheel=$(ls "$RUNNER_TEMP"/dist/opengrade_ai-*.whl)
+            version=$(basename "$wheel" | sed -E 's/^opengrade_ai-([^-]+)-.*/\1/')
+            args=(--find-links "$RUNNER_TEMP/dist")
+          else
+            version="${VERSION#v}"
+            [[ -n "$version" ]] || { echo "version is required for source=pypi" >&2; exit 2; }
+            args=(--no-cache-dir)
+          fi
+          echo "Installing opengrade-ai==$version from $SOURCE"
+          # A just-published release can take a minute to reach every PyPI mirror.
+          for attempt in 1 2 3 4 5; do
+            if "$PY_UI" -m pip install "${args[@]}" "opengrade-ai[ui]==$version" \
+              && "$PY_SDK" -m pip install "${args[@]}" "opengrade-ai==$version"; then
+              break
+            fi
+            [[ $attempt == 5 ]] && exit 1
+            sleep $((attempt * 20))
+          done
+          "$PY_UI" -m pip list | grep -i opengrade
+
+      - name: SDK only (no [ui] extra)
+        working-directory: ${{ runner.temp }}
+        run: '"$PY_SDK" -I "$GITHUB_WORKSPACE/scripts/smoke_install.py" --sdk-only'
+
+      - name: Full smoke (opengrade ui, trace, evaluate, CI gate)
+        working-directory: ${{ runner.temp }}
+        run: '"$PY_UI" -I "$GITHUB_WORKSPACE/scripts/smoke_install.py"'

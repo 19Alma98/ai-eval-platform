@@ -1,191 +1,189 @@
 # OpenGrade
 
-Self-hosted AI evaluation & observability — traces, datasets, experiments, CI gates.
+[![CI](https://github.com/19Alma98/ai-eval-platform/actions/workflows/ci.yml/badge.svg)](https://github.com/19Alma98/ai-eval-platform/actions/workflows/ci.yml)
+[![PyPI](https://img.shields.io/pypi/v/opengrade-ai)](https://pypi.org/project/opengrade-ai/)
+[![Python](https://img.shields.io/pypi/pyversions/opengrade-ai)](https://pypi.org/project/opengrade-ai/)
+[![License](https://img.shields.io/badge/license-Apache--2.0-blue)](LICENSE)
 
-Open-source platform for AI quality engineering: turn production traces into datasets, run experiments, compare against a baseline, and fail CI on regressions. Packages: `opengrade-ai` (SDK) and `opengrade-ai-server` (API + UI); CLI `opengrade`.
+**Unit tests for your LLM app: fail the pull request when quality drops.**
 
-**Best fit:** RAG/FAQ, classification, structured extraction, tool calling with fixed schemas, plus latency/cost/error gates.  
-**Not a fit:** open-ended agents where “good” is subjective, or as a substitute for live APM. The platform measures what you define; it does not invent a quality oracle. Details: [`docs/00-project-overview.md`](docs/00-project-overview.md).
+OpenGrade is a self-hosted, open-source platform for AI quality engineering. You trace your app,
+keep a gold test set, run experiments against it, compare each run with the last accepted one, and
+let CI block the regressions. The same metrics then keep watching the app in production.
 
-**Deployment model (v0.1):** without `OPENGRADE_API_KEY` the server is open, so keep it on localhost or a private network. To expose it, set `OPENGRADE_API_KEY` on the server (the bootstrap admin key) and serve it over HTTPS; then create one key per app (`ingest`), person (`read`) or CI job (`admin`) under **Settings → API keys** or with `opengrade keys create`. The SDK sends `OPENGRADE_API_KEY` as `Authorization: Bearer`. Details: [`docs/10-security-privacy.md`](docs/10-security-privacy.md#api-keys).
+```text
+ trace your app ──▶ build a test set ──▶ run an experiment ──▶ compare with the baseline ──▶ CI gate
+       ▲                                                                                     │
+       └────────────── production traces, scores and alerts ◀────────── ship ◀───────────────┘
+```
 
 ![OpenGrade walkthrough: overview, traces, experiments, baseline compare, quality gate, production judge](docs/images/hero.gif)
 
-**[Get started in 15 minutes →](docs/getting-started.md)** — `uv` + `opengrade ui`, first trace, optional scored experiment.
-
-**[SDK tour →](examples/sdk_tour/README.md)** — runnable, offline `uv` project: tracing, verifying a RAG against a gold set, comparing architectures and models, custom metrics and alerts in production.
-
-## Quickstart (local UI)
-
-Zero external infra — SQLite file + packaged UI in one process:
+## Try it in one minute
 
 ```bash
-uv add 'opengrade-ai[ui]'
-uv run opengrade ui   # http://127.0.0.1:8000 → ./opengrade.db
+pip install 'opengrade-ai[ui]'
+opengrade ui          # UI + API on http://127.0.0.1:8000, data in ./opengrade.db
 ```
 
-Pip: `pip install 'opengrade-ai[ui]'` then `opengrade ui` (same URL and `./opengrade.db`).
+One process, one SQLite file, no Docker. With `uv`: `uvx --from 'opengrade-ai[ui]' opengrade ui`.
 
-From a fresh clone (Node.js >= 22 required for the UI build): `python scripts/package_ui.py`, then install/sync the backend and run `opengrade ui`. The CLI fails if port 8000 is already in use (e.g. Docker); pass `--port` or stop the other process. It loads `.env` from the current working directory when present and prints judge / content-capture settings at startup. Schema upgrades run automatically via Alembic; see [`backend/README.md`](backend/README.md) for SQLite backup notes (WAL).
+Then follow **[Getting started in 15 minutes →](docs/getting-started.md)** (first trace, first
+scored experiment) or the offline **[SDK tour →](examples/sdk_tour/README.md)** (no GPU, no API key).
 
-Optional Postgres (production / Compose):
+## What it looks like
 
-```bash
-opengrade ui --backend-store-uri 'postgresql+asyncpg://opengrade:opengrade@localhost:5434/opengrade'
+**1. Trace your app.** A decorator for the whole request, a `with` block for each step. OpenAI,
+Anthropic, LangChain, LlamaIndex and Bedrock calls become child spans automatically.
+
+```python
+import opengrade
+
+opengrade.set_tracking_uri("http://localhost:8000")
+opengrade.set_project("support-bot")
+opengrade.init(instrument="auto")
+
+
+@opengrade.trace
+def answer(question: str) -> str:
+    with opengrade.span("retrieve", kind="RETRIEVER", input=question) as s:
+        docs = retriever.search(question)
+        s.set_output([d.id for d in docs])
+    opengrade.set_retrieval_documents(docs)  # feeds the retrieval metrics and RAG judges
+    return llm.generate(question, docs)
 ```
 
-## Quickstart (Docker Compose)
+**2. Evaluate it on a test set**, against a baseline:
 
-Adopter-first path: follow [`docs/getting-started.md`](docs/getting-started.md) (`uv` + local UI, then optional experiment). Use Compose when you want Postgres and the full stack in containers.
-
-```bash
-cp backend/.env.example backend/.env   # optional but recommended
-docker compose up --build
-```
-Copy the example when you want LLM judges or other overrides from [`backend/.env.example`](backend/.env.example). Without a configured judge (`LLM_API_KEY` for cloud, or Ollama + `LLM_MODEL` / `LLM_API_BASE`), the UI and OTLP ingest still work; LLM-judge metrics show as unavailable until you set one.
-
-For local Ollama as judge while the API runs in Compose, uncomment in `backend/.env`:
-
-```bash
-LLM_MODEL=ollama/gemma4:e2b
-LLM_API_BASE=http://host.docker.internal:11434
+```python
+result = opengrade.evaluate(
+    dataset="gold.jsonl",                   # or a dataset name, a list of dicts, a DataFrame
+    task=lambda item: answer(item.input),
+    metrics=["hit_at_k", "groundedness", "correctness", "latency"],
+    baseline="alias:main",                  # the last run accepted on main
+)
+print(result.summary())
 ```
 
-UI and API: http://127.0.0.1:8000 — one image serves both (the same static UI that `opengrade ui` ships). Compose publishes the API and Postgres (`127.0.0.1:5434`) on localhost only; change the port mappings to `"8000:8000"` / `"5434:5432"` if you intentionally need LAN access. For UI development run `npm run dev` in `frontend/` (http://localhost:3000, proxies `/api` to `API_ORIGIN`).
+**3. Gate the pull request.** A YAML policy, an exit code for CI:
 
-Check liveness / readiness (single API replica only — do not scale `api` without a shared job queue):
+```yaml
+# opengrade.yaml
+evaluate:
+  task: rag_app:task
+  dataset: gold.jsonl
+  metrics: [hit_at_k, must_contain, latency]
+  baseline: alias:main
 
-```bash
-curl http://localhost:8000/health   # liveness
-curl http://localhost:8000/ready    # DB readiness (Compose healthcheck)
+hit_at_k: { min: 0.8 }               # absolute floor
+latency:  { p95_max_ms: 2000 }
+regression:
+  max_delta: -0.05                   # significant drop of the mean vs main → fail
+  max_new_failures: 0                # a test case that passes on main must not fail
+critical: { by: critical }           # must-pass test cases
 ```
 
-Behind a reverse proxy, set `FORWARDED_ALLOW_IPS`. OTLP ingest may return `429`/`503` with `Retry-After` under load (see `backend/.env.example`).
-
-### Portfolio demo (People Ops assistant + Ollama)
-
-Dataset-first RAG loop: gold test set → metrics pack → `opengrade.evaluate` experiment per model (traces bound per item, outputs uploaded, pack scored) → compare → quality gate. Compares two local models (`OLLAMA_MODEL1` vs `OLLAMA_MODEL2`) on the same test set and pipeline.
-
-1. `cp backend/.env.example backend/.env`, then `docker compose up --build`
-2. Pull two chat models, e.g. `ollama pull gemma4:e2b` and `ollama pull tinyllama`
-3. Sync SDK: `cd sdk && uv sync --extra openai && cd ..`
-4. Sync server/CLI: `cd backend && uv sync --all-extras && cd ..`
-5. Run: `python scripts/portfolio_demo.py`
-
-In the UI: **Test set → Metrics → Runs**. Release policy uses pack names: `hit_at_k`, `groundedness`, `correctness`, `latency`.
-
-**Live runs (prod-sim):** with API + LLM judge up, run `cd sdk && uv run python ../scripts/live_run_demo.py` then open **Live runs** in the UI (`/live-runs`).
-
-Details: [`examples/hr_it_assistant/README.md`](examples/hr_it_assistant/README.md). Naming and glossary: [`docs/README.md`](docs/README.md).
-
-Create a project:
-
-```bash
-curl -X POST http://localhost:8000/api/v1/projects \
-  -H "content-type: application/json" \
-  -d "{\"name\":\"Demo\",\"slug\":\"demo\"}"
+```console
+$ opengrade evaluate --config opengrade.yaml --require-baseline
+Test cases worse than baseline (4):
+  ▼ How often are laptops refreshed?
+      hit_at_k: 1.000 PASS → 0.000 FAIL
+      candidate: I don't know.
+regression.hit_at_k.mean_score       -0.20   -0.05   failed
+regression.hit_at_k.new_failures      4       0      failed
+Result: FAILED                                         # exit code 1 → the PR check is red
 ```
 
-List projects:
+On `main`, `--promote main` makes a passing run the new baseline. Reports for the job summary
+(`--report-md`) and JUnit (`--junit`) are built in. Runnable version, no LLM needed:
+[`examples/ci_regression_gate`](examples/ci_regression_gate/README.md).
 
-```bash
-curl http://localhost:8000/api/v1/projects
-```
+## Features
 
-### Ingest a trace (OTLP/HTTP)
-
-Send OTLP JSON or protobuf to `POST /v1/traces` with exactly one of `X-Project-Id` or `X-Project-Slug`:
-
-```bash
-curl -X POST http://localhost:8000/v1/traces \
-  -H "content-type: application/json" \
-  -H "X-Project-Slug: demo" \
-  -d "{\"resourceSpans\":[{\"scopeSpans\":[{\"spans\":[{\"traceId\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"spanId\":\"bbbbbbbbbbbbbbbb\",\"name\":\"hello\",\"startTimeUnixNano\":\"1700000000000000000\",\"endTimeUnixNano\":\"1700000001000000000\",\"status\":{\"code\":\"STATUS_CODE_OK\"},\"attributes\":[{\"key\":\"openinference.span.kind\",\"value\":{\"stringValue\":\"CHAIN\"}}]}]}]}]}"
-```
-
-Or run the Python example:
-
-```bash
-cd examples/otlp_hello
-pip install -r requirements.txt
-set OPENGRADE_PROJECT_SLUG=demo
-python main.py
-```
-
-### Instrument with Python SDK
-
-```bash
-cd sdk && uv sync --extra openai && cd ..
-# see examples/sdk_hello/README.md
-```
-
-Package docs: [`sdk/README.md`](sdk/README.md).
-
-### Get trace by id
-
-After OTLP ingest, fetch one trace (e.g. for Run timeline binding):
-
-```bash
-curl "http://localhost:8000/api/v1/projects/<project-uuid>/traces/<otel-trace-id-hex>"
-```
-
-## Quality gate (Phase 4)
-
-Run the gold exam and apply a YAML policy in one step (embedded API by default):
-
-```bash
-# opengrade.yaml: evaluate.task / dataset+metrics (or from_experiment) + policy blocks
-uv run opengrade evaluate --config examples/opengrade.yaml
-```
-
-Or gate an experiment that already exists on a remote API:
-
-```bash
-cd backend && uv sync --all-extras
-uv run opengrade check --policy ../examples/opengrade.yaml \
-  --base-url http://localhost:8000 \
-  --project-id <project-uuid> \
-  --experiment-id <experiment-uuid>
-```
-
-Exit codes: `0` pass, `1` gate failed, `2` config error, `3` infra error. Example workflow: [`.github/workflows/release-gate.yml.example`](.github/workflows/release-gate.yml.example). Runnable PR-vs-main regression gate (no LLM needed): [`examples/ci_regression_gate/`](examples/ci_regression_gate/README.md); with a real LLM and an LLM judge: [`examples/llm_regression_gate/`](examples/llm_regression_gate/README.md); requiring the PR to be *shown* not worse (non-inferiority): [`examples/non_inferiority_gate/`](examples/non_inferiority_gate/README.md). Details: [`docs/08-cli-ci.md`](docs/08-cli-ci.md).
-
-## PyPI release
-
-Packages: **`opengrade-ai`** (SDK) and **`opengrade-ai-server`** (API + UI). Publish via tag `vX.Y.Z` and [`.github/workflows/publish.yml`](.github/workflows/publish.yml) (Trusted Publishing). Setup and checklist: [`docs/08-cli-ci.md`](docs/08-cli-ci.md#publishing-to-pypi).
-
-## Development (backend)
-
-```bash
-cd backend
-cp .env.example .env   # edit as needed (Compose-oriented values; see warnings from opengrade ui)
-uv sync --all-extras   # plain `uv sync` strips extras from an existing venv
-uv run alembic upgrade head
-uv run uvicorn opengrade_server.main:app --reload --host 0.0.0.0 --port 8000
-```
-
-For the packaged UI from a clone: from repo root run `python scripts/package_ui.py` (or `./scripts/package-ui.sh`), then `uv run opengrade ui` from `backend/`.
-
-Requires PostgreSQL. With Compose, Postgres is published on host port **5434** (`DATABASE_URL=postgresql+asyncpg://opengrade:opengrade@localhost:5434/opengrade`).
-
-### LLM judges (LiteLLM / Ollama)
-
-LLM judges use LiteLLM. Settings live in `backend/.env` (see `.env.example`). For local Ollama the example sets:
-
-```bash
-LLM_MODEL=ollama/gemma4:e2b
-LLM_API_BASE=http://localhost:11434
-```
-
-When creating an evaluator, use `"type": "llm_judge"` and `"config": {"kind": "correctness"}` (or `answer_relevance` / `groundedness` / `context_precision` / `context_recall`).
-
-### RAG metrics naming
-
-| opengrade `kind` | Notes |
+| | |
 |---|---|
-| `groundedness` | Answer claims supported by retrieved docs |
-| `answer_relevance` | Question–answer relevance (rubric) |
-| `context_precision` | RAGAS-style average precision over retrieved docs |
-| `context_recall` | Gold-answer claims covered by retrieved docs |
-| `correctness` | Gold claims covered by the answer |
-| `hit_at_k` / `recall_at_k` / `mrr` | Deterministic retrieval metrics on `expected_doc_ids` |
+| **Tracing** | OTLP / OpenInference ingest (`POST /v1/traces`), `@opengrade.trace`, `opengrade.span`, users, sessions, tags and metadata, trace waterfall with RAG view. Any OpenTelemetry exporter works. |
+| **Test sets** | Versioned gold datasets from JSONL / CSV / DataFrames or promoted from production traces; RAG Q&A, classification and tool-calling task types. |
+| **Metrics** | Deterministic (`hit_at_k`, `recall_at_k`, `mrr`, `exact_match`, `must_contain`, `regex`, `json_schema`, `tool_call_success`, latency, tokens, cost), LLM judges via [LiteLLM](https://docs.litellm.ai/) (`groundedness`, `correctness`, `answer_relevance`, `context_precision`, `context_recall`, `citation_accuracy`, `refusal`), custom judges and Python metrics. Local models via Ollama. |
+| **Experiments** | `evaluate`, `sweep` (grid of models / prompts / chunk sizes), `evaluate_retrieval`, `repeats=N` for flaky pipelines, `group_by` per category, git revision of every run, side-by-side compare. |
+| **CI gate** | Absolute thresholds, paired-bootstrap regression check, new failures per test case, critical cases, per-group checks, non-inferiority, statistical-power warning, baseline aliases, Markdown + JUnit reports. Exit codes `0` pass, `1` fail, `2` config error, `3` infra error. |
+| **Production** | Online judges on live traffic, user feedback, custom production metrics, alert rules (thresholds, drift, anomalies) with webhooks, release / environment comparison, retention per project. |
+| **Deployment** | `opengrade ui` (SQLite) or Docker Compose / your own Postgres; migrations run on startup; optional API keys with `admin` / `read` / `ingest` scopes. |
+
+## Is it a fit?
+
+**Good fit:** apps where "correct" can be checked: RAG and FAQ assistants, classification,
+structured extraction, tool calling with fixed schemas, plus latency / cost / error budgets.
+
+**Not a fit:** open-ended agents where "good" is subjective, or a replacement for your APM.
+OpenGrade measures what you define; it does not invent a quality oracle. More in
+[`docs/00-project-overview.md`](docs/00-project-overview.md).
+
+**Compared with other tools:** tracing platforms (Langfuse, Arize Phoenix…) and metric libraries
+(Ragas, DeepEval, promptfoo…) cover parts of this loop. OpenGrade's focus is the step in between:
+a statistically sound *"is this PR worse than main?"* gate, on a test set grown from your own
+traces, self-hosted in one process. It speaks OpenTelemetry / OpenInference, so it can sit next
+to the tools you already use.
+
+## Deploy
+
+| Mode | Command | For |
+|---|---|---|
+| Local | `opengrade ui` | trying it, single developer, CI with an embedded store |
+| Postgres | `opengrade ui --backend-store-uri 'postgresql+asyncpg://user:pass@host/db'` | a shared team server |
+| Docker Compose | `cp backend/.env.example backend/.env && docker compose up --build` | API + UI + Postgres in containers |
+
+- **Security.** Without `OPENGRADE_API_KEY` the server is open: keep it on localhost or a private
+  network. To expose it, set `OPENGRADE_API_KEY` (bootstrap admin key), serve it over HTTPS and
+  create one key per app (`ingest`), person (`read`) or CI job (`admin`) in **Settings → API keys**
+  or with `opengrade keys create`. Span inputs/outputs are stored by default; set
+  `CONTENT_CAPTURE_ENABLED=false` to keep only structure, timings and scores. See
+  [security & privacy](docs/10-security-privacy.md).
+- **LLM judges** need a model: `LLM_MODEL=ollama/gemma4:e2b` + `LLM_API_BASE=http://localhost:11434`
+  for a local one, or a cloud model + `LLM_API_KEY`. Without one, tracing and deterministic metrics
+  still work. All settings: [`backend/.env.example`](backend/.env.example).
+- **Operations** (single API replica, `/health` and `/ready`, reverse proxy, backpressure, SQLite
+  backups): [`backend/README.md`](backend/README.md).
+
+## Documentation
+
+| | |
+|---|---|
+| [Getting started](docs/getting-started.md) | 15 minutes from `pip install` to a scored experiment |
+| [SDK reference](sdk/README.md) | tracing, experiments, metrics, production API |
+| [CLI and CI](docs/08-cli-ci.md) | `opengrade evaluate` / `check`, policy reference, GitHub Actions |
+| [Evaluation engine](docs/03-evaluation-engine.md) | metrics, judges, scoring, statistics |
+| [Custom evaluators](docs/16-custom-evaluators.md) | add a metric to the server |
+| [All docs](docs/README.md) | architecture, API, data model, glossary |
+| [Changelog](CHANGELOG.md) | what changed in each release |
+
+## Examples
+
+| Example | Shows | Needs |
+|---|---|---|
+| [`sdk_tour`](examples/sdk_tour/README.md) | tracing, RAG verification, model comparison, production metrics and alerts | nothing (offline) |
+| [`ci_regression_gate`](examples/ci_regression_gate/README.md) | PR vs `main` gate, baseline promotion | nothing (offline) |
+| [`non_inferiority_gate`](examples/non_inferiority_gate/README.md) | requiring a PR to be *shown* not worse | nothing (offline) |
+| [`llm_regression_gate`](examples/llm_regression_gate/README.md) | the same gate with a real LLM and an LLM judge | Ollama or an API key |
+| [`hr_it_assistant`](examples/hr_it_assistant/README.md) | end-to-end RAG demo comparing two local models | Docker Compose + Ollama |
+| [`sdk_hello`](examples/sdk_hello/README.md) | the smallest instrumented app | Ollama |
+
+## Development
+
+The repository holds the SDK (`sdk/`, package `opengrade-ai`), the API server (`backend/`,
+package `opengrade-ai-server`) and the Next.js UI (`frontend/`). Python ≥ 3.12, Node.js ≥ 22.
+
+```bash
+python scripts/package_ui.py                          # build the UI into the server package
+cd backend && uv sync --all-extras && uv run opengrade ui
+cd sdk && uv sync && uv run pytest                    # SDK tests
+cd frontend && npm ci && npm run dev                  # UI dev server on :3000, proxies /api
+```
+
+`scripts/smoke_install.py` checks a clean `pip install` of the built wheels (run on Linux, macOS
+and Windows by the *Install smoke* workflow, and against PyPI after each release). Releases are
+published from a `vX.Y.Z` tag: see [publishing](docs/08-cli-ci.md#publishing-to-pypi).
+
+## License
+
+[Apache-2.0](LICENSE)

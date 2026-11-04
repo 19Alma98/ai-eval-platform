@@ -171,3 +171,12 @@ jobs:
         with:
           packages-dir: dist/
           skip-existing: false
+
+  # Install the release just published from PyPI on Linux / macOS / Windows and run the
+  # clean-install smoke test (scripts/smoke_install.py).
+  smoke-pypi:
+    needs: [build, publish]
+    uses: ./.github/workflows/install-smoke.yml
+    with:
+      source: pypi
+      version: ${{ needs.build.outputs.version }}
