@@ -1,15 +1,7 @@
-# Shared config for `opengrade evaluate` and/or `opengrade check`.
-# Reserved top-level keys (meta + evaluate) are stripped before release-check.
-
-# Omit api_base_url (or set null) so `opengrade evaluate` starts an embedded API+SQLite.
-# api_base_url: https://opengrade.internal
-
+# Shared config for `opengrade evaluate` and/or `opengrade check` examples.
 project: demo
 
 evaluate:
-  # Preferred: clone dataset + metrics_set from an exam created in the UI / a prior run.
-  # from_experiment: "0411fb26-58af-4d71-8cd1-9feae99fea84"
-  # XOR bootstrap (embedded / first exam):
   task: my_app.rag:answer          # XOR script: scripts/ci_rag_eval.py
   dataset: tests/rag_gold.csv
   metrics: [hit_at_k, groundedness, correctness, latency]

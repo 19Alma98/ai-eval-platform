@@ -16,4 +16,4 @@ hit_at_k:
 must_contain:
   min: 0.8
 
-regression: {}   # default bootstrap check only: fails on a proven drop
+regression: {}
