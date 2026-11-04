@@ -11,6 +11,24 @@ breaking changes; they are listed under **Changed** with a migration note.
 
 ### Added
 
+- `opengrade --version` (`-V`) prints the installed `opengrade-ai` and `opengrade-ai-server`
+  versions; it works with the SDK alone too.
+- `ExperimentResult.summary()` explains metrics that were skipped on some test cases (for example
+  `must_contain` without a `must_contain` list on the item) instead of showing a bare `-`.
+
+### Changed
+
+- `opengrade ui` startup banner says "OpenGrade UI" (was "AI Eval UI").
+- PyPI "Documentation" link points to the docs site.
+
+### Removed
+
+- Docs: the completed MVP planning pages (MVP user stories, definition of done).
+
+## [0.1.1] - 2026-11-04
+
+### Added
+
 **Evaluation and experiments (SDK)**
 
 - `opengrade.sweep(...)`: one experiment per configuration of a grid (models, prompts, chunk
@@ -117,5 +135,6 @@ trace ingest, datasets (test sets), metrics packs with deterministic metrics and
 (LiteLLM), experiments with baseline compare, `opengrade ui` (SQLite + packaged UI),
 `opengrade check` quality gate with exit codes for CI, Docker Compose stack with Postgres.
 
-[Unreleased]: https://github.com/19Alma98/ai-eval-platform/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/19Alma98/ai-eval-platform/compare/v0.1.1...HEAD
+[0.1.1]: https://github.com/19Alma98/ai-eval-platform/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/19Alma98/ai-eval-platform/releases/tag/v0.1.0

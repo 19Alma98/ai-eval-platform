@@ -27,7 +27,7 @@ For people adopting OpenGrade in their app and CI.
 8. [Examples](examples.md) — runnable demos, from a first trace to a PR regression gate
 9. [API reference](reference/index.md) — generated from the SDK docstrings
 
-Root [`README.md`](../README.md): requirements, Docker Compose deployment, contributing.
+Root [`README.md`](../README.md): requirements, Docker Compose deployment, development setup.
 
 ## Design notes
 
@@ -36,7 +36,6 @@ Internal specifications and decisions, for contributors.
 - [Project overview](00-project-overview.md), [architecture](01-architecture.md), [domain model](02-domain-model.md)
 - [Tracing and OpenTelemetry](04-tracing-and-otel.md), [REST API](05-api.md), [database](06-database.md), [frontend](07-frontend.md)
 - [Testing strategy](09-testing.md), [roadmap](11-roadmap.md)
-- [MVP user stories](12-mvp-user-stories.md), [definition of done](15-definition-of-done.md)
 - Architecture decisions: [ADR-001](13-adr-001.md) (OpenTelemetry/OpenInference), [ADR-002](14-adr-002.md) (PostgreSQL first)
 
 ## Naming

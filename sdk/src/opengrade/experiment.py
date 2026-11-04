@@ -412,6 +412,7 @@ class ExperimentResult:
                 lines.append("  " + "  ".join(c.ljust(w) for c, w in zip(row, widths, strict=True)))
         else:
             lines.append("  (no metrics scored)")
+        lines.extend(self._skipped_lines())
         lines.extend(self._group_lines())
         lines.extend(self._experiment_metric_lines())
         lines.append(f"  view: {self.url}")
@@ -419,11 +420,37 @@ class ExperimentResult:
             lines.append(f"  error: {run.trace_url or run.url or run.item.id}")
         return "\n".join(line.rstrip() for line in lines)
 
+    def _skipped_lines(self) -> list[str]:
+        """Explain metrics that did not apply to some items (a ``-`` mean is otherwise opaque)."""
+        if self.server_summary is None:
+            return []
+        lines: list[str] = []
+        for ev in self.server_summary.evaluators:
+            skipped = ev.n_skipped or 0
+            if not skipped:
+                continue
+            name = ev.evaluator_name or ev.evaluator_id or "?"
+            total = ev.n_items if ev.n_items is not None else skipped
+            hint = _SKIP_HINTS.get(name, "the test case lacks the data this metric needs")
+            lines.append(f"  note: {name} skipped on {skipped}/{total} items: {hint}")
+        return lines
+
     def __str__(self) -> str:
         return self.summary()
 
 
 _MAX_ERROR_LINKS = 5
+
+# Why a metric is SKIPPED on an item, for the summary note. Unknown metrics get a generic hint;
+# the per-item explanation is always in the UI.
+_SKIP_HINTS: dict[str, str] = {
+    "must_contain": 'add `"must_contain": ["phrase", ...]` to the test case',
+    "exact_match": "add `expected_output` to the test case",
+    "contains": "add `expected_output` to the test case",
+    "hit_at_k": "add `expected_doc_ids` to the test case",
+    "recall_at_k": "add `expected_doc_ids` to the test case",
+    "mrr": "add `expected_doc_ids` to the test case",
+}
 
 
 def announce(result: ExperimentResult) -> None:

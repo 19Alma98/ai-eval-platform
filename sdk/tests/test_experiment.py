@@ -1104,3 +1104,26 @@ def test_evaluate_group_by_reports_groups(server: FakeServer) -> None:
     text = result.summary()
     assert "by category:" in text
     assert "billing (n=2)" in text
+
+
+def test_summary_explains_skipped_metrics() -> None:
+    from types import SimpleNamespace
+
+    from opengrade.experiment import ExperimentResult
+    from opengrade.models import EvaluatorSummaryResponse, ExperimentSummaryResponse
+
+    summary = ExperimentSummaryResponse(
+        experiment_id="exp-1",
+        evaluators=[
+            EvaluatorSummaryResponse(evaluator_name="must_contain", n_items=2, n_skipped=2),
+            EvaluatorSummaryResponse(evaluator_name="hit_at_k", n_items=2, n_skipped=0),
+            EvaluatorSummaryResponse(evaluator_name="my_metric", n_items=2, n_skipped=1),
+        ],
+    )
+    lines = ExperimentResult._skipped_lines(SimpleNamespace(server_summary=summary))  # type: ignore[arg-type]
+
+    assert lines == [
+        '  note: must_contain skipped on 2/2 items: add `"must_contain": ["phrase", ...]` '
+        "to the test case",
+        "  note: my_metric skipped on 1/2 items: the test case lacks the data this metric needs",
+    ]

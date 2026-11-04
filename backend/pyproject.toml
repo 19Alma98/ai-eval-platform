@@ -23,7 +23,7 @@ classifiers = [
 Homepage = "https://github.com/19Alma98/ai-eval-platform"
 Repository = "https://github.com/19Alma98/ai-eval-platform"
 Issues = "https://github.com/19Alma98/ai-eval-platform/issues"
-Documentation = "https://github.com/19Alma98/ai-eval-platform#readme"
+Documentation = "https://opengrade-docs.vercel.app/"
 
 [dependency-groups]
 dev = [
