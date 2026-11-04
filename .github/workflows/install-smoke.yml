@@ -15,6 +15,13 @@ on:
       - ".github/workflows/install-smoke.yml"
   push:
     branches: [main]
+    paths:
+      - "backend/**"
+      - "sdk/**"
+      - "frontend/**"
+      - "scripts/smoke_install.py"
+      - "scripts/package*"
+      - ".github/workflows/install-smoke.yml"
   workflow_dispatch:
     inputs:
       source:
@@ -91,13 +98,12 @@ jobs:
     name: smoke (${{ matrix.installer }}, ${{ matrix.os }}, py${{ matrix.python }})
     strategy:
       fail-fast: false
-      matrix:
-        os: [ubuntu-latest, macos-latest, windows-latest]
-        python: ["3.12", "3.13"]
-        installer: [uv, pip]
-        exclude: # pip on the oldest supported Python only
-          - installer: pip
-            python: "3.13"
+      matrix: >-
+        ${{ fromJSON(github.event_name == 'pull_request'
+          && '{"os": ["ubuntu-latest", "macos-latest", "windows-latest"], "python": ["3.12"], "installer": ["uv"],
+               "include": [{"os": "ubuntu-latest", "python": "3.13", "installer": "uv"}]}'
+          || '{"os": ["ubuntu-latest", "macos-latest", "windows-latest"], "python": ["3.12", "3.13"], "installer": ["uv", "pip"],
+               "exclude": [{"installer": "pip", "python": "3.13"}]}') }}
     runs-on: ${{ matrix.os }}
     timeout-minutes: 25
     defaults:

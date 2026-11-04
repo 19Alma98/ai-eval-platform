@@ -2,6 +2,7 @@
 
 Self-hosted AI evaluation & observability — traces, datasets, experiments, CI gates.
 
+[![Documentation](https://img.shields.io/badge/docs-latest-blue)](https://opengrade-docs.vercel.app/)
 [![CI](https://github.com/19Alma98/ai-eval-platform/actions/workflows/ci.yml/badge.svg)](https://github.com/19Alma98/ai-eval-platform/actions/workflows/ci.yml)
 [![PyPI](https://img.shields.io/pypi/v/opengrade-ai)](https://pypi.org/project/opengrade-ai/)
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue)](LICENSE)
@@ -127,10 +128,9 @@ opengrade.init(live=True, live_sample_rate=0.1, version=GIT_SHA, environment="pr
 
 ## Documentation
 
-<!-- TODO: link the published docs site here once the Vercel URL is final. -->
-
 | | |
 |---|---|
+| [Documentation](https://opengrade-docs.vercel.app/) | searchable MkDocs site |
 | [Getting started](docs/getting-started.md) | 15 minutes from `uv add` to a scored experiment |
 | [How OpenGrade works](docs/workflow.md) | the end-to-end workflow and the concepts behind it |
 | [Python SDK](sdk/README.md) | tracing, experiments, metrics, production API |
