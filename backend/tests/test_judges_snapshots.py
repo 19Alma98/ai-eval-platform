@@ -3,8 +3,13 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import pytest
+
 from opengrade_server.evaluation.judges import prompts
+from opengrade_server.evaluation.judges.evaluators import JudgeDefaults, create_llm_judge
 from opengrade_server.evaluation.judges.snapshots import upsert_prompt_snapshot
+from opengrade_server.evaluation.protocol import EvaluationSample
+from tests.support.fake_llm import ScriptedJudgeLlm
 
 
 def test_upsert_prompt_snapshot_writes_bundle(tmp_path: Path) -> None:
@@ -43,3 +48,30 @@ def test_upsert_failure_does_not_raise(tmp_path: Path, monkeypatch) -> None:
         boom,
     )
     upsert_prompt_snapshot("groundedness", "claims", path=path)  # must not raise
+
+
+@pytest.mark.asyncio
+async def test_snapshot_written_on_evaluate_not_construct(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    path = tmp_path / "snaps.json"
+    monkeypatch.setenv("OPENGRADE_JUDGE_PROMPT_SNAPSHOTS", str(path))
+    judge = create_llm_judge(
+        "groundedness",
+        {},
+        ScriptedJudgeLlm(),
+        defaults=JudgeDefaults(model="test-model"),
+    )
+    assert not path.exists()
+    await judge.evaluate(
+        EvaluationSample(
+            input="q",
+            expected_output=None,
+            actual_output=None,
+            context=None,
+        )
+    )
+    assert path.is_file()
+    assert prompts.content_hash(prompts.bundle_for("groundedness", "claims")) in json.loads(
+        path.read_text(encoding="utf-8")
+    )

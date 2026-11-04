@@ -1,11 +1,5 @@
 """RAG pipeline with a real LLM, used by the LLM regression-gate example.
 
-Retrieval is a deterministic keyword search over a small knowledge base; generation calls
-any OpenAI-compatible chat API (Ollama by default, OpenAI / vLLM / LiteLLM proxy in CI).
-Because the generator samples, two runs of the same code do not give the same answers:
-the gate in ``opengrade.yaml`` is set up for that noise (``repeats``, bootstrap,
-judge pinned).
-
 Environment:
 
 - ``RAG_LLM_BASE_URL`` (default ``http://localhost:11434/v1``, Ollama)
@@ -22,9 +16,8 @@ import os
 import re
 from typing import Any
 
-from openai import OpenAI
-
 import opengrade
+from openai import OpenAI
 
 KB: dict[str, str] = {
     "pto": "Full-time employees receive 20 days of PTO per calendar year.",
@@ -42,7 +35,7 @@ KB: dict[str, str] = {
 }
 
 _STOPWORDS = frozenset(
-    "a an the is are do does i my to of for in on how what when where which who should".split()
+    ["a", "an", "the", "is", "are", "do", "does", "i", "my", "to", "of", "for", "in", "on", "how", "what", "when", "where", "which", "who", "should"]
 )
 
 SYSTEM_PROMPT = (
@@ -82,7 +75,7 @@ def retrieve(question: str, top_k: int = 3) -> list[dict[str, Any]]:
 
 def generate(question: str, docs: list[dict[str, Any]]) -> str:
     if os.getenv("RAG_PROMPT", "v1") == "no_context":
-        user = question  # bug: the retrieved context is dropped from the prompt
+        user = question
     else:
         context = "\n".join(f"[{d['id']}] {d['text']}" for d in docs) or "(no documents)"
         user = f"Context:\n{context}\n\nQuestion: {question}"
@@ -101,5 +94,5 @@ def task(item: Any) -> str:
     """Entry point for ``opengrade evaluate`` (``evaluate.task: rag_app:task``)."""
     question = str(item.input)
     docs = retrieve(question)
-    opengrade.set_retrieval_documents(docs)  # feeds hit_at_k and the groundedness judge
+    opengrade.set_retrieval_documents(docs)
     return generate(question, docs)

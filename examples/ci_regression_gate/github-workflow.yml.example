@@ -1,17 +1,11 @@
 # Copy to .github/workflows/rag-regression-gate.yml in your app repo and adapt.
 #
 # pull_request : evaluate the PR and compare with alias:main (last run that passed on main).
-#                Fails (exit 1) when a metric regresses vs the baseline, drops under a floor,
-#                or when there is no baseline to compare with (--require-baseline).
-#                Posts the gate report as a sticky PR comment.
 # push to main : same evaluation; when the gate passes, promote the run to alias:main.
 #
 # The baseline must survive between runs. Two options:
 #   A) Shared OpenGrade server (recommended): set the OPENGRADE_BASE_URL repository variable.
-#   B) No server: keep a SQLite store in the GitHub Actions cache. main saves it after
-#      every run; PRs restore main's copy (PRs can read caches of their base branch).
-#      Caches unused for 7 days are evicted: PRs then fail on baseline.required until the
-#      next push to main re-bootstraps the alias.
+#   B) No server: keep a SQLite store in the GitHub Actions cache.
 #
 # A PR that intentionally changes the exam (dataset / metrics) cannot be compared with
 # main: add the label `opengrade:exam-change` to run it without --require-baseline.

@@ -53,6 +53,29 @@ that 20 questions only detect drops of ~0.28, which is why `max_delta` stays in 
 Each step also writes `reports/stepN.md` (what the job summary / PR comment shows)
 and `reports/stepN.xml` (JUnit, one test case per check).
 
+## What gets traced
+
+This example is a **CI gate**, not a production-tracing tour. It is not a full `retrieve → generate` span tree. For that pattern see [`sdk_tour/nimbus_apps/rag.py`](../sdk_tour/nimbus_apps/rag.py). The real-LLM variant is [`llm_regression_gate`](../llm_regression_gate/README.md).
+
+For each gold-set item, `opengrade.evaluate` opens **one root `CHAIN` span**. What lands
+on that tree:
+
+| Source | What you see | Role |
+|--------|--------------|------|
+| `evaluate` root span | `input.value` (question), `output.value` (answer) | One request = one span |
+| `opengrade.set_retrieval_documents(docs)` in [`rag_app.py`](rag_app.py) | Docs attached to the **current** (root) span | Feeds `hit_at_k` (and judges, if you add them) — **not** a separate `RETRIEVER` span |
+
+There is **no LLM child span**: the answer is extractive with no OpenAI/Ollama call.
+
+Typical tree:
+
+```text
+opengrade.eval rag-ci              ← question + answer + retrieved docs
+```
+
+`set_retrieval_documents` feeds metrics even without OTLP export. To browse traces in Production → Traces, set `evaluate.init: true` (as in
+[`llm_regression_gate/opengrade.yaml`](../llm_regression_gate/opengrade.yaml)) and point `--base-url` at a shared OpenGrade server (or use the embedded API behind `ci.db`).
+
 ## How the policy works ([`opengrade.yaml`](opengrade.yaml))
 
 | Block | Question it answers |

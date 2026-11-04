@@ -3,7 +3,7 @@
 project: non-inferiority-gate
 
 evaluate:
-  task: rag_app:task
+  script: ../ci_regression_gate/rag_app.py
   dataset: ../ci_regression_gate/gold.jsonl
   metrics: [hit_at_k, must_contain, latency]
   name: rag-ci

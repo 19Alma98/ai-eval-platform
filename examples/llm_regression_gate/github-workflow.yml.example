@@ -1,14 +1,5 @@
 # Copy to .github/workflows/llm-regression-gate.yml in your app repo and adapt.
 #
-# Same flow as examples/ci_regression_gate/github-workflow.yml.example (PR compared with
-# alias:main, push to main promotes), plus what a real LLM pipeline needs:
-#
-#   - app model and judge keys from secrets (never in opengrade.yaml)
-#   - a pinned judge: in opengrade.yaml set evaluate.judge.model to a cloud model,
-#     e.g. openai/gpt-4o-mini, drop api_base and set api_key_env: LLM_API_KEY
-#   - a job timeout: repeats x questions x (app call + judge calls) can take minutes
-#   - one gate run at a time per branch (judge calls cost money)
-#
 # Exit codes: 0 pass | 1 gate failed | 2 config error | 3 infra error (LLM / judge down).
 # Exit 3 is not a quality verdict: re-run the job instead of merging.
 

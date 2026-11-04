@@ -1,8 +1,6 @@
 """Toy RAG pipeline used by the CI regression-gate example.
 
-Deterministic on purpose (keyword retriever + extractive "generator"), so the gate can be
-demoed without an LLM or API key. Swap ``answer()`` for your real pipeline: the only
-contract with OpenGrade is ``task(item) -> output`` plus ``opengrade.set_retrieval_documents``.
+Deterministic on purpose (keyword retriever + extractive "generator"). See `llm_regression_gate` for a more realistic example.
 
 Two env knobs simulate code changes a PR could make:
 
@@ -36,7 +34,7 @@ KB: dict[str, str] = {
 }
 
 _STOPWORDS = frozenset(
-    "a an the is are do does i my to of for in on how what when where which who should".split()
+    ["a", "an", "the", "is", "are", "do", "does", "i", "my", "to", "of", "for", "in", "on", "how", "what", "when", "where", "which", "who", "should"]
 )
 
 

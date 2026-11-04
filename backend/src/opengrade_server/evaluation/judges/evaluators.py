@@ -193,9 +193,9 @@ class _LlmJudge:
         # Resolved model (entry override or server default): scores from different
         # judge models are not comparable.
         self.judge_model = self._config.options.model
-        upsert_prompt_snapshot(self.kind, self._config.method)
 
     async def evaluate(self, sample: EvaluationSample) -> EvaluationResult:
+        upsert_prompt_snapshot(self.kind, self._config.method)
         early = self._precheck(sample)
         if early is not None:
             return early
