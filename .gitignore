@@ -43,3 +43,5 @@ opengrade.db-wal
 
 .opengrade/
 .gstack/
+# MkDocs build output
+/site/

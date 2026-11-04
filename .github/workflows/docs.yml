@@ -1,0 +1,90 @@
+name: Docs
+
+# Builds the MkDocs site (strict: broken links and missing pages fail the job).
+# Pull requests: build only. Push to main: build and deploy to Vercel (production).
+#
+# One-time setup (repo Settings → Secrets and variables → Actions):
+#   VERCEL_TOKEN       — https://vercel.com/account/tokens
+#   VERCEL_ORG_ID      — "orgId" in .vercel/project.json after `vercel link`
+#   VERCEL_PROJECT_ID  — "projectId" in the same file
+# The site is uploaded already built (Vercel Build Output API), so the Vercel
+# project needs no framework or build command.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "docs/**"
+      - "sdk/README.md"
+      - "sdk/src/opengrade/**"
+      - "mkdocs.yml"
+      - "requirements-docs.txt"
+      - "scripts/docs/**"
+      - ".github/workflows/docs.yml"
+  pull_request:
+    paths:
+      - "docs/**"
+      - "sdk/README.md"
+      - "sdk/src/opengrade/**"
+      - "mkdocs.yml"
+      - "requirements-docs.txt"
+      - "scripts/docs/**"
+      - ".github/workflows/docs.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: docs-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          version: "0.8.4"
+
+      - name: Build site
+        env:
+          NO_MKDOCS_2_WARNING: "1"
+        run: uv run --no-project --python 3.12 --with-requirements requirements-docs.txt mkdocs build --strict
+
+      - name: Upload site
+        uses: actions/upload-artifact@v4
+        with:
+          name: site
+          path: site/
+          if-no-files-found: error
+
+  deploy:
+    needs: build
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    environment:
+      name: docs
+      url: ${{ steps.deploy.outputs.url }}
+    env:
+      VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+      VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+    steps:
+      - name: Download site
+        uses: actions/download-artifact@v4
+        with:
+          name: site
+          path: .vercel/output/static
+
+      - name: Write Build Output config
+        run: echo '{"version":3}' > .vercel/output/config.json
+
+      - name: Deploy to Vercel
+        id: deploy
+        run: |
+          set -euo pipefail
+          url=$(npx --yes vercel@64.7.0 deploy --prebuilt --prod --token="${{ secrets.VERCEL_TOKEN }}")
+          echo "url=$url" >> "$GITHUB_OUTPUT"

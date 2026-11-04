@@ -172,6 +172,10 @@ When creating an evaluator, use `"type": "llm_judge"` and `"config": {"kind": "c
 | `correctness` | Gold claims covered by the answer |
 | `hit_at_k` / `recall_at_k` / `mrr` | Deterministic retrieval metrics on `expected_doc_ids` |
 
+
+## Docs site
+The files in `docs/` plus `sdk/README.md` are built with MkDocs Material (config: [`mkdocs.yml`](mkdocs.yml)) and deployed by [`.github/workflows/docs.yml`](.github/workflows/docs.yml) on every push to `main`. Preview locally with `uv run --no-project --with-requirements requirements-docs.txt mkdocs serve`. TODO: add site url
+
 ## License
 
 [Apache-2.0](LICENSE)
