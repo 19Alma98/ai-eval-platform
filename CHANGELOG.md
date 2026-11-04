@@ -1,0 +1,121 @@
+# Changelog
+
+All notable changes to OpenGrade are documented here. The two packages, `opengrade-ai` (SDK + CLI)
+and `opengrade-ai-server` (API + UI), are released together with the same version.
+
+The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
+[Semantic Versioning](https://semver.org/). While the version is `0.x`, minor releases may contain
+breaking changes; they are listed under **Changed** with a migration note.
+
+## [Unreleased]
+
+### Added
+
+**Evaluation and experiments (SDK)**
+
+- `opengrade.sweep(...)`: one experiment per configuration of a grid (models, prompts, chunk
+  sizes…), ranked in a leaderboard.
+- `opengrade.evaluate_retrieval(...)`: score only the retriever (hit@k, recall@k, MRR, optional
+  context judges) without generating an answer.
+- `evaluate(repeats=N)`: run each item N times, average the scores per item and report flaky items.
+- `evaluate(group_by="field")`: means and baseline deltas per metadata value, also in the summary,
+  compare and release gate.
+- Experiment aliases (`alias:main`): a passing gate can promote the run as the new baseline
+  (`opengrade evaluate --promote main`, `client.experiments.set_alias`). The UI shows and manages
+  aliases.
+- Each experiment records the git revision (commit, branch, dirty state) of the code under test,
+  shown in compare.
+- Custom LLM judges, plus built-in **citation accuracy** and **correct refusal** judges for RAG.
+- `rag_qa` datasets accept unanswerable items (expected refusal).
+
+**Tracing (SDK)**
+
+- `with opengrade.span(name, kind=...)` (and `async with`) to trace a block inside a function.
+- `opengrade.set_user`, `set_session`, `set_tags`, `set_metadata` and `using_attributes(...)`; the
+  UI and API filter traces by tag, user, session and metadata.
+
+**CI quality gate (`opengrade evaluate` / `opengrade check`)**
+
+- `--require-baseline`: fail instead of silently skipping the comparison when there is no baseline.
+- Relative bounds vs the baseline for latency, cost and run-level metrics (`max_increase_pct`, …).
+- Item-level checks: `regression.max_new_failures` (test cases that pass on the baseline must not
+  fail) and must-pass **critical** test cases.
+- Statistical power warning (`max_detectable_delta`) and a **non-inferiority** check
+  (`regression.non_inferiority_margin`).
+- The CLI lists the test cases that got worse than the baseline.
+- Markdown (`--report-md`, for job summaries / PR comments) and JUnit (`--junit`) reports.
+- The UI release page and the CLI use the same comparison logic.
+- Runnable examples: `examples/ci_regression_gate`, `examples/llm_regression_gate`,
+  `examples/non_inferiority_gate`.
+
+**Production monitoring (server + UI)**
+
+- Server-side alert rules with webhook notifications, including drift and anomaly conditions.
+- Filter and compare production traffic by release version and environment.
+- Retention of production data per project, with a server-wide default.
+- Configurable experiment charts.
+
+**Security**
+
+- API key authentication: set `OPENGRADE_API_KEY` on the server (bootstrap admin key), then create
+  per-client keys with `admin` / `read` / `ingest` scopes in **Settings → API keys** or with
+  `opengrade keys create`. The SDK sends `OPENGRADE_API_KEY` as `Authorization: Bearer`.
+- When content capture is off, flattened LLM content and document text are redacted too.
+
+**Server operations**
+
+- Alembic migrations ship inside the `opengrade-ai-server` wheel and run on startup (also for
+  `opengrade ui --backend-store-uri postgresql+asyncpg://…`), under a Postgres advisory lock.
+- `/ready` readiness probe (database check), `X-Request-ID` on every request.
+- OTLP ingest backpressure: `429` / `503` with `Retry-After` above the configured rate, in-flight or
+  pending-score limits.
+- SQLite in WAL mode with `busy_timeout`; graceful shutdown drains running scorings.
+- `opengrade ui` fails fast when the port is already taken and prints the judge / content-capture
+  settings at startup.
+
+**Docs and examples**
+
+- [Getting started in 15 minutes](docs/getting-started.md) with seed scripts, screenshots and a
+  README walkthrough GIF.
+- `examples/sdk_tour`: a guided, offline `uv` project covering tracing, RAG verification, model
+  comparison, custom metrics and alerts.
+- `scripts/smoke_install.py` and the *Install smoke* workflow: clean-install test of the built
+  wheels (or of a PyPI release) on Linux, macOS and Windows.
+
+### Changed
+
+- **Content capture is on by default** (`CONTENT_CAPTURE_ENABLED=true`): span inputs/outputs are
+  stored. Set it to `false` to keep only structure, timings and metrics.
+- `AppConfigClient(...)` is deprecated; use `opengrade.get_client().app_configs`.
+- Frontend redesign: verdict-first overview, a single Production section, report-card visuals,
+  mobile layout and accessibility fixes, side panels instead of modals.
+- Package metadata: license (Apache-2.0), authors, project URLs and classifiers; `py.typed` in the
+  SDK wheel; development tools moved to `[dependency-groups]`.
+
+### Fixed
+
+- The SDK never breaks the host application: `init()` attaches to an existing OpenTelemetry
+  `TracerProvider` instead of replacing it; `@trace` supports sync, async, generator and async
+  generator functions; OTLP batches are gzip-compressed and split on failure; transport errors are
+  wrapped in `OpengradeError` / `OpengradeConnectionError`; one HTTP client per event loop.
+- `init(project_id=…/project_slug=…)` is honored by `resolve_project_id`.
+- Inline datasets interrupted half-way are resumed instead of reused incomplete.
+- `finish()` no longer fails after the task work on large outputs or NaN/inf scores.
+- Atomic scoring of experiments and live interactions; JSON with NUL bytes is rejected.
+- SQLite: duplicate metrics set (409) and silenced server logs.
+- Alembic root resolution for editable and Docker layouts.
+
+### Removed
+
+- `examples/otlp_hello` (use `examples/sdk_hello` or the SDK tour).
+- Orphan smoke scripts.
+
+## [0.1.0] - 2026-10-15
+
+First public release on PyPI of `opengrade-ai` and `opengrade-ai-server`: OTLP / OpenInference
+trace ingest, datasets (test sets), metrics packs with deterministic metrics and LLM judges
+(LiteLLM), experiments with baseline compare, `opengrade ui` (SQLite + packaged UI),
+`opengrade check` quality gate with exit codes for CI, Docker Compose stack with Postgres.
+
+[Unreleased]: https://github.com/19Alma98/ai-eval-platform/compare/v0.1.0...HEAD
+[0.1.0]: https://github.com/19Alma98/ai-eval-platform/releases/tag/v0.1.0
