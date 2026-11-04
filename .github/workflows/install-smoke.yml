@@ -15,7 +15,6 @@ on:
       - ".github/workflows/install-smoke.yml"
   push:
     branches: [main]
-    # Same filter as pull_request: a docs-only merge does not rebuild and reinstall the wheels.
     paths:
       - "backend/**"
       - "sdk/**"
@@ -99,9 +98,6 @@ jobs:
     name: smoke (${{ matrix.installer }}, ${{ matrix.os }}, py${{ matrix.python }})
     strategy:
       fail-fast: false
-      # Pull requests: uv on every OS with Python 3.12, plus 3.13 on Ubuntu (4 jobs).
-      # Push to main, releases (workflow_call) and manual runs: uv on every OS and Python,
-      # pip on every OS with the oldest supported Python (9 jobs).
       matrix: >-
         ${{ fromJSON(github.event_name == 'pull_request'
           && '{"os": ["ubuntu-latest", "macos-latest", "windows-latest"], "python": ["3.12"], "installer": ["uv"],
