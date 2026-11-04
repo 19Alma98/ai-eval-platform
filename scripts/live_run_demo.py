@@ -17,7 +17,7 @@ Usage (from repo root)::
     cd sdk && uv run python ../scripts/live_run_demo.py
 
     # or, with sdk/.venv activated:
-    #   python ../scripts/live_run_demo.py --project-slug acme-people-ops
+    #   python ../scripts/live_run_demo.py --project-slug nimbus-support
 """
 
 from __future__ import annotations
@@ -38,7 +38,7 @@ from opengrade import OpengradeAPIError, Client  # noqa: E402
 from opengrade._http import resolve_api_base_url  # noqa: E402
 from opengrade.models import ProjectResponse  # noqa: E402
 
-KNOWLEDGE_PATH = ROOT / "examples" / "hr_it_assistant" / "knowledge.json"
+KNOWLEDGE_PATH = ROOT / "examples" / "sdk_tour" / "data" / "knowledge_base.json"
 
 
 def ensure_project(client: Client, slug: str, name: str) -> ProjectResponse:
@@ -57,7 +57,7 @@ def load_docs() -> dict[str, dict[str, str]]:
         str(doc["id"]): {
             "id": str(doc["id"]),
             "title": str(doc.get("title") or doc["id"]),
-            "text": str(doc.get("body") or ""),
+            "text": str(doc.get("text") or ""),
         }
         for doc in data
     }
@@ -65,34 +65,34 @@ def load_docs() -> dict[str, dict[str, str]]:
 
 def sample_turns(docs: dict[str, dict[str, str]]) -> list[dict[str, Any]]:
     """Prod-like turns: grounded, hallucinated, empty retrieval."""
-    pto = docs["pto"]
-    vpn = docs["vpn"]
+    password = docs["password-reset"]
+    plans = docs["plans"]
     return [
         {
             "label": "grounded",
-            "question": "How many PTO days do full-time employees get per year?",
-            "answer": "Full-time employees receive 20 days of paid time off per calendar year.",
-            "documents": [pto],
+            "question": "How long is the password reset link valid?",
+            "answer": "The password reset link is valid for 1 hour.",
+            "documents": [password],
             "metadata": {"env": "prod-sim", "scenario": "grounded"},
         },
         {
             "label": "hallucination",
-            "question": "How many PTO days do full-time employees get per year?",
-            "answer": "Everyone gets unlimited PTO and can take sabbaticals every quarter.",
-            "documents": [pto],
+            "question": "How long is the password reset link valid?",
+            "answer": "Password reset links never expire and work from any device.",
+            "documents": [password],
             "metadata": {"env": "prod-sim", "scenario": "hallucination"},
         },
         {
-            "label": "grounded_vpn",
-            "question": "Which VPN client should I use for remote access?",
-            "answer": "Use the Acme GlobalProtect VPN with MFA on every login.",
-            "documents": [vpn],
+            "label": "grounded_plans",
+            "question": "How much does the Pro plan cost?",
+            "answer": "The Pro plan costs 8 dollars per user per month and includes 2 TB of storage.",
+            "documents": [plans],
             "metadata": {"env": "prod-sim", "scenario": "grounded"},
         },
         {
             "label": "empty_docs",
-            "question": "Where do I submit expense reports?",
-            "answer": "Submit them in Concur within 30 days.",
+            "question": "How do I enable two-factor authentication?",
+            "answer": "Open Settings, then Security, and scan the QR code with an authenticator app.",
             "documents": [],
             "metadata": {"env": "prod-sim", "scenario": "empty_retrieval"},
         },
@@ -207,8 +207,8 @@ def main() -> int:
         promoted = client.live_runs.promote(
             target["id"],
             dataset_id=dataset.id,
-            expected_output="Full-time employees get 20 PTO days per calendar year.",
-            expected_doc_ids=["pto"],
+            expected_output="The password reset link is valid for 1 hour.",
+            expected_doc_ids=["password-reset"],
         )
         print(f"\npromoted [{target['_label']}] → dataset {dataset.name} item {promoted.id[:8]}…")
 

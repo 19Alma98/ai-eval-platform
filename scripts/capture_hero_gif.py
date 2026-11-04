@@ -1,7 +1,8 @@
 """Record the README walkthrough and export docs/images/hero.gif.
 
-Needs a running UI seeded by ``scripts/portfolio_demo.py`` (baseline + candidate
-experiment) and ``scripts/live_run_demo.py`` (live answers) in the same project.
+Needs a running UI seeded by the SDK tour (``examples/sdk_tour`` scripts 02 + 03,
+baseline + candidate experiment) and ``scripts/live_run_demo.py`` (live answers)
+in the same project.
 
 Usage (UI on http://127.0.0.1:8000, ffmpeg on PATH)::
 
@@ -29,8 +30,8 @@ from playwright.async_api import Page, async_playwright
 ROOT = Path(__file__).resolve().parents[1]
 OUT_GIF = ROOT / "docs" / "images" / "hero.gif"
 UI = os.getenv("OPENGRADE_UI_URL", "http://127.0.0.1:8000").rstrip("/")
-PROJECT_SLUG = os.getenv("OPENGRADE_PROJECT_SLUG", "hr-it-assistant")
-QUESTION = os.getenv("OPENGRADE_HERO_QUESTION", "How many PTO days")
+PROJECT_SLUG = os.getenv("OPENGRADE_PROJECT_SLUG", "nimbus-support")
+QUESTION = os.getenv("OPENGRADE_HERO_QUESTION", "password reset")
 VIEWPORT = {"width": 1280, "height": 800}
 TARGET_WIDTH = 960
 FPS = 10
@@ -112,12 +113,17 @@ def resolve_demo_context() -> tuple[str, str]:
     assert isinstance(projects, list)
     project = next((p for p in projects if p.get("slug") == PROJECT_SLUG), None)
     if not project:
-        raise RuntimeError(f"No project {PROJECT_SLUG!r}. Run scripts/portfolio_demo.py first.")
+        raise RuntimeError(
+            f"No project {PROJECT_SLUG!r}. Run examples/sdk_tour scripts 02+03 first."
+        )
     experiments = _get_json(f"/api/v1/projects/{project['id']}/experiments")
     assert isinstance(experiments, list)
     candidate = next((e for e in experiments if e.get("baseline_experiment_id")), None)
     if not candidate:
-        raise RuntimeError("No experiment with a baseline. Run scripts/portfolio_demo.py first.")
+        raise RuntimeError(
+            "No experiment with a baseline. Run examples/sdk_tour/02_verify_rag.py "
+            "then 03_compare_architectures.py first."
+        )
     return project["id"], candidate["name"]
 
 

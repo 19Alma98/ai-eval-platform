@@ -210,5 +210,5 @@ If LLM metrics are unavailable, check `LLM_MODEL` / `LLM_API_BASE` / `LLM_API_KE
 - CI exam + gate (one command): `opengrade evaluate --config opengrade.yaml` — see [`docs/08-cli-ci.md`](08-cli-ci.md) and `examples/opengrade.yaml`
 - Gate-only against an existing experiment: `opengrade check --policy opengrade.yaml`
 - Live answers / promote to test set: `scripts/live_run_demo.py`
-- Full RAG portfolio (Compose + two models): [examples/hr_it_assistant/README.md](../examples/hr_it_assistant/README.md)
+- Full SDK tour (RAG, sweeps, App Config prompt A/B): [examples/sdk_tour/README.md](../examples/sdk_tour/README.md)
 - SDK reference: [sdk/README.md](../sdk/README.md)

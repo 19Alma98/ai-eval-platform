@@ -65,14 +65,23 @@ def retrieve(question: str, config: RagConfig = DEFAULT_CONFIG) -> list[dict[str
 
 
 @opengrade.trace(name="support_assistant")
-def answer_question(question: str, config: RagConfig = DEFAULT_CONFIG) -> str:
-    """Answer one customer question. One call = one trace in OpenGrade."""
-    opengrade.set_input(question)  # store the question, not the (question, config) tuple
-    # Searchable on the trace (Production -> Traces, filter "retriever:bm25", ...):
-    opengrade.set_metadata(**asdict(config))
+def answer_question(
+    question: str,
+    config: RagConfig = DEFAULT_CONFIG,
+    *,
+    system: str | None = None,
+) -> str:
+    """Answer one customer question. One call = one trace in OpenGrade.
+
+    ``system`` overrides ``PROMPTS[config.prompt]`` when an App Config (or an A/B
+    experiment) supplies the prompt under test.
+    """
+    opengrade.set_input(question)
+    system_prompt = system if system is not None else PROMPTS[config.prompt]
+    opengrade.set_metadata(**asdict(config), system_prompt_chars=len(system_prompt))
 
     docs = retrieve(question, config)
     with opengrade.span("generate", kind="CHAIN", input=question) as span:
-        answer = generate_answer(question, docs, model=config.model, system=PROMPTS[config.prompt])
+        answer = generate_answer(question, docs, model=config.model, system=system_prompt)
         span.set_output(answer)
     return answer

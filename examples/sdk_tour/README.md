@@ -1,9 +1,6 @@
 # OpenGrade SDK tour
 
-A small, runnable `uv` project that shows how an AI engineer uses the OpenGrade Python SDK
-to **trace, test, compare and monitor** LLM applications. Each script covers one use case,
-prints what it is doing step by step, and is commented so you can copy the patterns into
-your own code.
+A small, runnable `uv` project that shows how an AI engineer uses the OpenGrade Python SDK to **trace, test, compare, monitor and A/B prompts** of LLM applications. Each script covers one use case, prints what it is doing step by step, and is commented so you can copy the patterns into your own code.
 
 You play the AI engineer of **Nimbus**, a fictional cloud file-storage company with two AI
 applications:
@@ -13,12 +10,9 @@ applications:
 | Support assistant (RAG) | answers customer questions from 13 help-center articles: retrieve → generate | [`nimbus_apps/rag.py`](nimbus_apps/rag.py) |
 | Ticket classifier (not RAG) | routes support tickets to billing / technical / account / sales, after a PII guardrail | [`nimbus_apps/classifier.py`](nimbus_apps/classifier.py) |
 
-**Everything runs offline.** The default models `fake-small` and `fake-large` are
-deterministic stand-ins (no GPU, no API key), so the results below are reproducible. Swap
-in a real model (Ollama, OpenAI…) with one environment variable when you are ready, see
-[Real models and LLM judges](#real-models-and-llm-judges).
+**Everything runs offline.** The default models `fake-small` and `fake-large` are deterministic stand-ins (no GPU, no API key), so the results below are reproducible. Swap in a real model (Ollama, OpenAI…) with one environment variable when you are ready, see [Real models and LLM judges](#real-models-and-llm-judges).
 
-## The four use cases
+## The five use cases
 
 | # | Question you have | Script | SDK features | Where to look in the UI |
 |---|---|---|---|---|
@@ -26,22 +20,19 @@ in a real model (Ollama, OpenAI…) with one environment variable when you are r
 | 2 | *Does my RAG give the right answers?* | [`02_verify_rag.py`](02_verify_rag.py) | gold dataset, `evaluate_retrieval`, `evaluate`, built-in + custom metrics, baseline, quality gate | Datasets, Experiments |
 | 3 | *Which architecture / model is best?* | [`03_compare_architectures.py`](03_compare_architectures.py) | `sweep` (grid of configurations), leaderboard, baseline comparison | Experiments → Compare |
 | 4 | *How do I monitor it live with metrics made for my product?* | [`04_custom_metrics_and_monitoring.py`](04_custom_metrics_and_monitoring.py) | `@opengrade.metric`, `@trace(metrics=...)`, `log_score`, `log_feedback`, `LlmJudge`, alerts as code | Production → Health, Live, Alerts |
+| 5 | *Which system prompt is better (same model)?* | [`05_prompt_ab.py`](05_prompt_ab.py) | App Config versions, `app_config_id` on `start_experiment`, snapshot on the run, `experiments.compare` | Experiments → App config snapshot |
 
-Run them in this order: each one builds on the previous (you trace the app, then you test
-it, then you compare versions of it, then you watch it in production).
+Run them in this order: each one builds on the previous (you trace the app, then you test it, then you compare versions of it, then you watch it in production, then you A/B the prompt).
 
 ## Setup
 
-**1. Start the OpenGrade platform** (API + UI on http://localhost:8000) in another terminal,
-in any directory (it creates `./opengrade.db` there):
+**1. Start the OpenGrade platform** (API + UI on http://localhost:8000) in another terminal, in any directory (it creates `./opengrade.db` there):
 
 ```bash
 uvx --from 'opengrade-ai[ui]' opengrade ui
 ```
 
-or `docker compose up --build` at the root of this repository. To run the platform from the
-sources of this repository, see [getting started](../../docs/getting-started.md). No LLM
-judge is needed: everything the tour scores by default is deterministic.
+or `docker compose up --build` at the root of this repository. To run the platform from the sources of this repository, see [getting started](../../docs/getting-started.md). No LLM judge is needed: everything the tour scores by default is deterministic.
 
 **2. Install the tour** (from this directory):
 
@@ -53,8 +44,7 @@ uv sync
 `pyproject.toml` points `opengrade-ai` at the SDK in this repository (`[tool.uv.sources]`).
 In your own project you would simply run `uv add opengrade-ai`.
 
-**3. Optional settings:** `cp .env.example .env` and edit. The defaults work with a local
-platform on port 8000.
+**3. Optional settings:** `cp .env.example .env` and edit. The defaults work with a local platform on port 8000.
 
 **4. Run the scripts:**
 
@@ -63,6 +53,7 @@ uv run python 01_tracing.py
 uv run python 02_verify_rag.py
 uv run python 03_compare_architectures.py
 uv run python 04_custom_metrics_and_monitoring.py
+uv run python 05_prompt_ab.py
 ```
 
 Everything lands in the project **nimbus-support** (created on the first run).
@@ -75,6 +66,7 @@ sdk_tour/
 ├── 02_verify_rag.py                    use case 2: gold set, metrics, quality gate
 ├── 03_compare_architectures.py         use case 3: sweeps and leaderboards
 ├── 04_custom_metrics_and_monitoring.py use case 4: production metrics, feedback, alerts
+├── 05_prompt_ab.py                     use case 5: App Config prompt A/B
 ├── nimbus_apps/                        "your" code: the apps under test
 │   ├── rag.py           RAG pipeline + its tracing (read this one first)
 │   ├── retrieval.py     knowledge base, keyword and BM25 retrievers (no OpenGrade code)
@@ -371,7 +363,9 @@ reference?). Configure a judge model on the platform (`LLM_MODEL`, `LLM_API_KEY`
    length, refusals, a business rule) with `@opengrade.metric`.
 4. **Run `evaluate`** on every change, keep a baseline alias, and gate on it in CI.
 5. **Use `sweep`** whenever you are choosing between options (model, prompt, top_k, chunking).
-6. **In production:** `init(live=True, environment="prod", version=...)`, the same metrics on
+6. **Version prompts as App Configs** and bind experiments with `app_config_id` (script 5)
+   so compares keep a frozen snapshot of what ran.
+7. **In production:** `init(live=True, environment="prod", version=...)`, the same metrics on
    `@trace(metrics=...)`, `log_feedback` from your UI, and alerts on what you cannot afford
    to miss.
 
@@ -386,12 +380,28 @@ reference?). Configure a judge model on the platform (`LLM_MODEL`, `LLM_API_KEY`
 | Script 2 exits with code 1 | The quality gate failed: that is the point of the gate. Read step 4 of its output |
 | Alerts stay `no_data` | Rules look at the last 60 minutes of `prod` traffic with at least 5 samples: run script 4 again |
 
+## 5. Prompt A/B through versioned App Configs
+
+**Question:** same model and retriever — is the new system prompt better?
+
+Script [`05_prompt_ab.py`](05_prompt_ab.py) creates two versions of the App Config family
+`nimbus-support-rag` (identical `model` / `retrieval`, different `prompt.system`), runs
+one experiment per version with `app_config_id`, and compares them. The task reads
+`prompt.system` from the experiment snapshot (`exp.params`), so the prompt under test is
+the versioned one — not an ad-hoc string in the script.
+
+```bash
+uv run python 05_prompt_ab.py
+TOUR_MODEL=gemma4:e2b uv run python 05_prompt_ab.py   # real model: quality delta shows up
+```
+
+**In the UI:** open each run’s **App config snapshot** to see the frozen prompts side by
+side with the scores.
+
 ## Next steps
 
 - [`examples/ci_regression_gate`](../ci_regression_gate/README.md): the gate of script 2 in
   GitHub Actions, with statistical regression checks.
 - [`examples/llm_regression_gate`](../llm_regression_gate/README.md): the same with a real
   model and an LLM judge.
-- [`examples/hr_it_assistant`](../hr_it_assistant/README.md): a larger end-to-end demo with
-  Ollama and prompt A/B tests through versioned app configs.
 - [SDK reference](../../sdk/README.md) for every function used here.

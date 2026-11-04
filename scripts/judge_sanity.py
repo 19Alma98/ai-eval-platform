@@ -1,4 +1,4 @@
-"""Offline judge sanity suite on the HR gold set with synthetic known-good/bad answers.
+"""Offline judge sanity suite on a fixed gold set with synthetic known-good/bad answers.
 
 Not part of default PR CI. Run manually (or via the optional workflow example) against a
 real judge model.
@@ -7,7 +7,7 @@ Usage (from backend/):
     LLM_MODEL=ollama/gemma4:e2b LLM_API_BASE=http://localhost:11434 \
         uv run python ../scripts/judge_sanity.py [--variants good,wrong_fact] [--method rubric]
 
-Exit codes: 0 pass | 1 threshold failure | 2 config / runtime error
+    Exit codes: 0 pass | 1 threshold failure | 2 config / runtime error
 """
 
 from __future__ import annotations
@@ -20,18 +20,9 @@ from pathlib import Path
 from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
-APP_DIR = ROOT / "examples" / "hr_it_assistant"
+APP_DIR = ROOT / "scripts" / "judge_sanity"
 sys.path.insert(0, str(APP_DIR))
 
-from opengrade_server.config import get_settings  # noqa: E402
-from opengrade_server.evaluation import bootstrap_evaluators, create_evaluator  # noqa: E402
-from opengrade_server.evaluation.judges.evaluators import (  # noqa: E402
-    JUDGE_KINDS,
-    JudgeDefaults,
-    create_llm_judge,
-)
-from opengrade_server.evaluation.protocol import EvaluationSample  # noqa: E402
-from opengrade_server.infrastructure.llm import LiteLlmClient  # noqa: E402
 from judge_sanity_lib import (  # noqa: E402
     METRIC_KINDS,
     VARIANTS,
@@ -42,6 +33,18 @@ from judge_sanity_lib import (  # noqa: E402
     mean_applicable,
 )
 from kb import load_knowledge  # noqa: E402
+from opengrade_server.config import get_settings  # noqa: E402
+from opengrade_server.evaluation import (  # noqa: E402
+    bootstrap_evaluators,
+    create_evaluator,
+)
+from opengrade_server.evaluation.judges.evaluators import (  # noqa: E402
+    JUDGE_KINDS,
+    JudgeDefaults,
+    create_llm_judge,
+)
+from opengrade_server.evaluation.protocol import EvaluationSample  # noqa: E402
+from opengrade_server.infrastructure.llm import LiteLlmClient  # noqa: E402
 
 
 def _parse_variants(raw: str | None) -> list[str]:

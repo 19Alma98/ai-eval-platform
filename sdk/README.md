@@ -601,7 +601,7 @@ registry.set_alias(project_id, "baseline", created.id)
 
 Methods: `create_app_config`, `list_app_configs` (`name`, `latest`), `set_alias`, `get_aliases`. Constructing `AppConfigClient(...)` directly still works but is deprecated (`DeprecationWarning`).
 
-End-to-end prompt A/B on the People Ops RAG example (same model, two App Config prompts): `python scripts/prompt_ab_demo.py` — see `examples/hr_it_assistant/README.md`.
+End-to-end prompt A/B (same model, two App Config prompts): `uv run python 05_prompt_ab.py` in [`examples/sdk_tour`](../examples/sdk_tour/README.md).
 
 ## Tier-1 compatibility matrix
 

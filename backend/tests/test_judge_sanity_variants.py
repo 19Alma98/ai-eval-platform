@@ -6,7 +6,7 @@ from pathlib import Path
 import pytest
 
 ROOT = Path(__file__).resolve().parents[2]
-APP_DIR = ROOT / "examples" / "hr_it_assistant"
+APP_DIR = ROOT / "scripts" / "judge_sanity"
 sys.path.insert(0, str(APP_DIR))
 
 from judge_sanity_lib import (  # noqa: E402

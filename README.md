@@ -62,21 +62,25 @@ curl http://localhost:8000/ready    # DB readiness (Compose healthcheck)
 
 Behind a reverse proxy, set `FORWARDED_ALLOW_IPS`. OTLP ingest may return `429`/`503` with `Retry-After` under load (see `backend/.env.example`).
 
-### Portfolio demo (People Ops assistant + Ollama)
+### SDK tour (Nimbus support apps)
 
-Dataset-first RAG loop: gold test set → metrics pack → `opengrade.evaluate` experiment per model (traces bound per item, outputs uploaded, pack scored) → compare → quality gate. Compares two local models (`OLLAMA_MODEL1` vs `OLLAMA_MODEL2`) on the same test set and pipeline.
+Runnable offline tour of tracing, gold-set evaluation, architecture/model sweeps, production metrics, and **prompt A/B via App Configs**: [`examples/sdk_tour/README.md`](examples/sdk_tour/README.md).
 
-1. `cp backend/.env.example backend/.env`, then `docker compose up --build`
-2. Pull two chat models, e.g. `ollama pull gemma4:e2b` and `ollama pull tinyllama`
-3. Sync SDK: `cd sdk && uv sync --extra openai && cd ..`
-4. Sync server/CLI: `cd backend && uv sync --all-extras && cd ..`
-5. Run: `python scripts/portfolio_demo.py`
+```bash
+# platform up (opengrade ui or Compose), then:
+cd examples/sdk_tour && uv sync
+uv run python 01_tracing.py
+uv run python 02_verify_rag.py
+uv run python 03_compare_architectures.py
+uv run python 04_custom_metrics_and_monitoring.py
+uv run python 05_prompt_ab.py
+```
 
-In the UI: **Test set → Metrics → Runs**. Release policy uses pack names: `hit_at_k`, `groundedness`, `correctness`, `latency`.
+Optional real models: `TOUR_MODEL=gemma4:e2b` (and `uv sync --extra llm`). CI gates: [`examples/ci_regression_gate`](examples/ci_regression_gate/README.md).
 
 **Live runs (prod-sim):** with API + LLM judge up, run `cd sdk && uv run python ../scripts/live_run_demo.py` then open **Live runs** in the UI (`/live-runs`).
 
-Details: [`examples/hr_it_assistant/README.md`](examples/hr_it_assistant/README.md). Naming and glossary: [`docs/README.md`](docs/README.md).
+Naming and glossary: [`docs/README.md`](docs/README.md).
 
 Create a project:
 
