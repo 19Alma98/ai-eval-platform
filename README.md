@@ -210,7 +210,7 @@ on every push to `main`. The tools are the `docs` dependency group of `sdk/pypro
 uv run --project sdk --only-group docs mkdocs serve
 ```
 
-`scripts/smoke_install.py` checks a clean install (`uv add` and `pip install`) of the built wheels
+`scripts/smoke_install.py` checks a clean install (`pip install`) of the built wheels
 on Linux, macOS and Windows (*Install smoke* workflow, and against PyPI after each release).
 Releases are published to PyPI from a `vX.Y.Z` tag with Trusted Publishing:
 see [publishing](docs/08-cli-ci.md#publishing-to-pypi).

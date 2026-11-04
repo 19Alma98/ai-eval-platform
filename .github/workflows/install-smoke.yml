@@ -1,8 +1,7 @@
 name: Install smoke
 
-# Clean-install test: install OpenGrade the way a user does (`uv add 'opengrade-ai[ui]'` or
-# `pip install 'opengrade-ai[ui]'`) in a fresh environment outside the repository, then run
-# scripts/smoke_install.py:
+# Clean-install test: install OpenGrade (`pip install 'opengrade-ai[ui]'`)
+# in a fresh environment outside the repository, then run scripts/smoke_install.py.
 
 on:
   pull_request:
@@ -95,15 +94,14 @@ jobs:
     needs: build
     # Runs after `build`, or without it when testing a PyPI release.
     if: always() && (needs.build.result == 'success' || needs.build.result == 'skipped')
-    name: smoke (${{ matrix.installer }}, ${{ matrix.os }}, py${{ matrix.python }})
+    name: smoke (pip, ${{ matrix.os }}, py${{ matrix.python }})
     strategy:
       fail-fast: false
       matrix: >-
         ${{ fromJSON(github.event_name == 'pull_request'
-          && '{"os": ["ubuntu-latest", "macos-latest", "windows-latest"], "python": ["3.12"], "installer": ["uv"],
-               "include": [{"os": "ubuntu-latest", "python": "3.13", "installer": "uv"}]}'
-          || '{"os": ["ubuntu-latest", "macos-latest", "windows-latest"], "python": ["3.12", "3.13"], "installer": ["uv", "pip"],
-               "exclude": [{"installer": "pip", "python": "3.13"}]}') }}
+          && '{"os": ["ubuntu-latest", "macos-latest", "windows-latest"], "python": ["3.12"],
+               "include": [{"os": "ubuntu-latest", "python": "3.13"}]}'
+          || '{"os": ["ubuntu-latest", "macos-latest", "windows-latest"], "python": ["3.12", "3.13"]}') }}
     runs-on: ${{ matrix.os }}
     timeout-minutes: 25
     defaults:
@@ -112,8 +110,6 @@ jobs:
     env:
       SOURCE: ${{ inputs.source || 'wheels' }}
       VERSION: ${{ inputs.version }}
-      INSTALLER: ${{ matrix.installer }}
-      UV_PYTHON: ${{ matrix.python }}
       PIP_DISABLE_PIP_VERSION_CHECK: "1"
     steps:
       - uses: actions/checkout@v4
@@ -124,12 +120,6 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python }}
-
-      - name: Install uv
-        if: matrix.installer == 'uv'
-        uses: astral-sh/setup-uv@v4
-        with:
-          version: "0.8.4"
 
       - name: Download wheels
         if: env.SOURCE == 'wheels'
@@ -145,29 +135,23 @@ jobs:
           if [[ "$SOURCE" == "wheels" ]]; then
             wheel=$(ls "$RUNNER_TEMP"/dist/opengrade_ai-*.whl)
             version=$(basename "$wheel" | sed -E 's/^opengrade_ai-([^-]+)-.*/\1/')
-            # Dev builds (0.x.y.devN) are pre-releases: uv only takes them when allowed.
             pip_args=(--find-links "$RUNNER_TEMP/dist")
-            uv_args=(--find-links "$RUNNER_TEMP/dist" --prerelease=allow)
           else
             version="${VERSION#v}"
             [[ -n "$version" ]] || { echo "version is required for source=pypi" >&2; exit 2; }
             pip_args=(--no-cache-dir)
-            uv_args=(--refresh)
           fi
           if [[ "$RUNNER_OS" == "Windows" ]]; then bin=Scripts; else bin=bin; fi
 
-          # Same commands as the docs: `uv init` + `uv add`, or a venv + `pip install`.
+          # Same command as the docs: a venv + `pip install`.
+          # Explicit `return 1` so failures surface inside `if $(install …)` (set -e is off there).
           install() {  # install <dir> <requirement>
-            if [[ "$INSTALLER" == "uv" ]]; then
-              mkdir -p "$1" && (cd "$1" && uv init --bare --no-workspace -q && uv add "${uv_args[@]}" "$2") >&2
-              echo "$RUNNER_TEMP/$1/.venv/$bin/python"
-            else
-              python -m venv "$1" && "$1/$bin/python" -m pip install -q "${pip_args[@]}" "$2" >&2
-              echo "$RUNNER_TEMP/$1/$bin/python"
-            fi
+            python -m venv "$1" || return 1
+            "$1/$bin/python" -m pip install -q "${pip_args[@]}" "$2" >&2 || return 1
+            echo "$RUNNER_TEMP/$1/$bin/python"
           }
 
-          echo "Installing opengrade-ai==$version from $SOURCE with $INSTALLER"
+          echo "Installing opengrade-ai==$version from $SOURCE with pip"
           # A just-published release can take a minute to reach every PyPI mirror.
           for attempt in 1 2 3 4 5; do
             rm -rf env-ui env-sdk
