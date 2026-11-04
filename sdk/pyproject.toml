@@ -41,6 +41,14 @@ dev = [
     "ruff>=0.8.0",
     "mypy>=1.13.0",
 ]
+# Docs site (MkDocs Material + API reference from the docstrings in src/).
+# From the repo root: uv run --project sdk --only-group docs mkdocs serve
+docs = [
+    "mkdocs==1.6.1",
+    "mkdocs-material==9.8.0",
+    "mkdocstrings-python==2.0.10",
+    "pymdown-extensions==12.3",
+]
 
 [build-system]
 requires = ["hatchling", "hatch-vcs", "packaging"]

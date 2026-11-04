@@ -18,7 +18,8 @@ on:
       - "sdk/README.md"
       - "sdk/src/opengrade/**"
       - "mkdocs.yml"
-      - "requirements-docs.txt"
+      - "sdk/pyproject.toml"
+      - "sdk/uv.lock"
       - "scripts/docs/**"
       - ".github/workflows/docs.yml"
   pull_request:
@@ -27,7 +28,8 @@ on:
       - "sdk/README.md"
       - "sdk/src/opengrade/**"
       - "mkdocs.yml"
-      - "requirements-docs.txt"
+      - "sdk/pyproject.toml"
+      - "sdk/uv.lock"
       - "scripts/docs/**"
       - ".github/workflows/docs.yml"
   workflow_dispatch:
@@ -53,7 +55,8 @@ jobs:
       - name: Build site
         env:
           NO_MKDOCS_2_WARNING: "1"
-        run: uv run --no-project --python 3.12 --with-requirements requirements-docs.txt mkdocs build --strict
+        # Docs tools are the "docs" dependency group of sdk/pyproject.toml (locked in sdk/uv.lock).
+        run: uv run --project sdk --locked --only-group docs --python 3.12 mkdocs build --strict
 
       - name: Upload site
         uses: actions/upload-artifact@v4

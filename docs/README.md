@@ -18,15 +18,16 @@ uv run opengrade ui   # http://127.0.0.1:8000
 For people adopting OpenGrade in their app and CI.
 
 1. [Getting started](getting-started.md) — 15 minutes: `uv` + UI + first trace (+ optional experiment)
-2. [Python SDK](sdk.md) — tracing, experiments, custom metrics and judges, control-plane client
-3. [CLI and CI](08-cli-ci.md) — `opengrade evaluate` / `opengrade check`, baselines, quality gates in GitHub Actions
-4. [Metrics and judges](03-evaluation-engine.md) — built-in evaluators, LLM judges, scoring
-5. [Custom evaluators](16-custom-evaluators.md) — adding a server-side evaluator
-6. [Security and API keys](10-security-privacy.md) — deployment model, keys, content capture
-7. [Examples](examples.md) — runnable demos, from a first trace to a PR regression gate
-8. [API reference](reference/index.md) — generated from the SDK docstrings
+2. [How OpenGrade works](workflow.md) — the end-to-end workflow: what runs where, test sets, metrics, baselines, CI gate, production
+3. [Python SDK](sdk.md) — tracing, experiments, custom metrics and judges, control-plane client
+4. [CLI and CI](08-cli-ci.md) — `opengrade evaluate` / `opengrade check`, config and policy reference, quality gates in GitHub Actions
+5. [Metrics and judges](03-evaluation-engine.md) — built-in evaluators, LLM judges, scoring
+6. [Custom evaluators](16-custom-evaluators.md) — adding a server-side evaluator
+7. [Security and API keys](10-security-privacy.md) — deployment model, keys, content capture
+8. [Examples](examples.md) — runnable demos, from a first trace to a PR regression gate
+9. [API reference](reference/index.md) — generated from the SDK docstrings
 
-Root [`README.md`](../README.md): quickstart with Docker Compose and ops notes.
+Root [`README.md`](../README.md): requirements, Docker Compose deployment, contributing.
 
 ## Design notes
 
@@ -51,12 +52,14 @@ Internal specifications and decisions, for contributors.
 
 | Term | Meaning |
 |---|---|
-| **Project** | Tenant-like workspace (slug + id) for traces, test sets, and runs |
-| **Test set** | Versioned gold dataset (e.g. `rag_qa` questions with expected answers) |
-| **Metrics pack** | Named set of evaluators (deterministic and/or LLM judges) scored on a run |
-| **Experiment / Run** | One scored pass of an app/config over a test set (often bound to traces) |
-| **Quality gate** | YAML policy + `opengrade check` — exit codes for CI |
-| **Live run** | Production-like interaction scored without gold; can promote into a test set |
-| **Trace** | OTLP/OpenInference span tree ingested at `/v1/traces` |
+| **Project** | Workspace for traces, datasets and experiments (slug + id) |
+| **Trace** | OTLP/OpenInference span tree of one request, ingested at `/v1/traces` |
+| **Dataset** / **test set** | Versioned gold items (e.g. `rag_qa` questions with expected answers and documents). *Test set* in the UI, `dataset` in the SDK and API |
+| **Metric** / **evaluator** | Scores one answer: deterministic, LLM judge, custom judge or local Python metric |
+| **Metrics set** | Named, versioned set of metrics with thresholds scored on an experiment. *Metrics pack* in older routes (`evaluate-pack`, `metrics_packs`) |
+| **Experiment** / **run** | One scored pass of your app over a dataset |
+| **Baseline** / **alias** | The experiment a run is compared with; an alias (`alias:main`) points to the last accepted one |
+| **Quality gate** | YAML policy + `opengrade evaluate` / `opengrade check`: exit codes for CI |
+| **Live interaction** / **live run** | Production request scored without gold; can be promoted into a dataset |
 
-Primary RAG loop: **Project → test set → metrics pack → evaluate → compare / quality gate**.
+Primary loop: **project → dataset → metrics set → experiment → compare with the baseline → quality gate → production → promote into the dataset**. Explained step by step in [How OpenGrade works](workflow.md).
