@@ -30,7 +30,7 @@ class InMemoryProjectRepository:
                 return project
         return None
 
-    async def list_all(self) -> list[Project]:
+    async def list_all(self, **kwargs: object) -> list[Project]:
         return list(self._projects.values())
 
 
@@ -50,6 +50,7 @@ class InMemoryDatasetRepository:
         project_id: uuid.UUID,
         *,
         task_type: str | None = None,
+        **kwargs: object,
     ) -> list[Dataset]:
         return [
             d

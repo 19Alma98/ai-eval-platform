@@ -48,8 +48,8 @@ class _HideDefaultOnce:
     async def get_by_id(self, metrics_set_id: UUID) -> MetricsSet | None:
         return await self._inner.get_by_id(metrics_set_id)
 
-    async def list_by_project(self, project_id: UUID) -> list[MetricsSet]:
-        return await self._inner.list_by_project(project_id)
+    async def list_by_project(self, project_id: UUID, **kwargs: object) -> list[MetricsSet]:
+        return await self._inner.list_by_project(project_id, **kwargs)
 
 
 class _HideEvaluatorsOnce:

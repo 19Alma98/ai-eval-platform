@@ -375,10 +375,13 @@ async def create_experiment(
 )
 async def list_experiments(
     project_id: uuid.UUID,
+    name: str | None = Query(default=None),
+    limit: int | None = Query(default=None, ge=1, le=1000),
+    offset: int = Query(default=0, ge=0),
     use_case: ListExperiments = Depends(get_list_experiments),
 ) -> list[ExperimentResponse]:
     try:
-        experiments = await use_case.execute(project_id)
+        experiments = await use_case.execute(project_id, name=name, limit=limit, offset=offset)
     except ProjectNotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
     return [_experiment_response(e) for e in experiments]

@@ -41,8 +41,15 @@ class ListProjects:
     def __init__(self, repository: ProjectRepository) -> None:
         self._repository = repository
 
-    async def execute(self) -> list[Project]:
-        return await self._repository.list_all()
+    async def execute(
+        self,
+        *,
+        slug: str | None = None,
+        name: str | None = None,
+        limit: int | None = None,
+        offset: int = 0,
+    ) -> list[Project]:
+        return await self._repository.list_all(slug=slug, name=name, limit=limit, offset=offset)
 
 
 class GetProject:

@@ -50,7 +50,7 @@ class InMemoryProjectRepository:
                 return project
         return None
 
-    async def list_all(self) -> list[Project]:
+    async def list_all(self, **kwargs: object) -> list[Project]:
         return list(self._projects.values())
 
 
@@ -86,6 +86,7 @@ class InMemoryDatasetRepository:
         project_id: uuid.UUID,
         *,
         task_type: str | None = None,
+        **kwargs: object,
     ) -> list[Dataset]:
         return [
             d
@@ -136,7 +137,7 @@ class InMemoryExperimentRepository:
     async def get_by_id(self, experiment_id: uuid.UUID) -> Experiment | None:
         return self._items.get(experiment_id)
 
-    async def list_by_project(self, project_id: uuid.UUID) -> list[Experiment]:
+    async def list_by_project(self, project_id: uuid.UUID, **kwargs: object) -> list[Experiment]:
         return [e for e in self._items.values() if e.project_id == project_id]
 
     async def list_by_status(self, status: str, *, limit: int = 500) -> list[Experiment]:

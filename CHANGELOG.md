@@ -22,11 +22,19 @@ breaking changes; they are listed under **Changed** with a migration note.
   versions; it works with the SDK alone too.
 - `ExperimentResult.summary()` explains metrics that were skipped on some test cases (for example
   `must_contain` without a `must_contain` list on the item) instead of showing a bare `-`.
+- Failed API-key attempts are rate-limited per client IP (`OPENGRADE_AUTH_FAILED_ATTEMPTS_PER_MINUTE`,
+  default 60; lockout via `OPENGRADE_AUTH_FAILED_LOCKOUT_SECONDS`). Over the limit returns `429`
+  with `Retry-After`.
+- List APIs for projects / datasets / experiments / metrics-sets accept optional `name`/`slug`
+  filters and `limit`/`offset`. The SDK passes them through; `set_project` / `evaluate` resolve by
+  filtered list instead of scanning everything.
+- Live runs URL sync: `?failed=1`, `?waiting=1`, `?q=`; experiment matrix sort via `?sort=` / `?order=`.
 
 ### Changed
 
 - `opengrade ui` startup banner says "OpenGrade UI" (was "AI Eval UI").
 - PyPI "Documentation" link points to the docs site.
+- Live interactions list batches score and review loads (one query each per page, not per row).
 
 ### Removed
 

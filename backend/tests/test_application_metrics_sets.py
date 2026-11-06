@@ -48,7 +48,7 @@ class InMemoryProjectRepository:
     async def get_by_slug(self, slug: str) -> Project | None:
         return next((p for p in self.projects.values() if p.slug == slug), None)
 
-    async def list_all(self) -> list[Project]:
+    async def list_all(self, **kwargs: object) -> list[Project]:
         return list(self.projects.values())
 
 
@@ -63,7 +63,7 @@ class InMemoryExperimentRepository:
     async def get_by_id(self, experiment_id: uuid.UUID) -> Experiment | None:
         return self.experiments.get(experiment_id)
 
-    async def list_by_project(self, project_id: uuid.UUID) -> list[Experiment]:
+    async def list_by_project(self, project_id: uuid.UUID, **kwargs: object) -> list[Experiment]:
         return [e for e in self.experiments.values() if e.project_id == project_id]
 
     async def list_by_status(self, status: str, *, limit: int = 500) -> list[Experiment]:

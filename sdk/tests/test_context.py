@@ -43,7 +43,14 @@ class FakeServer:
     def handler(self, request: httpx2.Request) -> httpx2.Response:
         path = request.url.path.rstrip("/")
         if request.method == "GET" and path == "/api/v1/projects":
-            return httpx2.Response(200, json=self.projects)
+            projects = self.projects
+            slug = request.url.params.get("slug")
+            name = request.url.params.get("name")
+            if slug is not None:
+                projects = [p for p in projects if p["slug"] == slug]
+            if name is not None:
+                projects = [p for p in projects if p["name"] == name]
+            return httpx2.Response(200, json=projects)
         if request.method == "POST" and path == "/api/v1/projects":
             if self.conflict_once_with is not None:
                 self.projects.append(self.conflict_once_with)

@@ -32,7 +32,14 @@ class ProjectRepository(Protocol):
 
     async def get_by_slug(self, slug: str) -> Project | None: ...
 
-    async def list_all(self) -> list[Project]: ...
+    async def list_all(
+        self,
+        *,
+        slug: str | None = None,
+        name: str | None = None,
+        limit: int | None = None,
+        offset: int = 0,
+    ) -> list[Project]: ...
 
     async def set_retention_days(
         self, project_id: uuid.UUID, days: int | None
@@ -95,6 +102,9 @@ class DatasetRepository(Protocol):
         project_id: uuid.UUID,
         *,
         task_type: str | None = None,
+        name: str | None = None,
+        limit: int | None = None,
+        offset: int = 0,
     ) -> list[Dataset]: ...
 
     async def add_item(self, item: DatasetItem) -> DatasetItem: ...
@@ -145,7 +155,14 @@ class ExperimentRepository(Protocol):
 
     async def get_by_id(self, experiment_id: uuid.UUID) -> Experiment | None: ...
 
-    async def list_by_project(self, project_id: uuid.UUID) -> list[Experiment]: ...
+    async def list_by_project(
+        self,
+        project_id: uuid.UUID,
+        *,
+        name: str | None = None,
+        limit: int | None = None,
+        offset: int = 0,
+    ) -> list[Experiment]: ...
 
     async def list_by_status(self, status: str, *, limit: int = 500) -> list[Experiment]: ...
 
@@ -221,7 +238,14 @@ class MetricsSetRepository(Protocol):
 
     async def get_project_default(self, project_id: uuid.UUID) -> MetricsSet | None: ...
 
-    async def list_by_project(self, project_id: uuid.UUID) -> list[MetricsSet]: ...
+    async def list_by_project(
+        self,
+        project_id: uuid.UUID,
+        *,
+        name: str | None = None,
+        limit: int | None = None,
+        offset: int = 0,
+    ) -> list[MetricsSet]: ...
 
     async def update(self, metrics_set: MetricsSet) -> MetricsSet: ...
 
@@ -314,6 +338,10 @@ class LiveInteractionRepository(Protocol):
     ) -> list[LiveInteractionScore]: ...
 
     async def list_scores(self, interaction_id: uuid.UUID) -> list[LiveInteractionScore]: ...
+
+    async def list_scores_for_interaction_ids(
+        self, project_id: uuid.UUID, interaction_ids: list[uuid.UUID]
+    ) -> dict[uuid.UUID, list[LiveInteractionScore]]: ...
 
     async def list_recent_scores_by_kind(
         self,

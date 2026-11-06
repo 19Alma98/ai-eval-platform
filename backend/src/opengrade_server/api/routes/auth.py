@@ -19,6 +19,10 @@ from opengrade_server.api.auth import (
     principal_for_key,
     resolve_principal,
 )
+from opengrade_server.api.auth_rate_limit import (
+    client_ip_from_scope,
+    get_auth_failed_rate_limiter,
+)
 from opengrade_server.config import get_settings
 
 router = APIRouter(tags=["auth"])
@@ -61,8 +65,24 @@ async def create_session(body: CreateSessionRequest, request: Request) -> Respon
     response = Response(status_code=status.HTTP_204_NO_CONTENT)
     if not settings.accepted_api_keys():
         return response
+    client_ip = client_ip_from_scope(request.scope)
+    limiter = get_auth_failed_rate_limiter(settings)
+    locked = limiter.retry_after(client_ip)
+    if locked is not None:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="too many failed API key attempts; try again later",
+            headers={"Retry-After": str(locked)},
+        )
     principal = await principal_for_key(body.api_key, settings)
     if principal is None:
+        retry_after = limiter.record_failure(client_ip)
+        if retry_after is not None:
+            raise HTTPException(
+                status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                detail="too many failed API key attempts; try again later",
+                headers={"Retry-After": str(retry_after)},
+            )
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="invalid API key")
     if principal.scope == "ingest":
         raise HTTPException(

@@ -3,7 +3,7 @@ from __future__ import annotations
 import uuid
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException, Response, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 
 from opengrade_server.api.deps import (
     get_create_metrics_set,
@@ -108,10 +108,13 @@ def _http_conflict(exc: Exception) -> HTTPException:
 )
 async def list_metrics_sets(
     project_id: uuid.UUID,
+    name: str | None = Query(default=None),
+    limit: int | None = Query(default=None, ge=1, le=1000),
+    offset: int = Query(default=0, ge=0),
     use_case: ListMetricsSets = Depends(get_list_metrics_sets),
 ) -> list[MetricsSetSummaryResponse]:
     try:
-        sets = await use_case.execute(project_id)
+        sets = await use_case.execute(project_id, name=name, limit=limit, offset=offset)
     except ProjectNotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
     return [_summary_response(s) for s in sets]

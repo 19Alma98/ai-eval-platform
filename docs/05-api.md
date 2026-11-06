@@ -35,6 +35,8 @@ GET /projects/{project_id}
 DELETE /projects/{project_id}
 ```
 
+`GET /projects` optional query: `slug`, `name` (exact match), `limit` (1–1000), `offset`. Omitting `limit` returns the full list.
+
 ### Overview
 
 ```http
@@ -70,6 +72,8 @@ GET /datasets/{dataset_id}
 POST /datasets/{dataset_id}/items
 POST /datasets/{dataset_id}/items/import
 ```
+
+`GET …/datasets` optional query: `task_type`, `name`, `limit`, `offset`.
 
 `rag_qa` items require non-empty `metadata.expected_doc_ids` on create/import. CSV columns: `question`, `expected_answer`, `expected_doc_ids` (pipe-separated ids).
 
@@ -115,6 +119,8 @@ PUT /experiments/{experiment_id}/metrics
 GET /experiments/{experiment_id}/metrics
 PATCH /experiments/{experiment_id}/params
 ```
+
+`GET …/experiments` and `GET …/metrics-sets` accept optional `name`, `limit`, `offset`.
 
 `POST .../evaluate-pack` scores using a resolved **metrics set** (see below). Optional JSON body:
 

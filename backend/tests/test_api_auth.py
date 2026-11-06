@@ -9,6 +9,7 @@ from opengrade_server.api.auth import (
     issue_session_token,
     session_subject,
 )
+from opengrade_server.api.auth_rate_limit import reset_auth_failed_rate_limiter_for_tests
 from opengrade_server.config import Settings, get_settings
 
 client = test_api_evaluation.client  # shared in-memory app fixture
@@ -21,6 +22,7 @@ def api_key(monkeypatch: pytest.MonkeyPatch) -> str:
     monkeypatch.setenv("OPENGRADE_API_KEY", KEY)
     monkeypatch.delenv("OPENGRADE_API_KEY_PREVIOUS", raising=False)
     get_settings.cache_clear()
+    reset_auth_failed_rate_limiter_for_tests()
     return KEY
 
 
@@ -58,6 +60,26 @@ async def test_key_required_on_api_and_otlp(client: AsyncClient, api_key: str) -
     assert otlp.status_code == 401
     wrong = await client.get("/api/v1/projects", headers=_bearer("nope"))
     assert wrong.status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_failed_key_attempts_are_rate_limited(
+    client: AsyncClient, api_key: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("OPENGRADE_AUTH_FAILED_ATTEMPTS_PER_MINUTE", "3")
+    monkeypatch.setenv("OPENGRADE_AUTH_FAILED_LOCKOUT_SECONDS", "30")
+    get_settings.cache_clear()
+    reset_auth_failed_rate_limiter_for_tests()
+
+    for _ in range(2):
+        resp = await client.get("/api/v1/projects", headers=_bearer("nope"))
+        assert resp.status_code == 401
+    locked = await client.get("/api/v1/projects", headers=_bearer("nope"))
+    assert locked.status_code == 429
+    assert 1 <= int(locked.headers["retry-after"]) <= 30
+    session = await client.post("/api/v1/auth/session", json={"api_key": "nope"})
+    assert session.status_code == 429
+    assert 1 <= int(session.headers["retry-after"]) <= 30
 
 
 @pytest.mark.asyncio

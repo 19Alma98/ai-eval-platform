@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 
 from opengrade_server.api.deps import (
     get_create_project,
@@ -36,9 +36,13 @@ async def create_project(
 
 @router.get("", response_model=list[ProjectResponse])
 async def list_projects(
+    slug: str | None = Query(default=None),
+    name: str | None = Query(default=None),
+    limit: int | None = Query(default=None, ge=1, le=1000),
+    offset: int = Query(default=0, ge=0),
     use_case: ListProjects = Depends(get_list_projects),
 ) -> list[ProjectResponse]:
-    projects = await use_case.execute()
+    projects = await use_case.execute(slug=slug, name=name, limit=limit, offset=offset)
     return [ProjectResponse.model_validate(project) for project in projects]
 
 

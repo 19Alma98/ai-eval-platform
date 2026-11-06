@@ -55,9 +55,28 @@ class _ProjectsResource:
             "POST", "/api/v1/projects", body=body, response_model=ProjectResponse
         )
 
-    def list(self) -> builtins.list[ProjectResponse]:
+    def list(
+        self,
+        *,
+        slug: str | None = None,
+        name: str | None = None,
+        limit: int | None = None,
+        offset: int = 0,
+    ) -> builtins.list[ProjectResponse]:
+        query: dict[str, str] = {}
+        if slug is not None:
+            query["slug"] = slug
+        if name is not None:
+            query["name"] = name
+        if limit is not None:
+            query["limit"] = str(limit)
+        if offset:
+            query["offset"] = str(offset)
         return self._http.request_model_list(
-            "GET", "/api/v1/projects", response_model=ProjectResponse
+            "GET",
+            "/api/v1/projects",
+            query=query or None,
+            response_model=ProjectResponse,
         )
 
     def get(self, project_id: str | None = None) -> ProjectResponse:
@@ -108,16 +127,28 @@ class _DatasetsResource:
         )
 
     def list(
-        self, project_id: str | None = None, *, task_type: str | None = None
+        self,
+        project_id: str | None = None,
+        *,
+        task_type: str | None = None,
+        name: str | None = None,
+        limit: int | None = None,
+        offset: int = 0,
     ) -> builtins.list[DatasetResponse]:
         project_id = resolve_project_id(project_id)
-        query: dict[str, str] | None = None
+        query: dict[str, str] = {}
         if task_type is not None:
-            query = {"task_type": task_type}
+            query["task_type"] = task_type
+        if name is not None:
+            query["name"] = name
+        if limit is not None:
+            query["limit"] = str(limit)
+        if offset:
+            query["offset"] = str(offset)
         return self._http.request_model_list(
             "GET",
             f"/api/v1/projects/{project_id}/datasets",
-            query=query,
+            query=query or None,
             response_model=DatasetResponse,
         )
 
@@ -274,11 +305,26 @@ class _ExperimentsResource:
             response_model=ExperimentResponse,
         )
 
-    def list(self, project_id: str | None = None) -> builtins.list[ExperimentResponse]:
+    def list(
+        self,
+        project_id: str | None = None,
+        *,
+        name: str | None = None,
+        limit: int | None = None,
+        offset: int = 0,
+    ) -> builtins.list[ExperimentResponse]:
         project_id = resolve_project_id(project_id)
+        query: dict[str, str] = {}
+        if name is not None:
+            query["name"] = name
+        if limit is not None:
+            query["limit"] = str(limit)
+        if offset:
+            query["offset"] = str(offset)
         return self._http.request_model_list(
             "GET",
             f"/api/v1/projects/{project_id}/experiments",
+            query=query or None,
             response_model=ExperimentResponse,
         )
 
@@ -543,11 +589,26 @@ class _MetricsSetsResource:
     def __init__(self, http: _HttpTransport) -> None:
         self._http = http
 
-    def list(self, project_id: str | None = None) -> builtins.list[MetricsSetResponse]:
+    def list(
+        self,
+        project_id: str | None = None,
+        *,
+        name: str | None = None,
+        limit: int | None = None,
+        offset: int = 0,
+    ) -> builtins.list[MetricsSetResponse]:
         project_id = resolve_project_id(project_id)
+        query: dict[str, str] = {}
+        if name is not None:
+            query["name"] = name
+        if limit is not None:
+            query["limit"] = str(limit)
+        if offset:
+            query["offset"] = str(offset)
         return self._http.request_model_list(
             "GET",
             f"/api/v1/projects/{project_id}/metrics-sets",
+            query=query or None,
             response_model=MetricsSetResponse,
         )
 

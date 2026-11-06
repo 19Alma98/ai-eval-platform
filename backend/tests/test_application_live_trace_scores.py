@@ -56,6 +56,25 @@ async def test_list_joins_trace_scores_with_one_query_per_page() -> None:
     assert [s.name for s in result.trace_scores[a.id]] == ["quality", "user_feedback"]
     assert b.id not in result.trace_scores and c.id not in result.trace_scores
     assert scores.list_calls == 1
+    assert live.scores_batch_calls == 1
+    assert live.reviews_batch_calls == 1
+
+
+async def test_list_batches_scores_and_reviews_once_per_page() -> None:
+    live = InMemoryLiveRepository()
+    rows = [await _interaction(live, f"q{i}", None) for i in range(5)]
+    for row in rows:
+        await live.replace_scores(
+            row.id,
+            [LiveInteractionScore.create(row.id, "groundedness", score=0.9, threshold=0.7)],
+        )
+
+    result = await ListLiveInteractions(live, _PROJECTS).execute(PROJECT)
+
+    assert len(result.items) == 5
+    assert live.scores_batch_calls == 1
+    assert live.reviews_batch_calls == 1
+    assert all(len(scores) == 1 for _, scores, _ in result.items)
 
 
 async def test_failed_only_counts_trace_score_fails() -> None:

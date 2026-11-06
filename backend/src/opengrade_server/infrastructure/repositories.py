@@ -152,10 +152,24 @@ class SqlAlchemyProjectRepository:
         row = result.scalar_one_or_none()
         return _project_to_domain(row) if row is not None else None
 
-    async def list_all(self) -> list[Project]:
-        result = await self._session.execute(
-            select(ProjectModel).order_by(ProjectModel.created_at.desc())
-        )
+    async def list_all(
+        self,
+        *,
+        slug: str | None = None,
+        name: str | None = None,
+        limit: int | None = None,
+        offset: int = 0,
+    ) -> list[Project]:
+        stmt = select(ProjectModel).order_by(ProjectModel.created_at.desc())
+        if slug is not None:
+            stmt = stmt.where(ProjectModel.slug == slug)
+        if name is not None:
+            stmt = stmt.where(ProjectModel.name == name)
+        if offset:
+            stmt = stmt.offset(max(0, offset))
+        if limit is not None:
+            stmt = stmt.limit(max(1, min(limit, 1000)))
+        result = await self._session.execute(stmt)
         return [_project_to_domain(row) for row in result.scalars().all()]
 
     async def set_retention_days(self, project_id: uuid.UUID, days: int | None) -> Project | None:
@@ -734,11 +748,21 @@ class SqlAlchemyDatasetRepository:
         project_id: uuid.UUID,
         *,
         task_type: str | None = None,
+        name: str | None = None,
+        limit: int | None = None,
+        offset: int = 0,
     ) -> list[Dataset]:
         stmt = select(DatasetModel).where(DatasetModel.project_id == project_id)
         if task_type is not None:
             stmt = stmt.where(DatasetModel.task_type == task_type)
-        result = await self._session.execute(stmt.order_by(DatasetModel.created_at.desc()))
+        if name is not None:
+            stmt = stmt.where(DatasetModel.name == name)
+        stmt = stmt.order_by(DatasetModel.created_at.desc())
+        if offset:
+            stmt = stmt.offset(max(0, offset))
+        if limit is not None:
+            stmt = stmt.limit(max(1, min(limit, 1000)))
+        result = await self._session.execute(stmt)
         return [_dataset_to_domain(row) for row in result.scalars().all()]
 
     async def add_item(self, item: DatasetItem) -> DatasetItem:
@@ -1045,12 +1069,23 @@ class SqlAlchemyExperimentRepository:
         row = await self._session.get(ExperimentModel, experiment_id)
         return _experiment_to_domain(row) if row is not None else None
 
-    async def list_by_project(self, project_id: uuid.UUID) -> list[Experiment]:
-        result = await self._session.execute(
-            select(ExperimentModel)
-            .where(ExperimentModel.project_id == project_id)
-            .order_by(ExperimentModel.created_at.desc())
-        )
+    async def list_by_project(
+        self,
+        project_id: uuid.UUID,
+        *,
+        name: str | None = None,
+        limit: int | None = None,
+        offset: int = 0,
+    ) -> list[Experiment]:
+        stmt = select(ExperimentModel).where(ExperimentModel.project_id == project_id)
+        if name is not None:
+            stmt = stmt.where(ExperimentModel.name == name)
+        stmt = stmt.order_by(ExperimentModel.created_at.desc())
+        if offset:
+            stmt = stmt.offset(max(0, offset))
+        if limit is not None:
+            stmt = stmt.limit(max(1, min(limit, 1000)))
+        result = await self._session.execute(stmt)
         return [_experiment_to_domain(row) for row in result.scalars().all()]
 
     async def list_by_status(self, status: str, *, limit: int = 500) -> list[Experiment]:
@@ -1320,13 +1355,27 @@ class SqlAlchemyMetricsSetRepository:
         row = result.scalar_one_or_none()
         return _metrics_set_to_domain(row) if row is not None else None
 
-    async def list_by_project(self, project_id: uuid.UUID) -> list[MetricsSet]:
-        result = await self._session.execute(
+    async def list_by_project(
+        self,
+        project_id: uuid.UUID,
+        *,
+        name: str | None = None,
+        limit: int | None = None,
+        offset: int = 0,
+    ) -> list[MetricsSet]:
+        stmt = (
             select(MetricsSetModel)
             .options(selectinload(MetricsSetModel.entries))
             .where(MetricsSetModel.project_id == project_id)
-            .order_by(MetricsSetModel.created_at.asc())
         )
+        if name is not None:
+            stmt = stmt.where(MetricsSetModel.name == name)
+        stmt = stmt.order_by(MetricsSetModel.created_at.asc())
+        if offset:
+            stmt = stmt.offset(max(0, offset))
+        if limit is not None:
+            stmt = stmt.limit(max(1, min(limit, 1000)))
+        result = await self._session.execute(stmt)
         return [_metrics_set_to_domain(row) for row in result.scalars().all()]
 
     async def update(self, metrics_set: MetricsSet) -> MetricsSet:
@@ -1839,6 +1888,34 @@ class SqlAlchemyLiveInteractionRepository:
             .order_by(LiveInteractionScoreModel.created_at.asc())
         )
         return [_live_score_to_domain(row) for row in result.scalars().all()]
+
+    async def list_scores_for_interaction_ids(
+        self, project_id: uuid.UUID, interaction_ids: list[uuid.UUID]
+    ) -> dict[uuid.UUID, list[LiveInteractionScore]]:
+        if not interaction_ids:
+            return {}
+        result = await self._session.execute(
+            select(LiveInteractionScoreModel)
+            .join(
+                LiveInteractionModel,
+                LiveInteractionModel.id == LiveInteractionScoreModel.live_interaction_id,
+            )
+            .where(
+                LiveInteractionModel.project_id == project_id,
+                LiveInteractionScoreModel.live_interaction_id.in_(interaction_ids),
+            )
+            .order_by(
+                LiveInteractionScoreModel.live_interaction_id.asc(),
+                LiveInteractionScoreModel.created_at.asc(),
+            )
+        )
+        by_interaction: dict[uuid.UUID, list[LiveInteractionScore]] = {
+            interaction_id: [] for interaction_id in interaction_ids
+        }
+        for row in result.scalars().all():
+            score = _live_score_to_domain(row)
+            by_interaction.setdefault(score.live_interaction_id, []).append(score)
+        return by_interaction
 
     async def list_recent_scores_by_kind(
         self,

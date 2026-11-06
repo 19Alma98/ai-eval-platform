@@ -22,8 +22,7 @@ turns auth on and is the bootstrap **admin** key. Without it the server is open 
 checked. Then:
 
 - every `/api/*` request and OTLP `POST /v1/traces` needs `Authorization: Bearer <key>`,
-  otherwise `401`; a valid key outside its scope gets `403`. `/health`, `/ready`, the auth
-  endpoints and the static UI files stay public;
+  otherwise `401`; a valid key outside its scope gets `403`. After too many failed attempts from the same client IP (default 60/min, then a 60s lockout; set `OPENGRADE_AUTH_FAILED_ATTEMPTS_PER_MINUTE=0` to disable), the server responds `429` with `Retry-After`. `/health`, `/ready`, the auth endpoints and the static UI files stay public (session create still counts failed keys);
 - the SDK sends the header when `OPENGRADE_API_KEY` is set in the app's environment (or via
   `opengrade.set_api_key()` / `Client(api_key=...)`), on HTTP calls and OTLP export alike; it
   warns once when the key would go over plain `http://` to a non-loopback host;

@@ -57,7 +57,7 @@ class InMemoryProjectRepository:
     async def get_by_slug(self, slug: str) -> Project | None:
         return None
 
-    async def list_all(self) -> list[Project]:
+    async def list_all(self, **kwargs: object) -> list[Project]:
         return list(self._items.values())
 
     async def delete(self, project_id: uuid.UUID) -> bool:
@@ -145,6 +145,19 @@ class InMemoryLiveRepository:
     async def list_scores(self, interaction_id: uuid.UUID) -> list[LiveInteractionScore]:
         return list(self._scores.get(interaction_id, []))
 
+    async def list_scores_for_interaction_ids(
+        self, project_id: uuid.UUID, interaction_ids: list[uuid.UUID]
+    ) -> dict[uuid.UUID, list[LiveInteractionScore]]:
+        out: dict[uuid.UUID, list[LiveInteractionScore]] = {
+            interaction_id: [] for interaction_id in interaction_ids
+        }
+        for interaction_id in interaction_ids:
+            interaction = self._items.get(interaction_id)
+            if interaction is None or interaction.project_id != project_id:
+                continue
+            out[interaction_id] = list(self._scores.get(interaction_id, []))
+        return out
+
     async def list_recent_scores_by_kind(
         self,
         project_id: uuid.UUID,
@@ -217,7 +230,7 @@ class InMemoryMetricsSetRepository:
                 return s
         return None
 
-    async def list_by_project(self, project_id: uuid.UUID) -> list[MetricsSet]:
+    async def list_by_project(self, project_id: uuid.UUID, **kwargs: object) -> list[MetricsSet]:
         return [s for s in self._items.values() if s.project_id == project_id]
 
     async def update(self, metrics_set: MetricsSet) -> MetricsSet:
@@ -262,7 +275,7 @@ class InMemoryDatasetRepository:
         return self._datasets.get(dataset_id)
 
     async def list_by_project(
-        self, project_id: uuid.UUID, *, task_type: str | None = None
+        self, project_id: uuid.UUID, *, task_type: str | None = None, **kwargs: object
     ) -> list[Dataset]:
         return [d for d in self._datasets.values() if d.project_id == project_id]
 

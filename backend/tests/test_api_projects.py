@@ -29,12 +29,25 @@ class InMemoryProjectRepository:
                 return project
         return None
 
-    async def list_all(self) -> list[Project]:
-        return sorted(
+    async def list_all(self, **kwargs: object) -> list[Project]:
+        rows = sorted(
             self._projects.values(),
             key=lambda project: project.created_at or datetime.now(UTC),
             reverse=True,
         )
+        slug = kwargs.get("slug")
+        name = kwargs.get("name")
+        if isinstance(slug, str):
+            rows = [p for p in rows if p.slug == slug]
+        if isinstance(name, str):
+            rows = [p for p in rows if p.name == name]
+        offset = int(kwargs.get("offset") or 0)
+        limit = kwargs.get("limit")
+        if offset:
+            rows = rows[offset:]
+        if isinstance(limit, int):
+            rows = rows[: max(1, min(limit, 1000))]
+        return rows
 
     async def delete(self, project_id: uuid.UUID) -> bool:
         if project_id not in self._projects:
@@ -77,6 +90,22 @@ async def test_create_and_list_projects(client: AsyncClient) -> None:
     items = listed.json()
     assert len(items) == 1
     assert items[0]["id"] == body["id"]
+
+
+@pytest.mark.asyncio
+async def test_list_projects_slug_name_and_limit(client: AsyncClient) -> None:
+    await client.post("/api/v1/projects", json={"name": "Alpha", "slug": "alpha"})
+    await client.post("/api/v1/projects", json={"name": "Beta", "slug": "beta"})
+    await client.post("/api/v1/projects", json={"name": "Gamma", "slug": "gamma"})
+
+    by_slug = await client.get("/api/v1/projects", params={"slug": "beta"})
+    assert [p["slug"] for p in by_slug.json()] == ["beta"]
+
+    by_name = await client.get("/api/v1/projects", params={"name": "Alpha"})
+    assert [p["name"] for p in by_name.json()] == ["Alpha"]
+
+    page = await client.get("/api/v1/projects", params={"limit": 2, "offset": 0})
+    assert len(page.json()) == 2
 
 
 @pytest.mark.asyncio

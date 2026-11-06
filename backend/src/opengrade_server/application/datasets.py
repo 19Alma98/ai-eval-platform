@@ -221,11 +221,16 @@ class ListDatasets:
         project_id: uuid.UUID,
         *,
         task_type: str | None = None,
+        name: str | None = None,
+        limit: int | None = None,
+        offset: int = 0,
     ) -> list[Dataset]:
         project = await self._projects.get_by_id(project_id)
         if project is None:
             raise ProjectNotFoundError(project_id)
-        return await self._datasets.list_by_project(project_id, task_type=task_type)
+        return await self._datasets.list_by_project(
+            project_id, task_type=task_type, name=name, limit=limit, offset=offset
+        )
 
     async def item_counts(self, datasets: list[Dataset]) -> dict[uuid.UUID, int]:
         return await self._datasets.count_items([d.id for d in datasets])

@@ -61,7 +61,7 @@ class InMemoryExperimentRepository:
     async def get_by_id(self, experiment_id: uuid.UUID) -> Experiment | None:
         return self._items.get(experiment_id)
 
-    async def list_by_project(self, project_id: uuid.UUID) -> list[Experiment]:
+    async def list_by_project(self, project_id: uuid.UUID, **kwargs: object) -> list[Experiment]:
         rows = [e for e in self._items.values() if e.project_id == project_id]
         rows.sort(key=lambda e: e.created_at, reverse=True)
         return rows

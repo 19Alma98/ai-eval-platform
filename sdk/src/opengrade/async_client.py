@@ -30,9 +30,28 @@ class _AsyncProjectsResource:
             "POST", "/api/v1/projects", body=body, response_model=ProjectResponse
         )
 
-    async def list(self) -> builtins.list[ProjectResponse]:
+    async def list(
+        self,
+        *,
+        slug: str | None = None,
+        name: str | None = None,
+        limit: int | None = None,
+        offset: int = 0,
+    ) -> builtins.list[ProjectResponse]:
+        query: dict[str, str] = {}
+        if slug is not None:
+            query["slug"] = slug
+        if name is not None:
+            query["name"] = name
+        if limit is not None:
+            query["limit"] = str(limit)
+        if offset:
+            query["offset"] = str(offset)
         return await self._http.request_model_list(
-            "GET", "/api/v1/projects", response_model=ProjectResponse
+            "GET",
+            "/api/v1/projects",
+            query=query or None,
+            response_model=ProjectResponse,
         )
 
     async def get(self, project_id: str | None = None) -> ProjectResponse:

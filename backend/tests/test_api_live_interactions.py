@@ -55,7 +55,7 @@ class InMemoryProjectRepository:
                 return p
         return None
 
-    async def list_all(self) -> list[Project]:
+    async def list_all(self, **kwargs: object) -> list[Project]:
         return list(self._items.values())
 
     async def delete(self, project_id: uuid.UUID) -> bool:
@@ -67,6 +67,8 @@ class InMemoryLiveRepository:
         self._items: dict[uuid.UUID, LiveInteraction] = {}
         self._scores: dict[uuid.UUID, list[LiveInteractionScore]] = {}
         self._score_reviews: dict[uuid.UUID, LiveScoreReview] = {}
+        self.scores_batch_calls = 0
+        self.reviews_batch_calls = 0
 
     async def add(self, interaction: LiveInteraction) -> LiveInteraction:
         self._items[interaction.id] = interaction
@@ -150,6 +152,20 @@ class InMemoryLiveRepository:
     async def list_scores(self, interaction_id: uuid.UUID) -> list[LiveInteractionScore]:
         return list(self._scores.get(interaction_id, []))
 
+    async def list_scores_for_interaction_ids(
+        self, project_id: uuid.UUID, interaction_ids: list[uuid.UUID]
+    ) -> dict[uuid.UUID, list[LiveInteractionScore]]:
+        self.scores_batch_calls += 1
+        out: dict[uuid.UUID, list[LiveInteractionScore]] = {
+            interaction_id: [] for interaction_id in interaction_ids
+        }
+        for interaction_id in interaction_ids:
+            interaction = self._items.get(interaction_id)
+            if interaction is None or interaction.project_id != project_id:
+                continue
+            out[interaction_id] = list(self._scores.get(interaction_id, []))
+        return out
+
     async def list_recent_scores_by_kind(
         self,
         project_id: uuid.UUID,
@@ -184,6 +200,7 @@ class InMemoryLiveRepository:
     async def list_score_reviews_by_score_ids(
         self, score_ids: list[uuid.UUID]
     ) -> dict[uuid.UUID, LiveScoreReview]:
+        self.reviews_batch_calls += 1
         return {sid: self._score_reviews[sid] for sid in score_ids if sid in self._score_reviews}
 
     async def list_calibration_rows(
@@ -218,7 +235,7 @@ class InMemoryDatasetRepository:
         return self._datasets.get(dataset_id)
 
     async def list_by_project(
-        self, project_id: uuid.UUID, *, task_type: str | None = None
+        self, project_id: uuid.UUID, *, task_type: str | None = None, **kwargs: object
     ) -> list[Dataset]:
         return [d for d in self._datasets.values() if d.project_id == project_id]
 

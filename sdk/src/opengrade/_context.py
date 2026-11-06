@@ -97,25 +97,19 @@ def _reset_client() -> None:
 
 
 def _find_project(client: Client, name: str, slug: str) -> ProjectResponse | None:
-    projects = client.projects.list()
-    for project in projects:
-        if project.slug == slug:
-            return project
-    for project in projects:
-        if project.name == name:
-            return project
-    return None
+    by_slug = client.projects.list(slug=slug)
+    if by_slug:
+        return by_slug[0]
+    by_name = client.projects.list(name=name)
+    return by_name[0] if by_name else None
 
 
 async def _afind_project(client: AsyncClient, name: str, slug: str) -> ProjectResponse | None:
-    projects = await client.projects.list()
-    for project in projects:
-        if project.slug == slug:
-            return project
-    for project in projects:
-        if project.name == name:
-            return project
-    return None
+    by_slug = await client.projects.list(slug=slug)
+    if by_slug:
+        return by_slug[0]
+    by_name = await client.projects.list(name=name)
+    return by_name[0] if by_name else None
 
 
 def _activate_project(project: ProjectResponse, cleaned: str) -> ProjectResponse:

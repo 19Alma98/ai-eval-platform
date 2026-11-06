@@ -18,18 +18,11 @@ Priority: **P0** blocks a public release, **P1** fix before promoting it, **P2**
   accounts by design, see `docs/10-security-privacy.md#api-keys`):
   - Optional project binding for `ingest` keys (`project_id` on the key, enforced on OTLP
     `X-Project-Id` / `X-Project-Slug` and the project routes).
-  - Rate limit failed key attempts (keys are 256-bit random, so brute force is impractical).
 - [ ] **Sampling** (head sampling) and configurable span size limits.
-- [ ] `AsyncClient` parity (datasets, experiments), `aevaluate`.
-- [ ] Pagination on SDK list calls; `set_project` / `evaluate` scan all projects/datasets/experiments.
 - [ ] Live view: session/user grouping, filter by SDK metric / feedback, SDK metrics + feedback in the
   list Scores column, "load more" beyond 50, time-range/metadata filters, auto-refresh on
   Overview/Monitoring/Traces.
 - [ ] Drill-down from alarms / chart points to the traces that caused them.
-- [ ] Filters persisted in the URL (live-runs, matrix rows; the trace list already keeps its
-  tag / metadata / user / session filters there); CSV/JSON export.
-- [ ] Trace attribute index covers traces ingested after migration `0024_trace_tags` only; older
-  traces keep their `user_id` / `session_id` filters but not tag / metadata ones (no backfill).
 - [ ] Retention/TTL and per-project quotas (see "OTLP high volume" below).
 - [ ] Custom time range / timezone and compare-to-previous-period on monitoring.
 
@@ -76,12 +69,9 @@ Do not block feature work. Pick these up when the trigger below each item shows 
 
 ### Performance
 
-When optimizing, do N+1 batching first, then `failed_only` denormalization
-(batching alone does not remove O(N) failed_only scans).
+Live-list score/review N+1 is batched (one scores query + one reviews query per page).
+Next: `failed_only` denormalization (batching alone does not remove O(N) failed_only scans).
 
-- [ ] **Live list N+1.** `ListLiveInteractions` loads scores and review per row (~3 queries ×
-  page size; default 50, polled every 5s). Batch-load scores and reviews for a page.
-  Fix when: list feels slow or query volume / pool wait shows up under normal browsing.
 - [ ] **`failed_only` can scan the whole project** when few interactions failed (pages through all
   rows). Persist the verdict per interaction (e.g. `has_failed_score`) at scoring time and filter in
   SQL. Fix when: thousands+ interactions and the filter is used often (or empty full scans hurt).

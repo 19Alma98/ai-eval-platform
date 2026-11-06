@@ -1092,9 +1092,7 @@ def _inline_dataset_id(
     # stay comparable against each other.
     name = f"inline-{_digest([task_type, bodies])[:12]}"
     expected = len(bodies)
-    for existing in client.datasets.list(project_id):
-        if existing.name != name:
-            continue
+    for existing in client.datasets.list(project_id, name=name):
         detail = client.datasets.get(existing.id)
         have = len(detail.items)
         if have == expected:
@@ -1137,7 +1135,7 @@ def _resolve_dataset(
             return _inline_dataset_id(
                 client, project_id, _load_file_records(Path(dataset)), task_type=task_type
             )
-        matches = [d for d in client.datasets.list(project_id) if d.name == dataset]
+        matches = client.datasets.list(project_id, name=dataset)
         if not matches:
             raise ValueError(f"no dataset named {dataset!r} in project {project_id}")
         return max(matches, key=lambda d: d.version).id
@@ -1222,9 +1220,9 @@ def _resolve_metrics_set(client: Client, project_id: str, requested: list[dict[s
 
     label = "+".join(e["kind"] for e in entries)[:150]
     name = f"sdk:{label}@{_digest(entries)[:8]}"
-    for existing in sets:
-        if existing.name == name:
-            return existing.id
+    named = client.metrics_sets.list(project_id, name=name)
+    if named:
+        return named[0].id
     try:
         created = client.metrics_sets.create(
             project_id,
@@ -1236,9 +1234,9 @@ def _resolve_metrics_set(client: Client, project_id: str, requested: list[dict[s
         if exc.status != 409:
             raise
         # Created concurrently by another process — use theirs.
-        for existing in client.metrics_sets.list(project_id):
-            if existing.name == name:
-                return existing.id
+        named = client.metrics_sets.list(project_id, name=name)
+        if named:
+            return named[0].id
         raise
     return created.id
 
@@ -1269,7 +1267,7 @@ def _resolve_baseline(
                 f"no experiment alias {alias!r} in project {project_id}; "
                 "promote a baseline first (Client.experiments.set_alias)"
             ) from exc
-    matches = [e for e in client.experiments.list(project_id) if e.name == baseline]
+    matches = client.experiments.list(project_id, name=baseline)
     if not matches:
         raise ValueError(f"no baseline experiment named {baseline!r} in project {project_id}")
     same_dataset = [e for e in matches if str(e.dataset_id) == dataset_id]

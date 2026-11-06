@@ -118,11 +118,20 @@ class ListExperiments:
         self._experiments = experiments
         self._projects = projects
 
-    async def execute(self, project_id: uuid.UUID) -> list[Experiment]:
+    async def execute(
+        self,
+        project_id: uuid.UUID,
+        *,
+        name: str | None = None,
+        limit: int | None = None,
+        offset: int = 0,
+    ) -> list[Experiment]:
         project = await self._projects.get_by_id(project_id)
         if project is None:
             raise ProjectNotFoundError(project_id)
-        return await self._experiments.list_by_project(project_id)
+        return await self._experiments.list_by_project(
+            project_id, name=name, limit=limit, offset=offset
+        )
 
 
 class GetExperiment:

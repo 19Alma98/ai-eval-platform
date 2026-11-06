@@ -101,11 +101,25 @@ class InMemoryMetricsSetRepository:
                 return metrics_set
         return None
 
-    async def list_by_project(self, project_id: uuid.UUID) -> list[MetricsSet]:
-        return sorted(
+    async def list_by_project(
+        self,
+        project_id: uuid.UUID,
+        *,
+        name: str | None = None,
+        limit: int | None = None,
+        offset: int = 0,
+    ) -> list[MetricsSet]:
+        rows = sorted(
             (s for s in self._items.values() if s.project_id == project_id),
             key=lambda s: s.created_at,
         )
+        if name is not None:
+            rows = [s for s in rows if s.name == name]
+        if offset:
+            rows = rows[offset:]
+        if limit is not None:
+            rows = rows[: max(1, min(limit, 1000))]
+        return rows
 
     async def update(self, metrics_set: MetricsSet) -> MetricsSet:
         self._items[metrics_set.id] = metrics_set
@@ -132,8 +146,22 @@ class InMemoryExperimentRepository:
     async def get_by_id(self, experiment_id: uuid.UUID) -> Experiment | None:
         return self._items.get(experiment_id)
 
-    async def list_by_project(self, project_id: uuid.UUID) -> list[Experiment]:
-        return [e for e in self._items.values() if e.project_id == project_id]
+    async def list_by_project(
+        self,
+        project_id: uuid.UUID,
+        *,
+        name: str | None = None,
+        limit: int | None = None,
+        offset: int = 0,
+    ) -> list[Experiment]:
+        rows = [e for e in self._items.values() if e.project_id == project_id]
+        if name is not None:
+            rows = [e for e in rows if e.name == name]
+        if offset:
+            rows = rows[offset:]
+        if limit is not None:
+            rows = rows[: max(1, min(limit, 1000))]
+        return rows
 
     async def list_by_status(self, status: str, *, limit: int = 500) -> list[Experiment]:
         rows = [e for e in self._items.values() if e.status == status]

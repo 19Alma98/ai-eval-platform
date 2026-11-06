@@ -528,16 +528,24 @@ class ListLiveInteractions:
                 limit=page_size,
                 offset=offset,
             )
-            # One trace-score query per page, not per row.
             by_trace = await self._trace_scores_by_trace(project_id, items)
+            scores_by_interaction = await self._live.list_scores_for_interaction_ids(
+                project_id, [item.id for item in items]
+            )
+            all_score_ids = [
+                score.id for scores in scores_by_interaction.values() for score in scores
+            ]
+            reviews_by_score_id = await self._live.list_score_reviews_by_score_ids(all_score_ids)
             for item in items:
-                scores = await self._live.list_scores(item.id)
+                scores = scores_by_interaction.get(item.id, [])
                 extra = by_trace.get(source_trace_id(item) or "", [])
                 if failed_only and not live_row_is_failed(scores, extra):
                     continue
-                score_reviews = await self._live.list_score_reviews_by_score_ids(
-                    [s.id for s in scores]
-                )
+                score_reviews = {
+                    score.id: reviews_by_score_id[score.id]
+                    for score in scores
+                    if score.id in reviews_by_score_id
+                }
                 if unreviewed_only and (not scores or score_reviews):
                     continue
                 out.append((item, scores, score_reviews))

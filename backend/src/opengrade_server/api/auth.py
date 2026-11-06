@@ -29,6 +29,10 @@ from dataclasses import dataclass
 from fastapi import Request
 from starlette.types import ASGIApp, Receive, Scope, Send
 
+from opengrade_server.api.auth_rate_limit import (
+    client_ip_from_scope,
+    get_auth_failed_rate_limiter,
+)
 from opengrade_server.application.api_keys import api_key_store
 from opengrade_server.config import Settings, get_settings
 
@@ -169,7 +173,14 @@ def get_principal(request: Request) -> Principal | None:
     return getattr(request.state, "principal", None)
 
 
-async def _send_json(send: Send, status: int, detail: str, *, challenge: bool) -> None:
+async def _send_json(
+    send: Send,
+    status: int,
+    detail: str,
+    *,
+    challenge: bool,
+    retry_after: int | None = None,
+) -> None:
     body = json.dumps({"detail": detail}).encode()
     headers = [
         (b"content-type", b"application/json"),
@@ -177,6 +188,8 @@ async def _send_json(send: Send, status: int, detail: str, *, challenge: bool) -
     ]
     if challenge:
         headers.append((b"www-authenticate", b'Bearer realm="opengrade"'))
+    if retry_after is not None:
+        headers.append((b"retry-after", str(max(1, retry_after)).encode()))
     await send({"type": "http.response.start", "status": status, "headers": headers})
     await send({"type": "http.response.body", "body": body})
 
@@ -196,12 +209,34 @@ class ApiKeyAuthMiddleware:
         if not settings.accepted_api_keys():
             await self.app(scope, receive, send)
             return
+        client_ip = client_ip_from_scope(scope)
+        limiter = get_auth_failed_rate_limiter(settings)
+        locked = limiter.retry_after(client_ip)
+        if locked is not None:
+            await _send_json(
+                send,
+                429,
+                "too many failed API key attempts; try again later",
+                challenge=True,
+                retry_after=locked,
+            )
+            return
         headers = {
             name.decode("latin-1").lower(): value.decode("latin-1")
             for name, value in scope.get("headers") or []
         }
         principal = await resolve_principal(headers, settings)
         if principal is None:
+            retry_after = limiter.record_failure(client_ip)
+            if retry_after is not None:
+                await _send_json(
+                    send,
+                    429,
+                    "too many failed API key attempts; try again later",
+                    challenge=True,
+                    retry_after=retry_after,
+                )
+                return
             await _send_json(
                 send,
                 401,

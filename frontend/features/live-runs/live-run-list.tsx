@@ -1,8 +1,8 @@
 "use client";
 
-import { useRouter, useSearchParams } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { ThumbsDown, ThumbsUp } from "lucide-react";
-import { useCallback, useMemo, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import { DataTable, type DataTableColumn } from "@/components/data-table";
 import { EmptyState } from "@/components/empty-state";
 import { ErrorState } from "@/components/error-state";
@@ -66,20 +66,25 @@ function reviewSummary(row: LiveInteraction): string | null {
 
 type Filter = "all" | "failing" | "waiting";
 
+function filterFromParams(params: URLSearchParams): Filter {
+  if (params.get("waiting") === "1") return "waiting";
+  if (params.get("failed") === "1") return "failing";
+  return "all";
+}
+
 function pct(rate: number): string {
   return `${Math.round(rate * 100)}%`;
 }
 
 export function LiveRunList() {
   const router = useRouter();
+  const pathname = usePathname();
   const searchParams = useSearchParams();
   const { projectId } = useProjectId();
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [calibrationIndex, setCalibrationIndex] = useState(0);
-  const [filter, setFilter] = useState<Filter>(() =>
-    searchParams.get("failed") === "1" ? "failing" : "all",
-  );
-  const [search, setSearch] = useState("");
+  const filter = filterFromParams(searchParams);
+  const [search, setSearch] = useState(() => searchParams.get("q") ?? "");
   const debouncedSearch = useDebouncedValue(search.trim());
   const query = useLiveRuns(projectId, {
     // "Waiting" covers both queued and in-flight judge runs.
@@ -88,6 +93,35 @@ export function LiveRunList() {
     search: debouncedSearch || undefined,
   });
   const calibration = useLiveJudgeCalibration(projectId);
+
+  const setParams = useCallback(
+    (patch: Record<string, string | null>) => {
+      const params = new URLSearchParams(searchParams.toString());
+      for (const [key, value] of Object.entries(patch)) {
+        if (value == null) params.delete(key);
+        else params.set(key, value);
+      }
+      const next = params.toString();
+      router.replace(next ? `${pathname}?${next}` : pathname);
+    },
+    [pathname, router, searchParams],
+  );
+
+  const setFilter = useCallback(
+    (next: Filter) => {
+      setParams({
+        failed: next === "failing" ? "1" : null,
+        waiting: next === "waiting" ? "1" : null,
+      });
+    },
+    [setParams],
+  );
+
+  useEffect(() => {
+    const current = searchParams.get("q") ?? "";
+    if (debouncedSearch === current) return;
+    setParams({ q: debouncedSearch || null });
+  }, [debouncedSearch, searchParams, setParams]);
 
   const rows = query.data?.items ?? [];
   const unsuitableMessage = liveJudgeWarningMessage(query.data?.judge_warnings);

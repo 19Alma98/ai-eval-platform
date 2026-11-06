@@ -128,7 +128,6 @@ export function ExperimentsMatrixView({ projectId }: { projectId: string }) {
     queryFn: () => summarizeProjectExperiments(projectId, pinnedIds),
   });
 
-  const [sort, setSort] = useState<SortState>({ key: "created", dir: "desc" });
   const [selected, setSelected] = useState<Set<string>>(new Set());
 
   const filters: MatrixFilters = useMemo(() => {
@@ -158,6 +157,18 @@ export function ExperimentsMatrixView({ projectId }: { projectId: string }) {
     [setParams],
   );
 
+  const sort: SortState = useMemo(() => {
+    const key = searchParams.get("sort") || "created";
+    const order = searchParams.get("order");
+    const dir: SortState["dir"] =
+      order === "asc" || order === "desc"
+        ? order
+        : key === "name"
+          ? "asc"
+          : "desc";
+    return { key, dir };
+  }, [searchParams]);
+
   const { rows: allRows, columns } = useMemo(() => {
     const experiments = (experimentsQuery.data ?? []).filter(
       (e) => pinnedIds.length === 0 || pinnedIds.includes(e.id),
@@ -180,11 +191,18 @@ export function ExperimentsMatrixView({ projectId }: { projectId: string }) {
     [datasetsQuery.data],
   );
   function onSort(key: string) {
-    setSort((prev) =>
-      prev.key === key
-        ? { key, dir: prev.dir === "asc" ? "desc" : "asc" }
-        : { key, dir: key === "name" ? "asc" : "desc" },
-    );
+    const nextDir =
+      sort.key === key
+        ? sort.dir === "asc"
+          ? "desc"
+          : "asc"
+        : key === "name"
+          ? "asc"
+          : "desc";
+    setParams({
+      sort: key === "created" && nextDir === "desc" ? null : key,
+      order: key === "created" && nextDir === "desc" ? null : nextDir,
+    });
   }
 
   function toggle(id: string) {

@@ -67,6 +67,20 @@ class Settings(BaseSettings):
         gt=0,
         validation_alias=AliasChoices("OPENGRADE_UI_SESSION_HOURS", "ui_session_hours"),
     )
+    auth_failed_attempts_per_minute: int = Field(
+        default=60,
+        ge=0,
+        validation_alias=AliasChoices(
+            "OPENGRADE_AUTH_FAILED_ATTEMPTS_PER_MINUTE", "auth_failed_attempts_per_minute"
+        ),
+    )
+    auth_failed_lockout_seconds: int = Field(
+        default=60,
+        ge=1,
+        validation_alias=AliasChoices(
+            "OPENGRADE_AUTH_FAILED_LOCKOUT_SECONDS", "auth_failed_lockout_seconds"
+        ),
+    )
 
     def accepted_api_keys(self) -> tuple[str, ...]:
         keys = (self.api_key, self.api_key_previous)

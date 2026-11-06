@@ -397,11 +397,20 @@ class ListMetricsSets:
         self._metrics_sets = metrics_sets
         self._projects = projects
 
-    async def execute(self, project_id: uuid.UUID) -> list[MetricsSet]:
+    async def execute(
+        self,
+        project_id: uuid.UUID,
+        *,
+        name: str | None = None,
+        limit: int | None = None,
+        offset: int = 0,
+    ) -> list[MetricsSet]:
         project = await self._projects.get_by_id(project_id)
         if project is None:
             raise ProjectNotFoundError(project_id)
-        return await self._metrics_sets.list_by_project(project_id)
+        return await self._metrics_sets.list_by_project(
+            project_id, name=name, limit=limit, offset=offset
+        )
 
 
 class GetMetricsSet:

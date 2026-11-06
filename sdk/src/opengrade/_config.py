@@ -111,11 +111,12 @@ def _lazy_resolve_slug(slug: str) -> str | None:
     try:
         from opengrade._context import get_client
 
-        for project in get_client().projects.list():
-            if project.slug == slug:
-                _ACTIVE_PROJECT_ID = project.id
-                _ACTIVE_PROJECT_SLUG = project.slug
-                return project.id
+        projects = get_client().projects.list(slug=slug)
+        if projects:
+            project = projects[0]
+            _ACTIVE_PROJECT_ID = project.id
+            _ACTIVE_PROJECT_SLUG = project.slug
+            return project.id
     except Exception as exc:  # noqa: BLE001 — never raise into log_score / metrics
         logger.warning("opengrade: could not resolve project slug %r: %s", slug, exc)
         return None

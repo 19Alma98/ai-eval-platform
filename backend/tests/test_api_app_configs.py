@@ -29,7 +29,7 @@ class InMemoryProjectRepository:
                 return project
         return None
 
-    async def list_all(self) -> list[Any]:
+    async def list_all(self, **kwargs: object) -> list[Any]:
         return list(self._projects.values())
 
 

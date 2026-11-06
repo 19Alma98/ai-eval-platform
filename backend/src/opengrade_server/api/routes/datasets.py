@@ -133,6 +133,9 @@ async def create_dataset(
 async def list_datasets(
     project_id: uuid.UUID,
     task_type: str | None = Query(default=None),
+    name: str | None = Query(default=None),
+    limit: int | None = Query(default=None, ge=1, le=1000),
+    offset: int = Query(default=0, ge=0),
     use_case: ListDatasets = Depends(get_list_datasets),
 ) -> list[DatasetResponse]:
     try:
@@ -140,7 +143,9 @@ async def list_datasets(
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
     try:
-        datasets = await use_case.execute(project_id, task_type=normalized)
+        datasets = await use_case.execute(
+            project_id, task_type=normalized, name=name, limit=limit, offset=offset
+        )
     except ProjectNotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
     counts = await use_case.item_counts(datasets)

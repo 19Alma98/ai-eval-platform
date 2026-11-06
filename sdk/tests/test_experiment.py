@@ -106,7 +106,11 @@ class FakeServer:
             return httpx2.Response(201, json=created)
         if m := re.fullmatch(r"/api/v1/projects/[^/]+/datasets", path):
             if method == "GET":
-                return httpx2.Response(200, json=list(self.datasets.values()))
+                datasets = list(self.datasets.values())
+                name = request.url.params.get("name")
+                if name is not None:
+                    datasets = [d for d in datasets if d["name"] == name]
+                return httpx2.Response(200, json=datasets)
             ds_id = self.add_dataset(body["name"], [])
             return httpx2.Response(201, json=self.datasets[ds_id])
         if m := re.fullmatch(r"/api/v1/datasets/([^/]+)/items", path):
@@ -117,7 +121,11 @@ class FakeServer:
             return httpx2.Response(200, json={**self.datasets[m[1]], "items": self.items[m[1]]})
         if re.fullmatch(r"/api/v1/projects/[^/]+/metrics-sets", path):
             if method == "GET":
-                return httpx2.Response(200, json=list(self.metrics_sets.values()))
+                sets = list(self.metrics_sets.values())
+                name = request.url.params.get("name")
+                if name is not None:
+                    sets = [s for s in sets if s["name"] == name]
+                return httpx2.Response(200, json=sets)
             return httpx2.Response(
                 201, json=self.add_metrics_set(body["name"], entries=body["entries"])
             )
@@ -133,7 +141,11 @@ class FakeServer:
             )
         if re.fullmatch(r"/api/v1/projects/[^/]+/experiments", path):
             if method == "GET":
-                return httpx2.Response(200, json=list(self.experiments.values()))
+                experiments = list(self.experiments.values())
+                name = request.url.params.get("name")
+                if name is not None:
+                    experiments = [e for e in experiments if e["name"] == name]
+                return httpx2.Response(200, json=experiments)
             exp_id = str(uuid.uuid4())
             self.experiments[exp_id] = {
                 "id": exp_id,

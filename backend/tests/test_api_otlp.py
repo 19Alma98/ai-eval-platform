@@ -42,7 +42,7 @@ class InMemoryProjectRepository:
                 return project
         return None
 
-    async def list_all(self) -> list[Project]:
+    async def list_all(self, **kwargs: object) -> list[Project]:
         return sorted(
             self._projects.values(),
             key=lambda project: project.created_at or datetime.now(UTC),

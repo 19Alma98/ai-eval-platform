@@ -42,6 +42,15 @@ def _reset_otlp_backpressure() -> Iterator[None]:
 
 
 @pytest.fixture(autouse=True)
+def _reset_auth_failed_rate_limiter() -> Iterator[None]:
+    from opengrade_server.api.auth_rate_limit import reset_auth_failed_rate_limiter_for_tests
+
+    reset_auth_failed_rate_limiter_for_tests()
+    yield
+    reset_auth_failed_rate_limiter_for_tests()
+
+
+@pytest.fixture(autouse=True)
 def _reset_api_key_cache() -> Iterator[None]:
     from opengrade_server.application.api_keys import api_key_store
 
