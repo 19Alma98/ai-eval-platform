@@ -172,11 +172,14 @@ minimum model size: [LLM judges](docs/03-evaluation-engine.md#llm-judges).
 
 ## Deploy with Docker Compose
 
-For a team server, CI baselines and production traffic, run the API, UI and PostgreSQL in containers. The API image runs as non-root (`uid`/`gid` `10001`).
+For a team server, CI baselines and production traffic, run the API, UI and PostgreSQL in containers. The API image runs as non-root (`uid`/`gid` `10001`). Release tags publish it to GHCR as [`ghcr.io/19alma98/ai-eval-platform/opengrade`](https://github.com/19Alma98/ai-eval-platform/pkgs/container/ai-eval-platform%2Fopengrade).
 
 ```bash
 cp backend/.env.example backend/.env   # judges, API key, other settings
-docker compose up --build              # http://localhost:8000
+
+# Pull a published image (no local build):
+docker compose pull
+docker compose up                      # http://localhost:8000
 ```
 
 ```bash
@@ -227,8 +230,7 @@ uv run --project sdk --only-group docs mkdocs serve
 
 `scripts/smoke_install.py` checks a clean install (`pip install`) of the built wheels
 on Linux, macOS and Windows (*Install smoke* workflow, and against PyPI after each release).
-Releases are published to PyPI from a `vX.Y.Z` tag with Trusted Publishing:
-see [publishing](docs/08-cli-ci.md#publishing-to-pypi).
+Releases from a `vX.Y.Z` tag publish wheels to PyPI (Trusted Publishing) and the API+UI image to GHCR: see [publishing](docs/08-cli-ci.md#publishing-to-pypi).
 
 ## License
 

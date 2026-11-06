@@ -6,12 +6,6 @@ Priority: **P0** blocks a public release, **P1** fix before promoting it, **P2**
 
 ## Release / product
 
-### Packaging / release — P0
-
-- [ ] **Docker image not published** (`publish.yml` only does PyPI). Publish to GHCR/Docker Hub on tag.
-  Image already runs non-root (`uid`/`gid` `10001`); env vars documented in root README,
-  `backend/README.md`, and `backend/.env.example`.
-
 ### Server / container production-readiness — P1
 
 - [ ] Multi-replica unsafe: startup recovery on one replica fails/requeues other replicas' running

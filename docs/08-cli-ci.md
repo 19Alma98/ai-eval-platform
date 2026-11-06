@@ -310,18 +310,19 @@ opengrade experiment compare
 
 `opengrade login` is not required for v0.1. The CLI talks to a local/self-hosted API on a trusted network.
 
-## Publishing to PyPI
+## Publishing to PyPI and GHCR
 
 Workflow: [`.github/workflows/publish.yml`](../.github/workflows/publish.yml).
 
 Distributions:
 
-| PyPI name | Import / CLI |
-|-----------|--------------|
-| `opengrade-ai` | `import opengrade` / console script `opengrade` |
-| `opengrade-ai-server` | `opengrade_server` / console script `opengrade-server` |
+| Artifact | Name |
+|----------|------|
+| PyPI SDK | `opengrade-ai` — `import opengrade` / console script `opengrade` |
+| PyPI server | `opengrade-ai-server` — `opengrade_server` / console script `opengrade-server` |
+| Container | `ghcr.io/19alma98/ai-eval-platform/opengrade` — API + packaged UI (non-root `10001`) |
 
-### One-time setup (Trusted Publishing)
+### One-time setup (Trusted Publishing + GHCR)
 
 1. Create a GitHub Environment named **`pypi`** on `19Alma98/ai-eval-platform` (optional protection rules / required reviewers).
 2. On [PyPI](https://pypi.org/manage/account/publishing/): for **each** of `opengrade-ai` and `opengrade-ai-server`, add a **pending** trusted publisher:
@@ -329,7 +330,8 @@ Distributions:
    - Repository: `ai-eval-platform`
    - Workflow name: `publish.yml`
    - Environment name: `pypi`
-3. No API tokens are required.
+3. No API tokens are required for PyPI or GHCR (`GITHUB_TOKEN` with `packages: write` on the docker job).
+4. After the first image push, open the package on GitHub → **Package settings** → set visibility to **Public** if anonymous `docker pull` should work.
 
 ### Release steps
 
@@ -337,15 +339,23 @@ The git tag is the only source of the version. Both packages read it through [ha
 
 1. Tag the commit and push the tag: `git tag v0.1.0 && git push origin v0.1.0`
 2. The workflow builds the UI (`package-ui.sh`) and both wheels with `OPENGRADE_RELEASE_BUILD=1`. That makes each package's `hatch_build.py` pin its sibling to the same version: the server needs `opengrade-ai==X`, and `opengrade-ai[ui]` needs `opengrade-ai-server==X`. Dev builds leave those requirements unpinned so `uv.lock` stays stable. Building a non-dev (tagged) version without `OPENGRADE_RELEASE_BUILD=1` fails in `hatch_build.py` so unpinned release wheels cannot be published by accident.
-3. The workflow checks that both wheels carry the tag's version and the exact pins, and that `_ui/index.html` is inside the server wheel. Then it uploads via OIDC.
+3. The workflow checks that both wheels carry the tag's version and the exact pins, and that `_ui/index.html` is inside the server wheel. Then it uploads via OIDC and pushes `opengrade:<version>` plus `opengrade:latest` to GHCR (same version string, `OPENGRADE_RELEASE_BUILD=1` in the image build).
 
-Dry-run (build only, no upload): Actions → **Publish** → Run workflow → leave **dry_run** checked.
+Dry-run (build wheels and image only; no PyPI upload, no GHCR push): Actions → **Publish** → Run workflow → leave **dry_run** checked.
 
 Install for users after publish:
 
 ```bash
 pip install 'opengrade-ai[ui]'
 opengrade ui
+```
+
+Or pull the server image (Compose defaults to `latest`; pin with `OPENGRADE_IMAGE_TAG`):
+
+```bash
+docker pull ghcr.io/19alma98/ai-eval-platform/opengrade:latest
+# from a checkout of this repo:
+docker compose pull && docker compose up
 ```
 
 ## CI integration

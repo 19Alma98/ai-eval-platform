@@ -32,9 +32,9 @@ uv run opengrade ui --backend-store-uri 'postgresql+asyncpg://opengrade:opengrad
 
 ## Ops (container)
 
+- **Image:** `ghcr.io/19alma98/ai-eval-platform/opengrade` (tags: semver from the release tag, plus `latest`). Published by [`.github/workflows/publish.yml`](../.github/workflows/publish.yml). Compose uses that image and can still `build:` from this checkout (`docker compose up --build`).
 - **Single API replica** — scoring runs in-process; multi-replica recovery is not safe yet.
-- Image runs as non-root (`opengrade`, uid/gid `10001`); `/app` is writable for optional SQLite and
-  judge-prompt snapshots (`OPENGRADE_JUDGE_PROMPT_SNAPSHOTS`).
+- Image runs as non-root (`opengrade`, uid/gid `10001`); `/app` is writable for optional SQLite and judge-prompt snapshots (`OPENGRADE_JUDGE_PROMPT_SNAPSHOTS`).
 - Probes: `GET /health` (liveness), `GET /ready` (DB readiness). Compose healthchecks `/ready`.
 - Requests carry `X-Request-ID` (echoed / generated).
 - Entrypoint: `--proxy-headers`, `--forwarded-allow-ips` (`FORWARDED_ALLOW_IPS`), `--timeout-graceful-shutdown` (`SHUTDOWN_GRACE_SECONDS`).

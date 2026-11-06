@@ -1,8 +1,9 @@
 name: Publish
 
-# Publishes opengrade-ai-server then opengrade-ai to PyPI via Trusted Publishing (OIDC).
+# Publishes opengrade-ai-server then opengrade-ai to PyPI via Trusted Publishing (OIDC),
+# and the API+UI image to GHCR (ghcr.io/<owner>/<repo>/opengrade).
 # Trigger: push tag vX.Y.Z, or workflow_dispatch (dry-run by default).
-# Both versions come from the git tag via hatch-vcs; no version is written in the repo.
+# Both package versions come from the git tag via hatch-vcs; no version is written in the repo.
 
 on:
   push:
@@ -11,12 +12,16 @@ on:
   workflow_dispatch:
     inputs:
       dry_run:
-        description: "Build wheels only; skip PyPI upload"
+        description: "Build wheels/image only; skip PyPI upload and GHCR push"
         type: boolean
         default: true
 
 permissions:
   contents: read
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}/opengrade
 
 jobs:
   build:
@@ -171,3 +176,62 @@ jobs:
         with:
           packages-dir: dist/
           skip-existing: false
+
+  docker:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    env:
+      PUSH: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.dry_run == false) }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set image name (lowercase)
+        id: image
+        run: |
+          set -euo pipefail
+          name="$(echo "${IMAGE_NAME}" | tr '[:upper:]' '[:lower:]')"
+          # Docker tags cannot contain '+'; hatch-vcs local versions use it (dry-run).
+          version="${{ needs.build.outputs.version }}"
+          version="${version//+/-}"
+          echo "name=${name}" >> "$GITHUB_OUTPUT"
+          echo "ref=${REGISTRY}/${name}" >> "$GITHUB_OUTPUT"
+          echo "version=${version}" >> "$GITHUB_OUTPUT"
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        if: env.PUSH == 'true'
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Docker metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ steps.image.outputs.ref }}
+          tags: |
+            type=raw,value=${{ steps.image.outputs.version }}
+            type=raw,value=latest,enable=${{ env.PUSH == 'true' }}
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: backend/Dockerfile
+          push: ${{ env.PUSH == 'true' }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          build-args: |
+            OPENGRADE_VERSION=${{ needs.build.outputs.version }}
+            OPENGRADE_RELEASE_BUILD=1
+          cache-from: type=gha
+          cache-to: type=gha,mode=max

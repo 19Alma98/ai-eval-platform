@@ -16,10 +16,15 @@ services:
       retries: 15
 
   # API and UI in one image (same static UI as `opengrade ui`): http://localhost:8000
+  # Published on tag to GHCR; override with OPENGRADE_IMAGE_TAG=0.x.y or build locally.
   api:
+    image: ghcr.io/19alma98/ai-eval-platform/opengrade:${OPENGRADE_IMAGE_TAG:-latest}
     build:
       context: .
       dockerfile: backend/Dockerfile
+      args:
+        OPENGRADE_VERSION: ${OPENGRADE_VERSION:-0.0.0.dev0+docker}
+        OPENGRADE_RELEASE_BUILD: ${OPENGRADE_RELEASE_BUILD:-}
 
     # Optional: copy backend/.env.example → backend/.env for LLM judges / overrides.
     env_file:
