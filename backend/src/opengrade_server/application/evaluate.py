@@ -355,7 +355,7 @@ class EvaluationRunNotFoundError(Exception):
 
 async def schedule_evaluate_experiment(command: EvaluateExperimentCommand) -> None:
     """BackgroundTasks entrypoint — opens a dedicated DB session."""
-    from opengrade_server.config import get_settings
+    from opengrade_server.application.llm_settings import get_effective_llm_settings_sync
     from opengrade_server.evaluation.runner import EvaluationRunner
     from opengrade_server.infrastructure.db import try_get_session_factory
     from opengrade_server.infrastructure.repositories import (
@@ -374,7 +374,7 @@ async def schedule_evaluate_experiment(command: EvaluateExperimentCommand) -> No
         )
         return
 
-    settings = get_settings()
+    llm = get_effective_llm_settings_sync()
     async with factory() as session:
         experiments = SqlAlchemyExperimentRepository(session)
         datasets = SqlAlchemyDatasetRepository(session)
@@ -386,7 +386,7 @@ async def schedule_evaluate_experiment(command: EvaluateExperimentCommand) -> No
             datasets,
             evaluators,
             runs,
-            EvaluationRunner(max_concurrency=settings.llm_max_concurrency),
+            EvaluationRunner(max_concurrency=llm.max_concurrency),
             outputs,
         )
         try:

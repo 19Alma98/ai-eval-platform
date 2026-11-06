@@ -55,9 +55,9 @@ defaults and comments: [`.env.example`](.env.example). Field mapping lives in
 | `OPENGRADE_API_KEY` | unset | Bootstrap admin key; unset = no auth |
 | `OPENGRADE_API_KEY_PREVIOUS` | unset | Accepted during key rotation |
 | `OPENGRADE_UI_SESSION_HOURS` | `12` | UI session cookie lifetime |
-| `LLM_MODEL` / `LLM_API_KEY` / `LLM_API_BASE` | see `.env.example` | LiteLLM judges |
-| `LLM_TIMEOUT_SECONDS` / `LLM_MAX_RETRIES` / `LLM_MAX_CONCURRENCY` | `60` / `2` / `8` | Raise timeout for cold Ollama |
-| `LLM_TEMPERATURE` / `LLM_SEED` | `0.0` / `42` | Seed ignored by some providers |
+| `LLM_MODEL` / `LLM_API_KEY` / `LLM_API_BASE` | see `.env.example` | LiteLLM judges; non-secret fields can be overridden in **Settings → LLM judges** (DB overlay). `LLM_API_KEY` is never stored in the DB — the UI writes it to cwd `.env` only. |
+| `LLM_TIMEOUT_SECONDS` / `LLM_MAX_RETRIES` / `LLM_MAX_CONCURRENCY` | `60` / `2` / `8` | Raise timeout for cold Ollama; overridable in Settings |
+| `LLM_TEMPERATURE` / `LLM_SEED` | `0.0` / `42` | Seed ignored by some providers; overridable in Settings |
 | `FORWARDED_ALLOW_IPS` | `*` | Trusted proxies for `X-Forwarded-*` |
 | `SHUTDOWN_GRACE_SECONDS` | `30` | Uvicorn graceful shutdown |
 | `PUBLIC_BASE_URL` | unset | External UI URL in alert links |

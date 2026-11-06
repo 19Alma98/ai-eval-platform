@@ -15,38 +15,27 @@ from opengrade_server.api.request_id import RequestIdMiddleware, configure_reque
 from opengrade_server.api.routes import api_router
 from opengrade_server.api.schemas import HealthResponse
 from opengrade_server.config import get_settings
-from opengrade_server.evaluation import bootstrap_evaluators
-from opengrade_server.evaluation.registry import clear_registry
+from opengrade_server.evaluation.runtime import ensure_evaluators_registered
 from opengrade_server.infrastructure.db import (
     bootstrap_schema,
     check_db_ready,
     dispose_db,
     init_db,
 )
-from opengrade_server.infrastructure.llm import LiteLlmClient
-from opengrade_server.infrastructure.repositories import SqlJudgeClaimCache
 from opengrade_server.ui import mount_ui
-
-
-def _ensure_evaluators_registered() -> None:
-    settings = get_settings()
-    clear_registry()
-    bootstrap_evaluators(
-        LiteLlmClient(settings),
-        default_model=settings.llm_model,
-        claim_cache=SqlJudgeClaimCache(),
-    )
 
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
     from opengrade_server.application.alerts import run_alert_loop
+    from opengrade_server.application.llm_settings import llm_settings_store
     from opengrade_server.application.retention import run_retention_loop
     from opengrade_server.application.scoring_recovery import recover_scoring_after_restart
 
     init_db()
     await bootstrap_schema()
-    _ensure_evaluators_registered()
+    await llm_settings_store.get_effective()
+    ensure_evaluators_registered()
     await recover_scoring_after_restart()
     settings = get_settings()
     alert_loop = (
@@ -104,7 +93,7 @@ def _telemetry_kwargs(*, self_telemetry: bool) -> dict[str, Any]:
 
 def create_app(*, mount_packaged_ui: bool = True, self_telemetry: bool = True) -> FastAPI:
     configure_request_id_logging()
-    _ensure_evaluators_registered()
+    ensure_evaluators_registered()
     app = FastAPI(
         title="OpenGrade",
         version=__version__,

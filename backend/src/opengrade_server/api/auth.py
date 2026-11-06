@@ -36,6 +36,7 @@ OTLP_TRACES_PATH = "/v1/traces"
 AUTH_STATUS_PATH = "/api/v1/auth/status"
 AUTH_SESSION_PATH = "/api/v1/auth/session"
 API_KEYS_PATH = "/api/v1/api-keys"
+LLM_SETTINGS_PATH = "/api/v1/settings/llm"
 ENV_SUBJECT = "env"
 _SESSION_CONTEXT = b"opengrade-ui-session"
 _READ_METHODS = frozenset({"GET", "HEAD", "OPTIONS"})
@@ -70,7 +71,7 @@ def _is_protected(path: str) -> bool:
 def scope_allows(scope: str, method: str, path: str) -> bool:
     if scope == "admin":
         return True
-    if path.startswith(API_KEYS_PATH):
+    if path.startswith(API_KEYS_PATH) or path.startswith(LLM_SETTINGS_PATH):
         return False
     if scope == "read":
         return method in _READ_METHODS and path.startswith("/api/")

@@ -77,6 +77,10 @@ Primary risks:
 4. Sanitize/escape rendered content.
 5. Provider credentials are server-side secrets.
 6. Never log API keys or provider secrets.
+   Judge `LLM_API_KEY` stays in the process environment / cwd `.env` (writable from
+   **Settings → LLM judges**). It is never written to the application database so DB
+   dumps and backups do not contain the provider key. Non-secret LLM knobs may live in
+   the `system_llm_settings` overlay (single API replica; in-process cache only).
 7. Allow content capture to be disabled (see [Content capture and redaction](#content-capture-and-redaction)).
 8. Provide redaction controls: server-wide at ingestion, per function in the SDK.
 9. Validate URLs if remote resources are ever supported.

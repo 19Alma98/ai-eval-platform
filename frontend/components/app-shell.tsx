@@ -99,7 +99,7 @@ const NAV: { section: string | null; items: NavItem[] }[] = [
         href: "/settings",
         label: "Settings",
         icon: KeyRound,
-        hint: "API keys for apps, CI and people",
+        hint: "API keys and LLM judges",
       },
     ],
   },

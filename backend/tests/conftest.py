@@ -50,3 +50,12 @@ def _reset_api_key_cache() -> Iterator[None]:
     yield
     api_key_store.clear_cache()
     api_key_store._touched.clear()
+
+
+@pytest.fixture(autouse=True)
+def _reset_llm_settings_cache() -> Iterator[None]:
+    from opengrade_server.application.llm_settings import llm_settings_store
+
+    llm_settings_store.clear_cache()
+    yield
+    llm_settings_store.clear_cache()

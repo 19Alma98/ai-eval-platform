@@ -20,6 +20,9 @@ See [Security: API keys](10-security-privacy.md#api-keys).
 | `GET` | `/api/v1/api-keys` | admin | keys without their secret: `id`, `name`, `scope`, `prefix`, `created_at`, `last_used_at`, `revoked_at` |
 | `POST` | `/api/v1/api-keys` | admin | body `{"name", "scope"}` → `201` with `key` (shown once); `409` when auth is off |
 | `DELETE` | `/api/v1/api-keys/{id}` | admin | revoke (`204`, idempotent); `404` unknown id |
+| `GET` | `/api/v1/settings/llm` | admin | effective LLM judge settings + per-field `sources` (`env`\|`db`); `api_key_set` only (never the raw key) |
+| `PUT` | `/api/v1/settings/llm` | admin | partial overlay update (`null` clears a field); `api_key` writes/clears cwd `.env` (`503` if not writable) |
+| `POST` | `/api/v1/settings/llm/reset` | admin | drop DB overlays (does not change `LLM_API_KEY` in `.env`) |
 
 Do not block the platform MVP on SSO, sessions, or RBAC.
 

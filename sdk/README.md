@@ -277,7 +277,9 @@ tone = opengrade.LlmJudge(
     # model="gpt-4o-mini",  # default: the server's LLM_MODEL
 )
 
-print(tone.preview(input="Can I carry over PTO?", output="lol no").explanation)  # try it, nothing stored
+print(
+    tone.preview(input="Can I carry over PTO?", output="lol no").explanation
+)  # try it, nothing stored
 opengrade.evaluate(dataset="gold-v1", task=answer_question, metrics=["groundedness", tone])
 ```
 

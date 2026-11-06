@@ -823,3 +823,30 @@ export type ApiKey = {
 
 /** Returned once by POST /api-keys; the server keeps only a hash of `key`. */
 export type CreatedApiKey = ApiKey & { key: string };
+
+export type LlmSettingSource = "env" | "db";
+
+export type LlmSettings = {
+  model: string;
+  api_base: string | null;
+  timeout_seconds: number;
+  max_retries: number;
+  max_concurrency: number;
+  temperature: number;
+  seed: number | null;
+  api_key_set: boolean;
+  sources: Record<string, LlmSettingSource>;
+  updated_at: string | null;
+};
+
+/** Partial update; `null` clears a DB overlay or the `.env` API key. */
+export type LlmSettingsUpdate = {
+  model?: string | null;
+  api_base?: string | null;
+  timeout_seconds?: number | null;
+  max_retries?: number | null;
+  max_concurrency?: number | null;
+  temperature?: number | null;
+  seed?: number | null;
+  api_key?: string | null;
+};

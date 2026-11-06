@@ -7,6 +7,7 @@ from typing import Any
 from sqlalchemy import (
     JSON,
     Boolean,
+    CheckConstraint,
     DateTime,
     Float,
     ForeignKey,
@@ -857,3 +858,25 @@ class ApiKeyModel(Base):
     )
     last_used_at: Mapped[datetime | None] = mapped_column(UtcDateTime(), nullable=True)
     revoked_at: Mapped[datetime | None] = mapped_column(UtcDateTime(), nullable=True)
+
+
+class SystemLlmSettingsModel(Base):
+    """Singleton overlay for non-secret LLM judge settings. ``NULL`` means use env.
+
+    ``LLM_API_KEY`` is never stored here; the Settings UI writes it to ``.env`` only.
+    """
+
+    __tablename__ = "system_llm_settings"
+    __table_args__ = (CheckConstraint("id = 1", name="ck_system_llm_settings_singleton"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, default=1)
+    model: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    api_base: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    timeout_seconds: Mapped[float | None] = mapped_column(Float, nullable=True)
+    max_retries: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    max_concurrency: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    temperature: Mapped[float | None] = mapped_column(Float, nullable=True)
+    seed: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    updated_at: Mapped[datetime] = mapped_column(
+        UtcDateTime(), nullable=False, server_default=func.now(), onupdate=func.now()
+    )

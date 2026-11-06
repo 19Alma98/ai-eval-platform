@@ -557,10 +557,10 @@ def get_app_settings() -> Settings:
     return get_settings()
 
 
-def get_evaluation_runner(
-    settings: Settings = Depends(get_app_settings),
-) -> EvaluationRunner:
-    return EvaluationRunner(max_concurrency=settings.llm_max_concurrency)
+def get_evaluation_runner() -> EvaluationRunner:
+    from opengrade_server.application.llm_settings import get_effective_llm_settings_sync
+
+    return EvaluationRunner(max_concurrency=get_effective_llm_settings_sync().max_concurrency)
 
 
 def get_evaluate_experiment(
