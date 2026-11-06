@@ -9,8 +9,6 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-# Real models through an OpenAI-compatible endpoint (Ollama, OpenAI, vLLM, ...),
-# auto-traced by the OpenInference instrumentor.
 llm = [
     "opengrade-ai[openai]",
     "openai>=1.50",
@@ -22,11 +20,6 @@ dev = ["pytest>=8.3.0", "ruff>=0.8.0"]
 [tool.uv]
 # Scripts + a local package imported from the project directory: nothing to build.
 package = false
-
-# Monorepo only: use the SDK from this repository. In your own project just run
-# `uv add opengrade-ai` (or `uv add 'opengrade-ai[openai]'`) and drop this block.
-[tool.uv.sources]
-opengrade-ai = { path = "../../sdk", editable = true }
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

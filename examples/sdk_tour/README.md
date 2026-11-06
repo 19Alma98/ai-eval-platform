@@ -2,8 +2,7 @@
 
 A small, runnable `uv` project that shows how an AI engineer uses the OpenGrade Python SDK to **trace, test, compare, monitor and A/B prompts** of LLM applications. Each script covers one use case, prints what it is doing step by step, and is commented so you can copy the patterns into your own code.
 
-You play the AI engineer of **Nimbus**, a fictional cloud file-storage company with two AI
-applications:
+Two AI applications are considered:
 
 | App | What it does | Code |
 |---|---|---|
@@ -32,7 +31,7 @@ Run them in this order: each one builds on the previous (you trace the app, then
 uvx --from 'opengrade-ai[ui]' opengrade ui
 ```
 
-or `docker compose up --build` at the root of this repository. To run the platform from the sources of this repository, see [getting started](../../docs/getting-started.md). No LLM judge is needed: everything the tour scores by default is deterministic.
+or `docker compose up --build` at the root of this repository. No LLM judge is needed: everything the tour scores by default is deterministic.
 
 **2. Install the tour** (from this directory):
 
@@ -40,9 +39,6 @@ or `docker compose up --build` at the root of this repository. To run the platfo
 cd examples/sdk_tour
 uv sync
 ```
-
-`pyproject.toml` points `opengrade-ai` at the SDK in this repository (`[tool.uv.sources]`).
-In your own project you would simply run `uv add opengrade-ai`.
 
 **3. Optional settings:** `cp .env.example .env` and edit. The defaults work with a local platform on port 8000.
 
@@ -86,12 +82,9 @@ sdk_tour/
 
 ## 1. Tracing: see what your applications do
 
-**Question:** a customer says the assistant gave a strange answer. What did it retrieve?
-Which model answered? How long did each step take? Did it fail?
+**Question:** a customer says the assistant gave a strange answer. What did it retrieve? Which model answered? How long did each step take? Did it fail?
 
-A **trace** is the record of one request. It is made of **spans**, one per step, each with
-input, output, duration, status and attributes. Instrumenting the RAG takes a decorator,
-two `with` blocks and one call (simplified from [`nimbus_apps/rag.py`](nimbus_apps/rag.py)):
+A **trace** is the record of one request. It is made of **spans**, one per step, each with input, output, duration, status and attributes. Instrumenting the RAG takes a decorator, two `with` blocks and one call (simplified from [`nimbus_apps/rag.py`](nimbus_apps/rag.py)):
 
 ```python
 @opengrade.trace(name="support_assistant")  # 1 call = 1 trace
@@ -111,22 +104,17 @@ opengrade.set_project("nimbus-support")
 opengrade.init(service_name="nimbus-support", instrument="auto", version="1.4.0", environment="dev")
 ```
 
-`instrument="auto"` makes calls to OpenAI, Anthropic, LangChain, LlamaIndex or Bedrock
-appear as LLM spans with prompt, tokens and cost, with no extra code. For a provider
-without an instrumentor, open the `LLM` span yourself: see `_fake_llm_call` in
-[`nimbus_apps/llm.py`](nimbus_apps/llm.py).
+`instrument="auto"` makes calls to OpenAI, Anthropic, LangChain, LlamaIndex or Bedrock appear as LLM spans with prompt, tokens and cost, with no extra code. For a provider without an instrumentor, open the `LLM` span yourself: see `_fake_llm_call` in [`nimbus_apps/llm.py`](nimbus_apps/llm.py).
 
 The script then adds what makes traces useful in day-to-day work:
 
 | Step | Pattern | Why |
 |---|---|---|
-| 2 | `set_user`, `set_session`, `set_tags`, `set_metadata` inside the request handler | Filter the trace list by customer (`user:u-bob`), conversation (`session:conv-1`), plan (`tag:plan-free`, `plan:pro`) |
-| 3 | `using_attributes(tags=[...], metadata={...})` around a block | Same context for every span of a batch job or a middleware, without touching each function. Also: a non-RAG app with `GUARDRAIL` and `TOOL` spans |
-| 4 | an exception inside a span / `set_error("...")` | Failures are marked ERROR (red), count in the error rate and can trigger alerts. A handled problem (fallback answer) can be flagged without raising |
+| 1 | `set_user`, `set_session`, `set_tags`, `set_metadata` inside the request handler | Filter the trace list by customer (`user:u-bob`), conversation (`session:conv-1`), plan (`tag:plan-free`, `plan:pro`) |
+| 2 | `using_attributes(tags=[...], metadata={...})` around a block | Same context for every span of a batch job or a middleware, without touching each function. Also: a non-RAG app with `GUARDRAIL` and `TOOL` spans |
+| 3 | an exception inside a span / `set_error("...")` | Failures are marked ERROR (red), count in the error rate and can trigger alerts. A handled problem (fallback answer) can be flagged without raising |
 
-**In the UI:** Production → Traces. Open a `support_assistant` trace for the
-`retrieve → generate → llm.chat` tree, filter `session:conv-1` for a whole conversation,
-`tag:nightly-batch` for the batch job, and note the two red traces from step 4.
+**In the UI:** Production → Traces. Open a `support_assistant` trace for the `retrieve → generate → llm.chat` tree, filter `session:conv-1` for a whole conversation, `tag:nightly-batch` for the batch job, and note the two red traces from step 4.
 
 > Tracing never breaks your app: if the platform is down, spans are dropped with one
 > warning and your code runs as usual.
@@ -137,8 +125,7 @@ The script then adds what makes traces useful in day-to-day work:
 
 **Question:** before shipping a change, is the assistant still answering correctly?
 
-Traces tell you *what happened*; to know whether it was *right* you need expected results.
-The gold set [`data/gold_rag.jsonl`](data/gold_rag.jsonl) has one row per question:
+Traces tell you *what happened*; to know whether it was *right* you need expected results. The gold set [`data/gold_rag.jsonl`](data/gold_rag.jsonl) has one row per question:
 
 ```json
 {"input": "How long is the password reset link valid?",
@@ -157,10 +144,8 @@ The gold set [`data/gold_rag.jsonl`](data/gold_rag.jsonl) has one row per questi
 
 The script goes through five steps:
 
-1. **Register the gold set** as `nimbus-rag-gold-v1` ([`nimbus_apps/datasets.py`](nimbus_apps/datasets.py)).
-   When you change the questions, bump the version: runs are only comparable on the same set.
-2. **Test the retriever alone** with `opengrade.evaluate_retrieval`: no LLM call, so it is
-   cheap enough to run on every change to chunking or embeddings.
+1. **Register the gold set** as `nimbus-rag-gold-v1` ([`nimbus_apps/datasets.py`](nimbus_apps/datasets.py)). When you change the questions, bump the version: runs are only comparable on the same set.
+2. **Test the retriever alone** with `opengrade.evaluate_retrieval`: no LLM call, so it is cheap enough to run on every change to chunking or embeddings.
 3. **Test the whole pipeline** with `opengrade.evaluate`:
 
    ```python
@@ -192,12 +177,8 @@ The script goes through five steps:
        return opengrade.Score(1.0, explanation=f"cites {sorted(cited)}")
    ```
 
-4. **Read the failures** item by item (`print_failures`): question, answer, expected answer
-   and the reason given by each failing metric. With the default model you will see a
-   multi-document question answered only halfway and an *over-refusal*: the assistant says
-   "I don't know" although the docs cover the topic.
-5. **Quality gate:** minimum scores per metric. When the gate passes, the run becomes the
-   `rag-main` baseline (`client.experiments.set_alias`); the script exits `1` when it fails.
+4. **Read the failures** item by item (`print_failures`): question, answer, expected answer and the reason given by each failing metric. With the default model you will see a multi-document question answered only halfway and an *over-refusal*: the assistant says "I don't know" although the docs cover the topic.
+5. **Quality gate:** minimum scores per metric. When the gate passes, the run becomes the `rag-main` baseline (`client.experiments.set_alias`); the script exits `1` when it fails.
 
 **Try it:** run it once (gate passes, baseline set), then with a worse model:
 
@@ -213,19 +194,15 @@ TOUR_MODEL=fake-small uv run python 02_verify_rag.py
   -> gate failed: 'rag-main' is not moved
 ```
 
-The "vs baseline" column is a paired statistical comparison on the same questions, so a
-real regression is told apart from noise. For CI (PR checks, Markdown/JUnit reports) use
-the `opengrade evaluate` command: see [`examples/ci_regression_gate`](../ci_regression_gate/README.md).
+The "vs baseline" column is a paired statistical comparison on the same questions, so a real regression is told apart from noise. For CI (PR checks, Markdown/JUnit reports) use the `opengrade evaluate` command: see [`examples/ci_regression_gate`](../ci_regression_gate/README.md).
 
 ---
 
 ## 3. Compare architectures and models
 
-**Question:** keyword search or BM25? How many documents? Which model? Is the new classifier
-really better?
+**Question:** keyword search or BM25? How many documents? Which model? Is the new classifier really better?
 
-`opengrade.sweep` runs one experiment per configuration on the same gold set and ranks them.
-Your task receives the configuration as a second argument:
+`opengrade.sweep` runs one experiment per configuration on the same gold set and ranks them. Your task receives the configuration as a second argument:
 
 ```python
 def full_pipeline(item, params):
@@ -246,13 +223,9 @@ fastest = result.best("opengrade.latency_p95_ms")  # latency: lower is better
 
 The script runs three comparisons:
 
-1. **Retrieval architectures** (`retriever=` instead of `task=`): retriever × top_k, scored
-   with hit@k, recall@k and MRR. `top_k=1` cannot find both documents of the two-document
-   questions, and BM25 ranks the right document first more often than keyword search.
-2. **Full pipeline**: model × retriever, answer quality next to latency p95. Here the model
-   matters much more than the retriever, which is exactly the kind of insight a sweep gives you.
-3. **Not only RAG**: ticket classifier `rules-v1` vs `rules-v2` with the built-in
-   `exact_match` metric, v2 compared with v1 as its baseline (`+0.375 improved`).
+1. **Retrieval architectures** (`retriever=` instead of `task=`): retriever × top_k, scored with hit@k, recall@k and MRR. `top_k=1` cannot find both documents of the two-document questions, and BM25 ranks the right document first more often than keyword search.
+2. **Full pipeline**: model × retriever, answer quality next to latency p95. Here the model matters much more than the retriever, which is exactly the kind of insight a sweep gives you.
+3. **Not only RAG**: ticket classifier `rules-v1` vs `rules-v2` with the built-in `exact_match` metric, v2 compared with v1 as its baseline (`+0.375 improved`).
 
 ```text
 Sweep rag-architecture: 4 configurations, ranked by must_contain (higher is better)
@@ -263,16 +236,13 @@ Sweep rag-architecture: 4 configurations, ranked by must_contain (higher is bett
   4  model=fake-small, retriever=keyword  0.389         1.000          13
 ```
 
-**In the UI:** open the Compare link printed at the end: all configurations side by side,
-filtered on the `sweep` parameter, with any two metrics plotted against each other.
-`pandas.DataFrame(result.to_records())` gives you the same table in a notebook.
+**In the UI:** open the Compare link printed at the end: all configurations side by side, filtered on the `sweep` parameter, with any two metrics plotted against each other. `pandas.DataFrame(result.to_records())` gives you the same table in a notebook.
 
 ---
 
 ## 4. Custom metrics and production monitoring
 
-**Question:** once live, how do I know the assistant keeps working, with metrics that mean
-something for *my* product?
+**Question:** once live, how do I know the assistant keeps working, with metrics that mean something for *my* product?
 
 In production there is no expected answer, but you can still measure a lot on real traffic:
 
@@ -305,8 +275,7 @@ def support_chat(question, *, user_id, conversation_id) -> dict:
 opengrade.log_feedback(False, trace_id=trace_id, user_id="u-03", comment="I needed a real answer")
 ```
 
-The script sends 14 simulated chat messages, then lists the answers that need attention,
-with the reason (a score below threshold or a thumbs-down):
+The script sends 14 simulated chat messages, then lists the answers that need attention, with the reason (a score below threshold or a thumbs-down):
 
 ```text
   ! Who is the CEO of Nimbus?
@@ -315,12 +284,9 @@ with the reason (a score below threshold or a thumbs-down):
       user_feedback = 0.0  (I needed a real answer)
 ```
 
-Finally it creates five alert rules **as code**, idempotently (safe to run at every deploy).
-With this traffic, *Too many hand-offs to humans* (4 out of 14 > 20%) fires within a minute.
-Set `TOUR_ALERT_WEBHOOK_URL` to a Slack incoming webhook to receive it.
+Finally it creates five alert rules **as code**, idempotently (safe to run at every deploy). With this traffic, *Too many hand-offs to humans* (4 out of 14 > 20%) fires within a minute. Set `TOUR_ALERT_WEBHOOK_URL` to a Slack incoming webhook to receive it.
 
-**In the UI:** Production → Health (error rate, latency, cost, scores; filter `prod` and the
-version), Production → Live → Failing, Production → Alerts.
+**In the UI:** Production → Health (error rate, latency, cost, scores; filter `prod` and the version), Production → Live → Failing, Production → Alerts.
 
 > The loop closes here: a bad production answer, reviewed and given a reference answer, is
 > promoted into the gold set (`client.live_runs.promote`), and script 2 tests it on every
@@ -330,8 +296,7 @@ version), Production → Live → Failing, Production → Alerts.
 
 ## Real models and LLM judges
 
-**Real models.** Any model name that does not start with `fake-` is called through an
-OpenAI-compatible API, and traced automatically by the OpenInference instrumentor:
+**Real models.** Any model name that does not start with `fake-` is called through an OpenAI-compatible API, and traced automatically by the OpenInference instrumentor:
 
 ```bash
 uv sync --extra llm                      # openai + openinference-instrumentation-openai
@@ -340,34 +305,19 @@ TOUR_MODEL=gemma4:e2b uv run python 02_verify_rag.py
 TOUR_COMPARE_MODELS=gemma4:e2b,llama3.2 uv run python 03_compare_architectures.py
 ```
 
-For OpenAI set `LLM_BASE_URL=https://api.openai.com/v1`, `LLM_API_KEY=sk-...` and
-`TOUR_MODEL=gpt-4o-mini`. With real (non-deterministic) models, consider `repeats=3` in
-`evaluate` / `sweep` so that noise is not taken for a difference.
+For OpenAI set `LLM_BASE_URL=https://api.openai.com/v1`, `LLM_API_KEY=sk-...` and `TOUR_MODEL=gpt-4o-mini`. With real (non-deterministic) models, consider `repeats=3` in `evaluate` / `sweep` so that noise is not taken for a difference.
 
-**LLM judges.** Deterministic metrics check facts and documents; LLM judges check what only
-a reader can (is every claim supported by the documents? does the answer match the
-reference?). Configure a judge model on the platform (`LLM_MODEL`, `LLM_API_KEY` in
-`backend/.env`, see the root README), then set `TOUR_LLM_JUDGES=1`: script 2 adds
-`groundedness`, `correctness`, `answer_relevance` and `citation_accuracy`, script 3 adds
-`groundedness` and `correctness` to the sweep, and script 4 registers the custom
-`support_tone` judge and lets the platform judges grade live traffic.
+**LLM judges.** Deterministic metrics check facts and documents; LLM judges check what only a reader can (is every claim supported by the documents? does the answer match the reference?). Configure a judge model on the platform (`LLM_MODEL`, `LLM_API_KEY` in `backend/.env`, see the root README), then set `TOUR_LLM_JUDGES=1`: script 2 adds `groundedness`, `correctness`, `answer_relevance` and `citation_accuracy`, script 3 adds `groundedness` and `correctness` to the sweep, and script 4 registers the custom `support_tone` judge and lets the platform judges grade live traffic.
 
 ## Apply it to your own application
 
-1. **Trace** the entry point with `@opengrade.trace`, each stage with `opengrade.span`, and
-   call `opengrade.set_retrieval_documents(docs)` where your retriever returns. Add user,
-   session and tags in your request handler.
-2. **Write a gold set:** 20–50 real questions with gold document ids and the facts the answer
-   must contain. Start from production traces you have reviewed.
-3. **Write two or three metrics** for what "good" means in your product (citations, format,
-   length, refusals, a business rule) with `@opengrade.metric`.
+1. **Trace** the entry point with `@opengrade.trace`, each stage with `opengrade.span`, and call `opengrade.set_retrieval_documents(docs)` where your retriever returns. Add user, session and tags in your request handler.
+2. **Write a gold set:** 20–50 real questions with gold document ids and the facts the answer must contain. Start from production traces you have reviewed.
+3. **Write two or three metrics** for what "good" means in your product (citations, format, length, refusals, a business rule) with `@opengrade.metric`.
 4. **Run `evaluate`** on every change, keep a baseline alias, and gate on it in CI.
 5. **Use `sweep`** whenever you are choosing between options (model, prompt, top_k, chunking).
-6. **Version prompts as App Configs** and bind experiments with `app_config_id` (script 5)
-   so compares keep a frozen snapshot of what ran.
-7. **In production:** `init(live=True, environment="prod", version=...)`, the same metrics on
-   `@trace(metrics=...)`, `log_feedback` from your UI, and alerts on what you cannot afford
-   to miss.
+6. **Version prompts as App Configs** and bind experiments with `app_config_id` (script 5) so compares keep a frozen snapshot of what ran.
+7. **In production:** `init(live=True, environment="prod", version=...)`, the same metrics on `@trace(metrics=...)`, `log_feedback` from your UI, and alerts on what you cannot afford to miss.
 
 ## Troubleshooting
 
@@ -384,19 +334,14 @@ reference?). Configure a judge model on the platform (`LLM_MODEL`, `LLM_API_KEY`
 
 **Question:** same model and retriever — is the new system prompt better?
 
-Script [`05_prompt_ab.py`](05_prompt_ab.py) creates two versions of the App Config family
-`nimbus-support-rag` (identical `model` / `retrieval`, different `prompt.system`), runs
-one experiment per version with `app_config_id`, and compares them. The task reads
-`prompt.system` from the experiment snapshot (`exp.params`), so the prompt under test is
-the versioned one — not an ad-hoc string in the script.
+Script [`05_prompt_ab.py`](05_prompt_ab.py) creates two versions of the App Config family `nimbus-support-rag` (identical `model` / `retrieval`, different `prompt.system`), runs one experiment per version with `app_config_id`, and compares them. The task reads `prompt.system` from the experiment snapshot (`exp.params`), so the prompt under test is the versioned one — not an ad-hoc string in the script.
 
 ```bash
 uv run python 05_prompt_ab.py
 TOUR_MODEL=gemma4:e2b uv run python 05_prompt_ab.py   # real model: quality delta shows up
 ```
 
-**In the UI:** open each run’s **App config snapshot** to see the frozen prompts side by
-side with the scores.
+**In the UI:** open each run’s **App config snapshot** to see the frozen prompts side by side with the scores.
 
 ## Next steps
 
