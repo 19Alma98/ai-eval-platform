@@ -59,6 +59,8 @@ export function ExperimentAliasBadges({ names }: { names: string[] }) {
   );
 }
 
+const EMPTY_ALIASES: ExperimentAlias[] = [];
+
 type ExperimentAliasActionsProps = {
   projectId: string;
   experiment: Experiment;
@@ -84,11 +86,14 @@ export function ExperimentAliasActions({
   const [aliasPreset, setAliasPreset] = useState<string>(MAIN_ALIAS);
   const [customAlias, setCustomAlias] = useState("");
 
-  const aliases = aliasesQuery.data ?? [];
   const pointingHere = useMemo(
-    () => aliases.filter((a) => a.experiment_id === experiment.id).map((a) => a.name),
-    [aliases, experiment.id],
+    () =>
+      (aliasesQuery.data ?? [])
+        .filter((a) => a.experiment_id === experiment.id)
+        .map((a) => a.name),
+    [aliasesQuery.data, experiment.id],
   );
+  const aliases = aliasesQuery.data ?? EMPTY_ALIASES;
   const isMain = pointingHere.includes(MAIN_ALIAS);
   const promotable = isExperimentPromotable(experiment.status);
   const effectiveAlias =

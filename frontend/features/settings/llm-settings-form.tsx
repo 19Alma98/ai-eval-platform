@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, type ReactNode, type SubmitEvent } from "react";
+import { useState, type ReactNode, type SubmitEvent } from "react";
 import { ErrorState } from "@/components/error-state";
 import { LoadingBlock } from "@/components/loading-block";
 import { Badge } from "@/components/ui/badge";
@@ -62,16 +62,8 @@ function formStateFrom(settings: LlmSettings) {
 
 export function LlmSettingsForm() {
   const query = useLlmSettings(true);
-  const update = useUpdateLlmSettings();
-  const reset = useResetLlmSettings();
-  const [advanced, setAdvanced] = useState(false);
-  const [form, setForm] = useState<ReturnType<typeof formStateFrom> | null>(null);
 
-  useEffect(() => {
-    if (query.data) setForm(formStateFrom(query.data));
-  }, [query.data]);
-
-  if (query.isLoading || !form) return <LoadingBlock className="min-h-[160px]" />;
+  if (query.isLoading) return <LoadingBlock className="min-h-[160px]" />;
   if (query.isError) {
     return (
       <ErrorState
@@ -81,12 +73,19 @@ export function LlmSettingsForm() {
       />
     );
   }
+  if (!query.data) return <LoadingBlock className="min-h-[160px]" />;
 
-  const settings = query.data!;
+  return <LlmSettingsFormLoaded settings={query.data} />;
+}
+
+function LlmSettingsFormLoaded({ settings }: { settings: LlmSettings }) {
+  const update = useUpdateLlmSettings();
+  const reset = useResetLlmSettings();
+  const [advanced, setAdvanced] = useState(false);
+  const [form, setForm] = useState(() => formStateFrom(settings));
 
   function handleSubmit(e: SubmitEvent) {
     e.preventDefault();
-    if (!form) return;
     const body: LlmSettingsUpdate = {
       model: form.model.trim(),
       api_base: form.api_base.trim() ? form.api_base.trim() : null,
@@ -102,9 +101,7 @@ export function LlmSettingsForm() {
       body.api_key = form.api_key.trim();
     }
     update.mutate(body, {
-      onSuccess: (data) => {
-        setForm(formStateFrom(data));
-      },
+      onSuccess: (data) => setForm(formStateFrom(data)),
     });
   }
 
@@ -230,7 +227,11 @@ export function LlmSettingsForm() {
                 required
               />
             </Field>
-            <Field id="llm-retries" label="Max retries" source={settings.sources.max_retries}>
+            <Field
+              id="llm-retries"
+              label="Max retries"
+              source={settings.sources.max_retries}
+            >
               <Input
                 id="llm-retries"
                 type="number"
