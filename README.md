@@ -172,7 +172,7 @@ minimum model size: [LLM judges](docs/03-evaluation-engine.md#llm-judges).
 
 ## Deploy with Docker Compose
 
-For a team server, CI baselines and production traffic, run the API, UI and PostgreSQL in containers:
+For a team server, CI baselines and production traffic, run the API, UI and PostgreSQL in containers. The API image runs as non-root (`uid`/`gid` `10001`).
 
 ```bash
 cp backend/.env.example backend/.env   # judges, API key, other settings
@@ -184,10 +184,25 @@ curl http://localhost:8000/health
 curl http://localhost:8000/ready
 ```
 
-Before exposing the server beyond localhost, set `OPENGRADE_API_KEY`, create per-client keys and
-terminate TLS at a reverse proxy: see [Security and API keys](docs/10-security-privacy.md). Behind a
-proxy also set `FORWARDED_ALLOW_IPS`. OTLP ingest may return `429` / `503` with `Retry-After`
-under load (limits in `backend/.env.example`). The local UI can use the same database:
+Compose sets `DATABASE_URL` for the `api` service to the `postgres` container. Other settings come from `backend/.env` when present (`env_file` is optional). Full list with defaults:
+[`backend/.env.example`](backend/.env.example).
+
+| Variable | Purpose |
+|---|---|
+| `DATABASE_URL` | Async SQLAlchemy URL (Compose → Postgres; local default is SQLite) |
+| `APP_HOST` / `APP_PORT` | Bind address inside the container (default `0.0.0.0:8000`) |
+| `OPENGRADE_API_KEY` | Bootstrap admin key; unset = open server (localhost / trusted network only) |
+| `OPENGRADE_API_KEY_PREVIOUS` | Previous key accepted during rotation |
+| `OPENGRADE_UI_SESSION_HOURS` | UI session cookie lifetime (default `12`) |
+| `CONTENT_CAPTURE_ENABLED` | Store span/LLM text at ingest (`true` by default; `false` redacts) |
+| `LLM_MODEL` / `LLM_API_KEY` / `LLM_API_BASE` | LiteLLM judges (Ollama or cloud) |
+| `FORWARDED_ALLOW_IPS` | Trusted proxy IPs for `X-Forwarded-*` (default `*`) |
+| `SHUTDOWN_GRACE_SECONDS` | Graceful shutdown timeout (default `30`) |
+| `PUBLIC_BASE_URL` | External UI URL for links in alert notifications |
+| `ALERT_WEBHOOK_URL` | Default webhook for alert rules without their own |
+| `OTLP_*` | Ingest body size and backpressure caps (see `.env.example`) |
+
+Before exposing the server beyond localhost, set `OPENGRADE_API_KEY`, create per-client keys and terminate TLS at a reverse proxy: see [Security and API keys](docs/10-security-privacy.md). Behind a proxy also set `FORWARDED_ALLOW_IPS`. OTLP ingest may return `429` / `503` with `Retry-After` under load. The local UI can use the same database:
 `opengrade ui --backend-store-uri 'postgresql+asyncpg://opengrade:opengrade@localhost:5434/opengrade'`.
 
 ## Development

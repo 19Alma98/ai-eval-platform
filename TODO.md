@@ -8,8 +8,9 @@ Priority: **P0** blocks a public release, **P1** fix before promoting it, **P2**
 
 ### Packaging / release — P0
 
-- [ ] **Docker image not published** (`publish.yml` only does PyPI). Publish to GHCR/Docker Hub on tag,
-  non-root user, documented env vars.
+- [ ] **Docker image not published** (`publish.yml` only does PyPI). Publish to GHCR/Docker Hub on tag.
+  Image already runs non-root (`uid`/`gid` `10001`); env vars documented in root README,
+  `backend/README.md`, and `backend/.env.example`.
 
 ### Server / container production-readiness — P1
 
