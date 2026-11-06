@@ -27,6 +27,7 @@ import { Input } from "@/components/ui/input";
 import { formatErrorForUi } from "@/lib/api/client";
 import { deleteDataset } from "@/lib/api/datasets";
 import type { DatasetItem } from "@/lib/api/types";
+import { useCanWrite } from "@/lib/auth-context";
 import { withProjectQuery } from "@/lib/project-href";
 import { ImportDatasetDialog } from "./import-dataset-dialog";
 import {
@@ -102,6 +103,7 @@ export function DatasetDetailView({
   projectId,
   datasetId,
 }: DatasetDetailViewProps) {
+  const writable = useCanWrite();
   const router = useRouter();
   const queryClient = useQueryClient();
   const query = useDataset(datasetId);
@@ -279,37 +281,41 @@ export function DatasetDetailView({
               queryKey={queryOpts.queryKey}
               dataUpdatedAt={query.dataUpdatedAt}
             />
-            <Button
-              variant="outline"
-              size="sm"
-              nativeButton={false}
-              render={
-                <Link href={withProjectQuery(`/experiments?new=1&dataset=${encodeURIComponent(datasetId)}`, projectId)} />
-              }
-            >
-              <FlaskConical className="size-4" />
-              Run experiment
-            </Button>
-            <ImportDatasetDialog
-              projectId={projectId}
-              datasetId={datasetId}
-              datasetName={dataset.name}
-              taskType={dataset.task_type}
-              locked={dataset.immutable}
-              version={dataset.version}
-              open={importOpen}
-              onOpenChange={setImportOpen}
-            />
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              disabled={remove.isPending}
-              onClick={() => setDeleteOpen(true)}
-            >
-              <Trash2 className="size-4" />
-              Delete
-            </Button>
+            {writable ? (
+              <>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  nativeButton={false}
+                  render={
+                    <Link href={withProjectQuery(`/experiments?new=1&dataset=${encodeURIComponent(datasetId)}`, projectId)} />
+                  }
+                >
+                  <FlaskConical className="size-4" />
+                  Run experiment
+                </Button>
+                <ImportDatasetDialog
+                  projectId={projectId}
+                  datasetId={datasetId}
+                  datasetName={dataset.name}
+                  taskType={dataset.task_type}
+                  locked={dataset.immutable}
+                  version={dataset.version}
+                  open={importOpen}
+                  onOpenChange={setImportOpen}
+                />
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  disabled={remove.isPending}
+                  onClick={() => setDeleteOpen(true)}
+                >
+                  <Trash2 className="size-4" />
+                  Delete
+                </Button>
+              </>
+            ) : null}
           </>
         }
         className="mb-0"

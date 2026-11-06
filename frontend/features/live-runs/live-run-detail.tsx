@@ -39,6 +39,7 @@ import {
   reviewLiveScore,
 } from "@/lib/api/live-runs";
 import type { LiveInteractionScore, TraceScore } from "@/lib/api/types";
+import { useCanWrite } from "@/lib/auth-context";
 import { cn } from "@/lib/cn";
 import { formatScore } from "@/lib/format";
 import { metricInfo } from "@/lib/metrics-catalog";
@@ -63,6 +64,7 @@ function ScoreReviewControls({
   interactionId: string;
   projectId: string | null;
 }) {
+  const writable = useCanWrite();
   const queryClient = useQueryClient();
   const judgeExplanation = score.explanation ?? "";
   const existing = score.review;
@@ -92,6 +94,17 @@ function ScoreReviewControls({
     },
     onError: (err) => toast.error(formatErrorForUi(err)),
   });
+
+  if (!writable) {
+    if (!existing) return null;
+    return (
+      <div className="mt-3 border-t border-border pt-3 text-xs text-muted-foreground">
+        {existing.verdict === "agree"
+          ? "Reviewer confirmed this verdict."
+          : "Reviewer marked this verdict as wrong."}
+      </div>
+    );
+  }
 
   return (
     <div className="mt-3 flex flex-col gap-2 border-t border-border pt-3">
@@ -214,6 +227,7 @@ function TraceScoreCard({ score }: { score: TraceScore }) {
 
 export function LiveRunDetail({ interactionId }: { interactionId: string }) {
   const { projectId } = useProjectId();
+  const writable = useCanWrite();
   const queryClient = useQueryClient();
   const router = useRouter();
   const query = useLiveRun(interactionId, projectId);
@@ -372,6 +386,7 @@ export function LiveRunDetail({ interactionId }: { interactionId: string }) {
           </>
         }
         actions={
+          writable ? (
           <>
             <Button
               type="button"
@@ -458,6 +473,7 @@ export function LiveRunDetail({ interactionId }: { interactionId: string }) {
               </DialogContent>
             </Dialog>
           </>
+          ) : undefined
         }
         className="mb-0"
       />

@@ -32,6 +32,7 @@ import {
   reviewLiveScore,
 } from "@/lib/api/live-runs";
 import type { Dataset, LiveInteraction } from "@/lib/api/types";
+import { useCanWrite } from "@/lib/auth-context";
 import { cn } from "@/lib/cn";
 import { formatScore } from "@/lib/format";
 import { liveRunHref, traceHref } from "@/lib/links";
@@ -61,6 +62,7 @@ function QueueItem({
   datasetId,
   selectedDataset,
   reviewedVerdict,
+  writable,
   onReviewed,
   onDismiss,
 }: {
@@ -69,6 +71,7 @@ function QueueItem({
   datasetId: string;
   selectedDataset: Dataset | undefined;
   reviewedVerdict: ReviewVerdict | undefined;
+  writable: boolean;
   onReviewed: (row: LiveInteraction, verdict: ReviewVerdict) => void;
   onDismiss: (id: string) => void;
 }) {
@@ -178,87 +181,92 @@ function QueueItem({
           </span>
         ))}
       </div>
-      <div className="flex flex-wrap items-center gap-2 border-t border-border pt-2">
-        {reviewedVerdict ? (
-          <>
-            <span className="inline-flex items-center gap-1 text-xs font-medium text-status-ok">
-              <Check className="size-3.5" aria-hidden />
-              Reviewed: judge {reviewedVerdict === "agree" ? "is right" : "is wrong"}
-            </span>
-            <span className="flex-1" />
+      {writable ? (
+        <>
+          <div className="flex flex-wrap items-center gap-2 border-t border-border pt-2">
+            {reviewedVerdict ? (
+              <>
+                <span className="inline-flex items-center gap-1 text-xs font-medium text-status-ok">
+                  <Check className="size-3.5" aria-hidden />
+                  Reviewed: judge {reviewedVerdict === "agree" ? "is right" : "is wrong"}
+                </span>
+                <span className="flex-1" />
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  className="h-7"
+                  onClick={() => onDismiss(row.id)}
+                >
+                  Done
+                </Button>
+              </>
+            ) : (
+              <>
+                <span className="text-xs text-muted-foreground">Is the judge right?</span>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  className="h-7"
+                  disabled={review.isPending}
+                  onClick={() => review.mutate("agree")}
+                >
+                  <ThumbsUp className="size-3.5" />
+                  Correct
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  className="h-7"
+                  disabled={review.isPending}
+                  onClick={() => review.mutate("disagree")}
+                >
+                  <ThumbsDown className="size-3.5" />
+                  Wrong
+                </Button>
+              </>
+            )}
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <Textarea
+              value={gold}
+              onChange={(e) => setGold(e.target.value)}
+              rows={1}
+              placeholder="Correct answer, to turn this into a test case…"
+              aria-label="Correct answer"
+              className="min-h-8 flex-1 bg-background text-sm"
+            />
+            <PromoteExpectedDocFields
+              documents={docPreview}
+              selectedIds={expectedDocIds}
+              onSelectedIdsChange={setExpectedDocIds}
+              extraDocIds={extraDocIds}
+              onExtraDocIdsChange={setExtraDocIds}
+              compact
+              idPrefix={`queue-${row.id}`}
+            />
             <Button
               type="button"
               size="sm"
-              variant="outline"
-              className="h-7"
-              onClick={() => onDismiss(row.id)}
+              className="h-8 self-start"
+              disabled={!datasetId || !gold.trim() || promote.isPending}
+              title={datasetId ? undefined : "Choose a test set above"}
+              onClick={onPromote}
             >
-              Done
+              <Plus className="size-4" />
+              {promote.isPending ? "Adding…" : "Add to test set"}
             </Button>
-          </>
-        ) : (
-          <>
-            <span className="text-xs text-muted-foreground">Is the judge right?</span>
-            <Button
-              type="button"
-              size="sm"
-              variant="outline"
-              className="h-7"
-              disabled={review.isPending}
-              onClick={() => review.mutate("agree")}
-            >
-              <ThumbsUp className="size-3.5" />
-              Correct
-            </Button>
-            <Button
-              type="button"
-              size="sm"
-              variant="outline"
-              className="h-7"
-              disabled={review.isPending}
-              onClick={() => review.mutate("disagree")}
-            >
-              <ThumbsDown className="size-3.5" />
-              Wrong
-            </Button>
-          </>
-        )}
-      </div>
-      <div className="flex flex-col gap-1.5">
-        <Textarea
-          value={gold}
-          onChange={(e) => setGold(e.target.value)}
-          rows={1}
-          placeholder="Correct answer, to turn this into a test case…"
-          aria-label="Correct answer"
-          className="min-h-8 flex-1 bg-background text-sm"
-        />
-        <PromoteExpectedDocFields
-          documents={docPreview}
-          selectedIds={expectedDocIds}
-          onSelectedIdsChange={setExpectedDocIds}
-          extraDocIds={extraDocIds}
-          onExtraDocIdsChange={setExtraDocIds}
-          compact
-          idPrefix={`queue-${row.id}`}
-        />
-        <Button
-          type="button"
-          size="sm"
-          className="h-8 self-start"
-          disabled={!datasetId || !gold.trim() || promote.isPending}
-          title={datasetId ? undefined : "Choose a test set above"}
-          onClick={onPromote}
-        >
-          <Plus className="size-4" />
-          {promote.isPending ? "Adding…" : "Add to test set"}
-        </Button>
-      </div>
+          </div>
+        </>
+      ) : null}
     </li>
   );
 }
 
 export function AnnotationQueue({ projectId }: { projectId: string }) {
+  const writable = useCanWrite();
   const queryClient = useQueryClient();
   const datasets = useDatasets(projectId);
   // Reviewed cards stay on screen (at the position they had) until dismissed,
@@ -323,18 +331,20 @@ export function AnnotationQueue({ projectId }: { projectId: string }) {
           All live answers
         </Link>
         <span className="flex-1" />
-        <Select value={datasetId} onValueChange={(v) => chooseDataset(v ?? "")}>
-          <SelectTrigger className="h-8 w-[220px] text-xs" aria-label="Test set for new cases">
-            <SelectValue placeholder="Test set for new cases" />
-          </SelectTrigger>
-          <SelectContent>
-            {(datasets.data ?? []).map((ds) => (
-              <SelectItem key={ds.id} value={ds.id} className="text-xs">
-                {ds.name} · v{ds.version}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+        {writable ? (
+          <Select value={datasetId} onValueChange={(v) => chooseDataset(v ?? "")}>
+            <SelectTrigger className="h-8 w-[220px] text-xs" aria-label="Test set for new cases">
+              <SelectValue placeholder="Test set for new cases" />
+            </SelectTrigger>
+            <SelectContent>
+              {(datasets.data ?? []).map((ds) => (
+                <SelectItem key={ds.id} value={ds.id} className="text-xs">
+                  {ds.name} · v{ds.version}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        ) : null}
       </div>
       {query.isLoading ? (
         <LoadingBlock className="min-h-[120px]" />
@@ -359,6 +369,7 @@ export function AnnotationQueue({ projectId }: { projectId: string }) {
               datasetId={datasetId}
               selectedDataset={selectedDataset}
               reviewedVerdict={reviewed[row.id]?.verdict}
+              writable={writable}
               onReviewed={onReviewed}
               onDismiss={onDismiss}
             />

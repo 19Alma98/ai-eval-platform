@@ -25,6 +25,7 @@ import {
 import { formatErrorForUi } from "@/lib/api/client";
 import { deleteAlias, setAlias } from "@/lib/api/app-configs";
 import type { AppConfig, AppConfigAlias } from "@/lib/api/types";
+import { useCanWrite } from "@/lib/auth-context";
 import { withProjectQuery } from "@/lib/project-href";
 import { formatConfigValue } from "./format-config-value";
 import {
@@ -75,6 +76,7 @@ export function AppConfigFamilyDetail({
   projectId,
   familyName,
 }: AppConfigFamilyDetailProps) {
+  const writable = useCanWrite();
   const queryClient = useQueryClient();
   const versionsQuery = useAppConfigVersions(projectId, familyName);
   const aliasesQuery = useAppConfigAliases(projectId);
@@ -223,7 +225,11 @@ export function AppConfigFamilyDetail({
                 <AliasChip
                   key={a.name}
                   alias={a}
-                  onDelete={() => deleteAliasMutation.mutate(a.name)}
+                  onDelete={
+                    writable
+                      ? () => deleteAliasMutation.mutate(a.name)
+                      : undefined
+                  }
                   deleting={deleteAliasMutation.isPending}
                 />
               ))}
@@ -239,6 +245,7 @@ export function AppConfigFamilyDetail({
         className="mb-0"
       />
 
+      {writable ? (
       <section className="rounded-md border border-border bg-surface p-3">
         <h2 className="mb-3 text-sm font-medium text-foreground">Set alias</h2>
         <div className="flex flex-wrap items-end gap-3">
@@ -311,6 +318,7 @@ export function AppConfigFamilyDetail({
           </Button>
         </div>
       </section>
+      ) : null}
 
       {versions.length === 0 ? (
         <EmptyState
@@ -457,7 +465,7 @@ function AliasChip({
   deleting,
 }: {
   alias: AppConfigAlias;
-  onDelete: () => void;
+  onDelete?: () => void;
   deleting: boolean;
 }) {
   return (
@@ -465,17 +473,19 @@ function AliasChip({
       <Badge variant="secondary" className="font-mono text-xs">
         {alias.name} → v{alias.app_config.version}
       </Badge>
-      <Button
-        type="button"
-        variant="ghost"
-        size="icon-sm"
-        className="size-6"
-        aria-label={`Remove alias ${alias.name}`}
-        disabled={deleting}
-        onClick={onDelete}
-      >
-        <Trash2 className="size-3" />
-      </Button>
+      {onDelete ? (
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon-sm"
+          className="size-6"
+          aria-label={`Remove alias ${alias.name}`}
+          disabled={deleting}
+          onClick={onDelete}
+        >
+          <Trash2 className="size-3" />
+        </Button>
+      ) : null}
     </span>
   );
 }

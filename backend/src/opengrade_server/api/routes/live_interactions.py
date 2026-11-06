@@ -6,6 +6,7 @@ from datetime import datetime
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from fastapi.responses import JSONResponse
 
+from opengrade_server.api.auth import Principal, get_principal
 from opengrade_server.api.deps import (
     get_get_live_interaction,
     get_list_live_interactions,
@@ -304,6 +305,7 @@ async def upsert_live_score_review(
     score_id: uuid.UUID,
     body: UpsertLiveScoreReviewRequest,
     use_case: UpsertLiveScoreReview = Depends(get_upsert_live_score_review),
+    principal: Principal | None = Depends(get_principal),
 ) -> LiveScoreReviewResponse:
     try:
         review = await use_case.execute(
@@ -312,7 +314,7 @@ async def upsert_live_score_review(
                 verdict=body.verdict,
                 corrected_explanation=body.corrected_explanation,
                 note=body.note,
-                reviewer=body.reviewer,
+                reviewer=principal.name if principal is not None else body.reviewer,
             )
         )
     except LiveScoreNotFoundError as exc:

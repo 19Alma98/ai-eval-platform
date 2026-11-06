@@ -9,6 +9,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response,
 from fastapi.responses import JSONResponse
 from fastapi.routing import APIRoute
 
+from opengrade_server.api.auth import Principal, get_principal
 from opengrade_server.api.deps import (
     get_app_settings,
     get_log_trace_scores,
@@ -86,6 +87,7 @@ async def log_trace_scores(
     project_id: uuid.UUID,
     body: LogTraceScoresRequest,
     use_case: LogTraceScores = Depends(get_log_trace_scores),
+    principal: Principal | None = Depends(get_principal),
 ) -> LogTraceScoresResponse:
     items = [
         TraceScoreInput(
@@ -96,7 +98,7 @@ async def log_trace_scores(
             explanation=s.explanation,
             threshold=s.threshold,
             source=s.source,
-            author=s.author,
+            author=principal.name if principal is not None else s.author,
             metadata=s.metadata,
         )
         for s in body.scores

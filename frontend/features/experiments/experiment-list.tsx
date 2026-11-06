@@ -14,18 +14,30 @@ import { RefreshControl } from "@/components/refresh-control";
 import { RelativeTime } from "@/components/relative-time";
 import { StatusBadge } from "@/components/status-badge";
 import { Button } from "@/components/ui/button";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { formatErrorForUi } from "@/lib/api/client";
 import { summarizeProjectExperiments } from "@/lib/api/experiments";
 import type { Experiment, ExperimentSummary } from "@/lib/api/types";
+import { useCanWrite } from "@/lib/auth-context";
 import { cn } from "@/lib/cn";
-import { resolveLabel } from "@/lib/format";
+import { formatScore, resolveLabel } from "@/lib/format";
 import { experimentsCompareHref } from "@/lib/links";
 import { withProjectQuery } from "@/lib/project-href";
 import { useProjectId } from "@/lib/project-store";
 import { useDatasets } from "@/features/datasets/use-datasets";
 import { CreateExperimentDialog } from "./create-experiment-dialog";
-import { ExperimentAliasBadges } from "./experiment-alias-actions";
+import {
+  ExperimentAliasActions,
+  ExperimentAliasBadges,
+} from "./experiment-alias-actions";
 import { aliasesByExperimentId } from "./experiment-aliases";
+import { buildMatrix } from "./experiment-matrix";
 import { experimentModel, experimentVersion } from "./experiment-meta";
 import { tallyTargets } from "./metric-target";
 import { useExperimentAliases } from "./use-experiment-aliases";
@@ -37,6 +49,7 @@ import {
 export function ExperimentList() {
   const router = useRouter();
   const { projectId } = useProjectId();
+  const writable = useCanWrite();
   const query = useExperiments(projectId);
   const datasetsQuery = useDatasets(projectId);
   const aliasesQuery = useExperimentAliases(projectId);
@@ -48,7 +61,13 @@ export function ExperimentList() {
     () => searchParams.get("new") === "1",
   );
 
-  const rows = useMemo(() => query.data ?? [], [query.data]);
+  const allRows = useMemo(() => query.data ?? [], [query.data]);
+  const datasetFilter = searchParams.get("dataset");
+  const rows = useMemo(() => {
+    if (!datasetFilter) return allRows;
+    return allRows.filter((r) => r.dataset_id === datasetFilter);
+  }, [allRows, datasetFilter]);
+
   const aliasNamesByExperiment = useMemo(
     () => aliasesByExperimentId(aliasesQuery.data ?? []),
     [aliasesQuery.data],
@@ -57,22 +76,48 @@ export function ExperimentList() {
   const summariesQuery = useQuery({
     queryKey: ["experiment-summaries", projectId, ""],
     queryFn: () => summarizeProjectExperiments(projectId!),
-    enabled: !!projectId && rows.length > 0,
+    enabled: !!projectId && allRows.length > 0,
   });
   const summaryById = useMemo(() => {
     const map = new Map<string, ExperimentSummary>();
     for (const s of summariesQuery.data ?? []) map.set(s.experiment_id, s);
     return map;
   }, [summariesQuery.data]);
+  const matrix = useMemo(
+    () => buildMatrix(rows, summariesQuery.data ?? []),
+    [rows, summariesQuery.data],
+  );
+  const metricsByExperiment = useMemo(() => {
+    const map = new Map<string, (typeof matrix.rows)[number]["metrics"]>();
+    for (const row of matrix.rows) map.set(row.experiment.id, row.metrics);
+    return map;
+  }, [matrix]);
   const anyBaseline = rows.some((r) => r.baseline_experiment_id);
 
-  const datasetNameById = useMemo(() => {
+  const datasetLabelById = useMemo(() => {
     const map = new Map<string, string>();
     for (const d of datasetsQuery.data ?? []) {
-      map.set(d.id, d.name);
+      map.set(d.id, `${d.name} · v${d.version}`);
     }
     return map;
   }, [datasetsQuery.data]);
+
+  const datasetFilterOptions = useMemo(() => {
+    const used = new Set(allRows.map((r) => r.dataset_id));
+    return (datasetsQuery.data ?? [])
+      .filter((d) => used.has(d.id))
+      .sort((a, b) => a.name.localeCompare(b.name) || b.version - a.version);
+  }, [allRows, datasetsQuery.data]);
+
+  function setDatasetFilter(id: string | null) {
+    if (!projectId) return;
+    const params = new URLSearchParams(searchParams.toString());
+    if (id) params.set("dataset", id);
+    else params.delete("dataset");
+    params.set("project", projectId);
+    const qs = params.toString();
+    router.replace(qs ? `/experiments?${qs}` : "/experiments");
+  }
 
   const onRowActivate = useCallback(
     (experiment: Experiment) => {
@@ -89,9 +134,9 @@ export function ExperimentList() {
 
   const experimentNameById = useMemo(() => {
     const map = new Map<string, string>();
-    for (const e of rows) map.set(e.id, e.name);
+    for (const e of allRows) map.set(e.id, e.name);
     return map;
-  }, [rows]);
+  }, [allRows]);
 
   const columns: DataTableColumn<Experiment>[] = useMemo(
     () => [
@@ -102,12 +147,26 @@ export function ExperimentList() {
           const version = experimentVersion(row);
           const aliasNames = aliasNamesByExperiment.get(row.id) ?? [];
           return (
-            <span className="flex min-w-0 flex-col">
+            <span className="flex min-w-0 flex-col gap-1">
               <span className="truncate font-medium text-foreground">{row.name}</span>
               {version && version !== row.name ? (
                 <span className="truncate text-xs text-muted-foreground">{version}</span>
               ) : null}
               <ExperimentAliasBadges names={aliasNames} />
+              {writable && projectId ? (
+                <span
+                  className="flex flex-wrap gap-1"
+                  onClick={(e) => e.stopPropagation()}
+                  onKeyDown={(e) => e.stopPropagation()}
+                >
+                  <ExperimentAliasActions
+                    projectId={projectId}
+                    experiment={row}
+                    experimentNames={experimentNameById}
+                    showBadges={false}
+                  />
+                </span>
+              ) : null}
             </span>
           );
         },
@@ -123,6 +182,23 @@ export function ExperimentList() {
           />
         ),
       },
+      ...matrix.columns.map(
+        (col): DataTableColumn<Experiment> => ({
+          id: `metric:${col.key}`,
+          header: col.label,
+          headerClassName: "w-[100px] text-right",
+          className: "text-right tabular-nums text-sm",
+          cell: (row) => {
+            if (summariesQuery.isLoading) {
+              return (
+                <span className="inline-block h-3 w-10 animate-pulse rounded bg-surface-2" />
+              );
+            }
+            const mean = metricsByExperiment.get(row.id)?.[col.key]?.mean;
+            return mean == null ? "—" : formatScore(mean);
+          },
+        }),
+      ),
       {
         id: "status",
         header: "Status",
@@ -135,7 +211,7 @@ export function ExperimentList() {
         cell: (row) => {
           const label = resolveLabel(
             row.dataset_id,
-            datasetNameById,
+            datasetLabelById,
             "Deleted test set",
           );
           if (!projectId) {
@@ -194,11 +270,14 @@ export function ExperimentList() {
     [
       aliasNamesByExperiment,
       anyBaseline,
-      datasetNameById,
+      datasetLabelById,
       experimentNameById,
+      matrix.columns,
+      metricsByExperiment,
       projectId,
       summariesQuery.isLoading,
       summaryById,
+      writable,
     ],
   );
 
@@ -241,7 +320,7 @@ export function ExperimentList() {
                 Compare all
               </Button>
             ) : null}
-            {projectId && rows.length > 0 ? (
+            {writable && projectId && rows.length > 0 ? (
               <CreateExperimentDialog
                 projectId={projectId}
                 open={createOpen}
@@ -253,12 +332,12 @@ export function ExperimentList() {
         }
       />
 
-      {rows.length === 0 ? (
+      {allRows.length === 0 ? (
         <EmptyState
           title="No experiments yet"
           description="Create an experiment, run your app on a test set with the SDK, and every answer gets scored against your metrics."
           action={
-            projectId ? (
+            writable && projectId ? (
               <CreateExperimentDialog
                 projectId={projectId}
                 open={createOpen}
@@ -269,15 +348,66 @@ export function ExperimentList() {
           }
         />
       ) : (
-        <DataTable
-          rows={rows}
-          columns={columns}
-          getRowKey={(row) => row.id}
-          selectedIndex={selectedIndex}
-          onSelectedIndexChange={setSelectedIndex}
-          onRowActivate={onRowActivate}
-          aria-label="Experiments"
-        />
+        <>
+          {datasetFilterOptions.length > 1 ? (
+            <div className="flex flex-wrap items-center gap-2">
+              <label
+                htmlFor="experiments-dataset-filter"
+                className="text-sm text-muted-foreground"
+              >
+                Test set
+              </label>
+              <Select
+                value={datasetFilter ?? "__all__"}
+                onValueChange={(v) =>
+                  setDatasetFilter(!v || v === "__all__" ? null : v)
+                }
+              >
+                <SelectTrigger
+                  id="experiments-dataset-filter"
+                  className="h-8 w-[260px]"
+                  aria-label="Filter by test set version"
+                >
+                  <SelectValue placeholder="All test sets" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__all__">All test sets</SelectItem>
+                  {datasetFilterOptions.map((d) => (
+                    <SelectItem key={d.id} value={d.id}>
+                      {d.name} · v{d.version}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          ) : null}
+          {rows.length === 0 ? (
+            <EmptyState
+              title="No experiments for this test set"
+              description="Clear the filter or pick another test set version."
+              action={
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  onClick={() => setDatasetFilter(null)}
+                >
+                  Show all
+                </Button>
+              }
+            />
+          ) : (
+            <DataTable
+              rows={rows}
+              columns={columns}
+              getRowKey={(row) => row.id}
+              selectedIndex={selectedIndex}
+              onSelectedIndexChange={setSelectedIndex}
+              onRowActivate={onRowActivate}
+              aria-label="Experiments"
+            />
+          )}
+        </>
       )}
     </div>
   );

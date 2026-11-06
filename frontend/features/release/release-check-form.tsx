@@ -33,6 +33,7 @@ import { withProjectQuery } from "@/lib/project-href";
 import { policyFromQualityBar, type QualityBar } from "./describe-check";
 import { parsePolicyYaml } from "./parse-policy";
 import { ReleaseResult } from "./release-result";
+import { useCanWrite } from "@/lib/auth-context";
 import { useReleaseCheck } from "./use-release";
 
 const NO_BASELINE = "__none__";
@@ -75,6 +76,7 @@ export function ReleaseCheckForm({
   projectId,
   initialExperimentId = "",
 }: ReleaseCheckFormProps) {
+  const writable = useCanWrite();
   const experimentsQuery = useExperiments(projectId);
   const releaseCheck = useReleaseCheck(projectId);
   const metricsSetsQuery = useMetricsSets(projectId);
@@ -217,6 +219,10 @@ export function ReleaseCheckForm({
   }
 
   function handleSubmit(event: SubmitEvent) {
+    if (!writable) {
+      event.preventDefault();
+      return;
+    }
     event.preventDefault();
     setParseError(null);
     let policy: Record<string, unknown> = generatedPolicy;
@@ -637,14 +643,20 @@ export function ReleaseCheckForm({
           ) : null}
         </Step>
 
-        <Button
-          type="submit"
-          className="self-start"
-          disabled={releaseCheck.isPending || !experimentId || !scored}
-        >
-          <ShieldCheck className="size-4" />
-          {releaseCheck.isPending ? "Checking…" : "Run quality gate"}
-        </Button>
+        {writable ? (
+          <Button
+            type="submit"
+            className="self-start"
+            disabled={releaseCheck.isPending || !experimentId || !scored}
+          >
+            <ShieldCheck className="size-4" />
+            {releaseCheck.isPending ? "Checking…" : "Run quality gate"}
+          </Button>
+        ) : (
+          <p className="text-sm text-muted-foreground">
+            Read-only session: quality gate cannot be run.
+          </p>
+        )}
       </form>
 
       <div className="flex flex-col gap-4">

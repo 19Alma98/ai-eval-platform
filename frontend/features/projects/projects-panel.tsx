@@ -21,6 +21,7 @@ import {
 import { formatErrorForUi } from "@/lib/api/client";
 import { deleteProject } from "@/lib/api/projects";
 import type { Project } from "@/lib/api/types";
+import { useCanWrite } from "@/lib/auth-context";
 import { cn } from "@/lib/cn";
 import { useProjectId } from "@/lib/project-store";
 import {
@@ -39,6 +40,7 @@ export function ProjectsPanel({
   compact?: boolean;
 }) {
   const { projectId, setProjectId, clearProjectId } = useProjectId();
+  const writable = useCanWrite();
   const queryClient = useQueryClient();
   const query = useQuery(projectsQueryOptions());
   const [createOpen, setCreateOpen] = useState(false);
@@ -93,13 +95,13 @@ export function ProjectsPanel({
           <h2 className="text-sm font-semibold tracking-tight text-foreground">
             Projects
           </h2>
-          {projects.length > 0 ? (
+          {writable && projects.length > 0 ? (
             <CreateProjectDialog open={createOpen} onOpenChange={setCreateOpen} />
           ) : null}
         </div>
       )}
 
-      {!compact && projects.length > 0 ? (
+      {!compact && writable && projects.length > 0 ? (
         <div className="mb-3 flex justify-end">
           <CreateProjectDialog open={createOpen} onOpenChange={setCreateOpen} />
         </div>
@@ -110,7 +112,9 @@ export function ProjectsPanel({
           title="No projects yet"
           description="A project groups the test sets, experiments and live traffic of one AI application. Create one to get started."
           action={
-            <CreateProjectDialog open={createOpen} onOpenChange={setCreateOpen} />
+            writable ? (
+              <CreateProjectDialog open={createOpen} onOpenChange={setCreateOpen} />
+            ) : null
           }
         />
       ) : (
@@ -140,28 +144,32 @@ export function ProjectsPanel({
                     ) : null}
                   </span>
                 </button>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  className="shrink-0 text-muted-foreground"
-                  aria-label={`Data retention for ${p.name}`}
-                  title="Data retention"
-                  onClick={() => setRetentionFor(p)}
-                >
-                  <History className="size-4" />
-                </Button>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  className="shrink-0 text-muted-foreground hover:text-status-fail"
-                  disabled={remove.isPending && pendingDelete?.id === p.id}
-                  aria-label={`Delete ${p.name}`}
-                  onClick={() => setPendingDelete(p)}
-                >
-                  <Trash2 className="size-4" />
-                </Button>
+                {writable ? (
+                  <>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      className="shrink-0 text-muted-foreground"
+                      aria-label={`Data retention for ${p.name}`}
+                      title="Data retention"
+                      onClick={() => setRetentionFor(p)}
+                    >
+                      <History className="size-4" />
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      className="shrink-0 text-muted-foreground hover:text-status-fail"
+                      disabled={remove.isPending && pendingDelete?.id === p.id}
+                      aria-label={`Delete ${p.name}`}
+                      onClick={() => setPendingDelete(p)}
+                    >
+                      <Trash2 className="size-4" />
+                    </Button>
+                  </>
+                ) : null}
               </li>
             );
           })}

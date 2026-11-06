@@ -55,6 +55,7 @@ import {
   useMetricsSets,
 } from "@/features/metrics/use-metrics-sets";
 import { runJudgeWarning } from "@/features/judges/judge-metadata";
+import { useCanWrite } from "@/lib/auth-context";
 import { cn } from "@/lib/cn";
 import { resolveLabel } from "@/lib/format";
 import { metricInfo, metricLabel, metricsSetDisplayName } from "@/lib/metrics-catalog";
@@ -117,6 +118,7 @@ export function ExperimentDetailView({
   projectId,
   experimentId,
 }: ExperimentDetailViewProps) {
+  const writable = useCanWrite();
   const experimentQuery = useExperiment(experimentId);
   const summaryQuery = useExperimentSummary(experimentId);
   const datasetsQuery = useDatasets(projectId);
@@ -409,11 +411,13 @@ export function ExperimentDetailView({
               dataUpdatedAt={summaryQuery.dataUpdatedAt}
               onRefresh={refreshAll}
             />
-            <ExperimentAliasActions
-              projectId={projectId}
-              experiment={experiment}
-              experimentNames={experimentNames}
-            />
+            {writable ? (
+              <ExperimentAliasActions
+                projectId={projectId}
+                experiment={experiment}
+                experimentNames={experimentNames}
+              />
+            ) : null}
             {otherExperiments.length > 0 ? (
               <Button
                 variant="outline"
@@ -436,46 +440,48 @@ export function ExperimentDetailView({
                 Quality gate
               </Button>
             ) : null}
-            <div className="flex items-center">
-              <Button
-                type="button"
-                size="sm"
-                className="rounded-r-none"
-                disabled={scorePack.isPending || nAnswered === 0}
-                title={nAnswered === 0 ? "No answers to score yet" : undefined}
-                onClick={() => scorePack.mutate()}
-              >
-                <Play className="size-4" />
-                {scorePack.isPending ? "Scoring…" : scored ? "Re-score answers" : "Score answers"}
-              </Button>
-              <DropdownMenu>
-                <DropdownMenuTrigger
-                  render={
-                    <Button
-                      type="button"
-                      size="sm"
-                      className="rounded-l-none border-l border-primary-foreground/20 px-2"
-                      aria-label="More scoring options"
-                      disabled={scorePack.isPending}
-                    />
-                  }
+            {writable ? (
+              <div className="flex items-center">
+                <Button
+                  type="button"
+                  size="sm"
+                  className="rounded-r-none"
+                  disabled={scorePack.isPending || nAnswered === 0}
+                  title={nAnswered === 0 ? "No answers to score yet" : undefined}
+                  onClick={() => scorePack.mutate()}
                 >
-                  <ChevronDown className="size-4" />
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end" className="w-[260px]">
-                  <DropdownMenuItem onClick={() => setOverrideOpen(true)}>
-                    Score with other metrics…
-                  </DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => setEvaluateOpen(true)}>
-                    Run individual metrics…
-                  </DropdownMenuItem>
-                  <DropdownMenuSeparator />
-                  <DropdownMenuItem onClick={() => setCreateEvaluatorOpen(true)}>
-                    Create custom metric…
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
-            </div>
+                  <Play className="size-4" />
+                  {scorePack.isPending ? "Scoring…" : scored ? "Re-score answers" : "Score answers"}
+                </Button>
+                <DropdownMenu>
+                  <DropdownMenuTrigger
+                    render={
+                      <Button
+                        type="button"
+                        size="sm"
+                        className="rounded-l-none border-l border-primary-foreground/20 px-2"
+                        aria-label="More scoring options"
+                        disabled={scorePack.isPending}
+                      />
+                    }
+                  >
+                    <ChevronDown className="size-4" />
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end" className="w-[260px]">
+                    <DropdownMenuItem onClick={() => setOverrideOpen(true)}>
+                      Score with other metrics…
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => setEvaluateOpen(true)}>
+                      Run individual metrics…
+                    </DropdownMenuItem>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem onClick={() => setCreateEvaluatorOpen(true)}>
+                      Create custom metric…
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              </div>
+            ) : null}
           </>
         }
         className="mb-0"

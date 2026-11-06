@@ -16,22 +16,12 @@ Priority: **P0** blocks a public release, **P1** fix before promoting it, **P2**
 
 - [ ] **Auth follow-ups** (API keys with `admin` / `read` / `ingest` scopes shipped; no user
   accounts by design, see `docs/10-security-privacy.md#api-keys`):
-  - Key name → `trace_scores.author` / `live_score_reviews.reviewer` server-side, so actions are
-    attributed to the key instead of a client-supplied string.
   - Optional project binding for `ingest` keys (`project_id` on the key, enforced on OTLP
     `X-Project-Id` / `X-Project-Slug` and the project routes).
-  - Read-only UI: hide write buttons for `read` sessions instead of letting them fail with `403`.
   - Rate limit failed key attempts (keys are 256-bit random, so brute force is impractical).
-- [ ] **PII redaction**: capture currently grabs every argument incl. `self`/secrets. Per-arg
-  include/exclude, redaction hook, global capture switch.
 - [ ] **Sampling** (head sampling) and configurable span size limits.
 - [ ] `AsyncClient` parity (datasets, experiments), `aevaluate`.
 - [ ] Pagination on SDK list calls; `set_project` / `evaluate` scan all projects/datasets/experiments.
-- [ ] Experiments list: dataset-version column/filter and metric columns (the Compare-all charts
-  already plot any metric over time).
-- [ ] Synthetic test-set generation from a document corpus.
-- [ ] Experiment aliases in the UI: "baseline" badge on the experiment an alias points to, promote /
-  roll back buttons, alias history (API + CLI `--promote` already shipped, `/experiment-aliases`).
 - [ ] Live view: session/user grouping, filter by SDK metric / feedback, SDK metrics + feedback in the
   list Scores column, "load more" beyond 50, time-range/metadata filters, auto-refresh on
   Overview/Monitoring/Traces.
@@ -40,7 +30,6 @@ Priority: **P0** blocks a public release, **P1** fix before promoting it, **P2**
   tag / metadata / user / session filters there); CSV/JSON export.
 - [ ] Trace attribute index covers traces ingested after migration `0024_trace_tags` only; older
   traces keep their `user_id` / `session_id` filters but not tag / metadata ones (no backfill).
-- [ ] Session view: one page per `session_id` showing the conversation turn by turn.
 - [ ] Retention/TTL and per-project quotas (see "OTLP high volume" below).
 - [ ] Custom time range / timezone and compare-to-previous-period on monitoring.
 

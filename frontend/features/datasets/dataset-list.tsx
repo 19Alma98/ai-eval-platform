@@ -26,6 +26,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { formatErrorForUi } from "@/lib/api/client";
 import { createDataset } from "@/lib/api/datasets";
+import { useCanWrite } from "@/lib/auth-context";
 import { useProjectId } from "@/lib/project-store";
 import { groupDatasetVersions, type DatasetRow } from "./dataset-versions";
 import { RAG_QA_TASK } from "./rag-qa";
@@ -38,6 +39,7 @@ import {
 export function DatasetList() {
   const router = useRouter();
   const { projectId } = useProjectId();
+  const writable = useCanWrite();
   const query = useDatasets(projectId);
   const queryOpts = projectId ? datasetsQueryOptions(projectId) : null;
   const [selectedIndex, setSelectedIndex] = useState(0);
@@ -139,7 +141,7 @@ export function DatasetList() {
                 dataUpdatedAt={query.dataUpdatedAt}
               />
             ) : null}
-            {projectId && rows.length > 0 ? (
+            {writable && projectId && rows.length > 0 ? (
               <CreateDatasetDialog
                 projectId={projectId}
                 open={createOpen}
@@ -155,7 +157,7 @@ export function DatasetList() {
           title="No test sets yet"
           description="A test set is a list of questions with the answer you expect and the documents that should be retrieved. Create one, then import a CSV or JSON file."
           action={
-            projectId ? (
+            writable && projectId ? (
               <CreateDatasetDialog
                 projectId={projectId}
                 open={createOpen}

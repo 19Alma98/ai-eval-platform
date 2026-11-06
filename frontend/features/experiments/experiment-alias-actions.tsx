@@ -46,15 +46,19 @@ export function ExperimentAliasBadges({ names }: { names: string[] }) {
   if (names.length === 0) return null;
   return (
     <span className="mt-0.5 flex flex-wrap gap-1">
-      {names.map((name) => (
-        <Badge
-          key={name}
-          variant={name === MAIN_ALIAS ? "default" : "outline"}
-          className="font-mono"
-        >
-          {name}
-        </Badge>
-      ))}
+      {names.map((name) => {
+        const isBaseline = name === MAIN_ALIAS;
+        return (
+          <Badge
+            key={name}
+            variant={isBaseline ? "default" : "outline"}
+            className={isBaseline ? undefined : "font-mono"}
+            title={isBaseline ? "alias:main" : undefined}
+          >
+            {isBaseline ? "Baseline" : name}
+          </Badge>
+        );
+      })}
     </span>
   );
 }
@@ -65,12 +69,15 @@ type ExperimentAliasActionsProps = {
   projectId: string;
   experiment: Experiment;
   experimentNames: Map<string, string>;
+  /** When false, only promote / manage / history buttons (caller shows badges). */
+  showBadges?: boolean;
 };
 
 export function ExperimentAliasActions({
   projectId,
   experiment,
   experimentNames,
+  showBadges = true,
 }: ExperimentAliasActionsProps) {
   const queryClient = useQueryClient();
   const aliasesQuery = useExperimentAliases(projectId);
@@ -165,7 +172,7 @@ export function ExperimentAliasActions({
 
   return (
     <>
-      {pointingHere.length > 0 ? (
+      {showBadges && pointingHere.length > 0 ? (
         <span className="flex flex-wrap items-center gap-1">
           <ExperimentAliasBadges names={pointingHere} />
         </span>

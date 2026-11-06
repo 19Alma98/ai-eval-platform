@@ -14,6 +14,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { useCanWrite } from "@/lib/auth-context";
 import { projectFallback } from "@/lib/project-fallback";
 import { withProjectQuery } from "@/lib/project-href";
 import { useProjectId } from "@/lib/project-store";
@@ -21,6 +22,7 @@ import { projectsQueryOptions } from "@/lib/queries/projects";
 
 export function ProjectSwitcher() {
   const router = useRouter();
+  const writable = useCanWrite();
   const { projectId, setProjectId, clearProjectId } = useProjectId();
   const { data: projects, isLoading, refetch } = useQuery(projectsQueryOptions());
   const [createOpen, setCreateOpen] = useState(false);
@@ -85,25 +87,29 @@ export function ProjectSwitcher() {
             <DropdownMenuItem disabled>No projects</DropdownMenuItem>
           )}
           <DropdownMenuSeparator />
-          <DropdownMenuItem
-            onClick={() => {
-              setCreateOpen(true);
-            }}
-          >
-            <FolderPlus className="size-4" />
-            New project…
-          </DropdownMenuItem>
+          {writable ? (
+            <DropdownMenuItem
+              onClick={() => {
+                setCreateOpen(true);
+              }}
+            >
+              <FolderPlus className="size-4" />
+              New project…
+            </DropdownMenuItem>
+          ) : null}
           <DropdownMenuItem onClick={goToManageProjects}>
             <Settings2 className="size-4" />
             Manage projects
           </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
-      <CreateProjectDialog
-        open={createOpen}
-        onOpenChange={setCreateOpen}
-        showTrigger={false}
-      />
+      {writable ? (
+        <CreateProjectDialog
+          open={createOpen}
+          onOpenChange={setCreateOpen}
+          showTrigger={false}
+        />
+      ) : null}
     </>
   );
 }

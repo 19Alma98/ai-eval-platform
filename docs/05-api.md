@@ -356,7 +356,7 @@ List query: `judge_status`, `search`, `failed_only`, `limit`. Response shape: `{
 
 `GET .../calibration` — judge/human agreement by `kind` × judge `model` (also `method`, `prompt_version`). Optional query `since` (ISO datetime; default last 90 days). Rows include `n_reviewed`, `n_agree`, `n_disagree`, `agreement_rate`, `n_explanation_edits`, `explanation_edit_rate`. Excludes score labels `ERROR` / `SKIPPED`.
 
-`POST .../live-interaction-scores/{score_id}/review` body: `verdict` (`agree`|`disagree`), optional `corrected_explanation`, `note`, `reviewer`. Confirms or rejects that score’s PASS/FAIL; optional corrected explanation leaves the judge `explanation` unchanged. Rescore deletes score reviews (cascade).
+`POST .../live-interaction-scores/{score_id}/review` body: `verdict` (`agree`|`disagree`), optional `corrected_explanation`, `note`, `reviewer`. Confirms or rejects that score’s PASS/FAIL; optional corrected explanation leaves the judge `explanation` unchanged. Rescore deletes score reviews (cascade). When API auth is on, `reviewer` is set from the API key name and any body value is ignored; when auth is off, the optional body `reviewer` is stored.
 
 `POST .../promote` body: `dataset_id`, required `expected_output` (reviewer-written gold; the production answer is never used as default), optional `expected_doc_ids` (required for `rag_qa` datasets) → creates a dataset item. Retrieved doc ids are stored as `metadata.retrieved_doc_ids_at_promotion` for reference only; they are never copied into `expected_doc_ids`.
 
@@ -390,7 +390,7 @@ Item fields:
 | `label` | optional `PASS`, `FAIL`, `ERROR` or `SKIPPED` (case-insensitive) |
 | `explanation` | optional; up to 4000 characters |
 | `source` | `sdk` (default), `human` or `judge` |
-| `author` | optional; up to 200 characters; part of the upsert key (missing = empty) |
+| `author` | optional; up to 200 characters; part of the upsert key (missing = empty). When API auth is on, set from the API key name (body value ignored); when auth is off, the client value is stored. |
 | `metadata` | optional object; at most 16 KB serialized (compact JSON, UTF-8), else 422 |
 
 The server computes the stored label with the same rule as experiment scores (`item_verdict`): in order: an explicit `ERROR`/`SKIPPED`/`FAIL` label wins; a value below `threshold` is `FAIL`; an explicit `PASS` is `PASS`; no value gives `null`; with a `threshold` and a value not below it the result is `PASS` (even value 0 with threshold 0); with no `threshold`, value 0 is `FAIL` and anything else `PASS`. A thumbs-down (`value: 0`, no threshold) is therefore `FAIL`.

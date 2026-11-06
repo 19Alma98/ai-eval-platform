@@ -48,7 +48,6 @@ export function reviewLiveScore(
     verdict: string;
     corrected_explanation?: string;
     note?: string;
-    reviewer?: string;
   },
 ) {
   return apiPost<LiveScoreReview>(

@@ -11,6 +11,13 @@ breaking changes; they are listed under **Changed** with a migration note.
 
 ### Added
 
+- Read-only dashboard for `read` API key sessions: write buttons are hidden (`useCanWrite`).
+- With auth on, `trace_scores.author` and `live_score_reviews.reviewer` are set from the API key
+  name (client-supplied values ignored).
+- Experiment aliases: Baseline badge for `main`, promote / manage / history on the experiments
+  list and compare baseline card (detail already had them).
+- Experiments list: test-set version in the Test set column, URL filter `?dataset=`, and per-metric
+  mean columns from experiment summaries.
 - `opengrade --version` (`-V`) prints the installed `opengrade-ai` and `opengrade-ai-server`
   versions; it works with the SDK alone too.
 - `ExperimentResult.summary()` explains metrics that were skipped on some test cases (for example

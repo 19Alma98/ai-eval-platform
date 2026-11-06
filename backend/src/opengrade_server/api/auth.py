@@ -26,6 +26,7 @@ import time
 import uuid
 from dataclasses import dataclass
 
+from fastapi import Request
 from starlette.types import ASGIApp, Receive, Scope, Send
 
 from opengrade_server.application.api_keys import api_key_store
@@ -161,6 +162,11 @@ async def resolve_principal(headers: dict[str, str], settings: Settings) -> Prin
         return None
     subject = session_subject(token, settings)
     return await principal_for_subject(subject) if subject is not None else None
+
+
+def get_principal(request: Request) -> Principal | None:
+    """Caller set by ``ApiKeyAuthMiddleware`` when auth is on; ``None`` when auth is off."""
+    return getattr(request.state, "principal", None)
 
 
 async def _send_json(send: Send, status: int, detail: str, *, challenge: bool) -> None:

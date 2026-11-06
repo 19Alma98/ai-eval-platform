@@ -54,8 +54,7 @@ ends the dashboard sessions opened with it. `last_used_at` shows which keys are 
 one. Dashboard sessions are signed with the env key, so they end when the key they were signed
 with is no longer accepted. Per-client keys are not affected.
 
-There are **no user accounts**. If you need per-person audit, give each person a `read` or
-`admin` key with their name.
+There are **no user accounts**. If you need per-person audit, give each person a `read` or `admin` key with their name. With auth on, that key name is written server-side to `trace_scores.author` and `live_score_reviews.reviewer` (client-supplied values are ignored).
 
 ## Threat model
 

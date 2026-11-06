@@ -27,6 +27,7 @@ import { formatErrorForUi } from "@/lib/api/client";
 import { ensureMetricsPack } from "@/lib/api/metrics-packs";
 import { getMetricsSet, listMetricsSets } from "@/lib/api/metrics-sets";
 import type { MetricsSetEntryInput, MetricsSetSummary } from "@/lib/api/types";
+import { useCanWrite } from "@/lib/auth-context";
 import { metricsSetDisplayName } from "@/lib/metrics-catalog";
 
 // Evaluators holding scores uploaded by the SDK (backend CLIENT_EVALUATOR_KIND).
@@ -70,6 +71,7 @@ async function seedEntriesForCreate(projectId: string): Promise<MetricsSetEntryI
 }
 
 export function MetricsSetList({ projectId }: { projectId: string }) {
+  const writable = useCanWrite();
   const router = useRouter();
   const query = useMetricsSets(projectId);
   const ensure = useEnsureMetricsPackForProject(projectId);
@@ -163,7 +165,7 @@ export function MetricsSetList({ projectId }: { projectId: string }) {
               queryKey={queryOpts.queryKey}
               dataUpdatedAt={query.dataUpdatedAt}
             />
-            {rows.length > 0 ? (
+            {writable && rows.length > 0 ? (
               <CreateMetricsSetDialog
                 projectId={projectId}
                 open={createOpen}
@@ -179,23 +181,25 @@ export function MetricsSetList({ projectId }: { projectId: string }) {
           title="No metrics yet"
           description="Start with the recommended RAG metrics: correctness, groundedness, answer relevance, retrieval quality and latency. You can change thresholds later."
           action={
-            <Button
-              type="button"
-              size="sm"
-              disabled={ensure.isPending}
-              onClick={() => {
-                ensure.mutate(undefined, {
-                  onSuccess: () => toast.success("Recommended metrics added"),
-                  onError: (e) => {
-                    const message = formatErrorForUi(e);
-                    toast.error(message);
-                  },
-                });
-              }}
-            >
-              <PackagePlus className="size-4" />
-              {ensure.isPending ? "Adding…" : "Add recommended metrics"}
-            </Button>
+            writable ? (
+              <Button
+                type="button"
+                size="sm"
+                disabled={ensure.isPending}
+                onClick={() => {
+                  ensure.mutate(undefined, {
+                    onSuccess: () => toast.success("Recommended metrics added"),
+                    onError: (e) => {
+                      const message = formatErrorForUi(e);
+                      toast.error(message);
+                    },
+                  });
+                }}
+              >
+                <PackagePlus className="size-4" />
+                {ensure.isPending ? "Adding…" : "Add recommended metrics"}
+              </Button>
+            ) : null
           }
         />
       ) : (

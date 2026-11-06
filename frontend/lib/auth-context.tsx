@@ -13,6 +13,7 @@ import {
 import { createSession, deleteSession, getAuthStatus } from "@/lib/api/auth";
 import { UNAUTHORIZED_EVENT } from "@/lib/api/client";
 import type { AuthStatus } from "@/lib/api/types";
+import { canWrite } from "@/lib/can-write";
 
 /** `checking` until the first status call; `locked` when the server wants a key. */
 export type AuthPhase = "checking" | "open" | "locked";
@@ -90,4 +91,9 @@ export function useAuth(): AuthContextValue {
   const ctx = useContext(AuthContext);
   if (!ctx) throw new Error("useAuth must be used within AuthProvider");
   return ctx;
+}
+
+export function useCanWrite(): boolean {
+  const { phase, status } = useAuth();
+  return canWrite(status, phase);
 }

@@ -16,6 +16,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ApiError, formatErrorForUi } from "@/lib/api/client";
 import type { MetricsSetEntry, MetricsSetEntryInput } from "@/lib/api/types";
+import { useCanWrite } from "@/lib/auth-context";
 import { cn } from "@/lib/cn";
 import {
   METRIC_CATEGORY_LABELS,
@@ -73,6 +74,7 @@ export function MetricsSetDetailView({
   projectId: string;
   metricsSetId: string;
 }) {
+  const writable = useCanWrite();
   const router = useRouter();
   const query = useMetricsSet(metricsSetId);
   const patch = usePatchMetricsSet(metricsSetId, projectId);
@@ -92,7 +94,7 @@ export function MetricsSetDetailView({
     [metricsSet?.entries],
   );
 
-  const editsBlocked = versionLocked || patch.isPending;
+  const editsBlocked = !writable || versionLocked || patch.isPending;
 
   const saveEntries = useCallback(
     (nextEntries: MetricsSetEntry[]) => {
@@ -378,29 +380,31 @@ export function MetricsSetDetailView({
               queryKey={queryOpts.queryKey}
               dataUpdatedAt={query.dataUpdatedAt}
             />
-            <Button
-              type="button"
-              size="sm"
-              variant={versionLocked ? "default" : "outline"}
-              disabled={version.isPending}
-              title="Copy these metrics into a new version you can edit, without changing past experiments"
-              onClick={() => {
-                version.mutate(undefined, {
-                  onSuccess: (created) => {
-                    toast.success("New version created");
-                    router.push(
-                      `/metrics/${encodeURIComponent(created.id)}?project=${encodeURIComponent(projectId)}`,
-                    );
-                  },
-                  onError: (err) => {
-                    toast.error(formatErrorForUi(err));
-                  },
-                });
-              }}
-            >
-              <GitBranchPlus className="size-4" />
-              {version.isPending ? "Creating…" : nextVersionLabel}
-            </Button>
+            {writable ? (
+              <Button
+                type="button"
+                size="sm"
+                variant={versionLocked ? "default" : "outline"}
+                disabled={version.isPending}
+                title="Copy these metrics into a new version you can edit, without changing past experiments"
+                onClick={() => {
+                  version.mutate(undefined, {
+                    onSuccess: (created) => {
+                      toast.success("New version created");
+                      router.push(
+                        `/metrics/${encodeURIComponent(created.id)}?project=${encodeURIComponent(projectId)}`,
+                      );
+                    },
+                    onError: (err) => {
+                      toast.error(formatErrorForUi(err));
+                    },
+                  });
+                }}
+              >
+                <GitBranchPlus className="size-4" />
+                {version.isPending ? "Creating…" : nextVersionLabel}
+              </Button>
+            ) : null}
           </>
         }
         className="mb-0"

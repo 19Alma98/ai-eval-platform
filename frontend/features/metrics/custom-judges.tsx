@@ -30,6 +30,7 @@ import {
   type EvaluatorPreview,
 } from "@/lib/api/evaluators";
 import type { Evaluator } from "@/lib/api/types";
+import { useCanWrite } from "@/lib/auth-context";
 import { evaluatorsQueryKey, useEvaluators } from "@/features/experiments/use-experiments";
 import {
   EMPTY_JUDGE_DRAFT,
@@ -45,6 +46,7 @@ import {
 
 /** Project LLM judges described in plain language (`kind: custom_judge`). */
 export function CustomJudges({ projectId }: { projectId: string }) {
+  const writable = useCanWrite();
   const query = useEvaluators(projectId);
   const [open, setOpen] = useState(false);
   const all = query.data ?? [];
@@ -59,10 +61,12 @@ export function CustomJudges({ projectId }: { projectId: string }) {
         <h2 id="custom-judges-title" className="text-sm font-semibold text-foreground">
           Custom judges
         </h2>
-        <Button type="button" size="sm" variant="outline" onClick={() => setOpen(true)}>
-          <Plus className="size-4" />
-          New judge
-        </Button>
+        {writable ? (
+          <Button type="button" size="sm" variant="outline" onClick={() => setOpen(true)}>
+            <Plus className="size-4" />
+            New judge
+          </Button>
+        ) : null}
       </div>
       <p className="text-sm text-muted-foreground">
         An LLM grades each answer against criteria you write (tone, format, policy…). Add a
@@ -76,12 +80,14 @@ export function CustomJudges({ projectId }: { projectId: string }) {
           ))}
         </ul>
       ) : null}
-      <CreateJudgeDialog
-        projectId={projectId}
-        evaluators={all}
-        open={open}
-        onOpenChange={setOpen}
-      />
+      {writable ? (
+        <CreateJudgeDialog
+          projectId={projectId}
+          evaluators={all}
+          open={open}
+          onOpenChange={setOpen}
+        />
+      ) : null}
     </section>
   );
 }

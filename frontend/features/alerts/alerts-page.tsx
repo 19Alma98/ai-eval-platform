@@ -19,6 +19,7 @@ import {
 } from "@/lib/api/alerts";
 import { formatErrorForUi } from "@/lib/api/client";
 import type { AlertEvent, AlertRule } from "@/lib/api/types";
+import { useCanWrite } from "@/lib/auth-context";
 import { cn } from "@/lib/cn";
 import { describeReading, describeRule, formatRuleValue } from "./alert-format";
 import { AlertRuleDialog, type ScoreChoice } from "./alert-rule-dialog";
@@ -75,6 +76,7 @@ function useRecentScores(projectId: string): {
 }
 
 export function AlertsPage({ projectId }: { projectId: string }) {
+  const writable = useCanWrite();
   const queryClient = useQueryClient();
   const rules = useAlertRules(projectId);
   const events = useAlertEvents(projectId);
@@ -111,20 +113,22 @@ export function AlertsPage({ projectId }: { projectId: string }) {
       <ProductionHeader
         active="alerts"
         actions={
-          <>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => checkNow.mutate()}
-              disabled={checkNow.isPending || !rules.data?.length}
-            >
-              {checkNow.isPending ? "Checking…" : "Check now"}
-            </Button>
-            <Button size="sm" onClick={() => openDialog(null)}>
-              <Plus className="size-4" aria-hidden />
-              New alert
-            </Button>
-          </>
+          writable ? (
+            <>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => checkNow.mutate()}
+                disabled={checkNow.isPending || !rules.data?.length}
+              >
+                {checkNow.isPending ? "Checking…" : "Check now"}
+              </Button>
+              <Button size="sm" onClick={() => openDialog(null)}>
+                <Plus className="size-4" aria-hidden />
+                New alert
+              </Button>
+            </>
+          ) : undefined
         }
       />
       {rules.isLoading ? (
@@ -140,9 +144,11 @@ export function AlertsPage({ projectId }: { projectId: string }) {
           title="No alerts yet"
           description="Get a Slack or webhook message when a production score, the error rate, latency or cost crosses a threshold. The server checks every minute."
           action={
-            <Button size="sm" onClick={() => openDialog(null)}>
-              New alert
-            </Button>
+            writable ? (
+              <Button size="sm" onClick={() => openDialog(null)}>
+                New alert
+              </Button>
+            ) : null
           }
         />
       ) : (
@@ -151,6 +157,7 @@ export function AlertsPage({ projectId }: { projectId: string }) {
             <RuleRow
               key={rule.id}
               rule={rule}
+              writable={writable}
               onEdit={() => openDialog(rule)}
               onChanged={refresh}
             />
@@ -217,10 +224,12 @@ export function AlertsPage({ projectId }: { projectId: string }) {
 
 function RuleRow({
   rule,
+  writable,
   onEdit,
   onChanged,
 }: {
   rule: AlertRule;
+  writable: boolean;
   onEdit: () => void;
   onChanged: () => Promise<void>;
 }) {
@@ -281,37 +290,39 @@ function RuleRow({
           {rule.webhook_url ? "" : " · server default webhook"}
         </span>
       </div>
-      <div className="flex items-center gap-1">
-        <Button variant="ghost" size="sm" onClick={() => toggle.mutate()} disabled={toggle.isPending}>
-          {rule.enabled ? "Pause" : "Resume"}
-        </Button>
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={() => test.mutate()}
-          disabled={test.isPending}
-          title="Send a test notification"
-        >
-          <Send className="size-4" aria-hidden />
-          <span className="sr-only">Send test</span>
-        </Button>
-        <Button variant="ghost" size="sm" onClick={onEdit} title="Edit">
-          <Pencil className="size-4" aria-hidden />
-          <span className="sr-only">Edit</span>
-        </Button>
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={() => {
-            if (window.confirm(`Delete alert "${rule.name}"?`)) remove.mutate();
-          }}
-          disabled={remove.isPending}
-          title="Delete"
-        >
-          <Trash2 className="size-4" aria-hidden />
-          <span className="sr-only">Delete</span>
-        </Button>
-      </div>
+      {writable ? (
+        <div className="flex items-center gap-1">
+          <Button variant="ghost" size="sm" onClick={() => toggle.mutate()} disabled={toggle.isPending}>
+            {rule.enabled ? "Pause" : "Resume"}
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => test.mutate()}
+            disabled={test.isPending}
+            title="Send a test notification"
+          >
+            <Send className="size-4" aria-hidden />
+            <span className="sr-only">Send test</span>
+          </Button>
+          <Button variant="ghost" size="sm" onClick={onEdit} title="Edit">
+            <Pencil className="size-4" aria-hidden />
+            <span className="sr-only">Edit</span>
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => {
+              if (window.confirm(`Delete alert "${rule.name}"?`)) remove.mutate();
+            }}
+            disabled={remove.isPending}
+            title="Delete"
+          >
+            <Trash2 className="size-4" aria-hidden />
+            <span className="sr-only">Delete</span>
+          </Button>
+        </div>
+      ) : null}
     </li>
   );
 }

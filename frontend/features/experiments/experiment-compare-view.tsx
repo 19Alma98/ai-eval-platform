@@ -37,6 +37,7 @@ import {
 import { runJudgeWarning } from "@/features/judges/judge-metadata";
 import { ApiError, formatErrorForUi } from "@/lib/api/client";
 import type { CompareRunRef, Experiment } from "@/lib/api/types";
+import { useCanWrite } from "@/lib/auth-context";
 import { withProjectQuery } from "@/lib/project-href";
 import {
   experimentCompareQueryOptions,
@@ -50,6 +51,10 @@ import {
   defaultBaselineFromMainAlias,
   MAIN_ALIAS,
 } from "./experiment-aliases";
+import {
+  ExperimentAliasActions,
+  ExperimentAliasBadges,
+} from "./experiment-alias-actions";
 import { useExperimentAliases } from "./use-experiment-aliases";
 import { CommitLabel } from "./commit-label";
 import {
@@ -139,6 +144,12 @@ export function ExperimentCompareView({
       ? experimentCompareQueryOptions(experimentId, baselineId)
       : null;
 
+  const experimentNames = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const e of experimentsQuery.data ?? []) map.set(e.id, e.name);
+    return map;
+  }, [experimentsQuery.data]);
+
   function setBaselineId(id: string) {
     const params = new URLSearchParams(searchParams.toString());
     params.set("baseline", id);
@@ -207,14 +218,25 @@ export function ExperimentCompareView({
     />
   );
 
+  const baselineAliasNames = baselineExperiment
+    ? (aliasNamesByExperiment.get(baselineExperiment.id) ?? [])
+    : [];
+
+  const headerShared = {
+    experiment,
+    detailHref,
+    baselinePicker,
+    projectId,
+    experimentNames,
+  } as const;
+
   if (!baselineId) {
     return (
       <div className="flex flex-col gap-3">
         <CompareHeader
-          experiment={experiment}
-          detailHref={detailHref}
+          {...headerShared}
           baselineExperiment={null}
-          baselinePicker={baselinePicker}
+          baselineAliasNames={[]}
         />
         <EmptyState
           title="Choose a baseline"
@@ -228,10 +250,9 @@ export function ExperimentCompareView({
     return (
       <div className="flex flex-col gap-3">
         <CompareHeader
-          experiment={experiment}
-          detailHref={detailHref}
+          {...headerShared}
           baselineExperiment={baselineExperiment}
-          baselinePicker={baselinePicker}
+          baselineAliasNames={baselineAliasNames}
         />
         <LoadingBlock className="min-h-[200px]" />
       </div>
@@ -253,10 +274,9 @@ export function ExperimentCompareView({
     return (
       <div className="flex flex-col gap-3">
         <CompareHeader
-          experiment={experiment}
-          detailHref={detailHref}
+          {...headerShared}
           baselineExperiment={baselineExperiment}
-          baselinePicker={baselinePicker}
+          baselineAliasNames={baselineAliasNames}
         />
         <ErrorState
           title={
@@ -294,10 +314,9 @@ export function ExperimentCompareView({
   return (
     <div className="flex flex-col gap-5">
       <CompareHeader
-        experiment={experiment}
-        detailHref={detailHref}
+        {...headerShared}
         baselineExperiment={baselineExperiment}
-        baselinePicker={baselinePicker}
+        baselineAliasNames={baselineAliasNames}
         refresh={
           compareOpts ? (
             <RefreshControl
@@ -499,13 +518,20 @@ function CompareHeader({
   baselineExperiment,
   baselinePicker,
   refresh,
+  projectId,
+  experimentNames,
+  baselineAliasNames,
 }: {
   experiment: Experiment;
   detailHref: string;
   baselineExperiment: Experiment | null;
   baselinePicker: ReactNode;
   refresh?: ReactNode;
+  projectId: string;
+  experimentNames: Map<string, string>;
+  baselineAliasNames: string[];
 }) {
+  const writable = useCanWrite();
   const listHref = detailHref.replace(/\/experiments\/[^?]+/, "/experiments");
   return (
     <>
@@ -522,11 +548,22 @@ function CompareHeader({
       />
       <div className="grid gap-3 md:grid-cols-[1fr_auto_1fr] md:items-stretch">
         <div className="flex flex-col gap-2 rounded-lg border border-border bg-surface p-4">
-          <span className="text-[13px] font-medium text-muted-foreground">
+          <span className="flex flex-wrap items-center gap-2 text-[13px] font-medium text-muted-foreground">
             Baseline
+            <ExperimentAliasBadges names={baselineAliasNames} />
           </span>
           {baselinePicker}
           {baselineExperiment ? <ExperimentMetaLine experiment={baselineExperiment} /> : null}
+          {writable && baselineExperiment ? (
+            <div className="flex flex-wrap gap-1 pt-1">
+              <ExperimentAliasActions
+                projectId={projectId}
+                experiment={baselineExperiment}
+                experimentNames={experimentNames}
+                showBadges={false}
+              />
+            </div>
+          ) : null}
         </div>
         <div className="hidden items-center justify-center text-muted-foreground md:flex">
           <ArrowRight className="size-5" />
