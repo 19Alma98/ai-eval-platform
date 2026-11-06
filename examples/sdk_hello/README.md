@@ -12,8 +12,8 @@ Minimal OpenGrade SDK example: emits one CHAIN span (`@opengrade.trace`) and an 
 
 ```bash
 cd examples/sdk_hello
-uv run --with 'opengrade-ai[openai]' --with openai python main.py
-# or: pip install -r requirements.txt && python main.py
+uv run --python 3.12 --with 'opengrade-ai[openai]' --with openai python main.py
+# or: pip install -r requirements.txt && python main.py   # Python ≥ 3.12
 ```
 
 Expected UI: one trace under project "**demo**", parent CHAIN + child LLM.

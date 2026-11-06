@@ -12,14 +12,20 @@
 set -uo pipefail
 cd "$(dirname "$0")"
 
-OPENGRADE=${OPENGRADE:-"uvx --from 'opengrade-ai[ui]' opengrade"}
+opengrade_cli() {
+  if [[ -n "${OPENGRADE:-}" ]]; then
+    $OPENGRADE "$@"
+  else
+    uvx --from 'opengrade-ai[ui]' opengrade "$@"
+  fi
+}
 STORE="sqlite+aiosqlite:///$PWD/ci.db"
 rm -rf ci.db ci.db-wal ci.db-shm
 
 run() {  # run <step> <label> <config> <expected-exit> [extra args…]
   local step=$1 label=$2 config=$3 expected=$4; shift 4
   echo; echo "=== $step. $label ==="
-  $OPENGRADE evaluate --config "$config" --backend-store-uri "$STORE" "$@" 2>&1 \
+  opengrade_cli evaluate --config "$config" --backend-store-uri "$STORE" "$@" 2>&1 \
     | grep -v '^INFO  \[alembic'
   local code=${PIPESTATUS[0]}
   echo "--> exit code $code (expected $expected)"
