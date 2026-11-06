@@ -13,9 +13,10 @@ Needs [Ollama](https://ollama.com) locally (or any OpenAI-compatible endpoint). 
 
 ```bash
 ollama pull gemma4:e2b
-cd backend && uv sync --all-extras && cd ..
 ./examples/llm_regression_gate/run_demo.sh
 ```
+
+Needs [`uv`](https://docs.astral.sh/uv/). The demo pulls `opengrade-ai[ui,openai]` from PyPI on first run (`uvx`).
 
 ## What `run_demo.sh` does
 

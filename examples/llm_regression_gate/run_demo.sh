@@ -14,7 +14,7 @@ set -uo pipefail
 cd "$(dirname "$0")"
 export PYTHONPATH="$PWD${PYTHONPATH:+:$PYTHONPATH}"
 
-OPENGRADE=${OPENGRADE:-"uv run -q --project ../../backend --with openinference-instrumentation-openai opengrade"}
+OPENGRADE=${OPENGRADE:-"uvx --from 'opengrade-ai[ui,openai]' opengrade"}
 STORE="sqlite+aiosqlite:///$PWD/ci.db"
 rm -rf ci.db ci.db-wal ci.db-shm
 

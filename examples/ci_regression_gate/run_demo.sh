@@ -12,7 +12,7 @@ set -uo pipefail
 cd "$(dirname "$0")"
 export PYTHONPATH="$PWD${PYTHONPATH:+:$PYTHONPATH}"
 
-OPENGRADE=${OPENGRADE:-"uv run -q --project ../../backend opengrade"}
+OPENGRADE=${OPENGRADE:-"uvx --from 'opengrade-ai[ui]' opengrade"}
 STORE="sqlite+aiosqlite:///$PWD/ci.db"
 rm -rf ci.db ci.db-wal ci.db-shm
 

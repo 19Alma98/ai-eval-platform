@@ -14,9 +14,10 @@ answer), so the demo needs no LLM and no API key. Replace `task()` with your own
 ## Try it locally (~30 s)
 
 ```bash
-cd backend && uv sync --all-extras && cd ..
 ./examples/ci_regression_gate/run_demo.sh
 ```
+
+Needs [`uv`](https://docs.astral.sh/uv/). The demo pulls `opengrade-ai[ui]` from PyPI on first run (`uvx`).
 
 | Step | Simulates | Result |
 |------|-----------|--------|

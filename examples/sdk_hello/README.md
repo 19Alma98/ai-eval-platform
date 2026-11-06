@@ -5,15 +5,14 @@ Minimal OpenGrade SDK example: emits one CHAIN span (`@opengrade.trace`) and an 
 
 ## Prerequisites
 
-1. Platform: `uv run opengrade ui` (see [getting started](../../docs/getting-started.md)), **or** from repo root `docker compose up --build` (API on `:8000`).
+1. Platform: `uvx --from 'opengrade-ai[ui]' opengrade ui` (see [getting started](../../docs/getting-started.md)), **or** from repo root `docker compose up --build` (API on `:8000`).
 2. Ollama with a chat model: `ollama pull gemma4:e2b`.
 
 ## Run
 
 ```bash
-cd sdk && uv sync --extra openai && cd ..
 cd examples/sdk_hello
-uv run --project ../../sdk --with openai python main.py
+uv run --with 'opengrade-ai[openai]' --with openai python main.py
 # or: pip install -r requirements.txt && python main.py
 ```
 
@@ -23,7 +22,7 @@ Expected UI: one trace under project "**demo**", parent CHAIN + child LLM.
 
 | Symptom | Likely cause | Fix |
 |---|---|---|
-| Connection refused / timeout to `:8000` | Platform API not running | Run `uv run opengrade ui` (see [getting started](../../docs/getting-started.md)), or from repo root `docker compose up --build`; confirm `curl http://localhost:8000/health` succeeds. |
+| Connection refused / timeout to `:8000` | Platform API not running | Run `uvx --from 'opengrade-ai[ui]' opengrade ui` (see [getting started](../../docs/getting-started.md)), or from repo root `docker compose up --build`; confirm `curl http://localhost:8000/health` succeeds. |
 | OTLP export errors, no traces in UI | Wrong `OPENGRADE_TRACKING_URI` | Default is local `:8000`; OTLP goes to `<uri>/v1/traces`. Project **demo** is created on first run. |
 | Empty trace list for **demo** | Export failed silently or wrong project slug | Check script env and API logs; verify `OPENGRADE_PROJECT_SLUG` is what you expect. |
 | Connection error to `:11434` | Ollama not running | Start Ollama; confirm `curl http://localhost:11434/api/tags`. |
