@@ -105,6 +105,56 @@ def truncate_value(value: object, *, limit: int | None = None) -> str:
     return clipped + _TRUNCATE_MARKER
 
 
+def _attr_or_key(obj: object, name: str) -> object:
+    if isinstance(obj, dict):
+        return obj.get(name)
+    return getattr(obj, name, None)
+
+
+def _chunk_text(chunk: object) -> str:
+    if isinstance(chunk, str):
+        return chunk
+    content = _attr_or_key(chunk, "content")
+    if isinstance(content, str):
+        return content
+    delta = _attr_or_key(chunk, "delta")
+    if delta is not None:
+        delta_content = _attr_or_key(delta, "content")
+        if isinstance(delta_content, str):
+            return delta_content
+    choices = _attr_or_key(chunk, "choices")
+    if isinstance(choices, (list, tuple)) and choices:
+        first = choices[0]
+        nested_delta = _attr_or_key(first, "delta")
+        if nested_delta is not None:
+            nested_content = _attr_or_key(nested_delta, "content")
+            if isinstance(nested_content, str):
+                return nested_content
+    text = _attr_or_key(chunk, "text")
+    if isinstance(text, str):
+        return text
+    return ""
+
+
+def _default_join_chunks(chunk: object, acc: object) -> object:
+    base = "" if acc is None else acc
+    if not isinstance(base, str):
+        base = _leaf_str(base)
+    if base.endswith(_TRUNCATE_MARKER):
+        return base
+    piece = _chunk_text(chunk)
+    if not piece:
+        return base
+    limit = max_capture_bytes()
+    combined = base + piece
+    raw = combined.encode("utf-8")
+    if len(raw) <= limit:
+        return combined
+    budget = max(0, limit - len(_TRUNCATE_MARKER.encode("utf-8")))
+    clipped = raw[:budget].decode("utf-8", errors="ignore")
+    return clipped + _TRUNCATE_MARKER
+
+
 def _default_name(fn: Callable[..., Any]) -> str:
     module = getattr(fn, "__module__", "")
     qual = getattr(fn, "__qualname__", getattr(fn, "__name__", "span"))

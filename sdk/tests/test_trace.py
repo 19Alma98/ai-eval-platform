@@ -5,6 +5,7 @@ import inspect
 import json
 import time
 from collections.abc import AsyncIterator, Iterator
+from types import SimpleNamespace
 
 import pytest
 from opentelemetry import trace
@@ -16,7 +17,7 @@ from opentelemetry.trace import StatusCode
 import opengrade
 from opengrade import _config, _otel, _trace
 from opengrade._config import DEFAULT_MAX_CAPTURE_BYTES
-from opengrade._trace import truncate_value
+from opengrade._trace import _chunk_text, _default_join_chunks, truncate_value
 
 _shared_exporter: InMemorySpanExporter | None = None
 
@@ -42,6 +43,37 @@ def spans() -> InMemorySpanExporter:
     else:
         _shared_exporter.clear()
     return _shared_exporter
+
+
+def test_chunk_text_str_and_common_shapes() -> None:
+    assert _chunk_text("hi") == "hi"
+    assert _chunk_text({"content": "a"}) == "a"
+    assert _chunk_text(SimpleNamespace(content="b")) == "b"
+    assert _chunk_text({"delta": {"content": "c"}}) == "c"
+    assert _chunk_text({"choices": [{"delta": {"content": "d"}}]}) == "d"
+    assert _chunk_text(SimpleNamespace(delta=SimpleNamespace(content="e"))) == "e"
+    assert _chunk_text({"text": "f"}) == "f"
+    assert _chunk_text(SimpleNamespace(text="g")) == "g"
+    assert _chunk_text(object()) == ""
+    assert _chunk_text({"content": 1}) == ""  # non-str content ignored
+
+
+def test_default_join_chunks_concat_and_none_acc() -> None:
+    assert _default_join_chunks("a", None) == "a"
+    assert _default_join_chunks("b", "a") == "ab"
+    assert _default_join_chunks({"content": "c"}, "ab") == "abc"
+
+
+def test_default_join_chunks_respects_byte_budget(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(_trace, "max_capture_bytes", lambda: 4)
+    # "aaaa" = 4 bytes; next append of "bbbb" would exceed → truncate marker, no further growth
+    acc = _default_join_chunks("aaaa", None)
+    acc2 = _default_join_chunks("bbbb", acc)
+    assert isinstance(acc2, str)
+    assert acc2.endswith("…[truncated]") or "…[truncated]" in acc2
+    assert len(acc2.encode("utf-8")) <= 8 + len("…[truncated]".encode("utf-8"))
+    # further joins are no-ops once truncated
+    assert _default_join_chunks("cccc", acc2) == acc2
 
 
 def test_truncate_value_adds_marker() -> None:
