@@ -16,6 +16,7 @@ from opengrade_server.application.experiment_outputs import (
 )
 from opengrade_server.application.experiments import ExperimentNotFoundError
 from opengrade_server.domain.dataset import DatasetItem
+from opengrade_server.domain.rag_models import RagItemMetadata
 from opengrade_server.domain.evaluator import Evaluator
 from opengrade_server.domain.experiment import Experiment
 from opengrade_server.domain.experiment_output import ExperimentItemOutput
@@ -45,7 +46,9 @@ def test_resolve_without_fallback_ignores_dataset_fields() -> None:
 
 
 def test_merge_includes_output_metadata_but_item_gold_wins() -> None:
-    item = DatasetItem.create(uuid.uuid4(), input="q", metadata={"expected_doc_ids": ["gold"]})
+    item = DatasetItem.create(
+        uuid.uuid4(), input="q", metadata=RagItemMetadata(expected_doc_ids=["gold"])
+    )
     out = ExperimentItemOutput.create(
         uuid.uuid4(),
         item.id,
@@ -53,7 +56,20 @@ def test_merge_includes_output_metadata_but_item_gold_wins() -> None:
         metadata={"source_trace_id": "t1", "expected_doc_ids": ["spoofed"]},
     )
     merged = merge_dataset_item(item, out)
-    assert merged.metadata == {"source_trace_id": "t1", "expected_doc_ids": ["gold"]}
+    assert merged.metadata.expected_doc_ids == ["gold"]
+    assert getattr(merged.metadata, "source_trace_id", None) == "t1"
+
+
+def test_merge_dataset_item_accepts_rag_item_metadata() -> None:
+    item = DatasetItem.create(
+        uuid.uuid4(),
+        input="q",
+        metadata=RagItemMetadata(expected_doc_ids=["d1"], answerable=True),
+    )
+    out = ExperimentItemOutput.create(uuid.uuid4(), item.id, metadata={"answerable": False})
+    merged = merge_dataset_item(item, out)
+    assert merged.metadata.expected_doc_ids == ["d1"]
+    assert merged.metadata.answerable is True
 
 
 def test_merge_dataset_item_keeps_id_and_resolves_fields() -> None:
@@ -265,6 +281,9 @@ class FakeEvaluationRunRepository:
     async def add_results(self, results):
         self.results.extend(results)
         return results
+
+    async def list_runs_by_experiment(self, experiment_id: uuid.UUID) -> list[object]:
+        return [r for r in self.runs.values() if getattr(r, "experiment_id", None) == experiment_id]
 
 
 @pytest.fixture(autouse=True)

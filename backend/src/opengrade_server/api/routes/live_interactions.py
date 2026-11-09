@@ -55,6 +55,7 @@ from opengrade_server.application.metrics_sets import MetricsSetNotFoundError
 from opengrade_server.application.projects import ProjectNotFoundError
 from opengrade_server.application.traces import InvalidTraceFilterError, parse_metadata_filters
 from opengrade_server.domain.dataset import DatasetItem
+from opengrade_server.domain.rag_models import dump_context, dump_dataset_input, dump_metadata
 from opengrade_server.domain.live_interaction import (
     LiveInteraction,
     LiveInteractionScore,
@@ -144,11 +145,11 @@ def _item_response(item: DatasetItem) -> DatasetItemResponse:
         {
             "id": item.id,
             "dataset_id": item.dataset_id,
-            "input": item.input,
+            "input": dump_dataset_input(item.input),
             "expected_output": item.expected_output,
             "actual_output": item.actual_output,
-            "context": item.context,
-            "metadata": item.metadata,
+            "context": dump_context(item.context),
+            "metadata": dump_metadata(item.metadata, exclude_none=True),
             "source_trace_id": item.source_trace_id,
             "source_span_id": item.source_span_id,
         }

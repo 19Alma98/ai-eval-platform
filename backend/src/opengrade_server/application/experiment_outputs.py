@@ -6,6 +6,7 @@ from typing import Any
 
 from opengrade_server.application.experiments import ExperimentNotFoundError
 from opengrade_server.domain.dataset import DatasetItem
+from opengrade_server.domain.rag_models import metadata_as_mapping, parse_metadata
 from opengrade_server.domain.experiment_output import UNSET, ExperimentItemOutput
 from opengrade_server.domain.repositories import (
     DatasetRepository,
@@ -62,7 +63,8 @@ def merge_dataset_item(
 ) -> DatasetItem:
     actual_output, context = resolve_item_fields(item, output, fallback_to_item=fallback_to_item)
     # Item metadata holds the gold labels, so it wins over run-level output metadata.
-    metadata = {**(output.metadata if output is not None else {}), **item.metadata}
+    output_meta = dict(output.metadata) if output is not None else {}
+    metadata = parse_metadata({**output_meta, **metadata_as_mapping(item.metadata)})
     return DatasetItem(
         id=item.id,
         dataset_id=item.dataset_id,

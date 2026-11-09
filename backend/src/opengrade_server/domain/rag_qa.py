@@ -109,8 +109,8 @@ def validate_rag_qa_item(
             must_contain = normalize_must_contain(raw)
 
     answerable = label_answerable(cleaned)
-    return RagItemMetadata(
-        expected_doc_ids=expected_doc_ids,
-        must_contain=must_contain,
-        answerable=answerable,
-    )
+    payload = dict(cleaned)
+    payload["expected_doc_ids"] = expected_doc_ids
+    payload["must_contain"] = must_contain
+    payload["answerable"] = answerable
+    return RagItemMetadata.model_validate(payload)

@@ -1,8 +1,9 @@
 from __future__ import annotations
 
+from collections.abc import Mapping
 from typing import Literal
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 ChatRole = Literal["user", "assistant", "system"]
 
@@ -57,6 +58,8 @@ class RagItemContext(BaseModel):
 
 
 class RagItemMetadata(BaseModel):
+    model_config = ConfigDict(extra="allow")
+
     expected_doc_ids: list[str] | None = None
     must_contain: list[str] | None = None
     answerable: bool | None = None
@@ -106,3 +109,10 @@ def parse_metadata(value: object | None) -> RagItemMetadata:
 
 def dump_metadata(value: RagItemMetadata, *, exclude_none: bool = False) -> dict[str, object]:
     return value.model_dump(mode="json", exclude_none=exclude_none)
+
+
+def metadata_as_mapping(value: RagItemMetadata | Mapping[str, object]) -> dict[str, object]:
+    """Coerce typed or legacy dict metadata for merges and dotted-path lookups."""
+    if isinstance(value, RagItemMetadata):
+        return dump_metadata(value)
+    return dict(value)

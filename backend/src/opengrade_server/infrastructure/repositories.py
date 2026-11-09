@@ -21,6 +21,7 @@ from opengrade_server.domain.rag_models import (
     dump_context,
     dump_dataset_input,
     dump_metadata,
+    metadata_as_mapping,
     parse_context,
     parse_dataset_input,
     parse_metadata,
@@ -781,7 +782,7 @@ class SqlAlchemyDatasetRepository:
             expected_output=item.expected_output,
             actual_output=item.actual_output,
             context=dump_context(item.context),
-            metadata_json=dump_metadata(item.metadata),
+            metadata_json=metadata_as_mapping(item.metadata),
             source_trace_id=item.source_trace_id,
             source_span_id=item.source_span_id,
         )

@@ -16,6 +16,7 @@ from opengrade_server.application.scoring_inputs import (
     current_fingerprint,
 )
 from opengrade_server.domain.dataset import DatasetItem
+from opengrade_server.domain.rag_models import metadata_as_mapping
 from opengrade_server.domain.evaluation import EvaluationRun
 from opengrade_server.domain.experiment import Experiment
 from opengrade_server.domain.repositories import (
@@ -267,7 +268,9 @@ class ReleaseCheck:
                 critical_item_ids = {
                     item.id
                     for item in items
-                    if _is_marked(lookup_metadata(item.metadata, policy.critical.by))
+                    if _is_marked(
+                        lookup_metadata(metadata_as_mapping(item.metadata), policy.critical.by)
+                    )
                 }
         evaluation = evaluate_policy(
             policy_for_eval,

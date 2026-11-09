@@ -33,6 +33,7 @@ from opengrade_server.application.datasets import DatasetNotFoundError
 from opengrade_server.application.projects import ProjectNotFoundError
 from opengrade_server.domain.conversation import ConversationScore, ConversationSummary
 from opengrade_server.domain.live_interaction import LiveInteraction
+from opengrade_server.domain.rag_models import dump_context, dump_dataset_input, dump_metadata
 
 router = APIRouter(prefix="/api/v1/projects/{project_id}/conversations", tags=["conversations"])
 
@@ -213,11 +214,11 @@ async def promote_conversation(
         {
             "id": item.id,
             "dataset_id": item.dataset_id,
-            "input": item.input,
+            "input": dump_dataset_input(item.input),
             "expected_output": item.expected_output,
             "actual_output": item.actual_output,
-            "context": item.context,
-            "metadata": item.metadata,
+            "context": dump_context(item.context),
+            "metadata": dump_metadata(item.metadata, exclude_none=True),
             "source_trace_id": item.source_trace_id,
             "source_span_id": item.source_span_id,
         }

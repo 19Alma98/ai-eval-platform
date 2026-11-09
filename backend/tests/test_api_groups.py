@@ -10,6 +10,7 @@ from httpx2 import AsyncClient
 
 import test_sqlite_smoke
 from opengrade_server.domain.dataset import DatasetItem
+from opengrade_server.domain.rag_models import parse_metadata
 from opengrade_server.regression.groups import NO_VALUE, InvalidGroupKeyError, item_groups
 from opengrade_server.regression.policy import InvalidPolicyError, parse_release_policy
 
@@ -24,7 +25,7 @@ def _item(metadata: dict[str, Any]) -> DatasetItem:
         expected_output=None,
         actual_output=None,
         context=None,
-        metadata=metadata,
+        metadata=parse_metadata(metadata),
     )
 
 

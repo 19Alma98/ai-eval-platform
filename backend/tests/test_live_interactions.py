@@ -423,9 +423,9 @@ async def test_score_goldless_and_review_promote() -> None:
     )
     assert item.input == "What is PTO?"
     assert item.expected_output == "Paid time off (PTO), 20 days per year"
-    assert item.metadata["expected_doc_ids"] == ["doc-pto-policy"]
-    assert item.metadata["retrieved_doc_ids_at_promotion"] == ["doc-1"]
-    assert item.metadata["source_live_interaction_id"] == str(scored.id)
+    assert item.metadata.expected_doc_ids == ["doc-pto-policy"]
+    assert item.metadata.retrieved_doc_ids_at_promotion == ["doc-1"]
+    assert item.metadata.source_live_interaction_id == str(scored.id)
 
     clear_registry()
 
@@ -492,8 +492,8 @@ async def test_promote_never_uses_retrieved_docs_as_gold() -> None:
             expected_output="gold answer",
         )
     )
-    assert "expected_doc_ids" not in item.metadata
-    assert item.metadata["retrieved_doc_ids_at_promotion"] == ["doc-1"]
+    assert item.metadata.expected_doc_ids is None
+    assert item.metadata.retrieved_doc_ids_at_promotion == ["doc-1"]
 
 
 @pytest.mark.asyncio

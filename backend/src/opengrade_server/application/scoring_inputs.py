@@ -7,7 +7,11 @@ from dataclasses import dataclass, field
 
 from opengrade_server.application.experiment_outputs import merge_dataset_item
 from opengrade_server.domain.dataset import DatasetItem
-from opengrade_server.domain.rag_models import dump_context, dump_dataset_input, dump_metadata
+from opengrade_server.domain.rag_models import (
+    dump_context,
+    dump_dataset_input,
+    metadata_as_mapping,
+)
 from opengrade_server.domain.experiment import Experiment
 from opengrade_server.domain.experiment_output import ExperimentItemOutput
 from opengrade_server.domain.repositories import DatasetRepository, ExperimentItemOutputRepository
@@ -51,7 +55,7 @@ def fingerprint_items(
             item.expected_output,
             item.actual_output,
             dump_context(item.context),
-            dump_metadata(item.metadata),
+            metadata_as_mapping(item.metadata),
             item.id in missing_output_item_ids,
             # Single-run experiments keep their pre-repeat fingerprint.
             *([repeat] if repeat else []),

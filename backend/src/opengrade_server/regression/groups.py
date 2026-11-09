@@ -12,6 +12,7 @@ from collections.abc import Iterable, Mapping
 from typing import Any
 
 from opengrade_server.domain.dataset import DatasetItem
+from opengrade_server.domain.rag_models import metadata_as_mapping
 from opengrade_server.domain.evaluation import EvaluationResultRecord
 
 NO_VALUE = "(none)"
@@ -61,7 +62,7 @@ def item_groups(items: Iterable[DatasetItem], key: str) -> dict[str, set[uuid.UU
     path = validate_group_key(key)
     groups: dict[str, set[uuid.UUID]] = {}
     for item in items:
-        for label in _labels(lookup_metadata(item.metadata, path)):
+        for label in _labels(lookup_metadata(metadata_as_mapping(item.metadata), path)):
             groups.setdefault(label, set()).add(item.id)
     if len(groups) > MAX_GROUPS:
         raise InvalidGroupKeyError(

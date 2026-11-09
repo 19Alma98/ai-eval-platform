@@ -9,7 +9,7 @@ from opengrade_server.application.metrics_packs import EnsureMetricsPack
 from opengrade_server.application.projects import ProjectNotFoundError
 from opengrade_server.domain.dataset import Dataset, DatasetItem
 from opengrade_server.domain.rag_chat import validate_rag_chat_item
-from opengrade_server.domain.rag_models import parse_context
+from opengrade_server.domain.rag_models import parse_context, parse_metadata
 from opengrade_server.domain.rag_qa import validate_rag_qa_item
 from opengrade_server.domain.repositories import (
     DatasetRepository,
@@ -283,7 +283,7 @@ class AddDatasetItem:
         return await self._add_item_to(target, command)
 
     async def _add_item_to(self, dataset: Dataset, command: AddDatasetItemCommand) -> DatasetItem:
-        metadata = command.metadata
+        metadata = parse_metadata(command.metadata)
         item_input = command.input
         if dataset.task_type == "rag_qa":
             metadata = validate_rag_qa_item(
