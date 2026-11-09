@@ -12,7 +12,7 @@ from opentelemetry import trace as otel_trace
 from opentelemetry.trace import Span, Status, StatusCode
 
 from opengrade import _live, _production, _trace_attrs
-from opengrade._config import max_capture_bytes
+from opengrade._config import capture_redact, capture_redact_output, max_capture_bytes
 from opengrade._run_context import record_input, record_output
 from opengrade.metrics import LocalMetric
 
@@ -111,9 +111,60 @@ def _default_name(fn: Callable[..., Any]) -> str:
     return f"{module}.{qual}" if module else qual
 
 
-def _serialize_args(args: tuple[Any, ...], kwargs: dict[str, Any]) -> str:
-    payload = {"args": list(args), "kwargs": kwargs}
-    return truncate_value(payload)
+def _resolve_redact(
+    override: Callable[[str, Any], Any] | None,
+) -> Callable[[str, Any], Any] | None:
+    return override if override is not None else capture_redact()
+
+
+def _resolve_redact_output(
+    override: Callable[[Any], Any] | None,
+) -> Callable[[Any], Any] | None:
+    return override if override is not None else capture_redact_output()
+
+
+def _bind_arguments(
+    fn: Callable[..., Any], args: tuple[Any, ...], kwargs: dict[str, Any]
+) -> dict[str, Any]:
+    try:
+        target = _unwrap_partial(fn)
+        bound = inspect.signature(target).bind_partial(*args, **kwargs)
+        bound.apply_defaults()
+        mapping = dict(bound.arguments)
+    except Exception:  # noqa: BLE001
+        mapping = {str(i): v for i, v in enumerate(args)}
+        mapping.update(kwargs)
+    mapping.pop("self", None)
+    mapping.pop("cls", None)
+    return mapping
+
+
+def _apply_redact(
+    payload: dict[str, Any], redact: Callable[[str, Any], Any] | None
+) -> dict[str, Any]:
+    if redact is None:
+        return payload
+    out: dict[str, Any] = {}
+    for name, value in payload.items():
+        try:
+            out[name] = redact(name, value)
+        except Exception:  # noqa: BLE001
+            out[name] = "<redact error>"
+    return out
+
+
+def _serialize_args(
+    fn: Callable[..., Any],
+    args: tuple[Any, ...],
+    kwargs: dict[str, Any],
+    *,
+    redact: Callable[[str, Any], Any] | None = None,
+) -> str:
+    try:
+        payload = _apply_redact(_bind_arguments(fn, args, kwargs), _resolve_redact(redact))
+        return truncate_value(payload)
+    except Exception:  # noqa: BLE001
+        return "<unserializable args>"
 
 
 def _unwrap_partial(fn: Callable[..., Any]) -> Callable[..., Any]:
@@ -204,8 +255,10 @@ def _span_session(
     capture_input: bool,
     live: bool | None,
     production: tuple[LocalMetric, ...],
+    fn: Callable[..., Any],
     args: tuple[Any, ...],
     kwargs: dict[str, Any],
+    redact: Callable[[str, Any], Any] | None = None,
 ) -> Iterator[tuple[Span, Any]]:
     """Open a span; yield ``(span, capture_token)``. Caller ends metrics via ``_finish_span``."""
     tracer = otel_trace.get_tracer(_TRACER_NAME)
@@ -214,7 +267,7 @@ def _span_session(
     ) as span:
         _start_attributes(span, kind)
         if capture_input and span.is_recording():
-            span.set_attribute("input.value", _serialize_args(args, kwargs))
+            span.set_attribute("input.value", _serialize_args(fn, args, kwargs, redact=redact))
         live_token = _live.mark_if_live(span, live)
         capture_token = _production.start(production, span)
         try:
@@ -234,10 +287,18 @@ def _finish_span(
     kwargs: dict[str, Any],
     result: Any,
     fn: Callable[..., Any] | None = None,
+    redact_output: Callable[[Any], Any] | None = None,
 ) -> None:
     capture = _production.stop(capture_token)
+    value = result
+    redactor = _resolve_redact_output(redact_output)
+    if redactor is not None:
+        try:
+            value = redactor(result)
+        except Exception:  # noqa: BLE001
+            value = "<redact error>"
     if capture_output and span.is_recording():
-        span.set_attribute("output.value", truncate_value(result))
+        span.set_attribute("output.value", truncate_value(value))
     if capture is not None:
         _production.after_call(production, rate, span, capture, args, kwargs, result, fn=fn)
 
@@ -257,6 +318,8 @@ def _wrap_sync[**P, R](
     live: bool | None,
     production: tuple[LocalMetric, ...],
     rate: float,
+    redact: Callable[[str, Any], Any] | None = None,
+    redact_output: Callable[[Any], Any] | None = None,
 ) -> Callable[P, R]:
     @functools.wraps(fn)
     def wrapper(*args: P.args, **kwargs: P.kwargs) -> R:
@@ -268,8 +331,10 @@ def _wrap_sync[**P, R](
             capture_input=capture_input,
             live=live,
             production=production,
+            fn=fn,
             args=args,
             kwargs=kwargs,
+            redact=redact,
         ) as (span, capture_token):
             try:
                 result = fn(*args, **kwargs)
@@ -287,6 +352,7 @@ def _wrap_sync[**P, R](
                 kwargs=kwargs,
                 result=result,
                 fn=fn,
+                redact_output=redact_output,
             )
             return result
 
@@ -303,6 +369,8 @@ def _wrap_async[**P, R](
     live: bool | None,
     production: tuple[LocalMetric, ...],
     rate: float,
+    redact: Callable[[str, Any], Any] | None = None,
+    redact_output: Callable[[Any], Any] | None = None,
 ) -> Callable[P, R]:
     @functools.wraps(fn)
     async def wrapper(*args: P.args, **kwargs: P.kwargs) -> R:
@@ -314,8 +382,10 @@ def _wrap_async[**P, R](
             capture_input=capture_input,
             live=live,
             production=production,
+            fn=fn,
             args=args,
             kwargs=kwargs,
+            redact=redact,
         ) as (span, capture_token):
             try:
                 result = cast(R, await fn(*args, **kwargs))  # type: ignore[misc]
@@ -333,6 +403,7 @@ def _wrap_async[**P, R](
                 kwargs=kwargs,
                 result=result,
                 fn=fn,
+                redact_output=redact_output,
             )
             return result
 
@@ -349,6 +420,8 @@ def _wrap_sync_gen[**P, R](
     live: bool | None,
     production: tuple[LocalMetric, ...],
     rate: float,
+    redact: Callable[[str, Any], Any] | None = None,
+    redact_output: Callable[[Any], Any] | None = None,
 ) -> Callable[P, R]:
     @functools.wraps(fn)
     def wrapper(*args: P.args, **kwargs: P.kwargs) -> Any:
@@ -360,7 +433,9 @@ def _wrap_sync_gen[**P, R](
         with tracer.start_as_current_span(span_name) as span:
             _start_attributes(span, kind)
             if capture_input and span.is_recording():
-                span.set_attribute("input.value", _serialize_args(args, kwargs))
+                span.set_attribute(
+                    "input.value", _serialize_args(fn, args, kwargs, redact=redact)
+                )
             live_token = _live.mark_if_live(span, live)
             capture_token = _production.start(production, span)
             chunks: list[Any] = []
@@ -384,6 +459,7 @@ def _wrap_sync_gen[**P, R](
                     kwargs=kwargs,
                     result=result,
                     fn=fn,
+                    redact_output=redact_output,
                 )
 
     return cast(Callable[P, R], wrapper)
@@ -399,6 +475,8 @@ def _wrap_async_gen[**P, R](
     live: bool | None,
     production: tuple[LocalMetric, ...],
     rate: float,
+    redact: Callable[[str, Any], Any] | None = None,
+    redact_output: Callable[[Any], Any] | None = None,
 ) -> Callable[P, R]:
     @functools.wraps(fn)
     async def wrapper(*args: P.args, **kwargs: P.kwargs) -> Any:
@@ -411,7 +489,9 @@ def _wrap_async_gen[**P, R](
         with tracer.start_as_current_span(span_name) as span:
             _start_attributes(span, kind)
             if capture_input and span.is_recording():
-                span.set_attribute("input.value", _serialize_args(args, kwargs))
+                span.set_attribute(
+                    "input.value", _serialize_args(fn, args, kwargs, redact=redact)
+                )
             live_token = _live.mark_if_live(span, live)
             capture_token = _production.start(production, span)
             chunks: list[Any] = []
@@ -435,6 +515,7 @@ def _wrap_async_gen[**P, R](
                     kwargs=kwargs,
                     result=result,
                     fn=fn,
+                    redact_output=redact_output,
                 )
 
     return cast(Callable[P, R], wrapper)
@@ -450,6 +531,8 @@ def _decorate(
     live: bool | None,
     production: tuple[LocalMetric, ...],
     rate: float,
+    redact: Callable[[str, Any], Any] | None = None,
+    redact_output: Callable[[Any], Any] | None = None,
 ) -> Callable[..., Any]:
     if production:
         target = _unwrap_partial(fn)
@@ -472,6 +555,8 @@ def _decorate(
             live=live,
             production=production,
             rate=rate,
+            redact=redact,
+            redact_output=redact_output,
         )
     if inspect.isgeneratorfunction(target):
         return _wrap_sync_gen(
@@ -483,6 +568,8 @@ def _decorate(
             live=live,
             production=production,
             rate=rate,
+            redact=redact,
+            redact_output=redact_output,
         )
     if inspect.iscoroutinefunction(target) or getattr(fn, "_is_coroutine", False):
         return _wrap_async(
@@ -494,6 +581,8 @@ def _decorate(
             live=live,
             production=production,
             rate=rate,
+            redact=redact,
+            redact_output=redact_output,
         )
     return _wrap_sync(
         fn,
@@ -504,6 +593,8 @@ def _decorate(
         live=live,
         production=production,
         rate=rate,
+        redact=redact,
+        redact_output=redact_output,
     )
 
 
@@ -521,6 +612,8 @@ def trace[**P, R](
     live: bool | None = None,
     metrics: Sequence[LocalMetric | Callable[..., Any]] | None = None,
     metrics_sample_rate: float = 1.0,
+    redact: Callable[[str, Any], Any] | None = None,
+    redact_output: Callable[[Any], Any] | None = None,
 ) -> Callable[[Callable[P, R]], Callable[P, R]]: ...
 
 
@@ -533,6 +626,8 @@ def trace[**P, R](
     live: bool | None = None,
     metrics: Sequence[LocalMetric | Callable[..., Any]] | None = None,
     metrics_sample_rate: float = 1.0,
+    redact: Callable[[str, Any], Any] | None = None,
+    redact_output: Callable[[Any], Any] | None = None,
 ) -> Any:
     """Trace a function as an OpenInference span.
 
@@ -560,6 +655,8 @@ def trace[**P, R](
                 live=live,
                 production=production,
                 rate=rate,
+                redact=redact,
+                redact_output=redact_output,
             ),
         )
 

@@ -148,6 +148,121 @@ def test_configure_capture_exported_on_opengrade() -> None:
     assert opengrade.configure_capture is _config.configure_capture
 
 
+def test_trace_omits_self_from_input(spans: InMemorySpanExporter) -> None:
+    class Greeter:
+        @opengrade.trace(name="greet-method")
+        def greet(self, name: str) -> str:
+            return f"hi {name}"
+
+    assert Greeter().greet("ada") == "hi ada"
+    attrs = dict(spans.get_finished_spans()[0].attributes or {})
+    payload = json.loads(str(attrs["input.value"]))
+    assert "self" not in payload
+    assert payload.get("name") == "ada"
+
+
+def test_trace_omits_cls_from_input(spans: InMemorySpanExporter) -> None:
+    class Factory:
+        @classmethod
+        @opengrade.trace(name="make")
+        def make(cls, n: int) -> int:
+            return n
+
+    assert Factory.make(3) == 3
+    payload = json.loads(
+        str(dict(spans.get_finished_spans()[0].attributes or {})["input.value"])
+    )
+    assert "cls" not in payload
+    assert payload.get("n") == 3
+
+
+def test_trace_flat_bound_args_payload(spans: InMemorySpanExporter) -> None:
+    @opengrade.trace(name="add")
+    def add(a: int, b: int) -> int:
+        return a + b
+
+    assert add(1, 2) == 3
+    payload = json.loads(
+        str(dict(spans.get_finished_spans()[0].attributes or {})["input.value"])
+    )
+    assert payload == {"a": 1, "b": 2}
+    assert "args" not in payload and "kwargs" not in payload
+
+
+def test_trace_decorator_redact_overrides_global(
+    spans: InMemorySpanExporter, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _config.configure_capture(redact=lambda n, v: f"global:{v}")
+    try:
+        @opengrade.trace(name="lookup", redact=lambda n, v: "***" if n == "api_key" else v)
+        def lookup(customer_id: str, api_key: str) -> str:
+            return customer_id
+
+        lookup("c1", "SECRET")
+        payload = json.loads(
+            str(dict(spans.get_finished_spans()[0].attributes or {})["input.value"])
+        )
+        assert payload["customer_id"] == "c1"
+        assert payload["api_key"] == "***"
+    finally:
+        _config.configure_capture()
+
+
+def test_trace_uses_global_redact_when_decorator_omits(
+    spans: InMemorySpanExporter,
+) -> None:
+    _config.configure_capture(redact=lambda n, v: "***" if n == "token" else v)
+    try:
+        @opengrade.trace(name="call")
+        def call(token: str) -> str:
+            return "ok"
+
+        call("abc")
+        payload = json.loads(
+            str(dict(spans.get_finished_spans()[0].attributes or {})["input.value"])
+        )
+        assert payload["token"] == "***"
+    finally:
+        _config.configure_capture()
+
+
+def test_trace_redact_error_placeholder(spans: InMemorySpanExporter) -> None:
+    def bad(name: str, value: object) -> object:
+        if name == "secret":
+            raise RuntimeError("boom")
+        return value
+
+    @opengrade.trace(name="x", redact=bad)
+    def fn(secret: str, ok: str) -> str:
+        return ok
+
+    assert fn("nope", "yes") == "yes"
+    payload = json.loads(
+        str(dict(spans.get_finished_spans()[0].attributes or {})["input.value"])
+    )
+    assert payload["secret"] == "<redact error>"
+    assert payload["ok"] == "yes"
+
+
+def test_trace_redact_output(spans: InMemorySpanExporter) -> None:
+    @opengrade.trace(name="out", redact_output=lambda v: {"masked": True})
+    def fn() -> dict:
+        return {"password": "x"}
+
+    fn()
+    out = json.loads(str(dict(spans.get_finished_spans()[0].attributes or {})["output.value"]))
+    assert out == {"masked": True}
+
+
+def test_trace_redact_output_error_placeholder(spans: InMemorySpanExporter) -> None:
+    @opengrade.trace(name="out-err", redact_output=lambda v: (_ for _ in ()).throw(RuntimeError("x")))
+    def fn() -> str:
+        return "secret"
+
+    assert fn() == "secret"
+    assert dict(spans.get_finished_spans()[0].attributes or {})["output.value"] == "<redact error>"
+
+
 def test_trace_sets_kind_input_output(spans: InMemorySpanExporter) -> None:
     @opengrade.trace
     def greet(name: str) -> str:
@@ -286,7 +401,7 @@ def test_skips_serialize_when_not_recording(monkeypatch: pytest.MonkeyPatch) -> 
     serialize_calls: list[object] = []
     truncate_calls: list[object] = []
 
-    def counting_serialize(args: tuple, kwargs: dict) -> str:
+    def counting_serialize(fn, args, kwargs, *, redact=None) -> str:
         serialize_calls.append((args, kwargs))
         return "{}"
 
