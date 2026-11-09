@@ -169,9 +169,7 @@ def test_trace_omits_cls_from_input(spans: InMemorySpanExporter) -> None:
             return n
 
     assert Factory.make(3) == 3
-    payload = json.loads(
-        str(dict(spans.get_finished_spans()[0].attributes or {})["input.value"])
-    )
+    payload = json.loads(str(dict(spans.get_finished_spans()[0].attributes or {})["input.value"]))
     assert "cls" not in payload
     assert payload.get("n") == 3
 
@@ -182,9 +180,7 @@ def test_trace_flat_bound_args_payload(spans: InMemorySpanExporter) -> None:
         return a + b
 
     assert add(1, 2) == 3
-    payload = json.loads(
-        str(dict(spans.get_finished_spans()[0].attributes or {})["input.value"])
-    )
+    payload = json.loads(str(dict(spans.get_finished_spans()[0].attributes or {})["input.value"]))
     assert payload == {"a": 1, "b": 2}
     assert "args" not in payload and "kwargs" not in payload
 
@@ -192,6 +188,7 @@ def test_trace_flat_bound_args_payload(spans: InMemorySpanExporter) -> None:
 def test_trace_decorator_redact_overrides_global(spans: InMemorySpanExporter) -> None:
     _config.configure_capture(redact=lambda n, v: f"global:{v}")
     try:
+
         @opengrade.trace(name="lookup", redact=lambda n, v: "***" if n == "api_key" else v)
         def lookup(customer_id: str, api_key: str) -> str:
             return customer_id
@@ -211,6 +208,7 @@ def test_trace_uses_global_redact_when_decorator_omits(
 ) -> None:
     _config.configure_capture(redact=lambda n, v: "***" if n == "token" else v)
     try:
+
         @opengrade.trace(name="call")
         def call(token: str) -> str:
             return "ok"
@@ -229,14 +227,13 @@ def test_trace_uses_global_redact_output_when_decorator_omits(
 ) -> None:
     _config.configure_capture(redact_output=lambda v: {"masked": True})
     try:
+
         @opengrade.trace(name="call-out")
         def call() -> dict:
             return {"password": "SECRET"}
 
         assert call() == {"password": "SECRET"}
-        out = json.loads(
-            str(dict(spans.get_finished_spans()[0].attributes or {})["output.value"])
-        )
+        out = json.loads(str(dict(spans.get_finished_spans()[0].attributes or {})["output.value"]))
         assert out == {"masked": True}
     finally:
         _config.configure_capture()
@@ -263,9 +260,7 @@ def test_trace_redact_error_placeholder(spans: InMemorySpanExporter) -> None:
         return ok
 
     assert fn("nope", "yes") == "yes"
-    payload = json.loads(
-        str(dict(spans.get_finished_spans()[0].attributes or {})["input.value"])
-    )
+    payload = json.loads(str(dict(spans.get_finished_spans()[0].attributes or {})["input.value"]))
     assert payload["secret"] == "<redact error>"
     assert payload["ok"] == "yes"
 
@@ -281,7 +276,9 @@ def test_trace_redact_output(spans: InMemorySpanExporter) -> None:
 
 
 def test_trace_redact_output_error_placeholder(spans: InMemorySpanExporter) -> None:
-    @opengrade.trace(name="out-err", redact_output=lambda v: (_ for _ in ()).throw(RuntimeError("x")))
+    @opengrade.trace(
+        name="out-err", redact_output=lambda v: (_ for _ in ()).throw(RuntimeError("x"))
+    )
     def fn() -> str:
         return "secret"
 

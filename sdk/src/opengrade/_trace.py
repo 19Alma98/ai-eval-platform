@@ -433,9 +433,7 @@ def _wrap_sync_gen[**P, R](
         with tracer.start_as_current_span(span_name) as span:
             _start_attributes(span, kind)
             if capture_input and span.is_recording():
-                span.set_attribute(
-                    "input.value", _serialize_args(fn, args, kwargs, redact=redact)
-                )
+                span.set_attribute("input.value", _serialize_args(fn, args, kwargs, redact=redact))
             live_token = _live.mark_if_live(span, live)
             capture_token = _production.start(production, span)
             chunks: list[Any] = []
@@ -489,9 +487,7 @@ def _wrap_async_gen[**P, R](
         with tracer.start_as_current_span(span_name) as span:
             _start_attributes(span, kind)
             if capture_input and span.is_recording():
-                span.set_attribute(
-                    "input.value", _serialize_args(fn, args, kwargs, redact=redact)
-                )
+                span.set_attribute("input.value", _serialize_args(fn, args, kwargs, redact=redact))
             live_token = _live.mark_if_live(span, live)
             capture_token = _production.start(production, span)
             chunks: list[Any] = []
