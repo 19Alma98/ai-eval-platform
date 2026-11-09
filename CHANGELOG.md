@@ -77,6 +77,12 @@ breaking changes; they are listed under **Changed** with a migration note.
 - `opengrade.MAX_CAPTURE_BYTES` alias; use `DEFAULT_MAX_CAPTURE_BYTES` or `max_capture_bytes()`.
 - `@opengrade.trace_async`; use `@opengrade.trace` for sync and async functions.
 
+### Fixed
+
+- `run_task` / `evaluate` with `max_concurrency > 1` propagate the caller's
+  ContextVars into worker threads (`copy_context`), so `using_attributes` and
+  `activate()` set around the run are not lost.
+
 ## [0.1.1] - 2026-11-04
 
 ### Added
