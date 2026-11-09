@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 from collections.abc import Sequence
+from typing import Any
 from uuid import UUID, uuid4
 
 import sqlalchemy as sa
@@ -26,18 +27,18 @@ branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
 
-def entry_is_default(raw: dict) -> bool:
+def entry_is_default(raw: dict[str, Any]) -> bool:
     return not bool(raw["removable"]) if "removable" in raw else False
 
 
-def _json_bind_expr(connection) -> str:  # noqa: ANN001
+def _json_bind_expr(connection: sa.engine.Connection) -> str:
     dialect = getattr(connection, "dialect", None)
     if getattr(dialect, "name", None) == "postgresql":
         return "CAST(:value AS jsonb)"
     return ":value"
 
 
-def backfill_metrics_sets(connection) -> None:  # noqa: ANN001
+def backfill_metrics_sets(connection: sa.engine.Connection) -> None:
     config_expr = _json_bind_expr(connection).replace(":value", ":config")
     result = connection.execute(
         sa.text("SELECT id, project_id, entries FROM metrics_packs"),
@@ -250,9 +251,9 @@ def downgrade() -> None:
                 ),
                 {"metrics_set_id": ms["id"]},
             )
-            entries: list[dict] = []
+            entries: list[dict[str, Any]] = []
             for entry in entries_result.mappings().all():
-                raw: dict = {
+                raw: dict[str, Any] = {
                     "kind": entry["kind"],
                     "enabled": entry["enabled"],
                     "threshold": entry["threshold"],

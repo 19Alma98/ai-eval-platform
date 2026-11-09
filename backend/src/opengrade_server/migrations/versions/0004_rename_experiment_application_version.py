@@ -22,11 +22,11 @@ def upgrade() -> None:
     inspector = sa.inspect(op.get_bind())
     columns = {column["name"] for column in inspector.get_columns("experiments")}
     if "application_version" in columns and "version" not in columns:
-        op.rename_column("experiments", "application_version", "version")
+        op.alter_column("experiments", "application_version", new_column_name="version")
 
 
 def downgrade() -> None:
     inspector = sa.inspect(op.get_bind())
     columns = {column["name"] for column in inspector.get_columns("experiments")}
     if "version" in columns and "application_version" not in columns:
-        op.rename_column("experiments", "version", "application_version")
+        op.alter_column("experiments", "version", new_column_name="application_version")
