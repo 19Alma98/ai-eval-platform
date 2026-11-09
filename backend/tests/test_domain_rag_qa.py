@@ -16,7 +16,7 @@ def test_validate_ok() -> None:
         expected_output="20 days",
         metadata={"expected_doc_ids": ["pto-1"]},
     )
-    assert meta["expected_doc_ids"] == ["pto-1"]
+    assert meta.expected_doc_ids == ["pto-1"]
 
 
 def test_validate_normalizes_must_contain() -> None:
@@ -25,7 +25,7 @@ def test_validate_normalizes_must_contain() -> None:
         expected_output="20 days",
         metadata={"expected_doc_ids": ["pto-1"], "must_contain": "20 days|PTO"},
     )
-    assert meta["must_contain"] == ["20 days", "PTO"]
+    assert meta.must_contain == ["20 days", "PTO"]
 
 
 @pytest.mark.parametrize(
@@ -48,8 +48,8 @@ def test_must_contain_keeps_commas_inside_phrases() -> None:
         expected_output="a",
         metadata={"expected_doc_ids": "a,b", "must_contain": "$1,000|10:00-16:00, local time"},
     )
-    assert meta["expected_doc_ids"] == ["a", "b"]
-    assert meta["must_contain"] == ["$1,000", "10:00-16:00, local time"]
+    assert meta.expected_doc_ids == ["a", "b"]
+    assert meta.must_contain == ["$1,000", "10:00-16:00, local time"]
 
 
 @pytest.mark.parametrize(
@@ -58,8 +58,8 @@ def test_must_contain_keeps_commas_inside_phrases() -> None:
 )
 def test_unanswerable_item_needs_no_gold_docs_nor_reference(label: dict) -> None:
     meta = validate_rag_qa_item(input="Who is the CEO?", expected_output=None, metadata=label)
-    assert "expected_doc_ids" not in meta
-    assert meta == label
+    assert meta.expected_doc_ids is None
+    assert meta.answerable is False
 
 
 def test_unanswerable_item_drops_empty_gold_docs_and_keeps_given_ones() -> None:
@@ -68,13 +68,13 @@ def test_unanswerable_item_drops_empty_gold_docs_and_keeps_given_ones() -> None:
         expected_output="Not in the docs.",
         metadata={"answerable": False, "expected_doc_ids": []},
     )
-    assert "expected_doc_ids" not in empty
+    assert empty.expected_doc_ids is None
     given = validate_rag_qa_item(
         input="q",
         expected_output=None,
         metadata={"answerable": False, "expected_doc_ids": "faq|pricing"},
     )
-    assert given["expected_doc_ids"] == ["faq", "pricing"]
+    assert given.expected_doc_ids == ["faq", "pricing"]
 
 
 @pytest.mark.parametrize(

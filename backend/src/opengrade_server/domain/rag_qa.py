@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+from collections.abc import Mapping
 from typing import Any
+
+from opengrade_server.domain.rag_models import RagItemMetadata
 
 EXPECTED_DOC_IDS_KEY = "expected_doc_ids"
 MUST_CONTAIN_KEY = "must_contain"
@@ -23,8 +26,12 @@ def parse_bool(value: Any) -> bool | None:
     return None
 
 
-def label_answerable(metadata: dict[str, Any]) -> bool | None:
+def label_answerable(metadata: Mapping[str, Any] | RagItemMetadata) -> bool | None:
     """``metadata.answerable`` wins; else the inverse of ``expected_refusal``/``should_refuse``."""
+    if isinstance(metadata, RagItemMetadata):
+        if metadata.answerable is not None:
+            return metadata.answerable
+        return None
     flag = parse_bool(metadata.get("answerable"))
     if flag is not None:
         return flag
@@ -61,12 +68,18 @@ def normalize_must_contain(value: Any) -> list[str]:
     return _normalize_string_list(value, field=MUST_CONTAIN_KEY, split_commas=False)
 
 
+def _metadata_as_dict(metadata: RagItemMetadata | Mapping[str, object]) -> dict[str, Any]:
+    if isinstance(metadata, RagItemMetadata):
+        return metadata.model_dump(exclude_none=True)
+    return dict(metadata)
+
+
 def validate_rag_qa_item(
     *,
-    input: Any,
-    expected_output: Any,
-    metadata: dict[str, Any],
-) -> dict[str, Any]:
+    input: str,
+    expected_output: str | None,
+    metadata: RagItemMetadata | dict[str, object],
+) -> RagItemMetadata:
     """Validate and normalise one rag_qa item; returns the cleaned metadata.
 
     Questions the knowledge base does not answer (``metadata.answerable: false`` or
@@ -77,21 +90,27 @@ def validate_rag_qa_item(
     """
     if not isinstance(input, str) or not input.strip():
         raise ValueError("rag_qa input (question) must be a non-empty string")
-    cleaned = dict(metadata)
+    cleaned = _metadata_as_dict(metadata)
     unanswerable = label_answerable(cleaned) is False
     if expected_output is not None or not unanswerable:
         if not isinstance(expected_output, str) or not expected_output.strip():
             raise ValueError("rag_qa expected_output (expected_answer) must be a non-empty string")
     raw_ids = cleaned.get(EXPECTED_DOC_IDS_KEY)
+    expected_doc_ids: list[str] | None
     if unanswerable and (raw_ids is None or raw_ids == [] or raw_ids == ""):
-        cleaned.pop(EXPECTED_DOC_IDS_KEY, None)
+        expected_doc_ids = None
     else:
-        cleaned[EXPECTED_DOC_IDS_KEY] = normalize_expected_doc_ids(raw_ids)
+        expected_doc_ids = normalize_expected_doc_ids(raw_ids)
 
+    must_contain: list[str] | None = None
     if MUST_CONTAIN_KEY in cleaned:
         raw = cleaned.get(MUST_CONTAIN_KEY)
-        if raw is None or (isinstance(raw, str) and not raw.strip()):
-            cleaned.pop(MUST_CONTAIN_KEY, None)
-        else:
-            cleaned[MUST_CONTAIN_KEY] = normalize_must_contain(raw)
-    return cleaned
+        if raw is not None and not (isinstance(raw, str) and not raw.strip()):
+            must_contain = normalize_must_contain(raw)
+
+    answerable = label_answerable(cleaned)
+    return RagItemMetadata(
+        expected_doc_ids=expected_doc_ids,
+        must_contain=must_contain,
+        answerable=answerable,
+    )

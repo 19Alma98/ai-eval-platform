@@ -35,9 +35,9 @@ def test_validate_rag_chat_ok() -> None:
         expected_output="8 dollars",
         metadata={"expected_doc_ids": ["plans"]},
     )
-    assert normalised["question"] == "How much does it cost?"
-    assert len(normalised["history"]) == 2
-    assert meta["expected_doc_ids"] == ["plans"]
+    assert normalised.question == "How much does it cost?"
+    assert len(normalised.history) == 2
+    assert meta.expected_doc_ids == ["plans"]
 
 
 def test_validate_rejects_bad_role() -> None:
