@@ -5,9 +5,15 @@ import uuid
 from opengrade_server.domain.dataset import DatasetItem
 from opengrade_server.domain.rag_models import (
     RagChatInput,
+    RagItemContext,
     RagItemMetadata,
+    RetrievalDocument,
+    dump_context,
     dump_dataset_input,
+    dump_metadata,
+    parse_context,
     parse_dataset_input,
+    parse_metadata,
 )
 
 
@@ -31,3 +37,13 @@ def test_input_json_roundtrip_chat() -> None:
 
 def test_input_json_roundtrip_str() -> None:
     assert parse_dataset_input("Q") == "Q"
+
+
+def test_context_metadata_json_roundtrip() -> None:
+    ctx = RagItemContext(
+        documents=[RetrievalDocument(id="d1", text="doc body")],
+        search_query="sq",
+    )
+    meta = RagItemMetadata(expected_doc_ids=["d1"], answerable=True)
+    assert parse_context(dump_context(ctx)) == ctx
+    assert parse_metadata(dump_metadata(meta)) == meta

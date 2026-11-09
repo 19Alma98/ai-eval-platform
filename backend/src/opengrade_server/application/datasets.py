@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import uuid
 from dataclasses import dataclass
+
 from opengrade_server.application.dataset_import import parse_import_payload, row_to_item_fields
 from opengrade_server.application.metrics_packs import EnsureMetricsPack
 from opengrade_server.application.projects import ProjectNotFoundError
@@ -12,7 +13,6 @@ from opengrade_server.domain.rag_models import (
     RagItemContext,
     RagItemMetadata,
     parse_context,
-    parse_dataset_input,
     parse_metadata,
 )
 from opengrade_server.domain.rag_qa import validate_rag_qa_item
@@ -307,7 +307,10 @@ class AddDatasetItem:
                 metadata=meta_in,
             )
         else:
-            item_input = parse_dataset_input(command.input)
+            if not isinstance(command.input, str):
+                label = dataset.task_type or "generic"
+                raise ValueError(f"{label} dataset items require a string input")
+            item_input = command.input
         item = DatasetItem.create(
             dataset.id,
             item_input,

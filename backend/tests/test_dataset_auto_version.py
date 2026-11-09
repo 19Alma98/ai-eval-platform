@@ -137,6 +137,25 @@ async def _seed_dataset_with_item(
 
 
 @pytest.mark.asyncio
+async def test_classification_rejects_rag_chat_dict_input() -> None:
+    datasets = InMemoryDatasetRepository()
+    experiments = InMemoryExperimentRepository()
+    runs = InMemoryEvaluationRunRepository()
+    dataset = Dataset.create(uuid.uuid4(), "labels", version=1, task_type="classification")
+    await datasets.add(dataset)
+
+    uc = AddDatasetItem(datasets, experiments, runs)
+    with pytest.raises(ValueError, match="string input"):
+        await uc.execute(
+            AddDatasetItemCommand(
+                dataset_id=dataset.id,
+                input={"history": [], "question": "Label this?"},
+                expected_output="positive",
+            )
+        )
+
+
+@pytest.mark.asyncio
 async def test_add_item_without_runs_keeps_same_dataset() -> None:
     datasets = InMemoryDatasetRepository()
     experiments = InMemoryExperimentRepository()
