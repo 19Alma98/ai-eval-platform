@@ -384,7 +384,54 @@ def test_trace_sync_generator_keeps_span_open(spans: InMemorySpanExporter) -> No
     span = spans.get_finished_spans()[0]
     assert span.name == "stream"
     assert span.end_time - span.start_time >= 15_000_000  # >= 15ms in ns
-    assert dict(span.attributes or {})["output.value"] == '["a", "b"]'
+    assert dict(span.attributes or {})["output.value"] == "ab"
+
+
+def test_trace_sync_generator_joins_llm_chunks(spans: InMemorySpanExporter) -> None:
+    @opengrade.trace(name="llm-stream")
+    def tokens() -> Iterator[object]:
+        yield {"choices": [{"delta": {"content": "hel"}}]}
+        yield {"choices": [{"delta": {"content": "lo"}}]}
+
+    assert list(tokens()) == [
+        {"choices": [{"delta": {"content": "hel"}}]},
+        {"choices": [{"delta": {"content": "lo"}}]},
+    ]
+    span = spans.get_finished_spans()[0]
+    assert dict(span.attributes or {})["output.value"] == "hello"
+
+
+def test_trace_sync_generator_close_finishes_span(spans: InMemorySpanExporter) -> None:
+    @opengrade.trace(name="partial")
+    def tokens() -> Iterator[str]:
+        yield "a"
+        yield "b"
+
+    gen = tokens()
+    assert next(gen) == "a"
+    assert not spans.get_finished_spans()
+    gen.close()
+    finished = spans.get_finished_spans()
+    assert len(finished) == 1
+    assert dict(finished[0].attributes or {})["output.value"] == "a"
+
+
+def test_trace_sync_generator_span_not_current_between_yields(
+    spans: InMemorySpanExporter,
+) -> None:
+    @opengrade.trace(name="detach-safe")
+    def tokens() -> Iterator[str]:
+        yield "a"
+        yield "b"
+
+    gen = tokens()
+    assert next(gen) == "a"
+    current = trace.get_current_span()
+    assert current.get_span_context().span_id == 0  # INVALID / not current
+    assert next(gen) == "b"
+    with pytest.raises(StopIteration):
+        next(gen)
+    assert len(spans.get_finished_spans()) == 1
 
 
 def test_trace_async_generator(spans: InMemorySpanExporter) -> None:
