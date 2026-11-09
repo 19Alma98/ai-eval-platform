@@ -3,6 +3,7 @@ from __future__ import annotations
 import pytest
 
 from opengrade_server.application.dataset_import import parse_import_payload, row_to_item_fields
+from opengrade_server.domain.rag_models import RagItemMetadata
 
 
 def test_parse_csv_requires_headers() -> None:
@@ -18,7 +19,7 @@ def test_parse_csv_accepts_sdk_column_aliases() -> None:
     question, answer, meta = row_to_item_fields(parsed.rows[0])
     assert question == "Q?"
     assert answer == "A"
-    assert meta["expected_doc_ids"] == ["a"]
+    assert meta.expected_doc_ids == ["a"]
 
 
 def test_parse_jsonl() -> None:
@@ -56,7 +57,7 @@ def test_row_to_item_fields_json_array_string_doc_ids() -> None:
             "expected_doc_ids": '["a", "b"]',
         }
     )
-    assert meta["expected_doc_ids"] == ["a", "b"]
+    assert meta.expected_doc_ids == ["a", "b"]
 
 
 def test_row_to_item_fields_must_contain_pipe() -> None:
@@ -68,7 +69,7 @@ def test_row_to_item_fields_must_contain_pipe() -> None:
             "must_contain": "20 days|PTO",
         }
     )
-    assert meta["must_contain"] == ["20 days", "PTO"]
+    assert meta.must_contain == ["20 days", "PTO"]
 
 
 def test_row_to_item_fields_empty_must_contain_omitted() -> None:
@@ -80,7 +81,7 @@ def test_row_to_item_fields_empty_must_contain_omitted() -> None:
             "must_contain": "",
         }
     )
-    assert "must_contain" not in meta
+    assert meta.must_contain is None
 
 
 def test_csv_unanswerable_row_may_leave_answer_and_docs_empty() -> None:
@@ -89,10 +90,11 @@ def test_csv_unanswerable_row_may_leave_answer_and_docs_empty() -> None:
     )
     parsed = parse_import_payload(filename="x.csv", raw=raw)
     _, answer, meta = row_to_item_fields(parsed.rows[0])
-    assert (answer, meta) == ("A", {"expected_doc_ids": ["a"]})
+    assert answer == "A"
+    assert meta == RagItemMetadata(expected_doc_ids=["a"])
     question, answer, meta = row_to_item_fields(parsed.rows[1])
     assert (question, answer) == ("Who is the CEO?", None)
-    assert meta == {"answerable": "false"}
+    assert meta == RagItemMetadata(answerable=False)
 
 
 def test_csv_answerable_row_still_needs_docs() -> None:

@@ -11,6 +11,7 @@ from typing import Any
 from uuid import UUID
 
 from opengrade_server.domain.dataset import DatasetItem
+from opengrade_server.domain.rag_models import dump_context, dump_metadata
 from opengrade_server.domain.evaluation import EvaluationResultRecord, EvaluationRun
 from opengrade_server.domain.evaluator import Evaluator as EvaluatorEntity
 from opengrade_server.evaluation.judges.warnings import (
@@ -181,8 +182,8 @@ class EvaluationRunner:
             input=item.input,
             expected_output=item.expected_output,
             actual_output=item.actual_output,
-            context=item.context,
-            metadata=dict(item.metadata),
+            context=dump_context(item.context),
+            metadata=dump_metadata(item.metadata),
         )
         if _requires_actual(kind) and sample.actual_output is None:
             return EvaluationResultRecord.create(

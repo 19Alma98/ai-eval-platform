@@ -9,6 +9,7 @@ from opengrade_server.application.metrics_packs import EnsureMetricsPack
 from opengrade_server.application.projects import ProjectNotFoundError
 from opengrade_server.domain.dataset import Dataset, DatasetItem
 from opengrade_server.domain.rag_chat import validate_rag_chat_item
+from opengrade_server.domain.rag_models import parse_context
 from opengrade_server.domain.rag_qa import validate_rag_qa_item
 from opengrade_server.domain.repositories import (
     DatasetRepository,
@@ -173,7 +174,7 @@ async def ensure_writable_dataset(
                     expected_output=item.expected_output,
                     actual_output=item.actual_output,
                     context=item.context,
-                    metadata=dict(item.metadata),
+                    metadata=item.metadata,
                     source_trace_id=item.source_trace_id,
                     source_span_id=item.source_span_id,
                 )
@@ -301,7 +302,7 @@ class AddDatasetItem:
             item_input,
             expected_output=command.expected_output,
             actual_output=command.actual_output,
-            context=command.context,
+            context=parse_context(command.context),
             metadata=metadata,
             source_trace_id=command.source_trace_id,
             source_span_id=command.source_span_id,

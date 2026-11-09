@@ -104,5 +104,5 @@ def parse_metadata(value: object | None) -> RagItemMetadata:
     raise ValueError("dataset metadata must be a RagItemMetadata object or mapping")
 
 
-def dump_metadata(value: RagItemMetadata) -> dict[str, object]:
-    return value.model_dump(mode="json")
+def dump_metadata(value: RagItemMetadata, *, exclude_none: bool = False) -> dict[str, object]:
+    return value.model_dump(mode="json", exclude_none=exclude_none)
