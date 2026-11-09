@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from opengrade_server.domain.rag_chat import validate_rag_chat_item
+from opengrade_server.domain.rag_models import RagChatInput, RagItemMetadata
 from opengrade_server.domain.rag_qa import ANSWERABLE_KEYS, validate_rag_qa_item
 
 _QUESTION_KEYS = ("question", "input")
@@ -149,7 +150,7 @@ def _chat_input_from_row(row: dict[str, Any]) -> Any:
 
 def row_to_item_fields(
     row: dict[str, Any], *, task_type: str = "rag_qa"
-) -> tuple[Any, str | None, dict[str, Any]]:
+) -> tuple[str | RagChatInput, str | None, RagItemMetadata]:
     """Question / chat input, reference answer and metadata of one import row.
 
     ``answerable`` / ``expected_refusal`` / ``should_refuse`` columns are kept: a row

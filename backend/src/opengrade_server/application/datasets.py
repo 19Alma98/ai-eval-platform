@@ -2,14 +2,19 @@ from __future__ import annotations
 
 import uuid
 from dataclasses import dataclass
-from typing import Any
-
 from opengrade_server.application.dataset_import import parse_import_payload, row_to_item_fields
 from opengrade_server.application.metrics_packs import EnsureMetricsPack
 from opengrade_server.application.projects import ProjectNotFoundError
 from opengrade_server.domain.dataset import Dataset, DatasetItem
 from opengrade_server.domain.rag_chat import validate_rag_chat_item
-from opengrade_server.domain.rag_models import parse_context, parse_metadata
+from opengrade_server.domain.rag_models import (
+    RagChatInput,
+    RagItemContext,
+    RagItemMetadata,
+    parse_context,
+    parse_dataset_input,
+    parse_metadata,
+)
 from opengrade_server.domain.rag_qa import validate_rag_qa_item
 from opengrade_server.domain.repositories import (
     DatasetRepository,
@@ -60,11 +65,11 @@ class CreateDatasetCommand:
 @dataclass(frozen=True, slots=True)
 class AddDatasetItemCommand:
     dataset_id: uuid.UUID
-    input: Any
-    expected_output: Any | None = None
-    actual_output: Any | None = None
-    context: Any | None = None
-    metadata: dict[str, Any] | None = None
+    input: str | RagChatInput | dict[str, object]
+    expected_output: str | None = None
+    actual_output: str | None = None
+    context: RagItemContext | dict[str, object] | None = None
+    metadata: RagItemMetadata | dict[str, object] | None = None
     source_trace_id: str | None = None
     source_span_id: str | None = None
 
@@ -283,20 +288,26 @@ class AddDatasetItem:
         return await self._add_item_to(target, command)
 
     async def _add_item_to(self, dataset: Dataset, command: AddDatasetItemCommand) -> DatasetItem:
-        metadata = parse_metadata(command.metadata)
-        item_input = command.input
+        meta_in = parse_metadata(command.metadata)
+        metadata = meta_in
+        item_input: str | RagChatInput
         if dataset.task_type == "rag_qa":
+            if not isinstance(command.input, str):
+                raise ValueError("rag_qa dataset items require a string question")
+            item_input = command.input
             metadata = validate_rag_qa_item(
                 input=command.input,
                 expected_output=command.expected_output,
-                metadata=dict(command.metadata or {}),
+                metadata=meta_in,
             )
         elif dataset.task_type == "rag_chat":
             item_input, metadata = validate_rag_chat_item(
                 input=command.input,
                 expected_output=command.expected_output,
-                metadata=dict(command.metadata or {}),
+                metadata=meta_in,
             )
+        else:
+            item_input = parse_dataset_input(command.input)
         item = DatasetItem.create(
             dataset.id,
             item_input,

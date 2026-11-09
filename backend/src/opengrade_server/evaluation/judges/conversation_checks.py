@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from opengrade_server.domain.rag_models import ChatTurn
 from opengrade_server.domain.rag_input import resolve_chat_history
 from opengrade_server.evaluation.judges import prompts
 from opengrade_server.evaluation.judges.evaluators import _LlmJudge
@@ -28,7 +29,7 @@ def _search_query(sample: EvaluationSample) -> str | None:
 
 def _history_or_skip(
     sample: EvaluationSample, meta: dict[str, Any]
-) -> list | EvaluationResult:  # list[ChatTurn]
+) -> list[ChatTurn] | EvaluationResult:
     try:
         from opengrade_server.domain.rag_models import RagChatInput
 

@@ -45,7 +45,6 @@ from opengrade_server.application.datasets import (
 from opengrade_server.application.projects import ProjectNotFoundError
 from opengrade_server.config import Settings
 from opengrade_server.domain.dataset import Dataset, DatasetItem
-from opengrade_server.domain.rag_models import dump_context, dump_dataset_input, dump_metadata
 from opengrade_server.domain.task_types import TASK_TYPE_CATALOG, normalize_task_type
 
 logger = logging.getLogger(__name__)
@@ -57,11 +56,11 @@ def _item_response(item: DatasetItem) -> DatasetItemResponse:
     return DatasetItemResponse(
         id=item.id,
         dataset_id=item.dataset_id,
-        input=dump_dataset_input(item.input),
+        input=item.input,
         expected_output=item.expected_output,
         actual_output=item.actual_output,
-        context=dump_context(item.context),
-        metadata=dump_metadata(item.metadata, exclude_none=True),
+        context=item.context,
+        metadata=item.metadata,
         source_trace_id=item.source_trace_id,
         source_span_id=item.source_span_id,
     )
