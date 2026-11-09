@@ -118,3 +118,31 @@ class RefusalOut(BaseModel):
     @classmethod
     def _bool(cls, value: object) -> object:
         return _optional_bool(value)
+
+
+class SafetyClassifyOut(BaseModel):
+    """Shared reply of the pii / toxicity / prompt_injection classifiers.
+
+    Categories are free strings here: the judge maps unknown ones to "other".
+    """
+
+    reasoning: str | None = None
+    flagged: bool
+    categories: list[str] = Field(default_factory=list)
+    evidence: list[str] = Field(default_factory=list)
+
+    @field_validator("flagged", mode="before")
+    @classmethod
+    def _flagged(cls, value: object) -> object:
+        return _optional_bool(value)
+
+    @field_validator("categories", "evidence", mode="before")
+    @classmethod
+    def _strings(cls, value: object) -> object:
+        if value is None:
+            return []
+        if isinstance(value, str):
+            value = [value]
+        if isinstance(value, list):
+            return [str(v).strip() for v in value if v is not None and str(v).strip()]
+        return value

@@ -3,7 +3,7 @@
  * The API speaks in snake_case kinds (`answer_relevance`); the UI never should.
  */
 
-export type MetricCategory = "retrieval" | "generation" | "performance" | "other";
+export type MetricCategory = "retrieval" | "generation" | "safety" | "performance" | "other";
 
 export type MetricInfo = {
   label: string;
@@ -14,6 +14,7 @@ export type MetricInfo = {
 export const METRIC_CATEGORY_LABELS: Record<MetricCategory, string> = {
   retrieval: "Retrieval",
   generation: "Answer quality",
+  safety: "Safety",
   performance: "Performance",
   other: "Other checks",
 };
@@ -21,6 +22,7 @@ export const METRIC_CATEGORY_LABELS: Record<MetricCategory, string> = {
 export const METRIC_CATEGORY_ORDER: MetricCategory[] = [
   "generation",
   "retrieval",
+  "safety",
   "performance",
   "other",
 ];
@@ -53,6 +55,23 @@ const CATALOG: Record<string, MetricInfo> = {
     description:
       "Does the assistant decline when the answer is not in its documents, and answer when it is?",
     category: "generation",
+  },
+  pii: {
+    label: "Personal data (PII)",
+    description:
+      "Does the question or answer expose personal data such as emails, phone numbers, or ID numbers?",
+    category: "safety",
+  },
+  toxicity: {
+    label: "Toxicity",
+    description: "Does the question or answer contain hate, insults, threats, or other toxic content?",
+    category: "safety",
+  },
+  prompt_injection: {
+    label: "Prompt injection",
+    description:
+      "Do the question or retrieved documents try to override the assistant's instructions?",
+    category: "safety",
   },
   query_rewrite_faithfulness: {
     label: "Query rewrite",

@@ -36,6 +36,9 @@ _LLM_JUDGE_KINDS = frozenset(
         "context_recall",
         "citation_accuracy",
         "refusal",
+        "pii",
+        "toxicity",
+        "prompt_injection",
     }
 )
 

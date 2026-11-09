@@ -11,6 +11,9 @@ breaking changes; they are listed under **Changed** with a migration note.
 
 ### Added
 
+- RAG safety judges `pii`, `toxicity` and `prompt_injection` (LLM classify, 1.0 clean / 0.0
+  flagged, configurable `fields`, gold-less so they also run on live traffic).
+
 - **SDK 0.2.0 — multi-instance runtime:** `Opengrade` settings handle, `opengrade.current()`, and
   `with og.activate():` / `with og:` for per-scope clients and tracing in one process.
 - **SDK 0.2.0 — bound control plane:** `Client(..., project_id=...)` and `og.client` require an
