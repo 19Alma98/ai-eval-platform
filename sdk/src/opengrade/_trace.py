@@ -557,7 +557,10 @@ def _wrap_async_gen[**P, R](
     rate: float,
     redact: Callable[[str, Any], Any] | None = None,
     redact_output: Callable[[Any], Any] | None = None,
+    join_chunks: Callable[[Any, Any], Any] | None = None,
 ) -> Callable[P, R]:
+    reducer = join_chunks if join_chunks is not None else _default_join_chunks
+
     @functools.wraps(fn)
     async def wrapper(*args: P.args, **kwargs: P.kwargs) -> Any:
         if _production.in_metric():
@@ -566,35 +569,66 @@ def _wrap_async_gen[**P, R](
             return
 
         tracer = otel_trace.get_tracer(_TRACER_NAME)
-        with tracer.start_as_current_span(span_name) as span:
-            _start_attributes(span, kind)
-            if capture_input and span.is_recording():
-                span.set_attribute("input.value", _serialize_args(fn, args, kwargs, redact=redact))
-            live_token = _live.mark_if_live(span, live)
-            capture_token = _production.start(production, span)
-            chunks: list[Any] = []
-            try:
-                async for item in cast(AsyncIterator[Any], fn(*args, **kwargs)):
-                    chunks.append(item)
-                    yield item
-            except Exception as exc:
-                _record_error(span, exc)
-                raise
-            finally:
-                _live.unmark(live_token)
-                result = chunks if capture_output else None
-                _finish_span(
-                    span,
-                    capture_token=capture_token,
-                    capture_output=capture_output,
-                    production=production,
-                    rate=rate,
-                    args=args,
-                    kwargs=kwargs,
-                    result=result,
-                    fn=fn,
-                    redact_output=redact_output,
-                )
+        span = tracer.start_span(
+            span_name, record_exception=False, set_status_on_exception=False
+        )
+        _start_attributes(span, kind)
+        if capture_input and span.is_recording():
+            span.set_attribute(
+                "input.value", _serialize_args(fn, args, kwargs, redact=redact)
+            )
+        live_token = _live.mark_if_live(span, live)
+        capture_token = _production.start(production, span)
+        acc: Any = None
+        join_failed = False
+        finished = False
+        gen = cast(AsyncIterator[Any], fn(*args, **kwargs))
+
+        def finish(result: Any) -> None:
+            nonlocal finished
+            if finished:
+                return
+            finished = True
+            _live.unmark(live_token)
+            _finish_span(
+                span,
+                capture_token=capture_token,
+                capture_output=capture_output,
+                production=production,
+                rate=rate,
+                args=args,
+                kwargs=kwargs,
+                result=result if capture_output else None,
+                fn=fn,
+                redact_output=redact_output,
+            )
+            span.end()
+
+        try:
+            while True:
+                try:
+                    with otel_trace.use_span(span, end_on_exit=False):
+                        item = await gen.__anext__()
+                except StopAsyncIteration:
+                    break
+                if capture_output and not join_failed:
+                    try:
+                        acc = reducer(item, acc)
+                    except Exception:  # noqa: BLE001
+                        acc = "<join error>"
+                        join_failed = True
+                yield item
+        except Exception as exc:
+            _record_error(span, exc)
+            raise
+        finally:
+            finish(acc if capture_output else None)
+            aclose = getattr(gen, "aclose", None)
+            if aclose is not None:
+                try:
+                    await aclose()
+                except Exception:  # noqa: BLE001
+                    pass
 
     return cast(Callable[P, R], wrapper)
 
@@ -636,6 +670,7 @@ def _decorate(
             rate=rate,
             redact=redact,
             redact_output=redact_output,
+            join_chunks=join_chunks,
         )
     if inspect.isgeneratorfunction(target):
         return _wrap_sync_gen(

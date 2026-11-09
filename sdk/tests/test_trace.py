@@ -448,7 +448,44 @@ def test_trace_async_generator(spans: InMemorySpanExporter) -> None:
     assert asyncio.run(main()) == ["x", "y"]
     span = spans.get_finished_spans()[0]
     assert span.name == "astream"
-    assert dict(span.attributes or {})["output.value"] == '["x", "y"]'
+    assert dict(span.attributes or {})["output.value"] == "xy"
+
+
+def test_trace_async_generator_aclose_finishes_span(spans: InMemorySpanExporter) -> None:
+    @opengrade.trace(name="apartial")
+    async def tokens() -> AsyncIterator[str]:
+        yield "x"
+        yield "y"
+
+    async def main() -> None:
+        gen = tokens()
+        assert await gen.__anext__() == "x"
+        assert not spans.get_finished_spans()
+        await gen.aclose()
+
+    asyncio.run(main())
+    finished = spans.get_finished_spans()
+    assert len(finished) == 1
+    assert dict(finished[0].attributes or {})["output.value"] == "x"
+
+
+def test_trace_async_generator_span_not_current_between_yields(
+    spans: InMemorySpanExporter,
+) -> None:
+    @opengrade.trace(name="a-detach-safe")
+    async def tokens() -> AsyncIterator[str]:
+        yield "x"
+        yield "y"
+
+    async def main() -> None:
+        gen = tokens()
+        assert await gen.__anext__() == "x"
+        current = trace.get_current_span()
+        assert current.get_span_context().span_id == 0
+        assert await gen.__anext__() == "y"
+
+    asyncio.run(main())
+    assert len(spans.get_finished_spans()) == 1
 
 
 def test_span_helpers_set_io_attrs_and_trace_id(spans: InMemorySpanExporter) -> None:
