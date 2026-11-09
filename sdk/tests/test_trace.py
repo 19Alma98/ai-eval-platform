@@ -401,6 +401,53 @@ def test_trace_sync_generator_joins_llm_chunks(spans: InMemorySpanExporter) -> N
     assert dict(span.attributes or {})["output.value"] == "hello"
 
 
+def test_trace_join_chunks_custom(spans: InMemorySpanExporter) -> None:
+    def join(chunk: object, acc: object) -> object:
+        parts = [] if acc is None else list(acc)  # type: ignore[arg-type]
+        parts.append(chunk)
+        return parts
+
+    @opengrade.trace(name="custom-join", join_chunks=join)
+    def tokens() -> Iterator[str]:
+        yield "a"
+        yield "b"
+
+    assert list(tokens()) == ["a", "b"]
+    span = spans.get_finished_spans()[0]
+    # redact_output/truncate_value JSON-encodes the list
+    assert json.loads(dict(span.attributes or {})["output.value"]) == ["a", "b"]
+
+
+def test_trace_join_chunks_error_stops_reducer(spans: InMemorySpanExporter) -> None:
+    calls = {"n": 0}
+
+    def join(chunk: object, acc: object) -> object:
+        calls["n"] += 1
+        if calls["n"] == 1:
+            raise RuntimeError("boom")
+        return "should-not-run"
+
+    @opengrade.trace(name="join-err", join_chunks=join)
+    def tokens() -> Iterator[str]:
+        yield "a"
+        yield "b"
+
+    assert list(tokens()) == ["a", "b"]
+    assert calls["n"] == 1
+    span = spans.get_finished_spans()[0]
+    assert dict(span.attributes or {})["output.value"] == "<join error>"
+
+
+def test_trace_join_chunks_ignored_on_plain_function(spans: InMemorySpanExporter) -> None:
+    @opengrade.trace(name="plain", join_chunks=lambda c, a: "nope")
+    def greet(name: str) -> str:
+        return f"hi {name}"
+
+    assert greet("ada") == "hi ada"
+    span = spans.get_finished_spans()[0]
+    assert dict(span.attributes or {})["output.value"] == "hi ada"
+
+
 def test_trace_sync_generator_close_finishes_span(spans: InMemorySpanExporter) -> None:
     @opengrade.trace(name="partial")
     def tokens() -> Iterator[str]:

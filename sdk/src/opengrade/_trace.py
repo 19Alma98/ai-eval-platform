@@ -729,6 +729,7 @@ def trace[**P, R](
     metrics_sample_rate: float = 1.0,
     redact: Callable[[str, Any], Any] | None = None,
     redact_output: Callable[[Any], Any] | None = None,
+    join_chunks: Callable[[Any, Any], Any] | None = None,
 ) -> Callable[[Callable[P, R]], Callable[P, R]]: ...
 
 
@@ -743,11 +744,17 @@ def trace[**P, R](
     metrics_sample_rate: float = 1.0,
     redact: Callable[[str, Any], Any] | None = None,
     redact_output: Callable[[Any], Any] | None = None,
+    join_chunks: Callable[[Any, Any], Any] | None = None,
 ) -> Any:
     """Trace a function as an OpenInference span.
 
     Dispatches on function kind: sync, ``async def``, generator, or async generator.
-    The span stays open until the call (or stream) fully completes.
+    For generator and async-generator functions the span is current only during each
+    advance (``next()`` / ``__anext__``); between yields it is not the active context.
+    Streamed chunks are accumulated into ``output.value``: plain strings and common
+    LLM delta shapes are joined as text by default. Pass ``join_chunks(chunk, acc)``
+    to replace that reducer (``acc`` starts as ``None``); join errors are stored as
+    ``"<join error>"``. Plain sync/async functions ignore ``join_chunks``.
 
     ``metrics=[...]`` scores each sampled production call after it returns (off the
     request path) and stores the results as trace scores; ``metrics_sample_rate`` is
@@ -772,6 +779,7 @@ def trace[**P, R](
                 rate=rate,
                 redact=redact,
                 redact_output=redact_output,
+                join_chunks=join_chunks,
             ),
         )
 

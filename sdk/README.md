@@ -508,6 +508,8 @@ opengrade.init(
 
 Use `opengrade.configure_capture(redact=..., redact_output=...)` for process-wide scrubbing, or `@opengrade.trace(redact=..., redact_output=...)` to override (or inherit with `None`) per function. Automatic capture writes `input.value` as a flat JSON object of bound parameter names → values (`self` / `cls` omitted); values are truncated to the capture budget after redaction. See [Content capture and redaction](../docs/10-security-privacy.md#content-capture-and-redaction) in the security guide.
 
+For **generator** and **async-generator** functions, `@opengrade.trace` joins streamed chunks into `output.value` (plain strings and common LLM delta shapes by default). Pass `join_chunks=(chunk, acc) -> ...` to accumulate differently (`acc` starts as `None`). The span is current only during each `next()` / `__anext__`; between yields it is not the active trace context. Abandoned iterators finish the span on `close()` / `aclose()`.
+
 ### Live runs from tracing (production)
 
 With `live=True`, the outermost `@opengrade.trace` call outside an experiment becomes a live interaction at OTLP ingestion; no separate `live_runs.submit` call is needed.

@@ -11,6 +11,8 @@ breaking changes; they are listed under **Changed** with a migration note.
 
 ### Added
 
+- `@opengrade.trace(join_chunks=...)` for custom streaming accumulation on generator / async-generator functions.
+
 - RAG safety judges `pii`, `toxicity` and `prompt_injection` (LLM classify, 1.0 clean / 0.0
   flagged, configurable `fields`, gold-less so they also run on live traffic).
 
@@ -56,6 +58,9 @@ breaking changes; they are listed under **Changed** with a migration note.
 
 ### Changed
 
+- **Breaking (SDK `@trace` generator `output.value`):** streamed outputs are joined into a single
+  text (or custom reducer result), not a JSON array of chunks. Span context is current only during
+  each `next()` / `__anext__`; abandoned generators finish the span on `close()` / `aclose()`.
 - **Breaking (SDK `@trace` `input.value` shape):** automatic input capture is now a flat JSON
   object of bound parameter names → values (no `{"args": [...], "kwargs": {...}}` wrapper).
   `self` / `cls` are omitted. Migrate any tooling that parsed the old shape.
