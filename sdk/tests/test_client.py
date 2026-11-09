@@ -464,6 +464,40 @@ def test_two_clients_use_distinct_bound_projects() -> None:
     _context._reset_for_tests()
 
 
+def test_set_project_refreshes_shared_client_bound_project() -> None:
+    from opengrade import _context
+
+    _context._reset_for_tests()
+    seen: list[str] = []
+
+    def handler(request: httpx2.Request) -> httpx2.Response:
+        path = request.url.path.rstrip("/")
+        seen.append(path)
+        if request.method == "GET" and path == "/api/v1/projects":
+            return httpx2.Response(
+                200,
+                json=[
+                    {
+                        "id": "p-shared",
+                        "name": "shared",
+                        "slug": "shared",
+                        "created_at": "2026-01-01T00:00:00+00:00",
+                    }
+                ],
+            )
+        return httpx2.Response(200, json=[])
+
+    transport = httpx2.MockTransport(handler)
+    _context._CLIENT = Client("http://test", transport=transport)
+    opengrade.set_project("shared")
+    client = opengrade.get_client()
+    assert client is _context._CLIENT
+    assert client._project_id == "p-shared"
+    client.datasets.list()
+    assert seen[-1] == "/api/v1/projects/p-shared/datasets"
+    _context._reset_for_tests()
+
+
 def test_global_fallback_emits_deprecation_warning(monkeypatch: pytest.MonkeyPatch) -> None:
     from opengrade import _context
     from opengrade._client_resolve import reset_global_fallback_warning_for_tests
