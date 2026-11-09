@@ -11,11 +11,20 @@ from pydantic import (
     Field,
     StrictFloat,
     StrictInt,
+    field_serializer,
     field_validator,
     model_validator,
 )
 
 from opengrade_server.domain.experiment_output import MAX_REPEATS
+from opengrade_server.domain.rag_models import (
+    RagChatInput,
+    RagItemContext,
+    RagItemMetadata,
+    dump_context,
+    dump_dataset_input,
+    dump_metadata,
+)
 from opengrade_server.domain.trace_score import (
     MAX_TRACE_SCORE_BATCH,
     MAX_TRACE_SCORE_METADATA_BYTES,
@@ -277,13 +286,25 @@ class DatasetResponse(BaseModel):
 class DatasetItemResponse(BaseModel):
     id: uuid.UUID
     dataset_id: uuid.UUID
-    input: Any
-    expected_output: Any | None = None
-    actual_output: Any | None = None
-    context: Any | None = None
-    metadata: dict[str, Any] = Field(default_factory=dict)
+    input: str | RagChatInput
+    expected_output: str | None = None
+    actual_output: str | None = None
+    context: RagItemContext | None = None
+    metadata: RagItemMetadata = Field(default_factory=RagItemMetadata)
     source_trace_id: str | None = None
     source_span_id: str | None = None
+
+    @field_serializer("input")
+    def _serialize_input(self, value: str | RagChatInput) -> str | dict[str, object]:
+        return dump_dataset_input(value)
+
+    @field_serializer("context")
+    def _serialize_context(self, value: RagItemContext | None) -> dict[str, object] | None:
+        return dump_context(value)
+
+    @field_serializer("metadata")
+    def _serialize_metadata(self, value: RagItemMetadata) -> dict[str, object]:
+        return dump_metadata(value, exclude_none=True)
 
 
 class DatasetDetailResponse(BaseModel):
@@ -306,11 +327,11 @@ class TaskTypeResponse(BaseModel):
 
 
 class CreateDatasetItemRequest(BaseModel):
-    input: Any
-    expected_output: Any | None = None
-    actual_output: Any | None = None
-    context: Any | None = None
-    metadata: dict[str, Any] = Field(default_factory=dict)
+    input: str | RagChatInput
+    expected_output: str | None = None
+    actual_output: str | None = None
+    context: RagItemContext | None = None
+    metadata: RagItemMetadata = Field(default_factory=RagItemMetadata)
     source_trace_id: str | None = None
     source_span_id: str | None = None
 
