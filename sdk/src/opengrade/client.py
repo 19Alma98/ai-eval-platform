@@ -11,6 +11,7 @@ import httpx2
 
 from opengrade._config import resolve_project_id
 from opengrade._http import _HttpTransport, read_upload, resolve_api_base_url
+from opengrade.chat import RagChatInput, RagItemContext, RagItemMetadata
 from opengrade.models import (
     AlertEventResponse,
     AlertRuleResponse,
@@ -163,23 +164,33 @@ class _DatasetsResource:
         self,
         dataset_id: str,
         *,
-        input: Any,
-        expected_output: Any = None,
-        actual_output: Any = None,
-        context: Any = None,
-        metadata: dict[str, Any] | None = None,
+        input: str | RagChatInput,
+        expected_output: str | None = None,
+        actual_output: str | None = None,
+        context: RagItemContext | None = None,
+        metadata: RagItemMetadata | None = None,
         source_trace_id: str | None = None,
         source_span_id: str | None = None,
     ) -> DatasetItemResponse:
-        body: dict[str, Any] = {"input": input}
+        body: dict[str, Any] = {
+            "input": input.model_dump() if isinstance(input, RagChatInput) else input
+        }
         if expected_output is not None:
             body["expected_output"] = expected_output
         if actual_output is not None:
             body["actual_output"] = actual_output
         if context is not None:
-            body["context"] = context
+            body["context"] = (
+                context.model_dump(exclude_none=True)
+                if isinstance(context, RagItemContext)
+                else context
+            )
         if metadata is not None:
-            body["metadata"] = metadata
+            body["metadata"] = (
+                metadata.model_dump(exclude_none=True)
+                if isinstance(metadata, RagItemMetadata)
+                else metadata
+            )
         if source_trace_id is not None:
             body["source_trace_id"] = source_trace_id
         if source_span_id is not None:
@@ -222,7 +233,17 @@ class _DatasetsResource:
     ) -> None:
         """Append ``items[start:]``; leaves a prefix dataset on mid-loop failure."""
         for item in items[start:]:
-            self.add_item(dataset_id, **item)
+            kwargs = dict(item)
+            inp = kwargs.get("input")
+            if isinstance(inp, dict):
+                kwargs["input"] = RagChatInput.model_validate(inp)
+            ctx = kwargs.get("context")
+            if isinstance(ctx, dict):
+                kwargs["context"] = RagItemContext.model_validate(ctx)
+            meta = kwargs.get("metadata")
+            if isinstance(meta, dict):
+                kwargs["metadata"] = RagItemMetadata.model_validate(meta)
+            self.add_item(dataset_id, **kwargs)
 
     def ensure_items(
         self,

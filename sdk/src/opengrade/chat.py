@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Literal
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 ChatRole = Literal["user", "assistant", "system"]
 
@@ -46,6 +46,24 @@ class RagChatInput(BaseModel):
         if not value:
             raise ValueError("question must be a non-empty string")
         return value
+
+
+class RetrievalDocument(BaseModel):
+    id: str
+    text: str
+
+
+class RagItemContext(BaseModel):
+    documents: list[RetrievalDocument] = Field(default_factory=list)
+    search_query: str | None = None
+
+
+class RagItemMetadata(BaseModel):
+    model_config = ConfigDict(extra="allow")
+
+    expected_doc_ids: list[str] | None = None
+    must_contain: list[str] | None = None
+    answerable: bool | None = None
 
 
 def chat_input(item: object) -> RagChatInput:

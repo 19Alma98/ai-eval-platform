@@ -5,6 +5,8 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from opengrade.chat import RagChatInput, RagItemContext, RagItemMetadata
+
 
 class _ApiModel(BaseModel):
     """Base API model; fields are read as attributes."""
@@ -37,11 +39,11 @@ class DatasetResponse(_ApiModel):
 class DatasetItemResponse(_ApiModel):
     id: str
     dataset_id: str | None = None
-    input: Any = None
-    expected_output: Any | None = None
-    actual_output: Any | None = None
-    context: Any | None = None
-    metadata: dict[str, Any] = Field(default_factory=dict)
+    input: str | RagChatInput
+    expected_output: str | None = None
+    actual_output: str | None = None
+    context: RagItemContext | None = None
+    metadata: RagItemMetadata = Field(default_factory=RagItemMetadata)
     source_trace_id: str | None = None
     source_span_id: str | None = None
 

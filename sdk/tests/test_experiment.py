@@ -599,7 +599,9 @@ def test_csv_path_input(server: FakeServer, tmp_path: Any) -> None:
 def test_csv_empty_optional_and_json_metadata(server: FakeServer, tmp_path: Any) -> None:
     path = tmp_path / "gold.csv"
     path.write_text(
-        'input,expected_output,metadata,context\nq1,,"{""tag"":""x""}","[""c1""]"\nq2,a2,,\n',
+        'input,expected_output,metadata,context\n'
+        'q1,,"{""tag"":""x""}","{""search_query"":""c1""}"\n'
+        "q2,a2,,\n",
         encoding="utf-8",
     )
     opengrade.evaluate(dataset=str(path), task=_task, metrics=["hit_at_k"])
@@ -607,7 +609,7 @@ def test_csv_empty_optional_and_json_metadata(server: FakeServer, tmp_path: Any)
     items = server.items[ds_id]
     assert "expected_output" not in items[0]
     assert items[0]["metadata"] == {"tag": "x"}
-    assert items[0]["context"] == ["c1"]
+    assert items[0]["context"] == {"search_query": "c1", "documents": []}
     assert items[1]["expected_output"] == "a2"
     assert "metadata" not in items[1] or items[1].get("metadata") in (None, {})
 
@@ -727,7 +729,7 @@ def test_output_entry_fills_empty_trace_documents() -> None:
     from opengrade.experiment import ItemRun
     from opengrade.models import DatasetItemResponse, ExperimentItemOutputResponse
 
-    run = ItemRun(item=DatasetItemResponse(id="i1"))
+    run = ItemRun(item=DatasetItemResponse(id="i1", input="q"))
     run.log("out", documents=[{"id": "client"}])
     stored = ExperimentItemOutputResponse(dataset_item_id="i1", context={"documents": []})
     assert _output_entry(run, stored)["context"]["documents"] == [{"id": "client"}]
@@ -737,7 +739,7 @@ def test_output_entry_keeps_trace_context_and_metadata() -> None:
     from opengrade.experiment import ItemRun
     from opengrade.models import DatasetItemResponse, ExperimentItemOutputResponse
 
-    run = ItemRun(item=DatasetItemResponse(id="i1"))
+    run = ItemRun(item=DatasetItemResponse(id="i1", input="q"))
     run.log("out", documents=[{"id": "client"}], context={"extra": 1})
     run.latency_ms = 12.0
     stored = ExperimentItemOutputResponse(
@@ -946,7 +948,7 @@ def test_experiment_reentry_is_rejected(server: FakeServer) -> None:
 def test_auto_metrics_percentiles_and_error_rate() -> None:
     from opengrade.experiment import ItemRun
 
-    item = DatasetItemResponse(id="i")
+    item = DatasetItemResponse(id="i", input="q")
     records = [ItemRun(item=item, latency_ms=v) for v in (10.0, 20.0, 30.0, 40.0)]
     records.append(ItemRun(item=item, latency_ms=5.0, error="RuntimeError: boom"))
     assert _auto_metrics(records) == {
