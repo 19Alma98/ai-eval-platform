@@ -486,27 +486,6 @@ def release_attributes(version: str | None, environment: str | None) -> dict[str
     return attrs
 
 
-class _ReleaseAttributesProcessor(SpanProcessor):
-    """Sets release attributes on span start, then delegates to ``inner``."""
-
-    def __init__(self, inner: SpanProcessor, attributes: dict[str, str]) -> None:
-        self._inner = inner
-        self._attributes = attributes
-
-    def on_start(self, span: Span, parent_context: Context | None = None) -> None:
-        span.set_attributes(self._attributes)
-        self._inner.on_start(span, parent_context=parent_context)
-
-    def on_end(self, span: ReadableSpan) -> None:
-        self._inner.on_end(span)
-
-    def shutdown(self) -> None:
-        self._inner.shutdown()
-
-    def force_flush(self, timeout_millis: int = 30000) -> bool:
-        return self._inner.force_flush(timeout_millis)
-
-
 def init_for_instance(
     og: Opengrade,
     *,
