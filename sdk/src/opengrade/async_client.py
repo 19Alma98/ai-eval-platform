@@ -6,7 +6,7 @@ from urllib.parse import urlencode
 
 import httpx2
 
-from opengrade._config import resolve_project_id
+from opengrade._client_resolve import ProjectResolver, resolve_bound_project
 from opengrade._http import _AsyncHttpTransport, resolve_api_base_url
 from opengrade.models import (
     DatasetItemResponse,
@@ -19,8 +19,9 @@ from opengrade.models import (
 
 
 class _AsyncProjectsResource:
-    def __init__(self, http: _AsyncHttpTransport) -> None:
+    def __init__(self, http: _AsyncHttpTransport, project: ProjectResolver) -> None:
         self._http = http
+        self._project = project
 
     async def create(self, *, name: str, slug: str | None = None) -> ProjectResponse:
         body: dict[str, Any] = {"name": name}
@@ -55,7 +56,7 @@ class _AsyncProjectsResource:
         )
 
     async def get(self, project_id: str | None = None) -> ProjectResponse:
-        project_id = resolve_project_id(project_id)
+        project_id = self._project(project_id)
         return await self._http.request_model(
             "GET",
             f"/api/v1/projects/{project_id}",
@@ -64,8 +65,9 @@ class _AsyncProjectsResource:
 
 
 class _AsyncLiveRunsResource:
-    def __init__(self, http: _AsyncHttpTransport) -> None:
+    def __init__(self, http: _AsyncHttpTransport, project: ProjectResolver) -> None:
         self._http = http
+        self._project = project
 
     async def submit(
         self,
@@ -78,7 +80,7 @@ class _AsyncLiveRunsResource:
         external_id: str | None = None,
         metrics_set_id: str | None = None,
     ) -> LiveInteractionResponse:
-        project_id = resolve_project_id(project_id)
+        project_id = self._project(project_id)
         body: dict[str, Any] = {
             "question": question,
             "answer": answer,
@@ -109,7 +111,7 @@ class _AsyncLiveRunsResource:
         limit: int = 50,
         offset: int = 0,
     ) -> ListLiveInteractionsResponse:
-        project_id = resolve_project_id(project_id)
+        project_id = self._project(project_id)
         params: list[tuple[str, str]] = [("limit", str(limit)), ("offset", str(offset))]
         if judge_status is not None:
             params.append(("judge_status", judge_status))
@@ -166,14 +168,15 @@ class _AsyncLiveRunsResource:
 
 
 class _AsyncTraceScoresResource:
-    def __init__(self, http: _AsyncHttpTransport) -> None:
+    def __init__(self, http: _AsyncHttpTransport, project: ProjectResolver) -> None:
         self._http = http
+        self._project = project
 
     async def log(
         self, project_id: str | None, scores: builtins.list[dict[str, Any]]
     ) -> TraceScoresAccepted:
         """Upsert scores on traces (same payload as sync ``Client.trace_scores.log``)."""
-        project_id = resolve_project_id(project_id)
+        project_id = self._project(project_id)
         return await self._http.request_model(
             "POST",
             f"/api/v1/projects/{project_id}/trace-scores",
@@ -192,6 +195,7 @@ class AsyncClient:
         timeout: float = 30.0,
         transport: httpx2.AsyncBaseTransport | None = None,
         api_key: str | None = None,
+        project_id: str | None = None,
     ) -> None:
         """``api_key`` defaults to ``opengrade.set_api_key()`` / ``OPENGRADE_API_KEY``."""
         resolved = resolve_api_base_url(base_url)
@@ -199,9 +203,13 @@ class AsyncClient:
             resolved, timeout=timeout, transport=transport, api_key=api_key
         )
         self.base_url = resolved
-        self.projects = _AsyncProjectsResource(self._http)
-        self.live_runs = _AsyncLiveRunsResource(self._http)
-        self.trace_scores = _AsyncTraceScoresResource(self._http)
+        self._project_id = project_id
+        self.projects = _AsyncProjectsResource(self._http, self._project)
+        self.live_runs = _AsyncLiveRunsResource(self._http, self._project)
+        self.trace_scores = _AsyncTraceScoresResource(self._http, self._project)
+
+    def _project(self, project_id: str | None = None) -> str:
+        return resolve_bound_project(project_id, bound=self._project_id, stacklevel=3)
 
     async def health(self) -> HealthResponse:
         return await self._http.request_model("GET", "/health", response_model=HealthResponse)

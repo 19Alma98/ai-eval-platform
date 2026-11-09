@@ -961,7 +961,7 @@ def _resolve_project(
     activate: bool,
 ) -> str:
     if project is None:
-        return _config.resolve_project_id()
+        return client._project(None)
     if _is_uuid(project):
         return project
     created = resolve_or_create_project(project, client, activate=activate)

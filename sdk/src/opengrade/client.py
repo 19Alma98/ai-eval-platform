@@ -9,7 +9,7 @@ from urllib.parse import quote, urlencode
 
 import httpx2
 
-from opengrade._config import resolve_project_id
+from opengrade._client_resolve import ProjectResolver, resolve_bound_project
 from opengrade._http import _HttpTransport, read_upload, resolve_api_base_url
 from opengrade.chat import RagChatInput, RagItemContext, RagItemMetadata
 from opengrade.models import (
@@ -45,8 +45,9 @@ _TERMINAL_EXPERIMENT_STATUSES = frozenset({"completed", "failed", "cancelled"})
 
 
 class _ProjectsResource:
-    def __init__(self, http: _HttpTransport) -> None:
+    def __init__(self, http: _HttpTransport, project: ProjectResolver) -> None:
         self._http = http
+        self._project = project
 
     def create(self, *, name: str, slug: str | None = None) -> ProjectResponse:
         body: dict[str, Any] = {"name": name}
@@ -81,7 +82,7 @@ class _ProjectsResource:
         )
 
     def get(self, project_id: str | None = None) -> ProjectResponse:
-        project_id = resolve_project_id(project_id)
+        project_id = self._project(project_id)
         return self._http.request_model(
             "GET",
             f"/api/v1/projects/{project_id}",
@@ -91,7 +92,7 @@ class _ProjectsResource:
     def set_retention(self, retention_days: int | None, project_id: str | None = None) -> None:
         """Keep ``retention_days`` of production data (traces, live answers, scores, alert
         events); ``None`` falls back to the server's ``RETENTION_DAYS``."""
-        project_id = resolve_project_id(project_id)
+        project_id = self._project(project_id)
         self._http.request(
             "PUT",
             f"/api/v1/projects/{project_id}/retention",
@@ -100,8 +101,9 @@ class _ProjectsResource:
 
 
 class _DatasetsResource:
-    def __init__(self, http: _HttpTransport) -> None:
+    def __init__(self, http: _HttpTransport, project: ProjectResolver) -> None:
         self._http = http
+        self._project = project
 
     def create(
         self,
@@ -112,7 +114,7 @@ class _DatasetsResource:
         description: str | None = None,
         task_type: str = "rag_qa",
     ) -> DatasetResponse:
-        project_id = resolve_project_id(project_id)
+        project_id = self._project(project_id)
         body: dict[str, Any] = {
             "name": name,
             "version": version,
@@ -136,7 +138,7 @@ class _DatasetsResource:
         limit: int | None = None,
         offset: int = 0,
     ) -> builtins.list[DatasetResponse]:
-        project_id = resolve_project_id(project_id)
+        project_id = self._project(project_id)
         query: dict[str, str] = {}
         if task_type is not None:
             query["task_type"] = task_type
@@ -212,7 +214,7 @@ class _DatasetsResource:
         description: str | None = None,
         task_type: str = "rag_qa",
     ) -> DatasetResponse:
-        project_id = resolve_project_id(project_id)
+        project_id = self._project(project_id)
         dataset = self.create(
             project_id,
             name=name,
@@ -284,8 +286,9 @@ class _DatasetsResource:
 
 
 class _ExperimentsResource:
-    def __init__(self, http: _HttpTransport) -> None:
+    def __init__(self, http: _HttpTransport, project: ProjectResolver) -> None:
         self._http = http
+        self._project = project
 
     def create(
         self,
@@ -301,7 +304,7 @@ class _ExperimentsResource:
         app_config_alias: str | None = None,
         metrics_set_id: str | None = None,
     ) -> ExperimentResponse:
-        project_id = resolve_project_id(project_id)
+        project_id = self._project(project_id)
         body: dict[str, Any] = {
             "name": name,
             "dataset_id": dataset_id,
@@ -334,7 +337,7 @@ class _ExperimentsResource:
         limit: int | None = None,
         offset: int = 0,
     ) -> builtins.list[ExperimentResponse]:
-        project_id = resolve_project_id(project_id)
+        project_id = self._project(project_id)
         query: dict[str, str] = {}
         if name is not None:
             query["name"] = name
@@ -365,7 +368,7 @@ class _ExperimentsResource:
         note: str | None = None,
         force: bool = False,
     ) -> ExperimentAliasResponse:
-        project_id = resolve_project_id(project_id)
+        project_id = self._project(project_id)
         body: dict[str, Any] = {"experiment_id": experiment_id}
         if note is not None:
             body["note"] = note
@@ -379,7 +382,7 @@ class _ExperimentsResource:
         )
 
     def get_alias(self, alias: str, *, project_id: str | None = None) -> ExperimentAliasResponse:
-        project_id = resolve_project_id(project_id)
+        project_id = self._project(project_id)
         return self._http.request_model(
             "GET",
             f"/api/v1/projects/{project_id}/experiment-aliases/{quote(alias, safe='')}",
@@ -387,7 +390,7 @@ class _ExperimentsResource:
         )
 
     def list_aliases(self, project_id: str | None = None) -> builtins.list[ExperimentAliasResponse]:
-        project_id = resolve_project_id(project_id)
+        project_id = self._project(project_id)
         return self._http.request_model_list(
             "GET",
             f"/api/v1/projects/{project_id}/experiment-aliases",
@@ -397,7 +400,7 @@ class _ExperimentsResource:
     def alias_history(
         self, alias: str, *, project_id: str | None = None, limit: int = 50
     ) -> builtins.list[ExperimentAliasEventResponse]:
-        project_id = resolve_project_id(project_id)
+        project_id = self._project(project_id)
         return self._http.request_model_list(
             "GET",
             f"/api/v1/projects/{project_id}/experiment-aliases/{quote(alias, safe='')}/history",
@@ -406,7 +409,7 @@ class _ExperimentsResource:
         )
 
     def delete_alias(self, alias: str, *, project_id: str | None = None) -> None:
-        project_id = resolve_project_id(project_id)
+        project_id = self._project(project_id)
         self._http.request(
             "DELETE",
             f"/api/v1/projects/{project_id}/experiment-aliases/{quote(alias, safe='')}",
@@ -585,11 +588,12 @@ class _ExperimentsResource:
 
 
 class _MetricsPacksResource:
-    def __init__(self, http: _HttpTransport) -> None:
+    def __init__(self, http: _HttpTransport, project: ProjectResolver) -> None:
         self._http = http
+        self._project = project
 
     def ensure(self, project_id: str | None = None) -> MetricsPackResponse:
-        project_id = resolve_project_id(project_id)
+        project_id = self._project(project_id)
         return self._http.request_model(
             "POST",
             f"/api/v1/projects/{project_id}/metrics-pack/ensure",
@@ -598,7 +602,7 @@ class _MetricsPacksResource:
         )
 
     def get(self, project_id: str | None = None) -> MetricsPackResponse:
-        project_id = resolve_project_id(project_id)
+        project_id = self._project(project_id)
         return self._http.request_model(
             "GET",
             f"/api/v1/projects/{project_id}/metrics-pack",
@@ -607,8 +611,9 @@ class _MetricsPacksResource:
 
 
 class _MetricsSetsResource:
-    def __init__(self, http: _HttpTransport) -> None:
+    def __init__(self, http: _HttpTransport, project: ProjectResolver) -> None:
         self._http = http
+        self._project = project
 
     def list(
         self,
@@ -618,7 +623,7 @@ class _MetricsSetsResource:
         limit: int | None = None,
         offset: int = 0,
     ) -> builtins.list[MetricsSetResponse]:
-        project_id = resolve_project_id(project_id)
+        project_id = self._project(project_id)
         query: dict[str, str] = {}
         if name is not None:
             query["name"] = name
@@ -648,7 +653,7 @@ class _MetricsSetsResource:
         entries: builtins.list[dict[str, Any]],
         description: str | None = None,
     ) -> MetricsSetResponse:
-        project_id = resolve_project_id(project_id)
+        project_id = self._project(project_id)
         body: dict[str, Any] = {"name": name, "entries": entries}
         if description is not None:
             body["description"] = description
@@ -666,11 +671,12 @@ class _EvaluatorsResource:
     Prefer ``opengrade.LlmJudge`` for judges: it creates/reuses the evaluator for you.
     """
 
-    def __init__(self, http: _HttpTransport) -> None:
+    def __init__(self, http: _HttpTransport, project: ProjectResolver) -> None:
         self._http = http
+        self._project = project
 
     def list(self, project_id: str | None = None) -> builtins.list[EvaluatorResponse]:
-        project_id = resolve_project_id(project_id)
+        project_id = self._project(project_id)
         return self._http.request_model_list(
             "GET",
             f"/api/v1/projects/{project_id}/evaluators",
@@ -686,7 +692,7 @@ class _EvaluatorsResource:
         config: dict[str, Any],
         version: int = 1,
     ) -> EvaluatorResponse:
-        project_id = resolve_project_id(project_id)
+        project_id = self._project(project_id)
         return self._http.request_model(
             "POST",
             f"/api/v1/projects/{project_id}/evaluators",
@@ -706,7 +712,7 @@ class _EvaluatorsResource:
         metadata: dict[str, Any] | None = None,
     ) -> EvaluatorPreviewResponse:
         """Run ``config`` on one sample without saving anything (calls the judge model)."""
-        project_id = resolve_project_id(project_id)
+        project_id = self._project(project_id)
         sample: dict[str, Any] = {
             "input": input,
             "output": output,
@@ -745,11 +751,12 @@ _ALERT_FIELDS = (
 class _AlertsResource:
     """Server-side alert rules on production metrics (checked every minute by the server)."""
 
-    def __init__(self, http: _HttpTransport) -> None:
+    def __init__(self, http: _HttpTransport, project: ProjectResolver) -> None:
         self._http = http
+        self._project = project
 
     def list(self, project_id: str | None = None) -> builtins.list[AlertRuleResponse]:
-        project_id = resolve_project_id(project_id)
+        project_id = self._project(project_id)
         return self._http.request_model_list(
             "GET", f"/api/v1/projects/{project_id}/alert-rules", response_model=AlertRuleResponse
         )
@@ -789,7 +796,7 @@ class _AlertsResource:
 
         ``operator``: ``"gt"``, ``"lt"`` or ``"abs"`` (either direction; change/anomaly).
         """
-        project_id = resolve_project_id(project_id)
+        project_id = self._project(project_id)
         fields: dict[str, Any] = {
             "name": name,
             "metric": metric,
@@ -846,7 +853,7 @@ class _AlertsResource:
     def events(
         self, project_id: str | None = None, *, limit: int = 50
     ) -> builtins.list[AlertEventResponse]:
-        project_id = resolve_project_id(project_id)
+        project_id = self._project(project_id)
         return self._http.request_model_list(
             "GET",
             f"/api/v1/projects/{project_id}/alert-events",
@@ -856,8 +863,9 @@ class _AlertsResource:
 
 
 class _LiveRunsResource:
-    def __init__(self, http: _HttpTransport) -> None:
+    def __init__(self, http: _HttpTransport, project: ProjectResolver) -> None:
         self._http = http
+        self._project = project
 
     def submit(
         self,
@@ -870,7 +878,7 @@ class _LiveRunsResource:
         external_id: str | None = None,
         metrics_set_id: str | None = None,
     ) -> LiveInteractionResponse:
-        project_id = resolve_project_id(project_id)
+        project_id = self._project(project_id)
         body: dict[str, Any] = {
             "question": question,
             "answer": answer,
@@ -901,7 +909,7 @@ class _LiveRunsResource:
         limit: int = 50,
         offset: int = 0,
     ) -> ListLiveInteractionsResponse:
-        project_id = resolve_project_id(project_id)
+        project_id = self._project(project_id)
         params: list[tuple[str, str]] = [("limit", str(limit)), ("offset", str(offset))]
         if judge_status is not None:
             params.append(("judge_status", judge_status))
@@ -956,15 +964,16 @@ class _LiveRunsResource:
 
 
 class _TraceScoresResource:
-    def __init__(self, http: _HttpTransport) -> None:
+    def __init__(self, http: _HttpTransport, project: ProjectResolver) -> None:
         self._http = http
+        self._project = project
 
     def log(
         self, project_id: str | None, scores: builtins.list[dict[str, Any]]
     ) -> TraceScoresAccepted:
         """Upsert scores on traces: ``{"trace_id", "name", "value"?, "label"?,
         "explanation"?, "threshold"?, "source"?, "author"?, "metadata"?}`` (max 500)."""
-        project_id = resolve_project_id(project_id)
+        project_id = self._project(project_id)
         return self._http.request_model(
             "POST",
             f"/api/v1/projects/{project_id}/trace-scores",
@@ -983,21 +992,26 @@ class Client:
         timeout: float = 30.0,
         transport: httpx2.BaseTransport | None = None,
         api_key: str | None = None,
+        project_id: str | None = None,
     ) -> None:
         """``api_key`` defaults to ``opengrade.set_api_key()`` / ``OPENGRADE_API_KEY``."""
         resolved = resolve_api_base_url(base_url)
         self._http = _HttpTransport(resolved, timeout=timeout, transport=transport, api_key=api_key)
         self.base_url = resolved
-        self.projects = _ProjectsResource(self._http)
-        self.datasets = _DatasetsResource(self._http)
-        self.experiments = _ExperimentsResource(self._http)
-        self.metrics_packs = _MetricsPacksResource(self._http)
-        self.metrics_sets = _MetricsSetsResource(self._http)
-        self.evaluators = _EvaluatorsResource(self._http)
-        self.live_runs = _LiveRunsResource(self._http)
-        self.alerts = _AlertsResource(self._http)
-        self.trace_scores = _TraceScoresResource(self._http)
+        self._project_id = project_id
+        self.projects = _ProjectsResource(self._http, self._project)
+        self.datasets = _DatasetsResource(self._http, self._project)
+        self.experiments = _ExperimentsResource(self._http, self._project)
+        self.metrics_packs = _MetricsPacksResource(self._http, self._project)
+        self.metrics_sets = _MetricsSetsResource(self._http, self._project)
+        self.evaluators = _EvaluatorsResource(self._http, self._project)
+        self.live_runs = _LiveRunsResource(self._http, self._project)
+        self.alerts = _AlertsResource(self._http, self._project)
+        self.trace_scores = _TraceScoresResource(self._http, self._project)
         self.app_configs = AppConfigClient(self._http)
+
+    def _project(self, project_id: str | None = None) -> str:
+        return resolve_bound_project(project_id, bound=self._project_id, stacklevel=3)
 
     def health(self) -> HealthResponse:
         return self._http.request_model("GET", "/health", response_model=HealthResponse)

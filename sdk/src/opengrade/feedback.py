@@ -190,7 +190,9 @@ def _queue(what: str, trace_id: str | None, build: Callable[[], dict[str, Any]])
             raise _ConfigError("trace", "no trace_id and no active trace")
         normalized = _trace_id(resolved)
         try:
-            project_id = _config.resolve_project_id()
+            from opengrade._context import get_client
+
+            project_id = get_client()._project(None)
         except ValueError as exc:
             raise _ConfigError("project", str(exc)) from None
         payload = build()

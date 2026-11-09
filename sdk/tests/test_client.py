@@ -422,3 +422,60 @@ def test_live_interaction_exposes_trace_scores() -> None:
         ).trace_scores
         == []
     )
+
+
+def test_bound_client_ignores_global_active_project() -> None:
+    from opengrade import _context, _state
+
+    _context._reset_for_tests()
+    _state._set_active_project(project_id="global-p", project_slug="global")
+    seen: list[str] = []
+
+    def handler(request: httpx2.Request) -> httpx2.Response:
+        seen.append(request.url.path)
+        return httpx2.Response(200, json=[])
+
+    client = Client("http://test", project_id="bound-p", transport=httpx2.MockTransport(handler))
+    client.datasets.list()
+    assert seen == ["/api/v1/projects/bound-p/datasets"]
+    _context._reset_for_tests()
+
+
+def test_two_clients_use_distinct_bound_projects() -> None:
+    from opengrade import _context
+
+    _context._reset_for_tests()
+    seen: dict[str, list[str]] = {"a": [], "b": []}
+
+    def handler_a(request: httpx2.Request) -> httpx2.Response:
+        seen["a"].append(request.url.path)
+        return httpx2.Response(200, json=[])
+
+    def handler_b(request: httpx2.Request) -> httpx2.Response:
+        seen["b"].append(request.url.path)
+        return httpx2.Response(200, json=[])
+
+    client_a = Client("http://test", project_id="proj-a", transport=httpx2.MockTransport(handler_a))
+    client_b = Client("http://test", project_id="proj-b", transport=httpx2.MockTransport(handler_b))
+    client_a.experiments.list()
+    client_b.experiments.list()
+    assert seen["a"] == ["/api/v1/projects/proj-a/experiments"]
+    assert seen["b"] == ["/api/v1/projects/proj-b/experiments"]
+    _context._reset_for_tests()
+
+
+def test_global_fallback_emits_deprecation_warning(monkeypatch: pytest.MonkeyPatch) -> None:
+    from opengrade import _context
+    from opengrade._client_resolve import reset_global_fallback_warning_for_tests
+
+    _context._reset_for_tests()
+    reset_global_fallback_warning_for_tests()
+    monkeypatch.setenv("OPENGRADE_PROJECT_ID", "env-pid")
+
+    def handler(request: httpx2.Request) -> httpx2.Response:
+        return httpx2.Response(200, json=[])
+
+    client = Client("http://test", transport=httpx2.MockTransport(handler))
+    with pytest.warns(DeprecationWarning, match="process-wide opengrade state"):
+        client.experiments.list()
+    _context._reset_for_tests()

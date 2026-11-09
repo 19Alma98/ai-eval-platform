@@ -26,12 +26,22 @@ def _slugify(value: str) -> str:
     return slug or "project"
 
 
+def _shared_client_project_id() -> str | None:
+    rt = _state._default()
+    if rt.settings.project_id:
+        return rt.settings.project_id
+    return _state._active_project_id()
+
+
 def get_client() -> Client:
     """Return the shared ``Client`` bound to the current tracking URI."""
     rt = _state._default()
     with rt.client_lock:
         if rt.client is None:
-            rt.client = Client(_config.get_tracking_uri())
+            rt.client = Client(
+                _config.get_tracking_uri(),
+                project_id=_shared_client_project_id(),
+            )
         return rt.client
 
 
@@ -44,12 +54,14 @@ def get_async_client() -> AsyncClient:
     except RuntimeError:
         with rt.client_lock:
             if rt.async_client_no_loop is None:
-                rt.async_client_no_loop = AsyncClient(uri)
+                rt.async_client_no_loop = AsyncClient(
+                    uri, project_id=_shared_client_project_id()
+                )
             return rt.async_client_no_loop
     with rt.client_lock:
         client = rt.async_clients.get(loop)
         if client is None:
-            client = AsyncClient(uri)
+            client = AsyncClient(uri, project_id=_shared_client_project_id())
             rt.async_clients[loop] = client
         return client
 
@@ -199,9 +211,12 @@ def get_project() -> ProjectResponse | None:
 
 
 def _reset_for_tests() -> None:
+    from opengrade._client_resolve import reset_global_fallback_warning_for_tests
+
     _reset_client()
     _state._default().active_project = None
     _config._reset_for_tests()
+    reset_global_fallback_warning_for_tests()
 
 
 def _after_fork_in_child() -> None:

@@ -367,7 +367,9 @@ def after_call(
         if not _live.should_judge(ctx.trace_id, sample_rate):
             return
         try:
-            project_id = _config.resolve_project_id()
+            from opengrade._context import get_client
+
+            project_id = get_client()._project(None)
         except ValueError as exc:
             _warn("project", "opengrade: production metrics skipped: %s", exc)
             return

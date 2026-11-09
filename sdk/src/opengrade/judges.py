@@ -105,11 +105,10 @@ class LlmJudge:
         compared as if they were the same metric). The latest version of a ``live`` judge
         is the one applied to production traffic.
         """
-        from opengrade._config import resolve_project_id
         from opengrade._context import get_client
 
         client = client or get_client()
-        project_id = resolve_project_id(project_id)
+        project_id = client._project(project_id)
         name = self.name.strip()
         config = self.config()
         same_name = [e for e in client.evaluators.list(project_id) if e.name == name]
@@ -133,12 +132,11 @@ class LlmJudge:
         project_id: str | None = None,
     ) -> EvaluatorPreviewResponse:
         """Grade one sample now (nothing is stored). Returns score, explanation, prompt."""
-        from opengrade._config import resolve_project_id
         from opengrade._context import get_client
 
         client = client or get_client()
         return client.evaluators.preview(
-            resolve_project_id(project_id),
+            client._project(project_id),
             config=self.config(),
             input=input,
             output=output,
