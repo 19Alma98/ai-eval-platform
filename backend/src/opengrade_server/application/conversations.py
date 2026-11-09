@@ -150,7 +150,7 @@ class GetConversation:
         if await self._projects.get_by_id(project_id) is None:
             raise ProjectNotFoundError(project_id)
         traces = await self._traces.list_by_project(
-            project_id, session_id=session_id, limit=200, offset=0
+            project_id, session_id=session_id, limit=200
         )
         if not traces:
             raise ConversationNotFoundError(session_id)
@@ -486,7 +486,7 @@ async def refresh_conversation_from_trace(
     session_id: str,
 ) -> None:
     """Keep the open conversation projection in sync when a new trace arrives."""
-    rows = await traces.list_by_project(project_id, session_id=session_id, limit=200, offset=0)
+    rows = await traces.list_by_project(project_id, session_id=session_id, limit=200)
     if not rows:
         return
     rows = sorted(rows, key=lambda t: t.start_time)

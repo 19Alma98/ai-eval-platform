@@ -95,8 +95,9 @@ class SqlAlchemyConversationRepository:
             )
             self._session.add(row)
         else:
-            row = await self._session.get(ConversationModel, existing.id)
-            assert row is not None
+            loaded = await self._session.get(ConversationModel, existing.id)
+            assert loaded is not None
+            row = loaded
             row.user_id = conversation.user_id
             row.environment = conversation.environment
             row.turn_count = conversation.turn_count
@@ -227,7 +228,7 @@ class SqlAlchemyConversationRepository:
         limit: int = 50,
         offset: int = 0,
     ) -> list[ConversationSummary]:
-        stmt: Select[Any] = (
+        stmt = (
             select(
                 TraceModel.session_id,
                 func.min(TraceModel.start_time).label("started_at"),
@@ -271,8 +272,8 @@ class SqlAlchemyConversationRepository:
                 )
                 .options(selectinload(ConversationModel.scores))
             )
-            for conv in conv_result.scalars().unique().all():
-                persisted[conv.session_id] = conv
+            for persisted_row in conv_result.scalars().unique().all():
+                persisted[persisted_row.session_id] = persisted_row
 
         out: list[ConversationSummary] = []
         for row in rows:
