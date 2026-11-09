@@ -349,7 +349,13 @@ def test_refusal_config_validation() -> None:
 
 
 def test_new_kinds_registered_and_versioned() -> None:
-    assert {"citation_accuracy", "refusal"} <= set(JUDGE_KINDS)
+    assert {
+        "citation_accuracy",
+        "refusal",
+        "query_rewrite_faithfulness",
+        "conversation_consistency",
+        "resolution",
+    } <= set(JUDGE_KINDS)
     clear_registry()
     try:
         bootstrap_evaluators(ScriptedJudgeLlm(), default_model="m")

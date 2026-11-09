@@ -547,6 +547,73 @@ RUBRICS: dict[str, str] = {
         example_reasoning="Every reference fact is present in the documents.",
         example_level=5,
     ),
+    "query_rewrite_faithfulness": _rubric(
+        step="rubric_query_rewrite_faithfulness",
+        role="You are an evaluation judge for conversational query rewriting.",
+        task=(
+            "Rate how faithfully the SEARCH QUERY captures what the user means by the "
+            "QUESTION given the CONVERSATION HISTORY. The search query is what the app "
+            "sent to the retriever."
+        ),
+        rules=_bullets(
+            "Use the history to resolve pronouns, constraints, and prior context.",
+            "Penalize dropping user constraints or inventing topics not implied.",
+            "Keep reasoning short.",
+        ),
+        scale=_bullets(
+            "5: standalone query fully matches the user's intended search",
+            "4: matches intent; a minor constraint is softened",
+            "3: partially captures intent; some context lost",
+            "2: mostly wrong focus or drops key constraints",
+            "1: unrelated to what the user asked, or empty/nonsensical",
+        ),
+        example_reasoning="Rewrites 'that plan' using prior billing context into a clear search.",
+        example_level=5,
+    ),
+    "conversation_consistency": _rubric(
+        step="rubric_conversation_consistency",
+        role="You are an evaluation judge for multi-turn assistant consistency.",
+        task=(
+            "Rate whether the ANSWER is consistent with earlier assistant turns and "
+            "respects constraints the user stated in the CONVERSATION HISTORY."
+        ),
+        rules=_bullets(
+            "Flag contradictions of prior assistant claims.",
+            "Flag forgotten user constraints (budget, locale, product, etc.).",
+            "Keep reasoning short.",
+        ),
+        scale=_bullets(
+            "5: fully consistent; all prior constraints respected",
+            "4: consistent; a minor prior detail is soft-pedaled",
+            "3: mixed — some consistency, one forgotten constraint or soft contradiction",
+            "2: clear contradiction or ignored constraint",
+            "1: contradicts prior turns or invents conflicting facts",
+        ),
+        example_reasoning="Keeps the previously stated Pro plan price and the user's locale.",
+        example_level=5,
+    ),
+    "resolution": _rubric(
+        step="rubric_resolution",
+        role="You are an evaluation judge for conversation resolution.",
+        task=(
+            "Rate whether the ANSWER resolves the user's latest QUESTION in light of "
+            "the CONVERSATION HISTORY (the user got what they needed, or a correct refusal)."
+        ),
+        rules=_bullets(
+            "A clear correct refusal counts as resolved when the KB cannot answer.",
+            "Clarifying questions alone are not full resolution.",
+            "Keep reasoning short.",
+        ),
+        scale=_bullets(
+            "5: fully resolves the user's need",
+            "4: mostly resolves; a minor follow-up remains",
+            "3: partial progress; user still needs another turn",
+            "2: little progress toward resolution",
+            "1: does not address the need, or blocks progress",
+        ),
+        example_reasoning="Gives the concrete answer the user was building up to across turns.",
+        example_level=5,
+    ),
 }
 
 VERIFY_CITATIONS = _system(
@@ -736,6 +803,23 @@ def as_text(value: Any) -> str:
     if isinstance(value, str):
         return value.strip()
     return json.dumps(value, ensure_ascii=False, sort_keys=True, default=str)
+
+
+def question_text(value: Any) -> str:
+    """Last-turn question for ``rag_qa`` strings and ``rag_chat`` ``{history, question}``."""
+    from opengrade_server.domain.rag_input import resolve_rag_question
+
+    question = resolve_rag_question(value)
+    if question:
+        return question
+    return as_text(value)
+
+
+def render_history(history: list[dict[str, str]]) -> str:
+    if not history:
+        return "(no prior turns)"
+    lines = [f"{turn['role']}: {turn['content']}" for turn in history]
+    return "\n".join(lines)
 
 
 def render_claims(claims: list[str]) -> str:

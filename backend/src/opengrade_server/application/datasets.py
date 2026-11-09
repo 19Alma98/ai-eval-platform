@@ -8,6 +8,7 @@ from opengrade_server.application.dataset_import import parse_import_payload, ro
 from opengrade_server.application.metrics_packs import EnsureMetricsPack
 from opengrade_server.application.projects import ProjectNotFoundError
 from opengrade_server.domain.dataset import Dataset, DatasetItem
+from opengrade_server.domain.rag_chat import validate_rag_chat_item
 from opengrade_server.domain.rag_qa import validate_rag_qa_item
 from opengrade_server.domain.repositories import (
     DatasetRepository,
@@ -15,6 +16,8 @@ from opengrade_server.domain.repositories import (
     ExperimentRepository,
     ProjectRepository,
 )
+
+_IMPORTABLE_TASK_TYPES = frozenset({"rag_qa", "rag_chat"})
 
 
 class DatasetNotFoundError(Exception):
@@ -91,7 +94,9 @@ class ImportDatasetItemsCommand:
 class ImportDatasetTaskTypeError(Exception):
     def __init__(self, task_type: str | None) -> None:
         self.task_type = task_type
-        super().__init__(f"Import is only supported for rag_qa datasets (got {task_type!r})")
+        super().__init__(
+            f"Import is only supported for rag_qa / rag_chat datasets (got {task_type!r})"
+        )
 
 
 def _is_unique_violation(exc: BaseException) -> bool:
@@ -206,7 +211,7 @@ class CreateDataset:
             if _is_unique_violation(exc):
                 raise DatasetConflictError(dataset.name, dataset.version) from exc
             raise
-        if created.task_type == "rag_qa" and self._ensure_metrics_pack is not None:
+        if created.task_type in {"rag_qa", "rag_chat"} and self._ensure_metrics_pack is not None:
             await self._ensure_metrics_pack.execute(command.project_id)
         return created
 
@@ -278,15 +283,22 @@ class AddDatasetItem:
 
     async def _add_item_to(self, dataset: Dataset, command: AddDatasetItemCommand) -> DatasetItem:
         metadata = command.metadata
+        item_input = command.input
         if dataset.task_type == "rag_qa":
             metadata = validate_rag_qa_item(
                 input=command.input,
                 expected_output=command.expected_output,
                 metadata=dict(command.metadata or {}),
             )
+        elif dataset.task_type == "rag_chat":
+            item_input, metadata = validate_rag_chat_item(
+                input=command.input,
+                expected_output=command.expected_output,
+                metadata=dict(command.metadata or {}),
+            )
         item = DatasetItem.create(
             dataset.id,
-            command.input,
+            item_input,
             expected_output=command.expected_output,
             actual_output=command.actual_output,
             context=command.context,
@@ -313,13 +325,14 @@ class ImportDatasetItems:
         dataset = await self._datasets.get_by_id(command.dataset_id)
         if dataset is None:
             raise DatasetNotFoundError(command.dataset_id)
-        if dataset.task_type != "rag_qa":
+        if dataset.task_type not in _IMPORTABLE_TASK_TYPES:
             raise ImportDatasetTaskTypeError(dataset.task_type)
 
         parsed = parse_import_payload(
             filename=command.filename,
             raw=command.raw,
             format=command.format,
+            task_type=dataset.task_type or "rag_qa",
         )
         created = 0
         errors: list[ImportDatasetItemError] = []
@@ -337,7 +350,9 @@ class ImportDatasetItems:
                 )
                 continue
             try:
-                question, answer, meta = row_to_item_fields(row)
+                item_input, answer, meta = row_to_item_fields(
+                    row, task_type=dataset.task_type or "rag_qa"
+                )
                 if target is None:
                     target, forked_from = await ensure_writable_dataset(
                         self._datasets,
@@ -349,7 +364,7 @@ class ImportDatasetItems:
                     target,
                     AddDatasetItemCommand(
                         dataset_id=target.id,
-                        input=question,
+                        input=item_input,
                         expected_output=answer,
                         metadata=meta,
                     ),

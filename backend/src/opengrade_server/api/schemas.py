@@ -1377,3 +1377,55 @@ class RetentionResponse(BaseModel):
     effective_days: int | None
     # What a purge would delete right now (dry run).
     pending: PurgeReportResponse
+
+
+class ConversationSummaryResponse(BaseModel):
+    session_id: str
+    user_id: str | None = None
+    environment: str | None = None
+    turn_count: int
+    started_at: datetime
+    last_activity_at: datetime
+    conversation_id: uuid.UUID | None = None
+    judge_status: str | None = None
+    failing_score_kinds: list[str] = Field(default_factory=list)
+
+
+class ConversationListResponse(BaseModel):
+    items: list[ConversationSummaryResponse]
+
+
+class ConversationTurnResponse(BaseModel):
+    trace_id: str
+    start_time: datetime
+    question: str | None = None
+    answer: str | None = None
+    user_id: str | None = None
+    live_interaction_id: uuid.UUID | None = None
+    search_query: str | None = None
+
+
+class ConversationScoreResponse(BaseModel):
+    id: uuid.UUID
+    kind: str
+    score: float | None = None
+    label: str | None = None
+    explanation: str | None = None
+    threshold: float | None = None
+    metadata: dict[str, Any] = Field(default_factory=dict)
+    created_at: datetime
+
+
+class ConversationDetailResponse(BaseModel):
+    summary: ConversationSummaryResponse
+    judge_status: str | None = None
+    turns: list[ConversationTurnResponse]
+    scores: list[ConversationScoreResponse]
+    live_interactions: list[LiveInteractionResponse]
+
+
+class PromoteConversationRequest(BaseModel):
+    dataset_id: uuid.UUID
+    expected_output: str
+    expected_doc_ids: list[str] | None = None
+    mode: str = Field(default="full", pattern="^(full|last_turn)$")

@@ -101,7 +101,27 @@ def build_eval_context_from_trace(
         final_docs = max(recorded, key=lambda row: (row[0], row[1]))[2] if recorded else []
         context["documents"] = final_docs
 
+    search_query = _search_query_from_spans(spans)
+    if search_query:
+        context["search_query"] = search_query
+
     return context
+
+
+def _search_query_from_spans(spans: list[Span]) -> str | None:
+    """Prefer the latest explicit rewritten query attribute on any span."""
+    best: tuple[datetime, int, str] | None = None
+    for idx, span in enumerate(spans):
+        attrs = span.attributes or {}
+        for key in ("opengrade.retrieval.query", "retrieval.query"):
+            raw = attrs.get(key)
+            if isinstance(raw, str) and raw.strip():
+                stamp = _span_end(span)
+                candidate = (stamp, idx, raw.strip())
+                if best is None or candidate[:2] >= best[:2]:
+                    best = candidate
+                break
+    return best[2] if best else None
 
 
 _RETRIEVAL_KINDS = frozenset({"RETRIEVER", "RERANKER"})

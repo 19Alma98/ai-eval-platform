@@ -62,7 +62,7 @@ Fields:
 - name
 - version
 - description
-- task_type (optional; allowlist: `rag_qa`, `classification`, `agent_tools`)
+- task_type (optional; allowlist: `rag_qa`, `rag_chat`, `classification`, `agent_tools`)
 - created_at
 
 ## DatasetItem
@@ -88,6 +88,16 @@ When `task_type=rag_qa`, each item used in the RAG vertical must include:
 - **expected_doc_ids** — non-empty list in `metadata.expected_doc_ids` (CSV import uses pipe-separated ids)
 
 `actual_output` and retrieved document text belong to a **run** (experiment item output or bound OTLP trace), not the test set.
+
+### `rag_chat` test set contract
+
+When `task_type=rag_chat`, each item is one conversational state plus the last user turn:
+
+- **input** — `{"history": [{"role": "user"|"assistant"|"system", "content": "..."}], "question": "..."}`
+- **expected_output** — reference answer for the **last** turn only
+- **expected_doc_ids** / **must_contain** / **answerable** — same semantics as `rag_qa`, for the last turn
+
+Existing last-turn judges (`groundedness`, `citation_accuracy`, …) read `input.question`. Conversation judges (`query_rewrite_faithfulness`, `conversation_consistency`, `resolution`) also use `history` and optional `context.search_query` (from `opengrade.set_search_query`).
 
 ## Metrics set (project-scoped)
 

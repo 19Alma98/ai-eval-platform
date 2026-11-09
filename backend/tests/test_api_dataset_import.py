@@ -283,3 +283,28 @@ async def test_unanswerable_items_accepted_without_gold_docs(client: AsyncClient
     unanswerable = [i for i in items if "expected_doc_ids" not in i["metadata"]]
     assert len(unanswerable) == 3
     assert all(i["expected_output"] is None for i in unanswerable)
+
+
+@pytest.mark.asyncio
+async def test_import_rag_chat_jsonl(client: AsyncClient) -> None:
+    proj = (await client.post("/api/v1/projects", json={"name": "P", "slug": "p-chat"})).json()
+    ds = (
+        await client.post(
+            f"/api/v1/projects/{proj['id']}/datasets",
+            json={"name": "chat-set", "task_type": "rag_chat"},
+        )
+    ).json()
+    line = (
+        '{"history":[{"role":"user","content":"Pro?"},{"role":"assistant","content":"Yes."}],'
+        '"question":"How much?","expected_answer":"8 dollars","expected_doc_ids":["plans"]}\n'
+    )
+    resp = await client.post(
+        f"/api/v1/datasets/{ds['id']}/items/import",
+        files={"file": ("items.jsonl", line, "application/x-ndjson")},
+    )
+    assert resp.status_code == 200
+    assert resp.json()["created"] == 1
+    detail = await client.get(f"/api/v1/datasets/{ds['id']}")
+    item = detail.json()["items"][0]
+    assert item["input"]["question"] == "How much?"
+    assert len(item["input"]["history"]) == 2

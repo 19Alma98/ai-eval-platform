@@ -85,11 +85,17 @@ def question_from_input(raw: Any) -> str | None:
 
     ``@opengrade.trace`` records ``{"args": [...], "kwargs": {...}}``: take a
     question-like kwarg, else the only string argument. ``opengrade.set_input()``
-    with plain text always wins as-is.
+    with plain text always wins as-is. Chat-shaped
+    ``{"history": [...], "question": "..."}`` uses the last-turn question.
     """
     parsed = _loads(raw)
     if isinstance(parsed, str):
         return _as_text(parsed)
+    if isinstance(parsed, dict) and ("question" in parsed or "history" in parsed):
+        from opengrade_server.domain.rag_input import resolve_rag_question
+
+        question = resolve_rag_question(parsed)
+        return question or None
     if isinstance(parsed, dict) and set(parsed) <= {"args", "kwargs"}:
         raw_args, raw_kwargs = parsed.get("args"), parsed.get("kwargs")
         args: list[Any] = raw_args if isinstance(raw_args, list) else []
@@ -126,6 +132,18 @@ def _documents(trace: Trace, span: Span) -> list[dict[str, Any]]:
         return list(docs)
     # opengrade.set_retrieval_documents() called directly inside the live span.
     return normalize_documents(_loads((span.attributes or {}).get("retrieval.documents")))
+
+
+def _search_query(trace: Trace, span: Span) -> str | None:
+    ctx_query = build_eval_context_from_trace(trace).get("search_query")
+    if isinstance(ctx_query, str) and ctx_query.strip():
+        return ctx_query.strip()
+    attrs = span.attributes or {}
+    for key in ("opengrade.retrieval.query", "retrieval.query"):
+        raw = attrs.get(key)
+        if isinstance(raw, str) and raw.strip():
+            return raw.strip()
+    return None
 
 
 def live_command_from_trace(trace: Trace) -> SubmitLiveInteractionCommand | None:
@@ -165,6 +183,9 @@ def live_command_from_trace(trace: Trace) -> SubmitLiveInteractionCommand | None
         metadata.setdefault("session_id", trace.session_id)
     if trace.user_id:
         metadata.setdefault("user_id", trace.user_id)
+    search_query = _search_query(trace, span)
+    if search_query:
+        metadata.setdefault("search_query", search_query)
 
     return SubmitLiveInteractionCommand(
         project_id=trace.project_id,

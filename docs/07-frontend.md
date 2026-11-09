@@ -68,9 +68,10 @@ Sidebar groups (`components/app-shell.tsx`):
 
 - **Overview**
 - **Evaluate:** Test sets (`/datasets`) · Experiments (`/experiments`) · Quality gate (`/release`)
-- **Monitor:** Production — one item with three tabs (`components/production-header.tsx`):
-  Health (`/monitoring`) · Live answers (`/live-runs`) · Traces (`/traces`). Detail pages
-  use breadcrumbs (Production › Live answers › Answer).
+- **Monitor:** Production — one item with tabs (`components/production-header.tsx`):
+  Health (`/monitoring`) · Live answers (`/live-runs`) · Conversations (`/conversations`) ·
+  Traces (`/traces`) · Alerts (`/alerts`). Detail pages use breadcrumbs
+  (Production › Live answers › Answer). Conversations groups traces by `session.id`.
 - **Configure:** Metrics (`/metrics`) · App configs (`/app-configs`)
 
 Projects are managed from the project switcher (`/projects`).

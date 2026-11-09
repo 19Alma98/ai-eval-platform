@@ -403,7 +403,7 @@ class CustomLlmJudge:
 
     def _user_prompt(self, sample: EvaluationSample) -> str:
         values = {
-            "input": lambda: prompts.as_text(sample.input),
+            "input": lambda: prompts.question_text(sample.input),
             "output": lambda: prompts.as_text(sample.actual_output),
             "expected": lambda: prompts.as_text(sample.expected_output),
             "documents": lambda: prompts.render_documents(_documents(sample.context)),

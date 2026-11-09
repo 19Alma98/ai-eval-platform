@@ -54,6 +54,23 @@ const CATALOG: Record<string, MetricInfo> = {
       "Does the assistant decline when the answer is not in its documents, and answer when it is?",
     category: "generation",
   },
+  query_rewrite_faithfulness: {
+    label: "Query rewrite",
+    description:
+      "Does the rewritten search query faithfully capture what the user meant given the chat history?",
+    category: "retrieval",
+  },
+  conversation_consistency: {
+    label: "Conversation consistency",
+    description:
+      "Does the last answer stay consistent with earlier turns and respect user constraints?",
+    category: "generation",
+  },
+  resolution: {
+    label: "Resolution",
+    description: "Did the conversation resolve the user's need (or correctly refuse)?",
+    category: "generation",
+  },
   must_contain: {
     label: "Required phrases",
     description: "Does the answer include the phrases the test case requires?",

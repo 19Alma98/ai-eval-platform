@@ -29,7 +29,7 @@ import { createDataset } from "@/lib/api/datasets";
 import { useCanWrite } from "@/lib/auth-context";
 import { useProjectId } from "@/lib/project-store";
 import { groupDatasetVersions, type DatasetRow } from "./dataset-versions";
-import { RAG_QA_TASK } from "./rag-qa";
+import { RAG_CHAT_TASK, RAG_QA_TASK } from "./rag-qa";
 import {
   datasetsQueryKey,
   datasetsQueryOptions,
@@ -193,6 +193,7 @@ function CreateDatasetDialog({
   const queryClient = useQueryClient();
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
+  const [taskType, setTaskType] = useState(RAG_QA_TASK);
 
   const create = useMutation({
     mutationFn: () =>
@@ -200,7 +201,7 @@ function CreateDatasetDialog({
         name: name.trim(),
         description: description.trim() || undefined,
         version: 1,
-        task_type: RAG_QA_TASK,
+        task_type: taskType,
       }),
     onSuccess: async () => {
       await queryClient.invalidateQueries({
@@ -209,6 +210,7 @@ function CreateDatasetDialog({
       toast.success("Test set created");
       setName("");
       setDescription("");
+      setTaskType(RAG_QA_TASK);
       onOpenChange(false);
     },
     onError: (err) => {
@@ -254,6 +256,20 @@ function CreateDatasetDialog({
                 placeholder="e.g. HR policy questions"
                 required
               />
+            </div>
+            <div className="flex flex-col gap-2">
+              <label htmlFor="dataset-create-task-type" className="text-sm font-medium">
+                Task type
+              </label>
+              <select
+                id="dataset-create-task-type"
+                value={taskType}
+                onChange={(e) => setTaskType(e.target.value)}
+                className="h-9 rounded-md border border-border bg-surface px-3 text-sm"
+              >
+                <option value={RAG_QA_TASK}>RAG Q&amp;A (single turn)</option>
+                <option value={RAG_CHAT_TASK}>Conversational RAG (multi-turn)</option>
+              </select>
             </div>
             <div className="flex flex-col gap-2">
               <label

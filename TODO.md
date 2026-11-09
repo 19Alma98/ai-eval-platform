@@ -44,22 +44,20 @@ Today the unit of evaluation is one question/answer pair; here it is the convers
 offline first (1-2, builds on dataset → experiment → compare), then the production view (3),
 reusing the same judges.
 
-- [ ] **1. Multi-turn datasets**: task type `rag_chat`; an item holds the chat history (list of
+- [x] **1. Multi-turn datasets**: task type `rag_chat`; an item holds the chat history (list of
   `{role, content}` turns) plus the final user question; `expected_output` is the reference for the
   last turn. CSV/JSONL import and `opengrade.evaluate` pass the history to the task
-  (`item.input` = `{"history": [...], "question": "..."}` or a dedicated `item.history`).
-- [ ] **2. Conversation judges**:
-  - query rewriting: the standalone/search query the app built is faithful to what the user means
-    given the history (needs the rewritten query recorded, e.g. on the RETRIEVER span or via an SDK
-    helper);
-  - consistency with earlier turns: no contradiction of what the assistant already said, no
-    forgotten constraints the user gave;
-  - conversation-level metrics: resolved or not, turns to resolution;
-  - existing judges (`groundedness`, `citation_accuracy`, `refusal`, …) keep scoring the last turn.
-- [ ] **3. "Conversations" section (UI + production)**: SDK `opengrade.set_session()` /
-  `set_user()` (the server already ingests `session.id` / `user.id` but nothing uses them), a view
-  that groups traces by session as a chat timeline, conversation judges run on the whole session
-  (sampled, after a session goes idle), session-level filters and alerts.
+  (`item.input` = `{"history": [...], "question": "..."}`; helper `opengrade.chat_input`).
+- [x] **2. Conversation judges**:
+  - query rewriting: `query_rewrite_faithfulness` + `opengrade.set_search_query` /
+    `opengrade.retrieval.query`;
+  - consistency with earlier turns: `conversation_consistency`;
+  - conversation-level metrics: `resolution` (label + `turns_to_resolution`);
+  - existing judges (`groundedness`, `citation_accuracy`, `refusal`, …) keep scoring the last turn
+    via `resolve_rag_question` / `prompts.question_text`.
+- [x] **3. "Conversations" section (UI + production)**: Production tab groups traces by `session.id`,
+  chat timeline + session judge run / idle sampler; promote session → `rag_chat` dataset item.
+  Session-level alert rules remain a follow-up.
 
 ## Deferred
 

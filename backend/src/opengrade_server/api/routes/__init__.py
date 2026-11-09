@@ -4,6 +4,7 @@ from opengrade_server.api.routes.alerts import router as alerts_router
 from opengrade_server.api.routes.api_keys import router as api_keys_router
 from opengrade_server.api.routes.app_configs import router as app_configs_router
 from opengrade_server.api.routes.auth import router as auth_router
+from opengrade_server.api.routes.conversations import router as conversations_router
 from opengrade_server.api.routes.datasets import router as datasets_router
 from opengrade_server.api.routes.evaluators import router as evaluators_router
 from opengrade_server.api.routes.experiment_aliases import router as experiment_aliases_router
@@ -36,6 +37,7 @@ api_router.include_router(metrics_sets_router)
 api_router.include_router(experiments_router)
 api_router.include_router(experiment_aliases_router)
 api_router.include_router(live_interactions_router)
+api_router.include_router(conversations_router)
 api_router.include_router(overview_router)
 api_router.include_router(monitoring_router)
 api_router.include_router(alerts_router)

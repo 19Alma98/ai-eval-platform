@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-KNOWN_TASK_TYPES = frozenset({"rag_qa", "classification", "agent_tools"})
+KNOWN_TASK_TYPES = frozenset({"rag_qa", "rag_chat", "classification", "agent_tools"})
 
 
 @dataclass(frozen=True, slots=True)
@@ -37,6 +37,37 @@ TASK_TYPE_CATALOG: tuple[TaskTypeInfo, ...] = (
             "correctness",
             "citation_accuracy",
             "refusal",
+            "latency",
+        ),
+    ),
+    TaskTypeInfo(
+        id="rag_chat",
+        label="Conversational RAG",
+        field_hints=(
+            "input.history: prior {role, content} turns",
+            "input.question: final user question",
+            "expected_output: reference answer for the last turn",
+            "metadata.expected_doc_ids: gold document ids for the last turn",
+            "metadata.must_contain: required answer phrases (optional)",
+            "context.documents / retrieval snippets for the last turn",
+            "context.search_query: rewritten standalone retrieval query (optional)",
+            "actual_output: model answer for the last turn",
+        ),
+        recommended_evaluator_kinds=(
+            "hit_at_k",
+            "recall_at_k",
+            "mrr",
+            "context_precision",
+            "context_recall",
+            "must_contain",
+            "groundedness",
+            "answer_relevance",
+            "correctness",
+            "citation_accuracy",
+            "refusal",
+            "query_rewrite_faithfulness",
+            "conversation_consistency",
+            "resolution",
             "latency",
         ),
     ),

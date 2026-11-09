@@ -19,29 +19,51 @@ import { Input } from "@/components/ui/input";
 import { formatErrorForUi } from "@/lib/api/client";
 import { importDatasetItems } from "@/lib/api/datasets";
 import { withProjectQuery } from "@/lib/project-href";
-import { RAG_QA_TASK } from "./rag-qa";
+import { IMPORTABLE_RAG_TASKS, RAG_CHAT_TASK } from "./rag-qa";
 import { datasetQueryKey, datasetsQueryKey } from "./use-datasets";
 
 // The SDK names these input / expected_output; the importer accepts both spellings.
-const IMPORT_COLUMNS = [
+const QA_IMPORT_COLUMNS = [
   { name: "question", alias: "input", help: "What the user asks (required)" },
   { name: "expected_answer", alias: "expected_output", help: "The correct answer (required)" },
   { name: "expected_doc_ids", help: "IDs of the documents that contain the answer" },
   { name: "must_contain", help: "Phrases the answer must include (optional)" },
 ] as const;
 
-const TEMPLATE_CSV = [
+const CHAT_IMPORT_COLUMNS = [
+  {
+    name: "history",
+    help: "JSON array of prior {role, content} turns (CSV cell or JSON field)",
+  },
+  { name: "question", alias: "input", help: "Final user question (required)" },
+  {
+    name: "expected_answer",
+    alias: "expected_output",
+    help: "Reference answer for the last turn (required)",
+  },
+  { name: "expected_doc_ids", help: "IDs of the documents that contain the last-turn answer" },
+  { name: "must_contain", help: "Phrases the last-turn answer must include (optional)" },
+] as const;
+
+const QA_TEMPLATE_CSV = [
   "question,expected_answer,expected_doc_ids,must_contain",
   "How many vacation days do I get?,Full-time employees get 20 days per year.,pto,20 days",
   "Which VPN should I use?,Use the company GlobalProtect VPN.,vpn|it-security,GlobalProtect",
 ].join("\n");
 
-function downloadTemplate() {
-  const blob = new Blob([`${TEMPLATE_CSV}\n`], { type: "text/csv" });
+const CHAT_TEMPLATE_CSV = [
+  "history,question,expected_answer,expected_doc_ids,must_contain",
+  "\"[{\\\"role\\\":\\\"user\\\",\\\"content\\\":\\\"Do we have a Pro plan?\\\"},{\\\"role\\\":\\\"assistant\\\",\\\"content\\\":\\\"Yes, Pro is available.\\\"}]\",How much does it cost?,The Pro plan costs 8 dollars per user per month.,plans,8 dollars",
+].join("\n");
+
+function downloadTemplate(taskType: string | null) {
+  const body = taskType === RAG_CHAT_TASK ? CHAT_TEMPLATE_CSV : QA_TEMPLATE_CSV;
+  const blob = new Blob([`${body}\n`], { type: "text/csv" });
   const url = URL.createObjectURL(blob);
   const link = document.createElement("a");
   link.href = url;
-  link.download = "test-set-template.csv";
+  link.download =
+    taskType === RAG_CHAT_TASK ? "chat-test-set-template.csv" : "test-set-template.csv";
   link.click();
   URL.revokeObjectURL(url);
 }
@@ -75,7 +97,8 @@ export function ImportDatasetDialog({
     { row: number; message: string }[]
   >([]);
 
-  const canImport = taskType === RAG_QA_TASK;
+  const canImport = taskType != null && IMPORTABLE_RAG_TASKS.has(taskType);
+  const importColumns = taskType === RAG_CHAT_TASK ? CHAT_IMPORT_COLUMNS : QA_IMPORT_COLUMNS;
 
   const importMutation = useMutation({
     mutationFn: () => {
@@ -154,7 +177,7 @@ export function ImportDatasetDialog({
               title={
                 canImport
                   ? undefined
-                  : "Import is available for this test set only after it is created as RAG Q&A"
+                  : "Import is available for RAG Q&A and Conversational RAG test sets"
               }
             >
               <Upload className="size-4" />
@@ -213,7 +236,7 @@ export function ImportDatasetDialog({
                 <p className="font-medium text-foreground">Expected columns</p>
                 <button
                   type="button"
-                  onClick={downloadTemplate}
+                  onClick={() => downloadTemplate(taskType)}
                   className="inline-flex items-center gap-1 text-primary hover:underline"
                 >
                   <Download className="size-3" />
@@ -221,7 +244,7 @@ export function ImportDatasetDialog({
                 </button>
               </div>
               <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-muted-foreground">
-                {IMPORT_COLUMNS.map((col) => (
+                {importColumns.map((col) => (
                   <div key={col.name} className="contents">
                     <dt className="font-mono text-foreground">
                       {col.name}

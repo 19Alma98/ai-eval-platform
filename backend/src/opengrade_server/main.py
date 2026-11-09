@@ -50,8 +50,14 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
         if settings.retention_interval_hours > 0
         else None
     )
+    from opengrade_server.application.conversations import run_conversation_score_loop
+
+    conversation_loop = asyncio.create_task(
+        run_conversation_score_loop(60.0, idle_minutes=15.0),
+        name="conversation-score-loop",
+    )
     yield
-    for task in (alert_loop, retention_loop):
+    for task in (alert_loop, retention_loop, conversation_loop):
         if task is not None:
             task.cancel()
             with suppress(asyncio.CancelledError):

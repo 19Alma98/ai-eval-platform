@@ -543,7 +543,7 @@ class RefusalJudge(_LlmJudge):
             with_reference = source == "reference"
             with_documents = source == "documents" and expected_answerable is None
             parts: dict[str, str] = {
-                "question": prompts.as_text(sample.input),
+                "question": prompts.question_text(sample.input),
                 "answer": answer,
             }
             if with_reference:

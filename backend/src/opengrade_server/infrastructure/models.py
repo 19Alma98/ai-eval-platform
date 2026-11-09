@@ -880,3 +880,88 @@ class SystemLlmSettingsModel(Base):
     updated_at: Mapped[datetime] = mapped_column(
         UtcDateTime(), nullable=False, server_default=func.now(), onupdate=func.now()
     )
+
+
+class ConversationModel(Base):
+    __tablename__ = "conversations"
+    __table_args__ = (
+        UniqueConstraint(
+            "project_id",
+            "session_id",
+            name="uq_conversations_project_session_id",
+        ),
+        Index("ix_conversations_project_last_activity", "project_id", "last_activity_at"),
+        Index("ix_conversations_project_judge_status", "project_id", "judge_status"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True)
+    project_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey("projects.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    session_id: Mapped[str] = mapped_column(String(200), nullable=False)
+    user_id: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    environment: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    turn_count: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
+    started_at: Mapped[datetime] = mapped_column(UtcDateTime(), nullable=False)
+    last_activity_at: Mapped[datetime] = mapped_column(UtcDateTime(), nullable=False)
+    judge_status: Mapped[str] = mapped_column(String(32), nullable=False)
+    metrics_set_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey("metrics_sets.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    score_warning: Mapped[str | None] = mapped_column(Text, nullable=True)
+    error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    metadata_json: Mapped[dict[str, Any]] = mapped_column(
+        "metadata", PortableJSON, nullable=False, server_default="{}"
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        UtcDateTime(),
+        nullable=False,
+        server_default=func.now(),
+    )
+    scored_at: Mapped[datetime | None] = mapped_column(UtcDateTime(), nullable=True)
+
+    scores: Mapped[list[ConversationScoreModel]] = relationship(
+        "ConversationScoreModel",
+        back_populates="conversation",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+    )
+
+
+class ConversationScoreModel(Base):
+    __tablename__ = "conversation_scores"
+    __table_args__ = (Index("ix_conversation_scores_conversation_id", "conversation_id"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True)
+    conversation_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey("conversations.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    evaluator_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey("evaluators.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    kind: Mapped[str] = mapped_column(String(64), nullable=False)
+    score: Mapped[float | None] = mapped_column(Float, nullable=True)
+    label: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    explanation: Mapped[str | None] = mapped_column(Text, nullable=True)
+    threshold: Mapped[float | None] = mapped_column(Float, nullable=True)
+    metadata_json: Mapped[dict[str, Any]] = mapped_column(
+        "metadata", PortableJSON, nullable=False, server_default="{}", default=dict
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        UtcDateTime(),
+        nullable=False,
+        server_default=func.now(),
+    )
+
+    conversation: Mapped[ConversationModel] = relationship(
+        "ConversationModel",
+        back_populates="scores",
+    )

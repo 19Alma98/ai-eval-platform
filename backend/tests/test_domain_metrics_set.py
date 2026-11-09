@@ -36,6 +36,9 @@ def test_default_rag_set_includes_core_retrieval_and_judge_metrics() -> None:
         "correctness",
         "citation_accuracy",
         "refusal",
+        "query_rewrite_faithfulness",
+        "conversation_consistency",
+        "resolution",
         "latency",
     ]
     by_kind = {e.kind: e for e in DEFAULT_RAG_SET_ENTRIES}
@@ -44,6 +47,9 @@ def test_default_rag_set_includes_core_retrieval_and_judge_metrics() -> None:
     assert by_kind["citation_accuracy"].threshold == 0.8
     assert by_kind["refusal"].enabled is False
     assert by_kind["refusal"].threshold == 1.0
+    assert by_kind["query_rewrite_faithfulness"].enabled is False
+    assert by_kind["conversation_consistency"].enabled is False
+    assert by_kind["resolution"].enabled is False
     assert by_kind["context_recall"].threshold == 0.7
     assert by_kind["answer_relevance"].threshold == 0.7
     assert by_kind["context_recall"].enabled is True

@@ -25,6 +25,12 @@ from opengrade_server.application.compare import (
     SummarizeExperiments,
 )
 from opengrade_server.application.compare_items import CompareExperimentItems
+from opengrade_server.application.conversations import (
+    GetConversation,
+    ListConversations,
+    PromoteConversation,
+    ScoreConversation,
+)
 from opengrade_server.application.datasets import (
     AddDatasetItem,
     CreateDataset,
@@ -118,6 +124,9 @@ from opengrade_server.application.traces import (
 )
 from opengrade_server.config import Settings, get_settings
 from opengrade_server.evaluation.runner import EvaluationRunner
+from opengrade_server.infrastructure.conversation_repository import (
+    SqlAlchemyConversationRepository,
+)
 from opengrade_server.infrastructure.db import get_session
 from opengrade_server.infrastructure.repositories import (
     SqlAlchemyAlertRepository,
@@ -939,3 +948,48 @@ def get_set_project_retention(
     projects: SqlAlchemyProjectRepository = Depends(get_project_repository),
 ) -> SetProjectRetention:
     return SetProjectRetention(projects)
+
+
+def get_conversation_repository(
+    session: AsyncSession = Depends(get_db_session),
+) -> SqlAlchemyConversationRepository:
+    return SqlAlchemyConversationRepository(session)
+
+
+def get_list_conversations(
+    projects: SqlAlchemyProjectRepository = Depends(get_project_repository),
+    conversations: SqlAlchemyConversationRepository = Depends(get_conversation_repository),
+) -> ListConversations:
+    return ListConversations(projects, conversations)
+
+
+def get_get_conversation(
+    projects: SqlAlchemyProjectRepository = Depends(get_project_repository),
+    conversations: SqlAlchemyConversationRepository = Depends(get_conversation_repository),
+    traces: SqlAlchemyTraceRepository = Depends(get_trace_repository),
+    live: SqlAlchemyLiveInteractionRepository = Depends(get_live_interaction_repository),
+) -> GetConversation:
+    return GetConversation(projects, conversations, traces, live)
+
+
+def get_score_conversation(
+    conversations: SqlAlchemyConversationRepository = Depends(get_conversation_repository),
+    traces: SqlAlchemyTraceRepository = Depends(get_trace_repository),
+    live: SqlAlchemyLiveInteractionRepository = Depends(get_live_interaction_repository),
+    metrics_sets: SqlAlchemyMetricsSetRepository = Depends(get_metrics_set_repository),
+    evaluators: SqlAlchemyEvaluatorRepository = Depends(get_evaluator_repository),
+    projects: SqlAlchemyProjectRepository = Depends(get_project_repository),
+    create_evaluator: CreateEvaluator = Depends(get_create_evaluator),
+) -> ScoreConversation:
+    ensure = EnsureProjectDefaultMetricsSet(metrics_sets, evaluators, projects, create_evaluator)
+    return ScoreConversation(
+        conversations, traces, live, ensure, evaluators, create_evaluator, projects
+    )
+
+
+def get_promote_conversation(
+    get_conversation: GetConversation = Depends(get_get_conversation),
+    datasets: SqlAlchemyDatasetRepository = Depends(get_dataset_repository),
+    add_item: AddDatasetItem = Depends(get_add_dataset_item),
+) -> PromoteConversation:
+    return PromoteConversation(get_conversation, datasets, add_item)

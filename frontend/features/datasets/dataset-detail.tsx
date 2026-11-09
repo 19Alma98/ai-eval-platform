@@ -30,6 +30,7 @@ import type { DatasetItem } from "@/lib/api/types";
 import { useCanWrite } from "@/lib/auth-context";
 import { withProjectQuery } from "@/lib/project-href";
 import { ImportDatasetDialog } from "./import-dataset-dialog";
+import { RAG_CHAT_TASK, chatHistoryLength, chatQuestionPreview } from "./rag-qa";
 import {
   datasetQueryOptions,
   datasetsQueryKey,
@@ -134,10 +135,14 @@ export function DatasetDetailView({
   const filteredItems = useMemo(() => {
     const q = inputFilter.trim().toLowerCase();
     if (!q) return items;
-    return items.filter((item) =>
-      valuePreview(item.input).toLowerCase().includes(q),
-    );
-  }, [items, inputFilter]);
+    return items.filter((item) => {
+      const haystack =
+        dataset?.task_type === RAG_CHAT_TASK
+          ? `${chatQuestionPreview(item.input)} ${valuePreview(item.input)}`
+          : valuePreview(item.input);
+      return haystack.toLowerCase().includes(q);
+    });
+  }, [items, inputFilter, dataset?.task_type]);
 
   const hasActual = items.some((item) => item.actual_output != null);
   const hasLiveOrigin = items.some((item) => Boolean(item.source_trace_id));
@@ -161,11 +166,19 @@ export function DatasetDetailView({
         id: "input",
         header: "Question",
         wrap: true,
-        cell: (row) => (
-          <span className="line-clamp-2 text-foreground">
-            {valuePreview(row.input)}
-          </span>
-        ),
+        cell: (row) => {
+          const isChat = dataset?.task_type === RAG_CHAT_TASK;
+          const question = isChat ? chatQuestionPreview(row.input) : valuePreview(row.input);
+          const turns = isChat ? chatHistoryLength(row.input) : 0;
+          return (
+            <span className="line-clamp-2 text-foreground">
+              {turns > 0 ? (
+                <span className="mr-1 text-muted-foreground">[{turns} prior]</span>
+              ) : null}
+              {question}
+            </span>
+          );
+        },
       },
       {
         id: "expected",
@@ -222,7 +235,7 @@ export function DatasetDetailView({
         ),
     });
     return out;
-  }, [filteredItems, hasActual, hasMustContain, hasLiveOrigin]);
+  }, [filteredItems, hasActual, hasMustContain, hasLiveOrigin, dataset?.task_type]);
 
   if (query.isPending) {
     return <LoadingBlock className="min-h-[240px]" />;

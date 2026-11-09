@@ -360,11 +360,15 @@ class ScoreLiveInteraction:
                 self._evaluators,
                 self._create_evaluator,
             )
+            context: dict[str, Any] = {"documents": interaction.documents}
+            search_query = interaction.metadata.get("search_query")
+            if isinstance(search_query, str) and search_query.strip():
+                context["search_query"] = search_query.strip()
             sample = EvaluationSample(
                 input=interaction.question,
                 expected_output=None,
                 actual_output=interaction.answer,
-                context={"documents": interaction.documents},
+                context=context,
                 metadata=dict(interaction.metadata),
             )
             scores: list[LiveInteractionScore] = []

@@ -40,6 +40,9 @@ JUDGE_KINDS = (
     "context_recall",
     "citation_accuracy",
     "refusal",
+    "query_rewrite_faithfulness",
+    "conversation_consistency",
+    "resolution",
 )
 
 _METHODS: dict[str, frozenset[str]] = {
@@ -50,6 +53,9 @@ _METHODS: dict[str, frozenset[str]] = {
     "context_recall": frozenset({"claims", "rubric"}),
     "citation_accuracy": frozenset({"claims"}),
     "refusal": frozenset({"classify", "phrases"}),
+    "query_rewrite_faithfulness": frozenset({"rubric"}),
+    "conversation_consistency": frozenset({"rubric"}),
+    "resolution": frozenset({"rubric"}),
 }
 _DEFAULT_METHOD = {
     "groundedness": "claims",
@@ -59,6 +65,9 @@ _DEFAULT_METHOD = {
     "context_recall": "claims",
     "citation_accuracy": "claims",
     "refusal": "classify",
+    "query_rewrite_faithfulness": "rubric",
+    "conversation_consistency": "rubric",
+    "resolution": "rubric",
 }
 _SCORINGS = frozenset({"recall", "f1"})
 DEFAULT_MAX_CLAIMS = 30
@@ -264,7 +273,7 @@ class GroundednessJudge(_LlmJudge):
         return _documents_precheck(sample.context, self._meta())
 
     async def _evaluate(self, sample: EvaluationSample) -> EvaluationResult:
-        question = prompts.as_text(sample.input)
+        question = prompts.question_text(sample.input)
         answer = prompts.as_text(sample.actual_output)
         documents = prompts.render_documents(_documents(sample.context))
         if self._config.method == "rubric":
@@ -352,7 +361,7 @@ class CorrectnessJudge(_LlmJudge):
         return None
 
     async def _evaluate(self, sample: EvaluationSample) -> EvaluationResult:
-        question = prompts.as_text(sample.input)
+        question = prompts.question_text(sample.input)
         answer = prompts.as_text(sample.actual_output)
         reference = prompts.as_text(sample.expected_output)
         if self._config.method == "rubric":
@@ -447,7 +456,7 @@ class AnswerRelevanceJudge(_LlmJudge):
     async def _evaluate(self, sample: EvaluationSample) -> EvaluationResult:
         return await self._rubric(
             prompts.sections(
-                question=prompts.as_text(sample.input),
+                question=prompts.question_text(sample.input),
                 answer=prompts.as_text(sample.actual_output),
             )
         )
@@ -468,7 +477,7 @@ class ContextRecallJudge(_LlmJudge):
         return _documents_precheck(sample.context, self._meta())
 
     async def _evaluate(self, sample: EvaluationSample) -> EvaluationResult:
-        question = prompts.as_text(sample.input)
+        question = prompts.question_text(sample.input)
         reference = prompts.as_text(sample.expected_output)
         documents = prompts.render_documents(_documents(sample.context))
         if self._config.method == "rubric":
@@ -567,7 +576,7 @@ class ContextPrecisionJudge(_LlmJudge):
         return documents[:limit], truncated
 
     async def _evaluate(self, sample: EvaluationSample) -> EvaluationResult:
-        question = prompts.as_text(sample.input)
+        question = prompts.question_text(sample.input)
         reference = prompts.as_text(sample.expected_output)
         documents, truncated = self._select_documents(sample)
         if self._config.method == "rubric":
@@ -647,10 +656,11 @@ def create_llm_judge(
 ) -> _LlmJudge:
     cls = _JUDGES.get(kind)
     if cls is None:
-        # Imported here: rag_checks subclasses _LlmJudge from this module.
+        # Imported here: rag_checks / conversation_checks subclass _LlmJudge from this module.
+        from opengrade_server.evaluation.judges.conversation_checks import CONVERSATION_JUDGES
         from opengrade_server.evaluation.judges.rag_checks import RAG_CHECK_JUDGES
 
-        cls = RAG_CHECK_JUDGES.get(kind)
+        cls = RAG_CHECK_JUDGES.get(kind) or CONVERSATION_JUDGES.get(kind)
     if cls is None:
         raise ValueError(f"Unknown LLM judge kind: {kind}")
     return cls(config, llm, defaults=defaults, claim_cache=claim_cache)

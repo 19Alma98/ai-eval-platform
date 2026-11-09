@@ -228,6 +228,9 @@ class ItemRun:
         # Last retrieval stage wins (retriever → reranker), as on the server.
         self.documents = documents
 
+    def _capture_search_query(self, query: str) -> None:
+        self.context["search_query"] = query
+
 
 @dataclass
 class ExperimentResult:

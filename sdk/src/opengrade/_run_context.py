@@ -12,6 +12,8 @@ class _Recorder(Protocol):
 
     def _capture_documents(self, documents: list[dict[str, Any]]) -> None: ...
 
+    def _capture_search_query(self, query: str) -> None: ...
+
 
 ACTIVE_RUN: ContextVar[_Recorder | None] = ContextVar("opengrade_active_run", default=None)
 
@@ -34,6 +36,7 @@ class ProductionCapture:
     output: object = None
     has_output: bool = False
     documents: list[dict[str, Any]] | None = None
+    search_query: str | None = None
 
 
 PRODUCTION_CAPTURE: ContextVar[ProductionCapture | None] = ContextVar(
@@ -60,6 +63,15 @@ def record_documents(documents: list[dict[str, Any]]) -> None:
     capture = PRODUCTION_CAPTURE.get()
     if capture is not None:
         capture.documents = documents  # last retrieval stage wins, as in experiments
+
+
+def record_search_query(query: str) -> None:
+    run = ACTIVE_RUN.get()
+    if run is not None:
+        run._capture_search_query(query)
+    capture = PRODUCTION_CAPTURE.get()
+    if capture is not None:
+        capture.search_query = query
 
 
 def record_input(value: object, span: object) -> None:

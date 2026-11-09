@@ -1,7 +1,9 @@
 from __future__ import annotations
 
-from opengrade._run_context import record_documents
+from opengrade._run_context import record_documents, record_search_query
 from opengrade._trace import set_attributes
+
+SEARCH_QUERY_ATTR = "opengrade.retrieval.query"
 
 
 def bind_evaluation(*, experiment_id: str, dataset_item_id: str, repeat: int = 0) -> None:
@@ -34,3 +36,16 @@ def set_retrieval_documents(documents: list[dict[str, object]]) -> None:
             "retrieval.documents": documents,
         }
     )
+
+
+def set_search_query(query: str) -> None:
+    """Record the standalone / rewritten retrieval query for conversation judges.
+
+    Sets ``opengrade.retrieval.query`` on the current span and captures it into the
+    experiment / production context as ``search_query``.
+    """
+    text = str(query).strip()
+    if not text:
+        raise ValueError("search query must be a non-empty string")
+    record_search_query(text)
+    set_attributes({SEARCH_QUERY_ATTR: text, "retrieval.query": text})

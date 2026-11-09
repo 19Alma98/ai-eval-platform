@@ -7,7 +7,7 @@ import { cn } from "@/lib/cn";
 import { withProjectQuery } from "@/lib/project-href";
 import { useProjectId } from "@/lib/project-store";
 
-export type ProductionTab = "health" | "answers" | "traces" | "alerts";
+export type ProductionTab = "health" | "answers" | "conversations" | "traces" | "alerts";
 
 export const PRODUCTION_TABS: { id: ProductionTab; href: string; label: string; blurb: string }[] = [
   {
@@ -21,6 +21,12 @@ export const PRODUCTION_TABS: { id: ProductionTab; href: string; label: string; 
     href: "/live-runs",
     label: "Live answers",
     blurb: "Real questions scored by the LLM judge. Review verdicts and turn failures into test cases.",
+  },
+  {
+    id: "conversations",
+    href: "/conversations",
+    label: "Conversations",
+    blurb: "Multi-turn sessions grouped by session id: chat timeline, session judges, promote to test sets.",
   },
   {
     id: "traces",

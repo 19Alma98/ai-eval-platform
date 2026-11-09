@@ -12,21 +12,28 @@ from opengrade_server.api.body_limit import BodyTooLarge, read_body_capped
 from opengrade_server.api.deps import (
     get_app_settings,
     get_bind_otlp_traces,
+    get_conversation_repository,
     get_create_live_from_traces,
     get_ingest_traces,
     get_resolve_project,
+    get_trace_repository,
 )
 from opengrade_server.api.otlp_backpressure import OtlpRejected, get_otlp_backpressure
 from opengrade_server.application.background_tasks import (
     enqueue_live_score,
     live_score_inflight,
 )
+from opengrade_server.application.conversations import refresh_conversation_from_trace
 from opengrade_server.application.traces import (
     IngestNormalizedTraces,
     ProjectMissingError,
     ResolveProject,
 )
 from opengrade_server.config import Settings
+from opengrade_server.infrastructure.conversation_repository import (
+    SqlAlchemyConversationRepository,
+)
+from opengrade_server.infrastructure.repositories import SqlAlchemyTraceRepository
 from opengrade_server.tracing.http_body import (
     BodyDecodeError,
     BodyTooLargeError,
@@ -56,6 +63,8 @@ async def export_traces(
     ingest: IngestNormalizedTraces = Depends(get_ingest_traces),
     bind_outputs: BindOtlpTracesToExperimentOutputs = Depends(get_bind_otlp_traces),
     create_live: CreateLiveInteractionsFromTraces = Depends(get_create_live_from_traces),
+    conversations: SqlAlchemyConversationRepository = Depends(get_conversation_repository),
+    traces_repo: SqlAlchemyTraceRepository = Depends(get_trace_repository),
     settings: Settings = Depends(get_app_settings),
     x_project_id: str | None = Header(default=None, alias="X-Project-Id"),
     x_project_slug: str | None = Header(default=None, alias="X-Project-Slug"),
@@ -136,6 +145,23 @@ async def export_traces(
                 to_score = []
             for interaction_id in to_score:
                 enqueue_live_score(interaction_id)
+
+            sessions = {
+                (t.project_id, t.session_id)
+                for t in saved
+                if t.session_id and str(t.session_id).strip()
+            }
+            for project_id_ref, session_id in sessions:
+                try:
+                    await refresh_conversation_from_trace(
+                        conversations, traces_repo, project_id_ref, session_id
+                    )
+                except Exception:
+                    logger.warning(
+                        "OTLP conversation refresh failed for session %s",
+                        session_id,
+                        exc_info=True,
+                    )
 
             response = ExportTraceServiceResponse()
             return Response(
