@@ -20,19 +20,83 @@ _TRACER_NAME = "opengrade"
 _TRUNCATE_MARKER = "…[truncated]"
 
 
+def _leaf_str(value: object) -> str:
+    try:
+        return str(value)
+    except Exception:  # noqa: BLE001
+        return f"<unserializable {type(value).__name__}>"
+
+
+def _budget_reduce(value: object, budget: list[int]) -> object:
+    """Shrink ``value`` so a later ``json.dumps`` stays near ``budget[0]`` UTF-8 bytes."""
+    if budget[0] <= 0:
+        return _TRUNCATE_MARKER
+
+    if isinstance(value, str):
+        raw = value.encode("utf-8")
+        if len(raw) <= budget[0]:
+            budget[0] -= len(raw)
+            return value
+        clipped = raw[: budget[0]].decode("utf-8", errors="ignore")
+        budget[0] = 0
+        return clipped + _TRUNCATE_MARKER
+
+    if isinstance(value, dict):
+        out: dict[str, object] = {}
+        for key, item in value.items():
+            if budget[0] <= 0:
+                break
+            key_text = key if isinstance(key, str) else _leaf_str(key)
+            key_cost = len(key_text.encode("utf-8")) + 3  # rough JSON overhead
+            if key_cost >= budget[0]:
+                break
+            budget[0] -= key_cost
+            out[key_text] = _budget_reduce(item, budget)
+        return out
+
+    if isinstance(value, (list, tuple)):
+        out_list: list[object] = []
+        for item in value:
+            if budget[0] <= 0:
+                break
+            out_list.append(_budget_reduce(item, budget))
+        return out_list
+
+    if isinstance(value, bool) or value is None:
+        budget[0] = max(0, budget[0] - 4)
+        return value
+
+    if isinstance(value, int) and not isinstance(value, bool):
+        text = str(value)
+        budget[0] = max(0, budget[0] - len(text.encode("utf-8")))
+        return value
+
+    if isinstance(value, float):
+        text = str(value)
+        budget[0] = max(0, budget[0] - len(text.encode("utf-8")))
+        return value
+
+    return _budget_reduce(_leaf_str(value), budget)
+
+
 def truncate_value(value: object, *, limit: int | None = None) -> str:
     if limit is None:
         limit = max_capture_bytes()
-    if isinstance(value, str):
-        text = value
-    else:
-        try:
-            text = json.dumps(value, default=str)
-        except Exception:  # noqa: BLE001 — capture must never break the traced call
+    try:
+        if isinstance(value, str):
+            reduced: object = value
+        else:
+            reduced = _budget_reduce(value, [limit])
+        if isinstance(reduced, str):
+            text = reduced
+        else:
             try:
-                text = str(value)
+                text = json.dumps(reduced, default=str)
             except Exception:  # noqa: BLE001
-                text = f"<unserializable {type(value).__name__}>"
+                text = _leaf_str(reduced)
+    except Exception:  # noqa: BLE001
+        text = _leaf_str(value)
+
     raw = text.encode("utf-8")
     if len(raw) <= limit:
         return text

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import inspect
+import json
 import time
 from collections.abc import AsyncIterator, Iterator
 
@@ -13,7 +14,7 @@ from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanE
 from opentelemetry.trace import StatusCode
 
 import opengrade
-from opengrade import _config, _otel
+from opengrade import _config, _otel, _trace
 from opengrade._config import DEFAULT_MAX_CAPTURE_BYTES
 from opengrade._trace import truncate_value
 
@@ -58,6 +59,31 @@ def test_truncate_value_honors_configured_limit() -> None:
         assert out.endswith("…[truncated]")
     finally:
         _config.configure_capture()
+
+
+def test_truncate_value_reduces_before_json_dumps(monkeypatch: pytest.MonkeyPatch) -> None:
+    seen: list[object] = []
+    real_dumps = json.dumps
+
+    def spy(obj: object, **kwargs: object) -> str:
+        seen.append(obj)
+        return real_dumps(obj, **kwargs)  # type: ignore[arg-type]
+
+    monkeypatch.setattr(_trace.json, "dumps", spy)
+    out = truncate_value({"k": "x" * 10_000}, limit=64)
+    assert seen, "json.dumps should still be called"
+    reduced = seen[0]
+    assert isinstance(reduced, dict)
+    assert len(reduced["k"]) < 10_000
+    assert len(out.encode("utf-8")) <= 64
+    assert out.endswith("…[truncated]") or len(out.encode("utf-8")) <= 64
+
+
+def test_truncate_value_nested_stops_after_budget() -> None:
+    payload = {"a": "x" * 50, "b": "y" * 50, "c": "z" * 50}
+    out = truncate_value(payload, limit=40)
+    assert len(out.encode("utf-8")) <= 40
+    assert out.count("z" * 20) == 0
 
 
 def test_configure_capture_redact_roundtrip() -> None:
