@@ -11,6 +11,10 @@ breaking changes; they are listed under **Changed** with a migration note.
 
 ### Added
 
+- API: `GET /api/v1/projects/by-slug/{slug}` returns one project or 404.
+- SDK: `Client.projects.get_by_slug` / async equivalent; lazy slug resolve uses it and caches 404s for the process lifetime.
+- SDK: idempotent HTTP GETs retry on connection errors and 429/503, honor `Retry-After`, and use short exponential backoff with jitter (max 3 attempts).
+
 - `@opengrade.trace(join_chunks=...)` for custom streaming accumulation on generator / async-generator functions.
 
 - RAG safety judges `pii`, `toxicity` and `prompt_injection` (LLM classify, 1.0 clean / 0.0
