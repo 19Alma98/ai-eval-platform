@@ -224,6 +224,11 @@ def _provider_has_router(provider: TracerProvider, router: _RoutingSpanProcessor
     return router in processors
 
 
+# HTTP statuses where splitting the batch may salvage part of it (body too large /
+# per-item validation). 5xx and connection failures must not bisect.
+_SIZE_RELATED_STATUS = frozenset({400, 413})
+
+
 class _SafeSpanExporter(SpanExporter):
     """Wraps the OTLP exporter so an unreachable platform never surfaces in the app.
 
@@ -240,38 +245,84 @@ class _SafeSpanExporter(SpanExporter):
         self._failing = False
         self._closed = False
         self.dropped_spans = 0
+        self._last_status: int | None = None
+        self._http_attempted = False
+        self._install_status_probe()
+
+    def _install_status_probe(self) -> None:
+        """Record HTTP status from the OTLP client's export result when available."""
+        client = getattr(self._inner, "_client", None)
+        if client is None or getattr(client, "_opengrade_status_probed", False):
+            return
+        original = client.export
+
+        def probed(data: bytes, *args: Any, **kwargs: Any) -> Any:
+            self._http_attempted = True
+            outcome = original(data, *args, **kwargs)
+            self._last_status = getattr(outcome, "status_code", None)
+            return outcome
+
+        client.export = probed  # type: ignore[method-assign]
+        client._opengrade_status_probed = True  # type: ignore[attr-defined]
 
     def export(self, spans: Sequence[ReadableSpan]) -> SpanExportResult:
         if self._closed or time.monotonic() < self._retry_after:
             self._drop(len(spans))
             return SpanExportResult.FAILURE
         batch = list(spans)
-        result = self._export_split(batch)
+        deadline = time.monotonic() + EXPORT_TIMEOUT_S
+        result = self._export_split(batch, deadline)
         if result is SpanExportResult.SUCCESS:
             self._on_success()
             return result
         # Single-span failure (often oversize): drop without silencing later batches.
         if len(batch) <= 1:
             return SpanExportResult.FAILURE
-        # Whole batch failed even after bisecting → treat as connectivity outage.
+        # Whole batch failed (outage, or size-split exhausted) → cooldown.
         self._on_failure(0)  # leaves already counted drops
         return SpanExportResult.FAILURE
 
-    def _export_split(self, spans: list[ReadableSpan]) -> SpanExportResult:
+    def _failure_is_size_related(self) -> bool:
+        status = self._last_status
+        if status is None:
+            status = getattr(self._inner, "last_export_status", None)
+        if status in _SIZE_RELATED_STATUS:
+            return True
+        # Client-side max_request_size rejection: FAILURE with no HTTP round-trip.
+        if status is None and not self._http_attempted and getattr(self._inner, "_client", None) is not None:
+            return True
+        return False
+
+    def _export_once(self, spans: list[ReadableSpan]) -> tuple[SpanExportResult, bool]:
+        self._last_status = None
+        self._http_attempted = False
         try:
             result = self._inner.export(spans)
         except Exception:  # noqa: BLE001 — export must never raise into the app
             logger.debug("opengrade: span export raised", exc_info=True)
-            result = SpanExportResult.FAILURE
+            return SpanExportResult.FAILURE, False
+        if result is SpanExportResult.SUCCESS:
+            return result, False
+        return result, self._failure_is_size_related()
+
+    def _export_split(self, spans: list[ReadableSpan], deadline: float) -> SpanExportResult:
+        if self._closed or time.monotonic() >= deadline:
+            self._drop(len(spans))
+            return SpanExportResult.FAILURE
+        result, size_related = self._export_once(spans)
         if result is SpanExportResult.SUCCESS:
             return SpanExportResult.SUCCESS
         if len(spans) <= 1:
             self._drop(len(spans))
             logger.debug("opengrade: dropped %d oversize or rejected span(s)", len(spans))
             return SpanExportResult.FAILURE
+        if not size_related:
+            # 5xx / connection / other: one attempt, then cooldown in export().
+            self._drop(len(spans))
+            return SpanExportResult.FAILURE
         mid = len(spans) // 2
-        left = self._export_split(spans[:mid])
-        right = self._export_split(spans[mid:])
+        left = self._export_split(spans[:mid], deadline)
+        right = self._export_split(spans[mid:], deadline)
         if left is SpanExportResult.SUCCESS or right is SpanExportResult.SUCCESS:
             return SpanExportResult.SUCCESS
         return SpanExportResult.FAILURE

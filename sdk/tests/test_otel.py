@@ -81,14 +81,19 @@ def test_at_exit_with_unreachable_server_is_fast_and_silent(
 
 
 class _FailingExporter(SpanExporter):
-    def __init__(self, *, raises: bool = False) -> None:
+    """Always fails. Optional HTTP status (default 503) — not a size error."""
+
+    def __init__(self, *, raises: bool = False, status: int | None = 503) -> None:
         self.calls = 0
         self.raises = raises
+        self.status = status
+        self.last_export_status: int | None = None
         self.batch_sizes: list[int] = []
 
     def export(self, spans: Sequence[ReadableSpan]) -> SpanExportResult:
         self.calls += 1
         self.batch_sizes.append(len(spans))
+        self.last_export_status = None if self.raises else self.status
         if self.raises:
             raise ConnectionError("down")
         return SpanExportResult.FAILURE
@@ -98,17 +103,21 @@ class _FailingExporter(SpanExporter):
 
 
 class _SizeSensitiveExporter(SpanExporter):
-    """Fails batches larger than ``limit`` spans (stands in for HTTP 413)."""
+    """Fails batches larger than ``limit`` spans with HTTP 413."""
 
-    def __init__(self, *, limit: int) -> None:
+    def __init__(self, *, limit: int, status: int = 413) -> None:
         self.limit = limit
+        self.status = status
         self.calls = 0
         self.exported = 0
+        self.last_export_status: int | None = None
 
     def export(self, spans: Sequence[ReadableSpan]) -> SpanExportResult:
         self.calls += 1
         if len(spans) > self.limit:
+            self.last_export_status = self.status
             return SpanExportResult.FAILURE
+        self.last_export_status = 200
         self.exported += len(spans)
         return SpanExportResult.SUCCESS
 
@@ -123,14 +132,28 @@ def test_safe_exporter_drops_and_backs_off(raises: bool, caplog: pytest.LogCaptu
     with caplog.at_level(logging.DEBUG, logger="opengrade"):
         # Single-span failure: drop without cooldown (oversize / reject).
         assert safe.export([object()]) is SpanExportResult.FAILURE  # type: ignore[list-item]
-        # Multi-span failure after split: all leaves fail → cooldown.
+        # Multi-span 5xx / connection failure: no bisect → cooldown immediately.
         assert safe.export([object(), object()]) is SpanExportResult.FAILURE  # type: ignore[list-item]
         assert safe.export([object()]) is SpanExportResult.FAILURE  # type: ignore[list-item]
-    # 1 + (2 then 1+1 split) = 4 attempts; third export skipped during cooldown.
-    assert inner.calls == 4
-    assert safe.dropped_spans == 4  # 1 + 2 leaves + 1 cooldown drop
+    # 1 single + 1 multi (no split); third export skipped during cooldown.
+    assert inner.calls == 2
+    assert inner.batch_sizes == [1, 2]
+    assert safe.dropped_spans == 4  # 1 + 2 + 1 cooldown drop
     warnings = [r for r in caplog.records if r.levelno == logging.WARNING]
     assert len(warnings) == 1
+
+
+def test_safe_exporter_does_not_split_on_server_errors() -> None:
+    inner = _FailingExporter(status=503)
+    safe = _otel._SafeSpanExporter(inner, cooldown_s=60)
+    spans = [object()] * 8  # type: ignore[list-item]
+    assert safe.export(spans) is SpanExportResult.FAILURE
+    assert inner.calls == 1
+    assert inner.batch_sizes == [8]
+    assert safe.dropped_spans == 8
+    # Cooldown: next batch is dropped without a network call.
+    assert safe.export([object()]) is SpanExportResult.FAILURE  # type: ignore[list-item]
+    assert inner.calls == 1
 
 
 def test_safe_exporter_splits_oversized_batch_without_cooldown() -> None:
@@ -145,8 +168,47 @@ def test_safe_exporter_splits_oversized_batch_without_cooldown() -> None:
     assert inner.exported == 4
 
 
+@pytest.mark.parametrize("status", [413, 400])
+def test_safe_exporter_splits_on_size_http_status(status: int) -> None:
+    inner = _SizeSensitiveExporter(limit=1, status=status)
+    safe = _otel._SafeSpanExporter(inner, cooldown_s=60)
+    spans = [object(), object()]  # type: ignore[list-item]
+    assert safe.export(spans) is SpanExportResult.SUCCESS
+    assert inner.exported == 2
+    assert inner.calls >= 3  # full batch + two halves
+
+
+def test_safe_exporter_aborts_size_split_at_deadline(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(_otel, "EXPORT_TIMEOUT_S", 0.05)
+
+    class _SlowSizeExporter(SpanExporter):
+        def __init__(self) -> None:
+            self.calls = 0
+            self.last_export_status: int | None = None
+
+        def export(self, spans: Sequence[ReadableSpan]) -> SpanExportResult:
+            self.calls += 1
+            time.sleep(0.04)
+            self.last_export_status = 413
+            return SpanExportResult.FAILURE
+
+        def shutdown(self) -> None:
+            pass
+
+    inner = _SlowSizeExporter()
+    safe = _otel._SafeSpanExporter(inner, cooldown_s=60)
+    spans = [object()] * 16  # type: ignore[list-item]
+    start = time.monotonic()
+    assert safe.export(spans) is SpanExportResult.FAILURE
+    elapsed = time.monotonic() - start
+    # Without a deadline this would be 31 slow attempts (~1.2s+).
+    assert elapsed < 0.4
+    assert inner.calls < 8
+
+
 def test_safe_exporter_single_oversize_does_not_cooldown() -> None:
-    inner = _FailingExporter()
+    # Unknown / non-size single-span reject: drop, keep trying later batches.
+    inner = _FailingExporter(status=400)
     safe = _otel._SafeSpanExporter(inner, cooldown_s=60)
     assert safe.export([object()]) is SpanExportResult.FAILURE  # type: ignore[list-item]
     assert safe.dropped_spans == 1
