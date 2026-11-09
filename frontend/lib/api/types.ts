@@ -552,6 +552,7 @@ export type LiveJudgeWarning = {
 export type ListLiveInteractionsResponse = {
   items: LiveInteraction[];
   judge_warnings: LiveJudgeWarning[];
+  next_offset?: number | null;
 };
 
 export type LiveSeriesBucket = {

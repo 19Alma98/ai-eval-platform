@@ -388,6 +388,7 @@ class LiveInteractionResponse(_ApiModel):
 class ListLiveInteractionsResponse(_ApiModel):
     items: list[LiveInteractionResponse] = Field(default_factory=list)
     judge_warnings: list[LiveJudgeWarningResponse] = Field(default_factory=list)
+    next_offset: int | None = None
 
 
 class TraceScoresAccepted(_ApiModel):

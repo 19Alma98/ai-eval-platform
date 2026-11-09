@@ -411,6 +411,7 @@ Default window: the last 24 hours (`until` defaults to now). Naive datetimes are
 
 - `GET /api/v1/projects/{project_id}/traces/{trace_id}` includes `scores`.
 - `GET /api/v1/projects/{project_id}/live-interactions` and `GET /api/v1/live-interactions/{id}` include `trace_scores`, joined on `metadata.source_trace_id`. `failed_only=true` also keeps interactions with any trace score whose stored label is `FAIL`, whatever its source (e.g. an SDK metric under its threshold, or a thumbs-down); `ERROR` does not count. Judge calibration ignores trace scores.
+- List query params: `judge_status`, `search`, `failed_only`, `unreviewed_only`, `since`, `until`, repeated `metadata=key:value` (AND on interaction JSON metadata), `limit` (1–200, default 50), `offset`. Response includes `next_offset` when more rows remain.
 
 ## Production releases (version / environment)
 

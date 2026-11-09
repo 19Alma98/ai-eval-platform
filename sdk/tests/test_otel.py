@@ -25,6 +25,8 @@ def reset_otel_state(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
     monkeypatch.delenv("OPENGRADE_PROJECT_ID", raising=False)
     monkeypatch.delenv("OPENGRADE_PROJECT_SLUG", raising=False)
     monkeypatch.delenv("OPENGRADE_DISABLED", raising=False)
+    monkeypatch.delenv("OPENGRADE_TRACE_SAMPLE_RATE", raising=False)
+    monkeypatch.delenv("OPENGRADE_MAX_CAPTURE_BYTES", raising=False)
     _config._reset_for_tests()
     _otel._reset_for_tests()
     yield
@@ -321,3 +323,50 @@ assert "opengrade.experiment" not in sys.modules
         [sys.executable, "-c", script], check=False, capture_output=True, text=True
     )
     assert result.returncode == 0, result.stderr
+
+
+def test_init_sets_trace_id_ratio_sampler() -> None:
+    from opentelemetry.sdk.trace.sampling import ParentBased, TraceIdRatioBased
+
+    opengrade.init(project_slug="demo", instrument=False, trace_sample_rate=0.25)
+    provider = _otel._PROVIDER
+    assert isinstance(provider, TracerProvider)
+    assert isinstance(provider.sampler, ParentBased)
+    assert isinstance(provider.sampler._root, TraceIdRatioBased)
+    assert provider.sampler._root._rate == 0.25
+
+
+def test_init_trace_sample_rate_from_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    from opentelemetry.sdk.trace.sampling import TraceIdRatioBased
+
+    monkeypatch.setenv("OPENGRADE_TRACE_SAMPLE_RATE", "0.5")
+    opengrade.init(project_slug="demo", instrument=False)
+    provider = _otel._PROVIDER
+    assert isinstance(provider, TracerProvider)
+    assert isinstance(provider.sampler._root, TraceIdRatioBased)
+    assert provider.sampler._root._rate == 0.5
+
+
+def test_init_does_not_replace_host_sampler() -> None:
+    from opentelemetry.sdk.trace.sampling import ALWAYS_ON, StaticSampler
+
+    host = TracerProvider(sampler=ALWAYS_ON, shutdown_on_exit=False)
+    trace.set_tracer_provider(host)
+    opengrade.init(project_slug="demo", instrument=False, trace_sample_rate=0.1)
+    assert trace.get_tracer_provider() is host
+    assert isinstance(host.sampler, StaticSampler)
+
+
+def test_init_max_capture_bytes(monkeypatch: pytest.MonkeyPatch) -> None:
+    opengrade.init(project_slug="demo", instrument=False, max_capture_bytes=128)
+    assert _config.max_capture_bytes() == 128
+
+    _otel._reset_for_tests()
+    monkeypatch.setenv("OPENGRADE_MAX_CAPTURE_BYTES", "256")
+    opengrade.init(project_slug="demo", instrument=False)
+    assert _config.max_capture_bytes() == 256
+
+
+def test_resolve_trace_sample_rate_rejects_out_of_range() -> None:
+    with pytest.raises(ValueError, match="trace_sample_rate"):
+        _otel.resolve_trace_sample_rate(1.5)

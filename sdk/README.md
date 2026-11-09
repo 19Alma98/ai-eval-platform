@@ -437,6 +437,19 @@ opengrade.init(
 
 They become the OTel resource attributes `service.version` / `deployment.environment` (when opengrade attaches to a host TracerProvider, they are stamped on each span as `opengrade.version` / `opengrade.environment`). Production → Health then filters by environment and version and shows a **By version** table (error rate, latency, cost per trace, failing scores side by side); the Traces list filters the same way, and alert rules can be scoped to an `environment` / `version`. API: `GET /projects/{id}/monitoring?environment=&version=`, `/monitoring/versions`, `/monitoring/facets`, `GET /projects/{id}/traces?environment=&version=`.
 
+### Trace sampling and capture size
+
+```python
+opengrade.init(
+    project_slug="acme",
+    trace_sample_rate=0.1,  # or OPENGRADE_TRACE_SAMPLE_RATE
+    max_capture_bytes=16_384,  # or OPENGRADE_MAX_CAPTURE_BYTES
+)
+```
+
+- `trace_sample_rate` is OTEL head sampling (`TraceIdRatioBased`) when opengrade creates the `TracerProvider`. It does not change a host provider's sampler.
+- `max_capture_bytes` caps UTF-8 size of input/output values written on `@opengrade.trace` spans (default 32 KiB).
+
 ### Live runs from tracing (production)
 
 With `live=True`, the outermost `@opengrade.trace` call outside an experiment becomes a live interaction at OTLP ingestion; no separate `live_runs.submit` call is needed.
@@ -631,6 +644,8 @@ Install the extra for the providers you use, then `init(instrument="auto")` acti
 | `OPENGRADE_VERSION` | Release of your app (`service.version`); production views, traces and alerts can be filtered and compared per version. `init(version=...)` wins |
 | `OPENGRADE_ENVIRONMENT` | Deployment environment (`deployment.environment`, e.g. `prod`, `staging`). `init(environment=...)` wins |
 | `OPENGRADE_METRICS_WORKERS` | Size of the `@opengrade.trace(metrics=...)` background pool (default `2`, range 1–64); `init(metrics_workers=...)` wins |
+| `OPENGRADE_TRACE_SAMPLE_RATE` | OTEL head sampling when opengrade owns the `TracerProvider` (`TraceIdRatioBased`, default `1.0`); `init(trace_sample_rate=...)` wins. Independent of `live_sample_rate` / `metrics_sample_rate` |
+| `OPENGRADE_MAX_CAPTURE_BYTES` | Max UTF-8 bytes for captured input/output span attributes (default `32768`); `init(max_capture_bytes=...)` wins |
 
 Project precedence for `init()`: arguments > `set_project()` > env. If both `OPENGRADE_PROJECT_ID` and `OPENGRADE_PROJECT_SLUG` are set, id wins. `init(project_slug=…)` also wires control-plane calls (`log_score`, production metrics) via lazy slug→id resolution.
 

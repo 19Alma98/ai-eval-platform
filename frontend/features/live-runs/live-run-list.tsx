@@ -8,19 +8,37 @@ import { EmptyState } from "@/components/empty-state";
 import { ErrorState } from "@/components/error-state";
 import { LoadingBlock } from "@/components/loading-block";
 import { RelativeTime } from "@/components/relative-time";
+import { TimeRangePicker } from "@/components/time-range-picker";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { liveJudgeWarningMessage } from "@/features/judges/judge-metadata";
-import type { JudgeCalibrationBucket, LiveInteraction } from "@/lib/api/types";
+import { AttributeFilterBar } from "@/features/traces/attribute-filter-bar";
+import {
+  type AttributeFilters,
+  EMPTY_ATTRIBUTE_FILTERS,
+  hasAttributeFilters,
+  readAttributeFilters,
+  writeAttributeFilters,
+} from "@/features/traces/attribute-filters";
+import type { JudgeCalibrationBucket, LiveInteraction, TraceScore } from "@/lib/api/types";
 import { formatErrorForUi } from "@/lib/api/client";
 import { cn } from "@/lib/cn";
 import { formatScore } from "@/lib/format";
 import { metricLabel } from "@/lib/metrics-catalog";
 import { withProjectQuery } from "@/lib/project-href";
 import { useProjectId } from "@/lib/project-store";
+import {
+  isPreset,
+  parseTimeRangeParams,
+  rangeFromPreset,
+  writeTimeRangeParams,
+  type TimeWindow,
+} from "@/lib/time-range";
 import { useDebouncedValue } from "@/lib/use-debounced-value";
+import { useTimezone } from "@/lib/use-timezone";
 import { LIVE_VERDICT_LABELS, liveVerdict, type LiveVerdict } from "./live-verdict";
-import { feedbackThumb } from "./trace-feedback";
+import { FEEDBACK_NAME, feedbackThumb } from "./trace-feedback";
 import { useLiveJudgeCalibration, useLiveRuns } from "./use-live-runs";
 
 const VERDICT_STYLES: Record<LiveVerdict, string> = {
@@ -31,12 +49,52 @@ const VERDICT_STYLES: Record<LiveVerdict, string> = {
   not_scored: "bg-status-unset-bg text-status-unset",
 };
 
+function TraceScoreChip({ score }: { score: TraceScore }) {
+  const fail = (score.label ?? "").toUpperCase() === "FAIL";
+  if (score.name === FEEDBACK_NAME) {
+    const thumb = feedbackThumb([score]);
+    return (
+      <span
+        className={cn(
+          "inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-xs",
+          fail || thumb === "down"
+            ? "bg-status-fail-bg text-status-fail"
+            : "bg-surface-2 text-foreground",
+        )}
+      >
+        feedback
+        {thumb === "up" ? (
+          <ThumbsUp className="size-3" aria-hidden />
+        ) : thumb === "down" ? (
+          <ThumbsDown className="size-3" aria-hidden />
+        ) : null}
+      </span>
+    );
+  }
+  return (
+    <span
+      className={cn(
+        "inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-xs",
+        fail ? "bg-status-fail-bg text-status-fail" : "bg-surface-2 text-foreground",
+      )}
+    >
+      {score.name}
+      {score.value != null ? (
+        <span className="tabular-nums font-medium">{formatScore(score.value)}</span>
+      ) : null}
+    </span>
+  );
+}
+
 function ScoreChips({ row }: { row: LiveInteraction }) {
-  const scored = row.scores.filter((s) => s.score != null);
-  if (scored.length === 0) return <span className="text-muted-foreground">—</span>;
+  const judged = row.scores.filter((s) => s.score != null);
+  const extras = row.trace_scores ?? [];
+  if (judged.length === 0 && extras.length === 0) {
+    return <span className="text-muted-foreground">—</span>;
+  }
   return (
     <span className="flex flex-wrap gap-1">
-      {scored.map((s) => {
+      {judged.map((s) => {
         const fail = (s.label ?? "").toUpperCase() === "FAIL";
         return (
           <span
@@ -51,6 +109,9 @@ function ScoreChips({ row }: { row: LiveInteraction }) {
           </span>
         );
       })}
+      {extras.map((s) => (
+        <TraceScoreChip key={s.id} score={s} />
+      ))}
     </span>
   );
 }
@@ -76,21 +137,48 @@ function pct(rate: number): string {
   return `${Math.round(rate * 100)}%`;
 }
 
+/** Map attribute chips to live-interaction metadata key:value pairs. */
+function liveMetadataFilters(f: AttributeFilters): string[] {
+  const pairs = [...f.metadata];
+  if (f.user) pairs.push(`user_id:${f.user}`);
+  if (f.session) pairs.push(`session_id:${f.session}`);
+  return pairs;
+}
+
 export function LiveRunList() {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const { projectId } = useProjectId();
+  const { timeZone, setTimeZone, options: timeZoneOptions } = useTimezone();
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [calibrationIndex, setCalibrationIndex] = useState(0);
+  const [anchor, setAnchor] = useState(() => new Date());
   const filter = filterFromParams(searchParams);
   const [search, setSearch] = useState(() => searchParams.get("q") ?? "");
   const debouncedSearch = useDebouncedValue(search.trim());
+
+  const searchKey = searchParams.toString();
+  const attributes = useMemo(
+    () => readAttributeFilters(new URLSearchParams(searchKey)),
+    [searchKey],
+  );
+  const hasRange = searchParams.get("range") != null;
+  const window = useMemo(
+    () =>
+      hasRange
+        ? parseTimeRangeParams(searchParams, { defaultPreset: "24h", anchor })
+        : null,
+    [hasRange, searchParams, anchor],
+  );
+
   const query = useLiveRuns(projectId, {
-    // "Waiting" covers both queued and in-flight judge runs.
     judgeStatus: filter === "waiting" ? "pending,running" : undefined,
     failedOnly: filter === "failing" || undefined,
     search: debouncedSearch || undefined,
+    since: window?.start.toISOString(),
+    until: window?.end.toISOString(),
+    metadata: liveMetadataFilters(attributes),
   });
   const calibration = useLiveJudgeCalibration(projectId);
 
@@ -117,14 +205,48 @@ export function LiveRunList() {
     [setParams],
   );
 
+  const setWindow = useCallback(
+    (next: TimeWindow | null) => {
+      const params = new URLSearchParams(searchParams.toString());
+      if (next == null) {
+        params.delete("range");
+        params.delete("since");
+        params.delete("until");
+      } else if (isPreset(next.kind)) {
+        const fresh = rangeFromPreset(next.kind, new Date());
+        setAnchor(fresh.end);
+        writeTimeRangeParams(params, fresh);
+      } else {
+        writeTimeRangeParams(params, next);
+      }
+      router.replace(`${pathname}?${params.toString()}`);
+    },
+    [pathname, router, searchParams],
+  );
+
+  const setAttributes = useCallback(
+    (next: AttributeFilters) => {
+      const params = writeAttributeFilters(new URLSearchParams(searchParams.toString()), next);
+      // Live list does not filter by tags.
+      params.delete("tag");
+      router.replace(`${pathname}?${params.toString()}`);
+    },
+    [pathname, router, searchParams],
+  );
+
   useEffect(() => {
     const current = searchParams.get("q") ?? "";
     if (debouncedSearch === current) return;
     setParams({ q: debouncedSearch || null });
   }, [debouncedSearch, searchParams, setParams]);
 
-  const rows = query.data?.items ?? [];
-  const unsuitableMessage = liveJudgeWarningMessage(query.data?.judge_warnings);
+  const rows = useMemo(
+    () => query.data?.pages.flatMap((p) => p.items) ?? [],
+    [query.data],
+  );
+  const unsuitableMessage = liveJudgeWarningMessage(
+    query.data?.pages[0]?.judge_warnings,
+  );
   const calibrationRows = calibration.data ?? [];
 
   const calibrationColumns: DataTableColumn<JudgeCalibrationBucket>[] = useMemo(
@@ -253,9 +375,11 @@ export function LiveRunList() {
     [],
   );
 
-  const filtersActive = filter !== "all" || debouncedSearch !== "";
-  // Only the table reacts to loading/errors so the toolbar (and the search
-  // field's focus) survives every refetch.
+  const filtersActive =
+    filter !== "all" ||
+    debouncedSearch !== "" ||
+    window != null ||
+    hasAttributeFilters(attributes);
   const staleError = query.isError && query.data != null;
 
   let table: ReactNode;
@@ -283,16 +407,30 @@ export function LiveRunList() {
     );
   } else {
     table = (
-      <DataTable
-        rows={rows}
-        columns={columns}
-        getRowKey={(row) => row.id}
-        selectedIndex={selectedIndex}
-        onSelectedIndexChange={setSelectedIndex}
-        onRowActivate={onRowActivate}
-        aria-label="Live answers"
-        className={cn(query.isPlaceholderData && "opacity-60")}
-      />
+      <>
+        <DataTable
+          rows={rows}
+          columns={columns}
+          getRowKey={(row) => row.id}
+          selectedIndex={selectedIndex}
+          onSelectedIndexChange={setSelectedIndex}
+          onRowActivate={onRowActivate}
+          aria-label="Live answers"
+          className={cn(query.isPlaceholderData && "opacity-60")}
+        />
+        {query.hasNextPage ? (
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="self-center"
+            disabled={query.isFetchingNextPage}
+            onClick={() => void query.fetchNextPage()}
+          >
+            {query.isFetchingNextPage ? "Loading…" : "Load more"}
+          </Button>
+        ) : null}
+      </>
     );
   }
 
@@ -335,6 +473,55 @@ export function LiveRunList() {
           className="h-8 max-w-xs"
           aria-label="Search questions"
         />
+        {window ? (
+          <TimeRangePicker
+            window={window}
+            onWindowChange={(w) => setWindow(w)}
+            showCustom
+            showTimezone
+            timeZone={timeZone}
+            onTimeZoneChange={setTimeZone}
+            timeZoneOptions={timeZoneOptions}
+          />
+        ) : (
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="h-8 text-xs"
+            onClick={() => setWindow(rangeFromPreset("24h", new Date()))}
+          >
+            Time range
+          </Button>
+        )}
+        {window ? (
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            className="h-8 text-xs"
+            onClick={() => setWindow(null)}
+          >
+            Clear range
+          </Button>
+        ) : null}
+        <AttributeFilterBar
+          key={projectId ?? "none"}
+          filters={attributes}
+          facets={undefined}
+          onChange={setAttributes}
+        />
+        {hasAttributeFilters(attributes) ? (
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            className="h-8 text-xs"
+            onClick={() => setAttributes(EMPTY_ATTRIBUTE_FILTERS)}
+          >
+            Clear filters
+          </Button>
+        ) : null}
       </div>
       {staleError ? (
         <div

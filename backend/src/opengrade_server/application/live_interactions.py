@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import logging
 import uuid
-from collections.abc import Collection
+from collections.abc import Collection, Sequence
 from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime
 from typing import Any
@@ -77,6 +77,7 @@ class ListLiveInteractionsResult:
     ]
     judge_warnings: list[LiveJudgeWarning]
     trace_scores: dict[uuid.UUID, list[TraceScore]] = field(default_factory=dict)
+    next_offset: int | None = None
 
 
 class LiveInteractionNotFoundError(Exception):
@@ -502,7 +503,11 @@ class ListLiveInteractions:
         search: str | None = None,
         failed_only: bool = False,
         unreviewed_only: bool = False,
+        since: datetime | None = None,
+        until: datetime | None = None,
+        metadata: Sequence[tuple[str, str]] = (),
         limit: int = 50,
+        offset: int = 0,
     ) -> ListLiveInteractionsResult:
         project = await self._projects.get_by_id(project_id)
         if project is None:
@@ -511,7 +516,7 @@ class ListLiveInteractions:
         # until enough rows match instead of scanning a fixed window.
         post_filter = failed_only or unreviewed_only
         page_size = min(max(limit, 50), 200) if post_filter else limit
-        offset = 0
+        scan_offset = max(0, offset)
         out: list[
             tuple[
                 LiveInteraction,
@@ -520,13 +525,17 @@ class ListLiveInteractions:
             ]
         ] = []
         joined: dict[uuid.UUID, list[TraceScore]] = {}
+        next_offset: int | None = None
         while True:
             items = await self._live.list_by_project(
                 project_id,
                 judge_statuses=judge_statuses,
                 search=search,
+                since=since,
+                until=until,
+                metadata=metadata,
                 limit=page_size,
-                offset=offset,
+                offset=scan_offset,
             )
             by_trace = await self._trace_scores_by_trace(project_id, items)
             scores_by_interaction = await self._live.list_scores_for_interaction_ids(
@@ -536,7 +545,7 @@ class ListLiveInteractions:
                 score.id for scores in scores_by_interaction.values() for score in scores
             ]
             reviews_by_score_id = await self._live.list_score_reviews_by_score_ids(all_score_ids)
-            for item in items:
+            for index, item in enumerate(items):
                 scores = scores_by_interaction.get(item.id, [])
                 extra = by_trace.get(source_trace_id(item) or "", [])
                 if failed_only and not live_row_is_failed(scores, extra):
@@ -552,11 +561,18 @@ class ListLiveInteractions:
                 if extra:
                     joined[item.id] = extra
                 if len(out) >= limit:
+                    # Resume after this matched row on the next page.
+                    next_offset = scan_offset + index + 1
                     break
             else:
-                if not post_filter or len(items) < page_size:
+                if not post_filter:
+                    # Plain page: more rows exist if we filled the page.
+                    if len(items) >= page_size:
+                        next_offset = scan_offset + len(items)
                     break
-                offset += page_size
+                if len(items) < page_size:
+                    break
+                scan_offset += page_size
                 continue
             break
 
@@ -577,7 +593,10 @@ class ListLiveInteractions:
                 )
             )
         return ListLiveInteractionsResult(
-            items=out, judge_warnings=judge_warnings, trace_scores=joined
+            items=out,
+            judge_warnings=judge_warnings,
+            trace_scores=joined,
+            next_offset=next_offset,
         )
 
 

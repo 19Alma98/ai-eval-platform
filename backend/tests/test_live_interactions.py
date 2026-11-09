@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import uuid
-from collections.abc import Collection
+from collections.abc import Collection, Sequence
 from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 
@@ -123,6 +123,9 @@ class InMemoryLiveRepository:
         *,
         judge_statuses: Collection[str] | None = None,
         search: str | None = None,
+        since: datetime | None = None,
+        until: datetime | None = None,
+        metadata: Sequence[tuple[str, str]] = (),
         limit: int = 50,
         offset: int = 0,
     ) -> list[LiveInteraction]:
@@ -131,6 +134,12 @@ class InMemoryLiveRepository:
             rows = [i for i in rows if i.judge_status in judge_statuses]
         if search:
             rows = [i for i in rows if search.lower() in i.question.lower()]
+        if since is not None:
+            rows = [i for i in rows if i.created_at >= since]
+        if until is not None:
+            rows = [i for i in rows if i.created_at < until]
+        for key, value in metadata:
+            rows = [i for i in rows if str((i.metadata or {}).get(key)) == value]
         rows.sort(key=lambda i: i.created_at, reverse=True)
         return rows[offset : offset + limit]
 

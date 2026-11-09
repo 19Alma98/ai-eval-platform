@@ -9,7 +9,9 @@ DEFAULT_TRACKING_URI = "http://localhost:8000"
 OTLP_TRACES_PATH = "/v1/traces"
 DEFAULT_ENDPOINT = DEFAULT_TRACKING_URI + OTLP_TRACES_PATH
 DEFAULT_SERVICE_NAME = "opengrade-app"
-MAX_CAPTURE_BYTES = 32 * 1024
+DEFAULT_MAX_CAPTURE_BYTES = 32 * 1024
+# Back-compat alias for the default capture limit (prefer ``max_capture_bytes()``).
+MAX_CAPTURE_BYTES = DEFAULT_MAX_CAPTURE_BYTES
 
 logger = logging.getLogger("opengrade")
 
@@ -18,6 +20,7 @@ _API_KEY: str | None = None
 _WARNED_PLAINTEXT_KEY = False
 _ACTIVE_PROJECT_ID: str | None = None
 _ACTIVE_PROJECT_SLUG: str | None = None
+_MAX_CAPTURE_BYTES: int | None = None
 
 
 def _normalize_uri(uri: str) -> str:
@@ -160,13 +163,48 @@ def _set_active_project(
         _ACTIVE_PROJECT_SLUG = project_slug
 
 
+def configure_capture(*, max_capture_bytes: int | None = None) -> None:
+    """Set capture limit from ``init()``; ``None`` falls back to the env var / default."""
+    global _MAX_CAPTURE_BYTES
+    if max_capture_bytes is None:
+        _MAX_CAPTURE_BYTES = None
+        return
+    value = int(max_capture_bytes)
+    if value < 1:
+        raise ValueError(f"max_capture_bytes must be >= 1, got {value}")
+    _MAX_CAPTURE_BYTES = value
+
+
+def max_capture_bytes() -> int:
+    """``init(max_capture_bytes=...)`` > ``OPENGRADE_MAX_CAPTURE_BYTES`` > 32768."""
+    if _MAX_CAPTURE_BYTES is not None:
+        return _MAX_CAPTURE_BYTES
+    raw = os.getenv("OPENGRADE_MAX_CAPTURE_BYTES", "").strip()
+    if not raw:
+        return DEFAULT_MAX_CAPTURE_BYTES
+    try:
+        value = int(raw)
+        if value < 1:
+            raise ValueError
+        return value
+    except ValueError:
+        logger.warning(
+            "opengrade: invalid OPENGRADE_MAX_CAPTURE_BYTES=%r; using %d",
+            raw,
+            DEFAULT_MAX_CAPTURE_BYTES,
+        )
+        return DEFAULT_MAX_CAPTURE_BYTES
+
+
 def _reset_for_tests() -> None:
     global _TRACKING_URI, _ACTIVE_PROJECT_ID, _ACTIVE_PROJECT_SLUG, _API_KEY, _WARNED_PLAINTEXT_KEY
+    global _MAX_CAPTURE_BYTES
     _TRACKING_URI = None
     _API_KEY = None
     _WARNED_PLAINTEXT_KEY = False
     _ACTIVE_PROJECT_ID = None
     _ACTIVE_PROJECT_SLUG = None
+    _MAX_CAPTURE_BYTES = None
 
 
 @dataclass(frozen=True, slots=True)

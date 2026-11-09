@@ -1097,6 +1097,7 @@ class LiveJudgeWarningResponse(BaseModel):
 class ListLiveInteractionsResponse(BaseModel):
     items: list[LiveInteractionResponse]
     judge_warnings: list[LiveJudgeWarningResponse] = Field(default_factory=list)
+    next_offset: int | None = None
 
 
 class UpsertLiveScoreReviewRequest(BaseModel):

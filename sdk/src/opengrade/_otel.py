@@ -15,7 +15,12 @@ from opentelemetry.sdk.trace.export import BatchSpanProcessor, SpanExporter, Spa
 from opentelemetry.util._once import Once
 
 from opengrade import _live, _production
-from opengrade._config import auth_headers, project_headers, resolve_config
+from opengrade._config import (
+    auth_headers,
+    configure_capture,
+    project_headers,
+    resolve_config,
+)
 from opengrade.instrumentation import activate_instrumentors, deactivate_instrumentors
 
 logger = logging.getLogger("opengrade")
@@ -194,11 +199,33 @@ def _shutdown_and_reset_global_tracer_provider() -> None:
         setattr(trace, "_TRACER_PROVIDER_SET_ONCE", Once())  # noqa: B010
 
 
+def _parse_trace_sample_rate(value: object) -> float:
+    rate = float(value)  # type: ignore[arg-type]
+    if not 0.0 <= rate <= 1.0:
+        raise ValueError(f"trace_sample_rate must be within [0, 1], got {rate}")
+    return rate
+
+
+def resolve_trace_sample_rate(explicit: float | None = None) -> float:
+    """``init(trace_sample_rate=...)`` > ``OPENGRADE_TRACE_SAMPLE_RATE`` > 1.0."""
+    if explicit is not None:
+        return _parse_trace_sample_rate(explicit)
+    raw = os.getenv("OPENGRADE_TRACE_SAMPLE_RATE", "").strip()
+    if not raw:
+        return 1.0
+    try:
+        return _parse_trace_sample_rate(raw)
+    except (TypeError, ValueError):
+        logger.warning("opengrade: invalid OPENGRADE_TRACE_SAMPLE_RATE=%r; keeping all traces", raw)
+        return 1.0
+
+
 def _reset_for_tests() -> None:
     global _INITIALIZED
     deactivate_instrumentors()
     _shutdown_and_reset_global_tracer_provider()
     _live._reset_for_tests()
+    configure_capture()
     _INITIALIZED = False
 
 
@@ -259,6 +286,8 @@ def init(
     force: bool = False,
     live: bool | None = None,
     live_sample_rate: float | None = None,
+    trace_sample_rate: float | None = None,
+    max_capture_bytes: int | None = None,
     metrics_workers: int | None = None,
     version: str | None = None,
     environment: str | None = None,
@@ -273,6 +302,11 @@ def init(
     ``live=True`` (or ``OPENGRADE_LIVE=1``) turns each outermost ``@opengrade.trace`` call
     outside an experiment into a platform live interaction; ``live_sample_rate``
     (or ``OPENGRADE_LIVE_SAMPLE_RATE``, default 1.0) is the fraction sent to the judge.
+    ``trace_sample_rate`` (or ``OPENGRADE_TRACE_SAMPLE_RATE``, default 1.0) is OTEL head
+    sampling (``TraceIdRatioBased``) when opengrade owns the ``TracerProvider`` — independent
+    of ``live_sample_rate`` and ``metrics_sample_rate``.
+    ``max_capture_bytes`` (or ``OPENGRADE_MAX_CAPTURE_BYTES``, default 32768) caps
+    serialized input/output attribute values on traced spans.
     ``metrics_workers`` (or ``OPENGRADE_METRICS_WORKERS``, default 2) is the size of the
     background pool that runs ``@opengrade.trace(metrics=...)``.
     """
@@ -301,6 +335,18 @@ def init(
         _live.configure(enabled=False)
 
     try:
+        configure_capture(max_capture_bytes=max_capture_bytes)
+    except (TypeError, ValueError) as exc:
+        logger.warning("opengrade: max_capture_bytes ignored: %s", exc)
+        configure_capture()
+
+    try:
+        sample_rate = resolve_trace_sample_rate(trace_sample_rate)
+    except (TypeError, ValueError) as exc:
+        logger.warning("opengrade: trace_sample_rate ignored: %s", exc)
+        sample_rate = 1.0
+
+    try:
         _production.configure(workers=metrics_workers)
     except (TypeError, ValueError) as exc:
         logger.warning("opengrade: metrics_workers ignored: %s", exc)
@@ -309,6 +355,7 @@ def init(
         from opentelemetry.exporter.otlp.proto.http import Compression
         from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
         from opentelemetry.sdk.resources import Resource
+        from opentelemetry.sdk.trace.sampling import ParentBased, TraceIdRatioBased
 
         config = resolve_config(
             project_id=project_id,
@@ -351,7 +398,8 @@ def init(
             owns_provider = False
         else:
             # opengrade registers its own bounded atexit handler instead of OTEL's.
-            provider = TracerProvider(resource=resource, shutdown_on_exit=False)
+            sampler = ParentBased(root=TraceIdRatioBased(sample_rate))
+            provider = TracerProvider(resource=resource, sampler=sampler, shutdown_on_exit=False)
             provider.add_span_processor(processor)
             trace.set_tracer_provider(provider)
             owns_provider = True

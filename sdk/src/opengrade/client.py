@@ -874,16 +874,26 @@ class _LiveRunsResource:
         judge_status: str | None = None,
         search: str | None = None,
         failed_only: bool = False,
+        since: str | None = None,
+        until: str | None = None,
+        metadata: builtins.list[str] | None = None,
         limit: int = 50,
+        offset: int = 0,
     ) -> ListLiveInteractionsResponse:
         project_id = resolve_project_id(project_id)
-        params: dict[str, str] = {"limit": str(limit)}
+        params: list[tuple[str, str]] = [("limit", str(limit)), ("offset", str(offset))]
         if judge_status is not None:
-            params["judge_status"] = judge_status
+            params.append(("judge_status", judge_status))
         if search is not None:
-            params["search"] = search
+            params.append(("search", search))
         if failed_only:
-            params["failed_only"] = "true"
+            params.append(("failed_only", "true"))
+        if since is not None:
+            params.append(("since", since))
+        if until is not None:
+            params.append(("until", until))
+        for pair in metadata or ():
+            params.append(("metadata", pair))
         path = f"/api/v1/projects/{project_id}/live-interactions?{urlencode(params)}"
         return self._http.request_model("GET", path, response_model=ListLiveInteractionsResponse)
 

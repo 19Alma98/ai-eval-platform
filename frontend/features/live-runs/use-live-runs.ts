@@ -1,6 +1,6 @@
 "use client";
 
-import { useQuery } from "@tanstack/react-query";
+import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
 import { ApiError } from "@/lib/api/client";
 import { keepPreviousInProject } from "@/lib/queries/keep-previous";
 import {
@@ -9,35 +9,48 @@ import {
   listLiveInteractions,
 } from "@/lib/api/live-runs";
 
-export function liveRunsQueryKey(
-  projectId: string,
-  filters?: { judgeStatus?: string; failedOnly?: boolean; search?: string },
-) {
+export type LiveRunFilters = {
+  judgeStatus?: string;
+  failedOnly?: boolean;
+  search?: string;
+  since?: string;
+  until?: string;
+  metadata?: string[];
+};
+
+export function liveRunsQueryKey(projectId: string, filters?: LiveRunFilters) {
   return [
     "live-runs",
     projectId,
     filters?.judgeStatus ?? "",
     filters?.failedOnly ? "failed" : "",
     filters?.search ?? "",
+    filters?.since ?? "",
+    filters?.until ?? "",
+    (filters?.metadata ?? []).join("\u0000"),
   ] as const;
 }
 
-export function useLiveRuns(
-  projectId: string | null,
-  filters?: { judgeStatus?: string; failedOnly?: boolean; search?: string },
-) {
+export function useLiveRuns(projectId: string | null, filters?: LiveRunFilters) {
   const key = projectId ?? "";
-  return useQuery({
+  return useInfiniteQuery({
     queryKey: liveRunsQueryKey(key, filters),
-    queryFn: () =>
+    queryFn: ({ pageParam }) =>
       listLiveInteractions(key, {
         judgeStatus: filters?.judgeStatus,
         failedOnly: filters?.failedOnly,
         search: filters?.search,
+        since: filters?.since,
+        until: filters?.until,
+        metadata: filters?.metadata,
+        offset: pageParam ?? 0,
+        limit: 50,
       }),
+    initialPageParam: 0 as number,
+    getNextPageParam: (last) =>
+      last.next_offset != null ? last.next_offset : undefined,
     enabled: Boolean(projectId),
     refetchInterval: 5000,
-    // Keep the current rows on screen while a new filter/search loads.
     placeholderData: keepPreviousInProject(key),
   });
 }

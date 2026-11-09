@@ -1781,6 +1781,9 @@ class SqlAlchemyLiveInteractionRepository:
         *,
         judge_statuses: Collection[str] | None = None,
         search: str | None = None,
+        since: datetime | None = None,
+        until: datetime | None = None,
+        metadata: Sequence[tuple[str, str]] = (),
         limit: int = 50,
         offset: int = 0,
     ) -> list[LiveInteraction]:
@@ -1790,7 +1793,12 @@ class SqlAlchemyLiveInteractionRepository:
         if search:
             pattern = f"%{escape_like(search.strip())}%"
             stmt = stmt.where(LiveInteractionModel.question.ilike(pattern, escape="\\"))
-        # id tiebreak keeps pages stable when created_at collides.
+        if since is not None:
+            stmt = stmt.where(LiveInteractionModel.created_at >= since)
+        if until is not None:
+            stmt = stmt.where(LiveInteractionModel.created_at < until)
+        for key, value in metadata:
+            stmt = stmt.where(LiveInteractionModel.metadata_json[key].as_string() == value)
         stmt = (
             stmt.order_by(LiveInteractionModel.created_at.desc(), LiveInteractionModel.id.desc())
             .offset(max(0, offset))

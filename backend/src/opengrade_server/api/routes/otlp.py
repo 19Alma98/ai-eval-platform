@@ -115,6 +115,8 @@ async def export_traces(
                     body=body,
                     content_type=request.headers.get("content-type"),
                     content_capture_enabled=settings.content_capture_enabled,
+                    sample_rate=settings.otlp_trace_sample_rate,
+                    max_span_attr_chars=settings.otlp_max_span_attr_chars,
                 )
             except OtlpDecodeError as exc:
                 return JSONResponse(

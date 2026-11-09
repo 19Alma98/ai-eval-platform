@@ -18,13 +18,12 @@ Priority: **P0** blocks a public release, **P1** fix before promoting it, **P2**
   accounts by design, see `docs/10-security-privacy.md#api-keys`):
   - Optional project binding for `ingest` keys (`project_id` on the key, enforced on OTLP
     `X-Project-Id` / `X-Project-Slug` and the project routes).
-- [ ] **Sampling** (head sampling) and configurable span size limits.
-- [ ] Live view: session/user grouping, filter by SDK metric / feedback, SDK metrics + feedback in the
-  list Scores column, "load more" beyond 50, time-range/metadata filters, auto-refresh on
-  Overview/Monitoring/Traces.
-- [ ] Drill-down from alarms / chart points to the traces that caused them.
+- [ ] Live view still open: session/user grouping; filter by SDK metric / feedback name (Scores
+  column, load more, time-range/metadata filters, and auto-refresh on Overview/Monitoring/Traces
+  shipped).
+- [ ] Drill-down from server alert rules / webhook events to the traces that caused them (chart
+  points and local metric-alarm banners already deep-link).
 - [ ] Retention/TTL and per-project quotas (see "OTLP high volume" below).
-- [ ] Custom time range / timezone and compare-to-previous-period on monitoring.
 
 ### Monitoring gaps (2026-11 review) — P2
 

@@ -70,6 +70,12 @@ Default policy:
 
 OpenTelemetry's current GenAI conventions explicitly warn that input/output message attributes may contain sensitive or PII data.
 
+### Head sampling and attribute size
+
+Server ingest can drop a fraction of traces before storage (`OTLP_TRACE_SAMPLE_RATE`, TraceIdRatioBased on the trace id) and truncate oversized span attribute / event / input/output strings (`OTLP_MAX_SPAN_ATTR_CHARS`). Dropped traces still return OTLP HTTP 200 so exporters do not retry. Sampling reduces what is stored and therefore how many live interactions / judges are created from those traces.
+
+The SDK mirrors this with `init(trace_sample_rate=...)` / `OPENGRADE_TRACE_SAMPLE_RATE` (when opengrade owns the `TracerProvider`) and `init(max_capture_bytes=...)` / `OPENGRADE_MAX_CAPTURE_BYTES` for capture truncation. Trace head sampling is independent of `live_sample_rate` (judge) and `metrics_sample_rate`.
+
 ## Compatibility
 
 The project should expose a documented compatibility matrix:

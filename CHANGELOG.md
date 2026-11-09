@@ -11,6 +11,16 @@ breaking changes; they are listed under **Changed** with a migration note.
 
 ### Added
 
+- Monitoring/Overview: custom absolute time range, IANA timezone picker (display only), and
+  compare-to-previous-period overlay on monitoring charts.
+- Monitoring drill-down: chart bucket clicks and local metric-alarm banners open Traces with
+  `since`/`until` (and `status=error` for error bars); KPI Traces link keeps the current window.
+- Live answers: load more (`offset` / `next_offset`), optional time range + metadata filters,
+  SDK metrics and feedback chips in the Scores column; Overview/Monitoring/Traces auto-refresh
+  every 30s.
+- OTLP head sampling (`OTLP_TRACE_SAMPLE_RATE`) and span attribute size limits
+  (`OTLP_MAX_SPAN_ATTR_CHARS`); SDK `init(trace_sample_rate=..., max_capture_bytes=...)` /
+  `OPENGRADE_TRACE_SAMPLE_RATE` / `OPENGRADE_MAX_CAPTURE_BYTES`.
 - Read-only dashboard for `read` API key sessions: write buttons are hidden (`useCanWrite`).
 - With auth on, `trace_scores.author` and `live_score_reviews.reviewer` are set from the API key
   name (client-supplied values ignored).

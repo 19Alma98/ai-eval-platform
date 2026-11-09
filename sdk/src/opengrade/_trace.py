@@ -12,7 +12,7 @@ from opentelemetry import trace as otel_trace
 from opentelemetry.trace import Span, Status, StatusCode
 
 from opengrade import _live, _production, _trace_attrs
-from opengrade._config import MAX_CAPTURE_BYTES
+from opengrade._config import max_capture_bytes
 from opengrade._run_context import record_input, record_output
 from opengrade.metrics import LocalMetric
 
@@ -20,7 +20,9 @@ _TRACER_NAME = "opengrade"
 _TRUNCATE_MARKER = "…[truncated]"
 
 
-def truncate_value(value: object, *, limit: int = MAX_CAPTURE_BYTES) -> str:
+def truncate_value(value: object, *, limit: int | None = None) -> str:
+    if limit is None:
+        limit = max_capture_bytes()
     if isinstance(value, str):
         text = value
     else:

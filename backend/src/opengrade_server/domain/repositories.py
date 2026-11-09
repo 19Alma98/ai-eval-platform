@@ -313,6 +313,9 @@ class LiveInteractionRepository(Protocol):
         *,
         judge_statuses: Collection[str] | None = None,
         search: str | None = None,
+        since: datetime | None = None,
+        until: datetime | None = None,
+        metadata: Sequence[tuple[str, str]] = (),
         limit: int = 50,
         offset: int = 0,
     ) -> list[LiveInteraction]: ...

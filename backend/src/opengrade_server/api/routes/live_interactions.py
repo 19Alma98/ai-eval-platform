@@ -53,6 +53,7 @@ from opengrade_server.application.live_judge_calibration import (
 )
 from opengrade_server.application.metrics_sets import MetricsSetNotFoundError
 from opengrade_server.application.projects import ProjectNotFoundError
+from opengrade_server.application.traces import InvalidTraceFilterError, parse_metadata_filters
 from opengrade_server.domain.dataset import DatasetItem
 from opengrade_server.domain.live_interaction import (
     LiveInteraction,
@@ -243,6 +244,7 @@ def _list_response(result: ListLiveInteractionsResult) -> ListLiveInteractionsRe
             for interaction, scores, score_reviews in result.items
         ],
         judge_warnings=[_judge_warning_response(w) for w in result.judge_warnings],
+        next_offset=result.next_offset,
     )
 
 
@@ -265,9 +267,20 @@ async def list_live_interactions(
     search: str | None = Query(default=None),
     failed_only: bool = Query(default=False),
     unreviewed_only: bool = Query(default=False),
+    since: datetime | None = Query(default=None),
+    until: datetime | None = Query(default=None),
+    metadata: list[str] = Query(
+        default_factory=list,
+        description="Repeated key:value filters on interaction metadata (AND).",
+    ),
     limit: int = Query(default=50, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
     use_case: ListLiveInteractions = Depends(get_list_live_interactions),
 ) -> ListLiveInteractionsResponse:
+    try:
+        meta_pairs = parse_metadata_filters(metadata)
+    except InvalidTraceFilterError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
     try:
         result = await use_case.execute(
             project_id,
@@ -275,7 +288,11 @@ async def list_live_interactions(
             search=search,
             failed_only=failed_only,
             unreviewed_only=unreviewed_only,
+            since=since,
+            until=until,
+            metadata=meta_pairs,
             limit=limit,
+            offset=offset,
         )
     except ProjectNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc

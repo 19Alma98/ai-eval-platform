@@ -14,14 +14,23 @@ import { RefreshControl } from "@/components/refresh-control";
 import { TimeRangePicker } from "@/components/time-range-picker";
 import { buttonVariants } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { parseOverviewRangeParam } from "@/features/overview/overview-range";
+import { OVERVIEW_DEFAULT_PRESET } from "@/features/overview/overview-range";
 import { formatErrorForUi } from "@/lib/api/client";
 import type { MetricMonitor, ProductionMonitoring } from "@/lib/api/types";
 import { cn } from "@/lib/cn";
-import { formatDurationMs, formatPercent, formatScore } from "@/lib/format";
+import { formatDurationMs, formatPercent, formatScore, parseTimestamp } from "@/lib/format";
 import { metricLabel } from "@/lib/metrics-catalog";
 import { withProjectQuery } from "@/lib/project-href";
-import { rangeFromPreset } from "@/lib/time-range";
+import {
+  isPreset,
+  parseTimeRangeParams,
+  previousPeriod,
+  rangeFromPreset,
+  writeTimeRangeParams,
+  type TimeWindow,
+} from "@/lib/time-range";
+import { useTimezone } from "@/lib/use-timezone";
+import { tracesWindowHref } from "@/features/traces/attribute-filters";
 import { alarmState, DEFAULT_ALARM_FAIL_RATE, metricKey, type AlarmThresholds } from "./alarms";
 import { AnnotationQueue, annotationQueueQueryKey } from "./annotation-queue";
 import { useAlarmThresholds } from "./use-alarm-thresholds";
@@ -33,6 +42,7 @@ import {
   useReleaseFacets,
   useVersionSummaries,
 } from "./use-monitoring";
+import { type ChartBucketClick } from "./monitoring-charts-inner";
 
 const chartLoading = () => (
   <div className="h-[160px] animate-pulse rounded-md bg-surface-2" aria-hidden />
@@ -111,19 +121,23 @@ function ms(value: number | null): string {
 
 function MetricCard({
   metric,
+  previous,
   thresholds,
   onAlarmChange,
+  timeZone,
+  onBucketClick,
 }: {
   metric: MetricMonitor;
+  previous?: MetricMonitor | null;
   thresholds: AlarmThresholds;
   onAlarmChange: (key: string, value: number | null) => void;
+  timeZone: string;
+  onBucketClick: (click: ChartBucketClick) => void;
 }) {
   const alarm = alarmState(metric, thresholds);
   const key = metricKey(metric);
   const limitText = String(Math.round(alarm.limit * 100));
   const [draft, setDraft] = useState(limitText);
-  // Follow the saved limit when it changes underneath (thresholds loaded from
-  // storage after mount, or reset to the default).
   const [syncedLimit, setSyncedLimit] = useState(limitText);
   if (syncedLimit !== limitText) {
     setSyncedLimit(limitText);
@@ -133,14 +147,12 @@ function MetricCard({
 
   function commit() {
     if (draft.trim() === "") {
-      // Cleared field: drop the custom alarm and show the default again.
       setDraft(String(Math.round(DEFAULT_ALARM_FAIL_RATE * 100)));
       onAlarmChange(key, null);
       return;
     }
     const n = Number(draft);
     if (!Number.isFinite(n) || n < 0 || n > 100) {
-      // Invalid value: keep the saved alarm untouched.
       setDraft(limitText);
       return;
     }
@@ -176,7 +188,13 @@ function MetricCard({
       <div className="grid gap-4 md:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)]">
         <div className="flex flex-col gap-1">
           <span className="text-xs text-muted-foreground">Mean and fail rate over time</span>
-          <MetricSeriesChart metric={metric} alarmLimit={alarm.limit} />
+          <MetricSeriesChart
+            metric={metric}
+            previous={previous}
+            alarmLimit={alarm.limit}
+            timeZone={timeZone}
+            onBucketClick={onBucketClick}
+          />
         </div>
         <div className="flex flex-col gap-1">
           <span className="text-xs text-muted-foreground">Score distribution</span>
@@ -211,20 +229,35 @@ function MetricCard({
   );
 }
 
+function findPreviousMetric(
+  metrics: MetricMonitor[] | undefined,
+  metric: MetricMonitor,
+): MetricMonitor | null {
+  if (!metrics) return null;
+  return metrics.find((m) => m.name === metric.name && m.source === metric.source) ?? null;
+}
+
 function Dashboard({
   projectId,
   data,
+  previous,
   versions,
+  timeZone,
+  windowHref,
+  onBucketClick,
 }: {
   projectId: string;
   data: ProductionMonitoring;
+  previous: ProductionMonitoring | null;
   versions: ReactNode;
+  timeZone: string;
+  windowHref: string;
+  onBucketClick: (click: ChartBucketClick, opts?: { status?: "error" }) => void;
 }) {
   const [thresholds, setAlarm] = useAlarmThresholds(projectId);
   const firing = data.metrics.filter((m) => alarmState(m, thresholds).firing);
   const errorRate = data.n_traces ? data.n_errors / data.n_traces : null;
 
-  // No traffic at all: one clear next step instead of five zero KPIs and empty axes.
   if (data.n_traces === 0 && data.metrics.length === 0) {
     return (
       <div className="flex flex-col gap-6">
@@ -239,10 +272,7 @@ function Dashboard({
               >
                 Open live answers
               </Link>
-              <Link
-                href={withProjectQuery("/traces", projectId)}
-                className={buttonVariants({ variant: "outline", size: "sm" })}
-              >
+              <Link href={windowHref} className={buttonVariants({ variant: "outline", size: "sm" })}>
                 Browse all traces
               </Link>
             </>
@@ -260,13 +290,16 @@ function Dashboard({
       {firing.length > 0 ? (
         <div
           role="alert"
-          className="flex items-center gap-2 rounded-md border border-status-fail bg-status-fail-bg px-3 py-2 text-sm text-status-fail"
+          className="flex flex-wrap items-center gap-2 rounded-md border border-status-fail bg-status-fail-bg px-3 py-2 text-sm text-status-fail"
         >
           <BellRing className="size-4" aria-hidden />
           <span>
             Alarm on {firing.map((m) => (m.source === "judge" ? metricLabel(m.name) : m.name)).join(", ")}:
             more answers fail than your alarm level.
           </span>
+          <Link href={windowHref} className="font-medium underline underline-offset-2">
+            View traces in this range
+          </Link>
         </div>
       ) : null}
       {data.traces_truncated ? (
@@ -279,7 +312,6 @@ function Dashboard({
       <section aria-label="Production KPIs" className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
         <Kpi
           label="Traces"
-          // Truncated: only the most recent traces were loaded, so the count is a floor.
           value={`${data.n_traces.toLocaleString()}${data.traces_truncated ? "+" : ""}`}
           detail={
             errorRate != null
@@ -287,7 +319,7 @@ function Dashboard({
               : undefined
           }
           tone={errorRate != null && errorRate > 0.05 ? "fail" : undefined}
-          href={withProjectQuery("/traces", projectId)}
+          href={windowHref}
         />
         <Kpi
           label="Latency p50 / p90"
@@ -321,13 +353,32 @@ function Dashboard({
 
       <div className="grid gap-4 lg:grid-cols-3">
         <ChartCard title="Latency percentiles">
-          <LatencyChart traffic={data.traffic} />
+          <LatencyChart
+            traffic={data.traffic}
+            previous={previous?.traffic}
+            timeZone={timeZone}
+            onBucketClick={(c) => onBucketClick(c)}
+          />
         </ChartCard>
         <ChartCard title="Traffic and errors">
-          <TrafficChart traffic={data.traffic} />
+          <TrafficChart
+            traffic={data.traffic}
+            previous={previous?.traffic}
+            timeZone={timeZone}
+            onBucketClick={(c) =>
+              onBucketClick(c, {
+                status: c.series === "errors" || c.series === "errors_prev" ? "error" : undefined,
+              })
+            }
+          />
         </ChartCard>
         <ChartCard title="Tokens and cost">
-          <UsageChart traffic={data.traffic} />
+          <UsageChart
+            traffic={data.traffic}
+            previous={previous?.traffic}
+            timeZone={timeZone}
+            onBucketClick={(c) => onBucketClick(c)}
+          />
         </ChartCard>
       </div>
 
@@ -343,8 +394,11 @@ function Dashboard({
             <MetricCard
               key={metricKey(metric)}
               metric={metric}
+              previous={findPreviousMetric(previous?.metrics, metric)}
               thresholds={thresholds}
               onAlarmChange={setAlarm}
+              timeZone={timeZone}
+              onBucketClick={(c) => onBucketClick(c)}
             />
           ))
         )}
@@ -361,15 +415,34 @@ export function MonitoringDashboard({ projectId }: { projectId: string }) {
   const searchParams = useSearchParams();
   const router = useRouter();
   const pathname = usePathname();
-  const preset = parseOverviewRangeParam(searchParams.get("range"));
+  const { timeZone, setTimeZone, options: timeZoneOptions } = useTimezone();
   const [anchor, setAnchor] = useState(() => new Date());
-  const { start, end } = useMemo(() => rangeFromPreset(preset, anchor), [preset, anchor]);
-  const since = start.toISOString();
-  const until = end.toISOString();
+  const compare = searchParams.get("compare") === "1";
+
+  const window = useMemo(
+    () =>
+      parseTimeRangeParams(searchParams, {
+        defaultPreset: OVERVIEW_DEFAULT_PRESET,
+        anchor,
+      }),
+    [searchParams, anchor],
+  );
+  const since = window.start.toISOString();
+  const until = window.end.toISOString();
+  const prev = useMemo(
+    () => previousPeriod(window.start, window.end),
+    [window.start, window.end],
+  );
+
   const [release, setRelease] = useReleaseFilter();
   const query = useMonitoring(projectId, since, until, release);
+  const previousQuery = useMonitoring(
+    compare ? projectId : null,
+    prev.start.toISOString(),
+    prev.end.toISOString(),
+    release,
+  );
   const facets = useReleaseFacets(projectId, since, until);
-  // Several releases in range and none picked: show them side by side.
   const showVersions = !release.version && (facets.data?.versions.length ?? 0) > 0;
   const versions = useVersionSummaries(
     projectId,
@@ -383,18 +456,64 @@ export function MonitoringDashboard({ projectId }: { projectId: string }) {
   useEffect(() => {
     if (searchParams.get("range") != null) return;
     const params = new URLSearchParams(searchParams.toString());
-    params.set("range", preset);
+    writeTimeRangeParams(params, rangeFromPreset(OVERVIEW_DEFAULT_PRESET, anchor));
     router.replace(`${pathname}?${params.toString()}`);
-  }, [pathname, preset, router, searchParams]);
+  }, [anchor, pathname, router, searchParams]);
 
-  const setPreset = useCallback(
-    (p: string) => {
+  const setWindow = useCallback(
+    (next: TimeWindow) => {
       const params = new URLSearchParams(searchParams.toString());
-      params.set("range", p);
-      setAnchor(new Date());
+      if (isPreset(next.kind)) {
+        const fresh = rangeFromPreset(next.kind, new Date());
+        setAnchor(fresh.end);
+        writeTimeRangeParams(params, fresh);
+      } else {
+        writeTimeRangeParams(params, next);
+      }
       router.replace(`${pathname}?${params.toString()}`);
     },
     [pathname, router, searchParams],
+  );
+
+  const setCompare = useCallback(
+    (on: boolean) => {
+      const params = new URLSearchParams(searchParams.toString());
+      if (on) params.set("compare", "1");
+      else params.delete("compare");
+      router.replace(`${pathname}?${params.toString()}`);
+    },
+    [pathname, router, searchParams],
+  );
+
+  const windowHref = useMemo(
+    () =>
+      tracesWindowHref({
+        projectId,
+        since,
+        until,
+        environment: release.environment,
+        version: release.version,
+      }),
+    [projectId, since, until, release.environment, release.version],
+  );
+
+  const onBucketClick = useCallback(
+    (click: ChartBucketClick, opts?: { status?: "error" }) => {
+      const bucketSeconds = query.data?.bucket_seconds ?? 60;
+      const start = parseTimestamp(click.bucketStart);
+      const end = new Date(start.getTime() + bucketSeconds * 1000);
+      router.push(
+        tracesWindowHref({
+          projectId,
+          since: start.toISOString(),
+          until: end.toISOString(),
+          environment: release.environment,
+          version: release.version,
+          status: opts?.status ?? null,
+        }),
+      );
+    },
+    [projectId, query.data?.bucket_seconds, release.environment, release.version, router],
   );
 
   return (
@@ -404,12 +523,29 @@ export function MonitoringDashboard({ projectId }: { projectId: string }) {
         actions={
           <>
             <ReleaseFilterControls facets={facets.data} filter={release} onChange={setRelease} />
-            <TimeRangePicker preset={preset} onPresetChange={setPreset} />
+            <TimeRangePicker
+              window={window}
+              onWindowChange={setWindow}
+              showCustom
+              showTimezone
+              timeZone={timeZone}
+              onTimeZoneChange={setTimeZone}
+              timeZoneOptions={timeZoneOptions}
+            />
+            <label className="flex h-8 items-center gap-1.5 text-xs text-muted-foreground">
+              <input
+                type="checkbox"
+                checked={compare}
+                onChange={(e) => setCompare(e.target.checked)}
+                className="size-3.5 accent-primary"
+              />
+              Compare previous
+            </label>
             <RefreshControl
               queryKey={monitoringQueryKey(projectId, since, until, release)}
               dataUpdatedAt={query.dataUpdatedAt}
               onRefresh={async () => {
-                setAnchor(new Date());
+                if (isPreset(window.kind)) setAnchor(new Date());
                 await queryClient.invalidateQueries({
                   queryKey: annotationQueueQueryKey(projectId),
                 });
@@ -427,11 +563,14 @@ export function MonitoringDashboard({ projectId }: { projectId: string }) {
           onRetry={() => void query.refetch()}
         />
       ) : (
-        // key: reset alarm thresholds and field drafts when the project changes.
         <Dashboard
           key={projectId}
           projectId={projectId}
           data={query.data}
+          previous={compare ? (previousQuery.data ?? null) : null}
+          timeZone={timeZone}
+          windowHref={windowHref}
+          onBucketClick={onBucketClick}
           versions={
             showVersions && versions.data ? (
               <VersionsSection

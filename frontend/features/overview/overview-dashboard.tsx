@@ -12,11 +12,19 @@ import { getMonitoring } from "@/lib/api/monitoring";
 import { getOverview } from "@/lib/api/overview";
 import { getTraceScoreSummary } from "@/lib/api/trace-scores";
 import { useProjectId } from "@/lib/project-store";
-import { rangeFromPreset, type Preset } from "@/lib/time-range";
+import {
+  isPreset,
+  parseTimeRangeParams,
+  rangeFromPreset,
+  writeTimeRangeParams,
+  type Preset,
+  type TimeWindow,
+} from "@/lib/time-range";
+import { useTimezone } from "@/lib/use-timezone";
 import { cn } from "@/lib/cn";
 import { useAlarmThresholds } from "@/features/monitoring/use-alarm-thresholds";
 import { monitoringQueryKey, useMonitoring } from "@/features/monitoring/use-monitoring";
-import { parseOverviewRangeParam, OVERVIEW_DEFAULT_PRESET } from "./overview-range";
+import { OVERVIEW_DEFAULT_PRESET } from "./overview-range";
 import { useOverview, overviewQueryKey } from "./use-overview";
 import { LiveQualityChart } from "./live-quality-chart";
 import { CompareBars } from "./compare-bars";
@@ -48,14 +56,21 @@ export function OverviewDashboard() {
   const router = useRouter();
   const pathname = usePathname();
   const queryClient = useQueryClient();
+  const { timeZone, setTimeZone, options: timeZoneOptions } = useTimezone();
 
-  const preset = parseOverviewRangeParam(searchParams.get("range"));
   // Window end is anchored in state so Refresh / preset changes move it forward
   // instead of refetching the window computed at page load.
   const [anchor, setAnchor] = useState(() => new Date());
-  const { start, end } = useMemo(() => rangeFromPreset(preset, anchor), [preset, anchor]);
-  const since = start.toISOString();
-  const until = end.toISOString();
+  const window = useMemo(
+    () =>
+      parseTimeRangeParams(searchParams, {
+        defaultPreset: OVERVIEW_DEFAULT_PRESET,
+        anchor,
+      }),
+    [searchParams, anchor],
+  );
+  const since = window.start.toISOString();
+  const until = window.end.toISOString();
   const overviewQuery = useOverview(projectId, since, until);
   const monitoringQuery = useMonitoring(projectId, since, until);
   const [alarmThresholds] = useAlarmThresholds(projectId ?? "");
@@ -63,15 +78,20 @@ export function OverviewDashboard() {
   useEffect(() => {
     if (searchParams.get("range") != null) return;
     const params = new URLSearchParams(searchParams.toString());
-    params.set("range", OVERVIEW_DEFAULT_PRESET);
+    writeTimeRangeParams(params, rangeFromPreset(OVERVIEW_DEFAULT_PRESET, anchor));
     router.replace(`${pathname}?${params.toString()}`);
-  }, [pathname, router, searchParams]);
+  }, [anchor, pathname, router, searchParams]);
 
-  const setPreset = useCallback(
-    (p: string) => {
+  const setWindow = useCallback(
+    (next: TimeWindow) => {
       const params = new URLSearchParams(searchParams.toString());
-      params.set("range", p);
-      setAnchor(new Date());
+      if (isPreset(next.kind)) {
+        const fresh = rangeFromPreset(next.kind, new Date());
+        setAnchor(fresh.end);
+        writeTimeRangeParams(params, fresh);
+      } else {
+        writeTimeRangeParams(params, next);
+      }
       router.replace(`${pathname}?${params.toString()}`);
     },
     [pathname, router, searchParams],
@@ -79,19 +99,22 @@ export function OverviewDashboard() {
 
   const widenRange = useCallback(() => {
     const order: Preset[] = ["15m", "1h", "6h", "24h", "7d"];
-    const idx = order.indexOf(preset);
+    const kind = isPreset(window.kind) ? window.kind : OVERVIEW_DEFAULT_PRESET;
+    const idx = order.indexOf(kind);
     const next = order[Math.min(idx + 1, order.length - 1)];
-    setPreset(next);
-  }, [preset, setPreset]);
+    setWindow(rangeFromPreset(next, new Date()));
+  }, [window.kind, setWindow]);
 
   const onRefresh = useCallback(async () => {
     if (!projectId) return;
-    // New anchor → new query keys → the overview, production scores and
-    // monitoring queries all fetch the window ending now.
-    const next = rangeFromPreset(preset, new Date());
-    const nextSince = next.start.toISOString();
-    const nextUntil = next.end.toISOString();
-    setAnchor(next.end);
+    let nextSince = since;
+    let nextUntil = until;
+    if (isPreset(window.kind)) {
+      const next = rangeFromPreset(window.kind, new Date());
+      nextSince = next.start.toISOString();
+      nextUntil = next.end.toISOString();
+      setAnchor(next.end);
+    }
     await Promise.all([
       queryClient.fetchQuery({
         queryKey: overviewQueryKey(projectId, nextSince, nextUntil),
@@ -106,14 +129,16 @@ export function OverviewDashboard() {
         queryFn: () => getMonitoring(projectId, nextSince, nextUntil),
       }),
     ]).catch(() => undefined); // errors surface through the queries themselves
-  }, [preset, projectId, queryClient]);
+  }, [projectId, queryClient, since, until, window.kind]);
 
   const overview = overviewQuery.data;
   const loading = overviewQuery.isLoading && !overview;
   const loadFailed = overviewQuery.isError && !overview;
 
   const releasePanel = overview ? buildReleasePanel(overview) : null;
-  const livePanel = overview ? buildLivePanel(overview, preset) : null;
+  const livePanel = overview
+    ? buildLivePanel(overview, isPreset(window.kind) ? window.kind : "custom")
+    : null;
   const loopCards = overview ? buildLoopCards(overview) : null;
   const attentionRows = overview
     ? mergeAttentionItems(overview, {
@@ -132,7 +157,15 @@ export function OverviewDashboard() {
         description="Is the next version safe to ship, and is production healthy right now?"
         actions={
           <>
-            <TimeRangePicker preset={preset} onPresetChange={setPreset} />
+            <TimeRangePicker
+              window={window}
+              onWindowChange={setWindow}
+              showCustom
+              showTimezone
+              timeZone={timeZone}
+              onTimeZoneChange={setTimeZone}
+              timeZoneOptions={timeZoneOptions}
+            />
             {projectId ? (
               <RefreshControl
                 dataUpdatedAt={overviewQuery.dataUpdatedAt}

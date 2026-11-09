@@ -14,7 +14,11 @@ export function listLiveInteractions(
     search?: string;
     failedOnly?: boolean;
     unreviewedOnly?: boolean;
+    since?: string;
+    until?: string;
+    metadata?: string[];
     limit?: number;
+    offset?: number;
   },
 ) {
   const params = new URLSearchParams();
@@ -22,7 +26,11 @@ export function listLiveInteractions(
   if (opts?.search) params.set("search", opts.search);
   if (opts?.failedOnly) params.set("failed_only", "true");
   if (opts?.unreviewedOnly) params.set("unreviewed_only", "true");
+  if (opts?.since) params.set("since", opts.since);
+  if (opts?.until) params.set("until", opts.until);
   if (opts?.limit != null) params.set("limit", String(opts.limit));
+  if (opts?.offset != null) params.set("offset", String(opts.offset));
+  for (const pair of opts?.metadata ?? []) params.append("metadata", pair);
   const qs = params.toString();
   return apiGet<ListLiveInteractionsResponse>(
     `/api/v1/projects/${projectId}/live-interactions${qs ? `?${qs}` : ""}`,

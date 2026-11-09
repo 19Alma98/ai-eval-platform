@@ -23,5 +23,6 @@ export function useOverview(
     enabled: Boolean(projectId),
     // A refresh moves the time window; keep the old numbers until the new ones arrive.
     placeholderData: keepPreviousInProject(projectId ?? ""),
+    refetchInterval: 30_000,
   });
 }

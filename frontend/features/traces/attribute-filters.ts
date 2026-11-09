@@ -128,6 +128,26 @@ export function tracesFilteredHref(chip: AttributeChip): string {
   return `/traces?${params.toString()}`;
 }
 
+/** Trace list deep-link for an absolute time window (monitoring drill-down). */
+export function tracesWindowHref(opts: {
+  projectId: string;
+  since: string;
+  until: string;
+  environment?: string | null;
+  version?: string | null;
+  status?: "error" | null;
+}): string {
+  const params = new URLSearchParams();
+  params.set("project", opts.projectId);
+  params.set("range", "custom");
+  params.set("since", opts.since);
+  params.set("until", opts.until);
+  if (opts.environment) params.set("env", opts.environment);
+  if (opts.version) params.set("version", opts.version);
+  if (opts.status) params.set("status", opts.status);
+  return `/traces?${params.toString()}`;
+}
+
 export function chipLabel(chip: AttributeChip): string {
   switch (chip.kind) {
     case "tag":

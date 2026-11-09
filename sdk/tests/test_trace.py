@@ -13,7 +13,7 @@ from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanE
 from opentelemetry.trace import StatusCode
 
 import opengrade
-from opengrade import _otel
+from opengrade import _config, _otel
 from opengrade._config import MAX_CAPTURE_BYTES
 from opengrade._trace import truncate_value
 
@@ -48,6 +48,16 @@ def test_truncate_value_adds_marker() -> None:
     out = truncate_value(big)
     assert len(out.encode("utf-8")) <= MAX_CAPTURE_BYTES
     assert out.endswith("…[truncated]")
+
+
+def test_truncate_value_honors_configured_limit() -> None:
+    _config.configure_capture(max_capture_bytes=32)
+    try:
+        out = truncate_value("x" * 100)
+        assert len(out.encode("utf-8")) <= 32
+        assert out.endswith("…[truncated]")
+    finally:
+        _config.configure_capture()
 
 
 def test_trace_sets_kind_input_output(spans: InMemorySpanExporter) -> None:
@@ -217,7 +227,7 @@ def test_skips_serialize_when_not_recording(monkeypatch: pytest.MonkeyPatch) -> 
         serialize_calls.append((args, kwargs))
         return "{}"
 
-    def counting_truncate(value: object, *, limit: int = MAX_CAPTURE_BYTES) -> str:
+    def counting_truncate(value: object, *, limit: int | None = None) -> str:
         truncate_calls.append(value)
         return "x"
 

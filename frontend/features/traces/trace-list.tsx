@@ -17,7 +17,12 @@ import { traceLabel } from "./trace-label";
 import { cn } from "@/lib/cn";
 import { formatDurationMs, formatScore } from "@/lib/format";
 import { liveRunHref, traceHref } from "@/lib/links";
-import { PRESETS, rangeFromPreset, type Preset } from "@/lib/time-range";
+import {
+  PRESETS,
+  parseTimeRangeParams,
+  rangeFromPreset,
+  type Preset,
+} from "@/lib/time-range";
 import {
   ReleaseFilterControls,
   useReleaseFilter,
@@ -34,7 +39,7 @@ import {
 import { useTraceFacets, useTraces } from "./use-traces";
 
 type StatusFilter = "all" | "error";
-type RangeFilter = Preset | "all";
+type RangeFilter = Preset | "all" | "custom";
 
 const RANGE_OPTIONS: RangeFilter[] = [...PRESETS, "all"];
 
@@ -72,16 +77,24 @@ export function TraceList({ projectId }: { projectId: string }) {
   const status: StatusFilter = searchParams.get("status") === "error" ? "error" : "all";
   const rawRange = searchParams.get("range");
   const range: RangeFilter =
-    rawRange && (RANGE_OPTIONS as string[]).includes(rawRange) ? (rawRange as RangeFilter) : "24h";
+    rawRange === "custom"
+      ? "custom"
+      : rawRange && (RANGE_OPTIONS as string[]).includes(rawRange)
+        ? (rawRange as RangeFilter)
+        : "24h";
   const [search, setSearch] = useState(searchParams.get("q") ?? "");
   const deferredSearch = useDeferredValue(search.trim());
   const [selectedIndex, setSelectedIndex] = useState(0);
 
-  // Recomputed only when the preset changes so the query key stays stable.
-  const since = useMemo(
-    () => (range === "all" ? undefined : rangeFromPreset(range).start.toISOString()),
-    [range],
-  );
+  // Absolute custom window (drill-down) or preset start; "all" omits bounds.
+  const { since, until } = useMemo(() => {
+    if (range === "all") return { since: undefined, until: undefined };
+    if (range === "custom") {
+      const win = parseTimeRangeParams(searchParams, { defaultPreset: "24h" });
+      return { since: win.start.toISOString(), until: win.end.toISOString() };
+    }
+    return { since: rangeFromPreset(range).start.toISOString(), until: undefined };
+  }, [range, searchParams]);
 
   const [release, setRelease] = useReleaseFilter();
   // Facets need a range: "all time" offers the releases of the last 30 days.
@@ -101,6 +114,7 @@ export function TraceList({ projectId }: { projectId: string }) {
     status: status === "error" ? "error" : undefined,
     search: deferredSearch || undefined,
     since,
+    until,
     environment: release.environment,
     version: release.version,
     userId: attributes.user,
@@ -119,6 +133,11 @@ export function TraceList({ projectId }: { projectId: string }) {
       const params = new URLSearchParams(searchParams.toString());
       if (value == null) params.delete(key);
       else params.set(key, value);
+      // Leaving a drill-down custom window: drop absolute bounds.
+      if (key === "range" && value !== "custom") {
+        params.delete("since");
+        params.delete("until");
+      }
       router.replace(`${pathname}?${params.toString()}`);
     },
     [pathname, router, searchParams],
@@ -305,6 +324,15 @@ export function TraceList({ projectId }: { projectId: string }) {
               {key === "all" ? "All time" : key}
             </button>
           ))}
+          {range === "custom" ? (
+            <span
+              role="radio"
+              aria-checked
+              className="rounded bg-row-selected px-2 py-1 text-xs font-medium text-foreground"
+            >
+              Custom
+            </span>
+          ) : null}
         </div>
         <Input
           type="search"

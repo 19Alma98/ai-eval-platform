@@ -13,6 +13,7 @@ export function listTraces(
     status?: string;
     search?: string;
     since?: string;
+    until?: string;
     cursor?: string;
     limit?: number;
     environment?: string | null;
@@ -29,6 +30,7 @@ export function listTraces(
   if (opts?.status) params.set("status", opts.status);
   if (opts?.search) params.set("search", opts.search);
   if (opts?.since) params.set("since", opts.since);
+  if (opts?.until) params.set("until", opts.until);
   if (opts?.cursor) params.set("cursor", opts.cursor);
   if (opts?.limit != null) params.set("limit", String(opts.limit));
   if (opts?.userId) params.set("user_id", opts.userId);

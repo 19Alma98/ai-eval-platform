@@ -26,11 +26,12 @@ export function formatRelativeTime(date: Date, now = new Date()): string {
   return rtf.format(past ? -absDay : absDay, "day");
 }
 
-export function formatTs(iso: string | Date): string {
+export function formatTs(iso: string | Date, locale?: string, timeZone?: string): string {
   const d = typeof iso === "string" ? parseTimestamp(iso) : iso;
-  return d.toLocaleString(undefined, {
+  return d.toLocaleString(locale, {
     dateStyle: "medium",
     timeStyle: "medium",
+    timeZone,
   });
 }
 

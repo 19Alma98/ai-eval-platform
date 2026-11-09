@@ -8,6 +8,7 @@ export type TraceFilters = {
   status?: string;
   search?: string;
   since?: string;
+  until?: string;
   environment?: string | null;
   version?: string | null;
   userId?: string | null;
@@ -23,6 +24,7 @@ export function tracesQueryKey(projectId: string, filters: TraceFilters) {
     filters.status ?? "",
     filters.search ?? "",
     filters.since ?? "",
+    filters.until ?? "",
     filters.environment ?? "",
     filters.version ?? "",
     filters.userId ?? "",
@@ -41,6 +43,7 @@ export function useTraces(projectId: string | null, filters: TraceFilters) {
     initialPageParam: null as string | null,
     getNextPageParam: (last) => last.next_cursor,
     enabled: Boolean(projectId),
+    refetchInterval: 30_000,
   });
 }
 
