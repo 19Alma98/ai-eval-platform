@@ -3,8 +3,11 @@ from __future__ import annotations
 import uuid
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
-from typing import Any
-
+from opengrade_server.domain.rag_models import (
+    RagChatInput,
+    RagItemContext,
+    RagItemMetadata,
+)
 from opengrade_server.domain.task_types import normalize_task_type
 
 
@@ -48,11 +51,11 @@ class Dataset:
 class DatasetItem:
     id: uuid.UUID
     dataset_id: uuid.UUID
-    input: Any
-    expected_output: Any | None = None
-    actual_output: Any | None = None
-    context: Any | None = None
-    metadata: dict[str, Any] = field(default_factory=dict)
+    input: str | RagChatInput
+    expected_output: str | None = None
+    actual_output: str | None = None
+    context: RagItemContext | None = None
+    metadata: RagItemMetadata = field(default_factory=RagItemMetadata)
     source_trace_id: str | None = None
     source_span_id: str | None = None
 
@@ -60,12 +63,12 @@ class DatasetItem:
     def create(
         cls,
         dataset_id: uuid.UUID,
-        input: Any,
+        input: str | RagChatInput,
         *,
-        expected_output: Any | None = None,
-        actual_output: Any | None = None,
-        context: Any | None = None,
-        metadata: dict[str, Any] | None = None,
+        expected_output: str | None = None,
+        actual_output: str | None = None,
+        context: RagItemContext | None = None,
+        metadata: RagItemMetadata | None = None,
         source_trace_id: str | None = None,
         source_span_id: str | None = None,
     ) -> DatasetItem:
@@ -76,7 +79,7 @@ class DatasetItem:
             expected_output=expected_output,
             actual_output=actual_output,
             context=context,
-            metadata=dict(metadata or {}),
+            metadata=metadata or RagItemMetadata(),
             source_trace_id=source_trace_id,
             source_span_id=source_span_id,
         )

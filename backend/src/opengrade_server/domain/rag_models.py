@@ -60,3 +60,49 @@ class RagItemMetadata(BaseModel):
     expected_doc_ids: list[str] | None = None
     must_contain: list[str] | None = None
     answerable: bool | None = None
+
+
+def parse_dataset_input(value: object) -> str | RagChatInput:
+    if isinstance(value, str):
+        return value
+    if isinstance(value, RagChatInput):
+        return value
+    if isinstance(value, dict):
+        return RagChatInput.model_validate(value)
+    raise ValueError("dataset input must be a string or RagChatInput object")
+
+
+def dump_dataset_input(value: str | RagChatInput) -> str | dict[str, object]:
+    if isinstance(value, str):
+        return value
+    return value.model_dump(mode="json")
+
+
+def parse_context(value: object | None) -> RagItemContext | None:
+    if value is None:
+        return None
+    if isinstance(value, RagItemContext):
+        return value
+    if isinstance(value, dict):
+        return RagItemContext.model_validate(value)
+    raise ValueError("dataset context must be a RagItemContext object or mapping")
+
+
+def dump_context(value: RagItemContext | None) -> dict[str, object] | None:
+    if value is None:
+        return None
+    return value.model_dump(mode="json")
+
+
+def parse_metadata(value: object | None) -> RagItemMetadata:
+    if value is None:
+        return RagItemMetadata()
+    if isinstance(value, RagItemMetadata):
+        return value
+    if isinstance(value, dict):
+        return RagItemMetadata.model_validate(value)
+    raise ValueError("dataset metadata must be a RagItemMetadata object or mapping")
+
+
+def dump_metadata(value: RagItemMetadata) -> dict[str, object]:
+    return value.model_dump(mode="json")

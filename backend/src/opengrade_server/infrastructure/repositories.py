@@ -17,6 +17,14 @@ from sqlalchemy.orm import selectinload
 from opengrade_server.domain.alert import AlertEvent, AlertRule
 from opengrade_server.domain.app_config import AppConfig, AppConfigAlias
 from opengrade_server.domain.dataset import Dataset, DatasetItem
+from opengrade_server.domain.rag_models import (
+    dump_context,
+    dump_dataset_input,
+    dump_metadata,
+    parse_context,
+    parse_dataset_input,
+    parse_metadata,
+)
 from opengrade_server.domain.evaluation import EvaluationResultRecord, EvaluationRun
 from opengrade_server.domain.evaluator import Evaluator
 from opengrade_server.domain.experiment import Experiment
@@ -581,11 +589,11 @@ def _item_to_domain(row: DatasetItemModel) -> DatasetItem:
     return DatasetItem(
         id=row.id,
         dataset_id=row.dataset_id,
-        input=row.input,
+        input=parse_dataset_input(row.input),
         expected_output=row.expected_output,
         actual_output=row.actual_output,
-        context=row.context,
-        metadata=dict(row.metadata_json or {}),
+        context=parse_context(row.context),
+        metadata=parse_metadata(row.metadata_json),
         source_trace_id=row.source_trace_id,
         source_span_id=row.source_span_id,
     )
@@ -769,11 +777,11 @@ class SqlAlchemyDatasetRepository:
         row = DatasetItemModel(
             id=item.id,
             dataset_id=item.dataset_id,
-            input=item.input,
+            input=dump_dataset_input(item.input),
             expected_output=item.expected_output,
             actual_output=item.actual_output,
-            context=item.context,
-            metadata_json=dict(item.metadata),
+            context=dump_context(item.context),
+            metadata_json=dump_metadata(item.metadata),
             source_trace_id=item.source_trace_id,
             source_span_id=item.source_span_id,
         )
