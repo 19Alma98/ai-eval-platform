@@ -82,6 +82,8 @@ class _Runtime:
     capture_redact: Any | None = None
     capture_redact_output: Any | None = None
 
+    slug_not_found: set[str] = field(default_factory=set)
+
     @classmethod
     def fresh(cls) -> _Runtime:
         # Matches opengrade._production MAX_WORKERS / MAX_QUEUE defaults.
@@ -91,6 +93,7 @@ class _Runtime:
         self.settings = Settings.from_env()
         self.capture_redact = None
         self.capture_redact_output = None
+        self.slug_not_found.clear()
 
     def reset_live_overrides(self) -> None:
         self.live_enabled = None
@@ -209,6 +212,19 @@ def _set_active_project(
         updates["project_slug"] = project_slug
     if updates:
         rt.settings = rt.settings.with_updates(**updates)
+        rt.slug_not_found.clear()
+
+
+def _is_slug_not_found(slug: str) -> bool:
+    return slug in _default().slug_not_found
+
+
+def _mark_slug_not_found(slug: str) -> None:
+    _default().slug_not_found.add(slug)
+
+
+def _clear_slug_not_found() -> None:
+    _default().slug_not_found.clear()
 
 
 def _max_capture_override() -> int | None:

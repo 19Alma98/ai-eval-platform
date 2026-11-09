@@ -81,6 +81,15 @@ class _ProjectsResource:
             response_model=ProjectResponse,
         )
 
+    def get_by_slug(self, slug: str) -> ProjectResponse:
+        from urllib.parse import quote
+
+        return self._http.request_model(
+            "GET",
+            f"/api/v1/projects/by-slug/{quote(slug, safe='')}",
+            response_model=ProjectResponse,
+        )
+
     def get(self, project_id: str | None = None) -> ProjectResponse:
         project_id = self._project(project_id)
         return self._http.request_model(

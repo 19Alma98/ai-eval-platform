@@ -75,17 +75,15 @@ def test_arg_overrides_env(monkeypatch: pytest.MonkeyPatch) -> None:
 
 def test_init_records_project_slug_for_resolve_project_id() -> None:
     def handler(request: httpx2.Request) -> httpx2.Response:
-        if request.url.path.rstrip("/") == "/api/v1/projects":
+        if request.url.path.endswith("/by-slug/acme"):
             return httpx2.Response(
                 200,
-                json=[
-                    {
-                        "id": "p-1",
-                        "name": "acme",
-                        "slug": "acme",
-                        "created_at": "2026-01-01T00:00:00+00:00",
-                    }
-                ],
+                json={
+                    "id": "p-1",
+                    "name": "acme",
+                    "slug": "acme",
+                    "created_at": "2026-01-01T00:00:00+00:00",
+                },
             )
         return httpx2.Response(404)
 
@@ -99,3 +97,94 @@ def test_init_records_project_slug_for_resolve_project_id() -> None:
 def test_init_records_project_id() -> None:
     opengrade.init(project_id="pid-direct", instrument=False)
     assert resolve_project_id() == "pid-direct"
+
+
+def test_lazy_resolve_slug_negative_cache_skips_second_lookup() -> None:
+    calls: list[str] = []
+
+    def handler(request: httpx2.Request) -> httpx2.Response:
+        calls.append(str(request.url.path))
+        if request.url.path.endswith("/by-slug/missing"):
+            return httpx2.Response(404, json={"detail": "not found"})
+        return httpx2.Response(404)
+
+    _context._CLIENT = opengrade.Client("http://test", transport=httpx2.MockTransport(handler))
+    opengrade.init(project_slug="missing", instrument=False)
+
+    with pytest.raises(ValueError, match="No project"):
+        resolve_project_id()
+    with pytest.raises(ValueError, match="No project"):
+        resolve_project_id()
+
+    assert calls.count("/api/v1/projects/by-slug/missing") == 1
+
+
+def test_lazy_resolve_slug_clears_negative_cache_on_set_project() -> None:
+    calls: list[str] = []
+    projects = {
+        "ok": {
+            "id": "p-ok",
+            "name": "ok",
+            "slug": "ok",
+            "created_at": "2026-01-01T00:00:00+00:00",
+        }
+    }
+
+    def handler(request: httpx2.Request) -> httpx2.Response:
+        path = request.url.path
+        calls.append(path)
+        if path.endswith("/by-slug/missing"):
+            return httpx2.Response(404, json={"detail": "not found"})
+        if path.endswith("/by-slug/ok"):
+            return httpx2.Response(200, json=projects["ok"])
+        if path.rstrip("/") == "/api/v1/projects" and request.method == "GET":
+            # set_project still uses list()
+            return httpx2.Response(200, json=[projects["ok"]])
+        return httpx2.Response(404)
+
+    _context._CLIENT = opengrade.Client("http://test", transport=httpx2.MockTransport(handler))
+    opengrade.init(project_slug="missing", instrument=False)
+    with pytest.raises(ValueError):
+        resolve_project_id()
+
+    opengrade.set_project("ok")
+    assert resolve_project_id() == "p-ok"
+
+
+def test_lazy_resolve_connection_error_not_cached(monkeypatch: pytest.MonkeyPatch) -> None:
+    calls = {"n": 0}
+
+    def handler(request: httpx2.Request) -> httpx2.Response:
+        calls["n"] += 1
+        raise httpx2.ConnectError("boom", request=request)
+
+    monkeypatch.setattr("opengrade._http._BACKOFF_BASE_S", 0.0)
+    monkeypatch.setattr("opengrade._http.time.sleep", lambda _s: None)
+    _context._CLIENT = opengrade.Client("http://test", transport=httpx2.MockTransport(handler))
+    opengrade.init(project_slug="flaky", instrument=False)
+
+    with pytest.raises(ValueError):
+        resolve_project_id()
+    with pytest.raises(ValueError):
+        resolve_project_id()
+    assert calls["n"] >= 2
+
+
+def test_get_by_slug_success_via_resolve() -> None:
+    def handler(request: httpx2.Request) -> httpx2.Response:
+        if request.url.path.endswith("/by-slug/acme"):
+            return httpx2.Response(
+                200,
+                json={
+                    "id": "p-1",
+                    "name": "acme",
+                    "slug": "acme",
+                    "created_at": "2026-01-01T00:00:00+00:00",
+                },
+            )
+        return httpx2.Response(404)
+
+    _context._CLIENT = opengrade.Client("http://test", transport=httpx2.MockTransport(handler))
+    opengrade.init(project_slug="acme", instrument=False)
+    assert resolve_project_id() == "p-1"
+    assert resolve_project_id() == "p-1"  # active id short-circuit; no second HTTP needed

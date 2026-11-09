@@ -46,6 +46,12 @@ class FakeServer:
 
     def handler(self, request: httpx2.Request) -> httpx2.Response:
         path = request.url.path.rstrip("/")
+        if request.method == "GET" and path.startswith("/api/v1/projects/by-slug/"):
+            slug = path.removeprefix("/api/v1/projects/by-slug/")
+            for p in self.projects:
+                if p["slug"] == slug:
+                    return httpx2.Response(200, json=p)
+            return httpx2.Response(404, json={"detail": "not found"})
         if request.method == "GET" and path == "/api/v1/projects":
             projects = self.projects
             slug = request.url.params.get("slug")

@@ -109,20 +109,26 @@ def otlp_endpoint() -> str:
 
 
 def _lazy_resolve_slug(slug: str) -> str | None:
-    """Resolve a project slug to an id via the control plane; cache on success."""
+    """Resolve a project slug to an id via by-slug lookup; cache success and 404."""
+    if _state._is_slug_not_found(slug):
+        return None
     try:
         from opengrade._context import get_client
+        from opengrade._errors import OpengradeAPIError
 
-        projects = get_client().projects.list(slug=slug)
-        if projects:
-            project = projects[0]
-            _state._set_active_project(project_id=project.id, project_slug=project.slug)
-            return project.id
+        project = get_client().projects.get_by_slug(slug)
+        _state._set_active_project(project_id=project.id, project_slug=project.slug)
+        return project.id
+    except OpengradeAPIError as exc:
+        if exc.status == 404:
+            _state._mark_slug_not_found(slug)
+            logger.warning("opengrade: project slug %r not found", slug)
+            return None
+        logger.warning("opengrade: could not resolve project slug %r: %s", slug, exc)
+        return None
     except Exception as exc:  # noqa: BLE001 — never raise into log_score / metrics
         logger.warning("opengrade: could not resolve project slug %r: %s", slug, exc)
         return None
-    logger.warning("opengrade: project slug %r not found", slug)
-    return None
 
 
 def resolve_project_id(project_id: str | None = None) -> str:
