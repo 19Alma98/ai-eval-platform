@@ -7,7 +7,7 @@ import os
 import threading
 import weakref
 from dataclasses import dataclass, field, replace
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 if TYPE_CHECKING:
     from opentelemetry.sdk.trace import SpanProcessor, TracerProvider
@@ -154,7 +154,7 @@ def _after_fork_in_child() -> None:
 def _tracking_uri_override() -> str | None:
     value = _module_override("opengrade._config", "_TRACKING_URI")
     if value is not _MISSING:
-        return value
+        return cast(str | None, value)
     return _default().settings.tracking_uri
 
 
@@ -166,7 +166,7 @@ def _set_tracking_uri_override(value: str | None) -> None:
 def _api_key_override() -> str | None:
     value = _module_override("opengrade._config", "_API_KEY")
     if value is not _MISSING:
-        return value
+        return cast(str | None, value)
     return _default().settings.api_key
 
 
@@ -178,14 +178,14 @@ def _set_api_key_override(value: str | None) -> None:
 def _active_project_id() -> str | None:
     value = _module_override("opengrade._config", "_ACTIVE_PROJECT_ID")
     if value is not _MISSING:
-        return value
+        return cast(str | None, value)
     return _default().settings.project_id
 
 
 def _active_project_slug() -> str | None:
     value = _module_override("opengrade._config", "_ACTIVE_PROJECT_SLUG")
     if value is not _MISSING:
-        return value
+        return cast(str | None, value)
     return _default().settings.project_slug
 
 
@@ -207,7 +207,7 @@ def _set_active_project(
 def _max_capture_override() -> int | None:
     value = _module_override("opengrade._config", "_MAX_CAPTURE_BYTES")
     if value is not _MISSING:
-        return value
+        return cast(int | None, value)
     return _default().settings.max_capture_bytes
 
 
@@ -219,7 +219,7 @@ def _set_max_capture_override(value: int | None) -> None:
 def _warned_plaintext_key() -> bool:
     value = _module_override("opengrade._config", "_WARNED_PLAINTEXT_KEY")
     if value is not _MISSING:
-        return value
+        return cast(bool, value)
     return _default().settings.warned_plaintext_key
 
 

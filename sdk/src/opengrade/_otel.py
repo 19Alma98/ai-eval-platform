@@ -8,7 +8,7 @@ import threading
 import time
 import weakref
 from collections.abc import Sequence
-from typing import TYPE_CHECKING, Any, Literal
+from typing import TYPE_CHECKING, Any, Literal, cast
 
 if TYPE_CHECKING:
     from opengrade._opengrade import Opengrade
@@ -79,7 +79,7 @@ def _clear_module_state_keys() -> None:
 def _current_provider() -> TracerProvider | None:
     mod = sys.modules[__name__]
     if "_PROVIDER" in mod.__dict__:
-        return mod.__dict__["_PROVIDER"]
+        return cast(TracerProvider | None, mod.__dict__["_PROVIDER"])
     if _SHARED_PROVIDER is not None:
         return _SHARED_PROVIDER
     return _state._default().provider
@@ -88,7 +88,7 @@ def _current_provider() -> TracerProvider | None:
 def _atexit_registered() -> bool:
     mod = sys.modules[__name__]
     if "_ATEXIT_REGISTERED" in mod.__dict__:
-        return mod.__dict__["_ATEXIT_REGISTERED"]
+        return cast(bool, mod.__dict__["_ATEXIT_REGISTERED"])
     return _state._default().otel_atexit_registered
 
 
@@ -124,9 +124,10 @@ class _SpanWithoutInstanceAttr:
         self._span = span
         attrs = span.attributes
         if attrs and _INSTANCE_ATTR in attrs:
-            self._attributes = {k: v for k, v in attrs.items() if k != _INSTANCE_ATTR}
+            attributes: Any = {k: v for k, v in attrs.items() if k != _INSTANCE_ATTR}
         else:
-            self._attributes = attrs
+            attributes = attrs
+        self._attributes = attributes
 
     def __getattr__(self, name: str) -> Any:
         return getattr(self._span, name)

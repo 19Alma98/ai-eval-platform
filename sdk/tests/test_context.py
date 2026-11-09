@@ -302,9 +302,7 @@ def test_get_client_binds_env_project_id(monkeypatch: pytest.MonkeyPatch) -> Non
         seen.append(request.url.path)
         return httpx2.Response(200, json=[])
 
-    _context._CLIENT = opengrade.Client(
-        "http://test", transport=httpx2.MockTransport(handler), project_id="env-pid"
-    )
+    _context._CLIENT = opengrade.Client("http://test", transport=httpx2.MockTransport(handler))
     opengrade.get_client().experiments.list()
     assert seen == ["/api/v1/projects/env-pid/experiments"]
 

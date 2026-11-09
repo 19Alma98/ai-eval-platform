@@ -9,7 +9,7 @@ import threading
 import time
 from collections import deque
 from collections.abc import Callable
-from typing import Any
+from typing import Any, cast
 
 from opengrade import _state
 from opengrade._errors import OpengradeAPIError
@@ -207,7 +207,7 @@ class ScoreSender:
 def _exit_deadline() -> float | None:
     value = _state._module_override("opengrade._scores", "_EXIT_DEADLINE")
     if value is not _state._MISSING:
-        return value
+        return cast(float | None, value)
     return _state._default().exit_deadline
 
 

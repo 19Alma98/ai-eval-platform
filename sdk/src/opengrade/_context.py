@@ -15,6 +15,8 @@ from opengrade.async_client import AsyncClient
 from opengrade.client import Client
 from opengrade.models import ProjectResponse
 
+__all__ = ["AsyncClient", "Client"]
+
 logger = logging.getLogger("opengrade")
 
 _SLUG_RE = re.compile(r"[^a-z0-9]+")

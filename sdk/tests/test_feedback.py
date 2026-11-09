@@ -125,7 +125,10 @@ def test_invalid_calls_warn_and_return_false(
 def test_no_project_warns(
     sent: Recorder, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
 ) -> None:
+    from opengrade import _context
+
     monkeypatch.delenv("OPENGRADE_PROJECT_ID")
+    _context._reset_client()
     with caplog.at_level(logging.WARNING, logger="opengrade"):
         assert opengrade.log_score("q", 1.0, trace_id=TID) is False
     assert any("No project" in r.message for r in caplog.records)
@@ -260,7 +263,10 @@ def test_queue_metric_score_never_raises(sent: Recorder) -> None:
 def test_config_warnings_are_rate_limited(
     sent: Recorder, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
 ) -> None:
+    from opengrade import _context
+
     monkeypatch.delenv("OPENGRADE_PROJECT_ID")
+    _context._reset_client()
     with caplog.at_level(logging.DEBUG, logger="opengrade"):
         for _ in range(3):
             opengrade.log_score("q", 1.0, trace_id=TID)

@@ -8,11 +8,13 @@ import os
 import threading
 from collections.abc import Iterator
 from contextlib import contextmanager
-from contextvars import ContextVar
+from contextvars import ContextVar, Token
 from typing import Any
 
 from opengrade import _config, _context, _state
 from opengrade._config import DEFAULT_TRACKING_URI, _normalize_uri
+from opengrade.async_client import AsyncClient
+from opengrade.client import Client
 from opengrade.models import ProjectResponse
 
 logger = logging.getLogger("opengrade")
@@ -44,11 +46,29 @@ def _api_key_for_runtime(rt: _state._Runtime) -> str | None:
 
 
 def _shared_client_project_id(rt: _state._Runtime) -> str | None:
+    """Project id to bind on shared ``get_client()`` / ``async_client()``.
+
+    Settings / ``set_project`` first; on the process default runtime, also
+    ``OPENGRADE_PROJECT_ID``. Bare ``Client()`` does not use this helper.
+    """
     if rt.settings.project_id:
         return rt.settings.project_id
-    if rt is _state._default():
-        return _state._active_project_id()
-    return rt.settings.project_id
+    if rt is not _state._default():
+        return rt.settings.project_id
+    active = _state._active_project_id()
+    if active:
+        return active
+    env_id = os.getenv("OPENGRADE_PROJECT_ID")
+    if env_id and env_id.strip():
+        return env_id.strip()
+    return None
+
+
+def _ensure_client_project_id(client: Client | AsyncClient, rt: _state._Runtime) -> None:
+    if client._project_id is None:
+        pid = _shared_client_project_id(rt)
+        if pid is not None:
+            client._project_id = pid
 
 
 def active_runtime() -> _state._Runtime:
@@ -94,7 +114,7 @@ class Opengrade:
         self._runtime = _state._Runtime.fresh()
         self._runtime.settings = settings
         self.tracing_enabled = False
-        self._activate_token = None
+        self._activate_token: Token[Opengrade | None] | None = None
         self._instance_id = _otel._next_instance_id()
 
     @classmethod
@@ -113,7 +133,7 @@ class Opengrade:
         return self._runtime.settings
 
     @property
-    def client(self) -> _context.Client:
+    def client(self) -> Client:
         rt = self._runtime
         with rt.client_lock:
             if rt.client is None:
@@ -122,9 +142,11 @@ class Opengrade:
                     api_key=_api_key_for_runtime(rt),
                     project_id=_shared_client_project_id(rt),
                 )
+            else:
+                _ensure_client_project_id(rt.client, rt)
             return rt.client
 
-    def async_client(self) -> _context.AsyncClient:
+    def async_client(self) -> AsyncClient:
         rt = self._runtime
         uri = _tracking_uri_for_runtime(rt)
         api_key = _api_key_for_runtime(rt)
@@ -137,12 +159,16 @@ class Opengrade:
                     rt.async_client_no_loop = _context.AsyncClient(
                         uri, api_key=api_key, project_id=project_id
                     )
+                else:
+                    _ensure_client_project_id(rt.async_client_no_loop, rt)
                 return rt.async_client_no_loop
         with rt.client_lock:
             client = rt.async_clients.get(loop)
             if client is None:
                 client = _context.AsyncClient(uri, api_key=api_key, project_id=project_id)
                 rt.async_clients[loop] = client
+            else:
+                _ensure_client_project_id(client, rt)
             return client
 
     def set_project(self, name: str) -> ProjectResponse | None:
@@ -157,7 +183,7 @@ class Opengrade:
         _otel.init_for_instance(self, **kwargs)
 
     @property
-    def trace(self):
+    def trace(self) -> Any:
         from opengrade._trace import trace
 
         return trace

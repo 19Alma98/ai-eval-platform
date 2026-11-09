@@ -762,7 +762,10 @@ def test_scheduling_failure_never_reaches_the_caller(
 def test_missing_project_warns_once_and_skips(
     sent: Recorder, caplog: pytest.LogCaptureFixture, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    from opengrade import _context
+
     monkeypatch.delenv("OPENGRADE_PROJECT_ID")
+    _context._reset_client()
 
     @opengrade.trace(name="noproj", metrics=[opengrade.metric(lambda s: 1.0, name="m")])
     def noproj(q: str) -> str:
