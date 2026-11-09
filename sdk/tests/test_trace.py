@@ -79,11 +79,25 @@ def test_truncate_value_reduces_before_json_dumps(monkeypatch: pytest.MonkeyPatc
     assert out.endswith("…[truncated]") or len(out.encode("utf-8")) <= 64
 
 
-def test_truncate_value_nested_stops_after_budget() -> None:
+def test_truncate_value_nested_stops_after_budget(monkeypatch: pytest.MonkeyPatch) -> None:
+    seen: list[object] = []
+    real_dumps = json.dumps
+
+    def spy(obj: object, **kwargs: object) -> str:
+        seen.append(obj)
+        return real_dumps(obj, **kwargs)  # type: ignore[arg-type]
+
+    monkeypatch.setattr(_trace.json, "dumps", spy)
     payload = {"a": "x" * 50, "b": "y" * 50, "c": "z" * 50}
     out = truncate_value(payload, limit=40)
+    assert seen, "json.dumps should still be called"
+    reduced = seen[0]
+    assert isinstance(reduced, dict)
+    assert "c" not in reduced  # budget walk must omit late keys, not final clip alone
+    if "b" in reduced:
+        assert isinstance(reduced["b"], str)
+        assert len(reduced["b"]) < 50
     assert len(out.encode("utf-8")) <= 40
-    assert out.count("z" * 20) == 0
 
 
 def test_configure_capture_redact_roundtrip() -> None:
