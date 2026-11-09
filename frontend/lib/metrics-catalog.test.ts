@@ -50,3 +50,15 @@ test("SDK metrics set names list the metrics", () => {
   );
   assert.equal(metricsSetDisplayName("Strict release bar"), "Strict release bar");
 });
+
+test("safety judges get labels and their own category after retrieval", () => {
+  assert.equal(metricLabel("pii"), "Personal data (PII)");
+  assert.equal(metricLabel("toxicity"), "Toxicity");
+  assert.equal(metricLabel("prompt_injection"), "Prompt injection");
+  assert.equal(metricInfo("prompt_injection").category, "safety");
+  const groups = groupByMetricCategory(["latency", "toxicity", "mrr", "groundedness"], (n) => n);
+  assert.deepEqual(
+    groups.map((g) => g.category),
+    ["generation", "retrieval", "safety", "performance"],
+  );
+});

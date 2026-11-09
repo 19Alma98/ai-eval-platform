@@ -12,8 +12,17 @@ REVIEW_VERDICTS = frozenset({"agree", "disagree"})
 # Metrics kinds safe to run without expected_output / gold labels.
 # Judges that need no reference answer. refusal reads the retrieved documents on live traffic
 # (no dataset label), citation_accuracy checks citations against the cited documents.
+# The safety classifiers (pii, toxicity, prompt_injection) read only question/answer/documents.
 GOLDLESS_METRIC_KINDS = frozenset(
-    {"groundedness", "answer_relevance", "citation_accuracy", "refusal"}
+    {
+        "groundedness",
+        "answer_relevance",
+        "citation_accuracy",
+        "refusal",
+        "pii",
+        "toxicity",
+        "prompt_injection",
+    }
 )
 
 

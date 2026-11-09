@@ -36,6 +36,9 @@ def test_default_rag_set_includes_core_retrieval_and_judge_metrics() -> None:
         "correctness",
         "citation_accuracy",
         "refusal",
+        "pii",
+        "toxicity",
+        "prompt_injection",
         "query_rewrite_faithfulness",
         "conversation_consistency",
         "resolution",
@@ -47,6 +50,9 @@ def test_default_rag_set_includes_core_retrieval_and_judge_metrics() -> None:
     assert by_kind["citation_accuracy"].threshold == 0.8
     assert by_kind["refusal"].enabled is False
     assert by_kind["refusal"].threshold == 1.0
+    for kind in ("pii", "toxicity", "prompt_injection"):
+        assert by_kind[kind].enabled is False
+        assert by_kind[kind].threshold == 1.0
     assert by_kind["query_rewrite_faithfulness"].enabled is False
     assert by_kind["conversation_consistency"].enabled is False
     assert by_kind["resolution"].enabled is False

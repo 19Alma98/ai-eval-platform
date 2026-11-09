@@ -43,6 +43,9 @@ JUDGE_KINDS = (
     "query_rewrite_faithfulness",
     "conversation_consistency",
     "resolution",
+    "pii",
+    "toxicity",
+    "prompt_injection",
 )
 
 _METHODS: dict[str, frozenset[str]] = {
@@ -56,6 +59,9 @@ _METHODS: dict[str, frozenset[str]] = {
     "query_rewrite_faithfulness": frozenset({"rubric"}),
     "conversation_consistency": frozenset({"rubric"}),
     "resolution": frozenset({"rubric"}),
+    "pii": frozenset({"classify"}),
+    "toxicity": frozenset({"classify"}),
+    "prompt_injection": frozenset({"classify"}),
 }
 _DEFAULT_METHOD = {
     "groundedness": "claims",
@@ -68,6 +74,9 @@ _DEFAULT_METHOD = {
     "query_rewrite_faithfulness": "rubric",
     "conversation_consistency": "rubric",
     "resolution": "rubric",
+    "pii": "classify",
+    "toxicity": "classify",
+    "prompt_injection": "classify",
 }
 _SCORINGS = frozenset({"recall", "f1"})
 DEFAULT_MAX_CLAIMS = 30
@@ -656,11 +665,16 @@ def create_llm_judge(
 ) -> _LlmJudge:
     cls = _JUDGES.get(kind)
     if cls is None:
-        # Imported here: rag_checks / conversation_checks subclass _LlmJudge from this module.
+        # Imported here: these modules subclass _LlmJudge from this module.
         from opengrade_server.evaluation.judges.conversation_checks import CONVERSATION_JUDGES
         from opengrade_server.evaluation.judges.rag_checks import RAG_CHECK_JUDGES
+        from opengrade_server.evaluation.judges.safety_checks import SAFETY_CHECK_JUDGES
 
-        cls = RAG_CHECK_JUDGES.get(kind) or CONVERSATION_JUDGES.get(kind)
+        cls = (
+            RAG_CHECK_JUDGES.get(kind)
+            or CONVERSATION_JUDGES.get(kind)
+            or SAFETY_CHECK_JUDGES.get(kind)
+        )
     if cls is None:
         raise ValueError(f"Unknown LLM judge kind: {kind}")
     return cls(config, llm, defaults=defaults, claim_cache=claim_cache)

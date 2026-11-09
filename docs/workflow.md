@@ -132,6 +132,7 @@ drops of about 0.28, with 100 about 0.07. See [statistical power](08-cli-ci.md#s
 | The answer is right | `correctness`, `must_contain` | `expected_output` / `must_contain` |
 | The answer addresses the question | `answer_relevance` | LLM judge |
 | It declines when it should | `refusal` | `answerable` / `expected_refusal` |
+| No personal data, toxicity or prompt injection | `pii`, `toxicity`, `prompt_injection` | LLM judge; no gold needed |
 | Speed and cost | `latency`, `cost`, `token_usage` | tracing on (`opengrade.init()`) for tokens and cost |
 | Exact labels, formats, tool calls | `exact_match`, `contains`, `regex`, `json_schema`, `tool_call_success` | set as a server evaluator in a metrics set |
 | Something specific to your app | `@opengrade.metric` (Python) or `opengrade.LlmJudge` (criteria in plain language) | — |

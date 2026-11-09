@@ -35,6 +35,9 @@ export const RAG_RECOMMENDED_EVALUATOR_KINDS = [
   "correctness",
   "citation_accuracy",
   "refusal",
+  "pii",
+  "toxicity",
+  "prompt_injection",
   "latency",
 ] as const;
 

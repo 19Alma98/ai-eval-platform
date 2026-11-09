@@ -33,9 +33,10 @@ Priority: **P0** blocks a public release, **P1** fix before promoting it, **P2**
   alert rules (`ALERT_METRICS` is a fixed list).
 - [ ] **Trace-structure checks**: assertions on span order / counts / errors (retriever before LLM,
   max N tool calls), agent trajectory evaluation beyond `tool_call_success`.
-- [ ] **RAG answer checks still open** (citation accuracy and correct refusal shipped as
-  `citation_accuracy` / `refusal`): safety checks (PII in the output, toxicity, prompt injection in
-  retrieved documents); judge-vs-human agreement (kappa / % agreement) shown per judge.
+- [ ] **RAG answer checks still open** (citation accuracy, correct refusal and safety checks shipped
+  as `citation_accuracy` / `refusal` / `pii` / `toxicity` / `prompt_injection`): Cohen's kappa for
+  judge-vs-human agreement per judge (today only % agreement); deterministic `patterns` method for
+  PII; per-category severity / thresholds for the safety checks.
 - [ ] **Scheduled canary runs** of a gold subset against the live endpoint, alert on change.
 
 ### Conversational RAG (multi-turn) — P2

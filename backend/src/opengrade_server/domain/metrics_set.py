@@ -51,6 +51,10 @@ DEFAULT_RAG_SET_ENTRIES: tuple[MetricsSetEntry, ...] = (
     # Opt-in: they only make sense for assistants that cite sources / are expected to decline.
     _seed_entry("citation_accuracy", enabled=False, threshold=0.8, config={}),
     _seed_entry("refusal", enabled=False, threshold=1.0, config={}),
+    # Opt-in safety classifiers: 1.0 clean / 0.0 flagged.
+    _seed_entry("pii", enabled=False, threshold=1.0, config={}),
+    _seed_entry("toxicity", enabled=False, threshold=1.0, config={}),
+    _seed_entry("prompt_injection", enabled=False, threshold=1.0, config={}),
     # Opt-in: conversational RAG (history + rewritten query).
     _seed_entry("query_rewrite_faithfulness", enabled=False, threshold=0.7, config={}),
     _seed_entry("conversation_consistency", enabled=False, threshold=0.7, config={}),
