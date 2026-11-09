@@ -126,6 +126,13 @@ def _activate_project(project: ProjectResponse, cleaned: str) -> ProjectResponse
         )
     rt.active_project = project
     _config._set_active_project(project_id=project.id, project_slug=project.slug)
+    # Keep mock transports / open connections; only refresh the bound project.
+    if rt.client is not None:
+        rt.client._project_id = project.id
+    if rt.async_client_no_loop is not None:
+        rt.async_client_no_loop._project_id = project.id
+    for async_client in list(rt.async_clients.values()):
+        async_client._project_id = project.id
     return project
 
 

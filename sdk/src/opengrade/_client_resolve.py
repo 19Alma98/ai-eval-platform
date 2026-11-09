@@ -30,10 +30,11 @@ def resolve_bound_project(
         return project_id
     if bound:
         return bound
+    resolved = resolve_project_id(None)
     if not _GLOBAL_FALLBACK_WARNED:
         warnings.warn(_DEPRECATION_MSG, DeprecationWarning, stacklevel=stacklevel + 1)
         _GLOBAL_FALLBACK_WARNED = True
-    return resolve_project_id(None)
+    return resolved
 
 
 def reset_global_fallback_warning_for_tests() -> None:
