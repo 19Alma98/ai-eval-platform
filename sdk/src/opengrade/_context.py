@@ -205,12 +205,14 @@ def _reset_for_tests() -> None:
 
 
 def _after_fork_in_child() -> None:
-    """The child inherits the parent's httpx client (sockets/locks); drop it so
-    the child lazily builds a fresh one. Do not close — that would affect the parent."""
+    """Test helper only: resets client refs. Real forks use
+    ``_state._after_fork_in_child`` (registered once), which also clears pool/sender."""
     _state._default().reset_client_refs()
 
 
 class _ContextModule(types.ModuleType):
+    """Pytest contract: attribute assignment like ``_context._CLIENT = …`` must
+    mutate the default ``_Runtime``, not a vanished module global."""
     @property
     def _CLIENT(self) -> Client | None:
         return _state._default().client

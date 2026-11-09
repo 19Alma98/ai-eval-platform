@@ -114,6 +114,9 @@ _DEFAULT_LOCK = threading.Lock()
 
 
 def _module_override(module: str, name: str) -> Any:
+    """Pytest contract: ``monkeypatch.setattr(mod, NAME, …)`` writes into
+    ``sys.modules[mod].__dict__``. Prefer that shadow over ``_Runtime`` so
+    existing tests keep working without rewriting every fixture."""
     import sys
 
     mod = sys.modules.get(module)
