@@ -80,7 +80,7 @@ def _reset_opengrade_for_tests() -> None:
 class Opengrade:
     """Configurable opengrade runtime (settings, client, tracing flags)."""
 
-    __slots__ = ("_runtime", "tracing_enabled", "_activate_token")
+    __slots__ = ("_runtime", "tracing_enabled", "_activate_token", "_instance_id", "__weakref__")
 
     def __init__(self, settings: _state.Settings | None = None, **kwargs: Any) -> None:
         fields = _state.Settings.__dataclass_fields__
@@ -92,17 +92,23 @@ class Opengrade:
             settings = settings.with_updates(
                 **{k: v for k, v in kwargs.items() if k in fields}
             )
+        from opengrade import _otel
+
         self._runtime = _state._Runtime.fresh()
         self._runtime.settings = settings
         self.tracing_enabled = False
         self._activate_token = None
+        self._instance_id = _otel._next_instance_id()
 
     @classmethod
     def _wrap_default(cls, rt: _state._Runtime) -> Opengrade:
         og = cls.__new__(cls)
+        from opengrade import _otel
+
         og._runtime = rt
         og.tracing_enabled = bool(rt.initialized)
         og._activate_token = None
+        og._instance_id = _otel._next_instance_id()
         return og
 
     @property
@@ -150,12 +156,10 @@ class Opengrade:
         )
 
     def init_tracing(self, **kwargs: Any) -> None:
-        """Enable tracing flags on this instance; default runtime delegates to ``_otel.init``."""
-        self.tracing_enabled = True
-        if self._runtime is _state._default():
-            from opengrade import _otel
+        """Configure OTLP export for this instance via the shared ``TracerProvider``."""
+        from opengrade import _otel
 
-            _otel.init(**kwargs)
+        _otel.init_for_instance(self, **kwargs)
 
     @property
     def trace(self):

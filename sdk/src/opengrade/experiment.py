@@ -25,6 +25,7 @@ from opentelemetry import trace as otel_trace
 from opentelemetry.trace import Status, StatusCode
 
 from opengrade import _config, _otel
+from opengrade._opengrade import current
 from opengrade._async import run_sync
 from opengrade._context import get_client, resolve_or_create_project
 from opengrade._eval_run import bind_evaluation
@@ -856,7 +857,7 @@ class Experiment:
     ) -> dict[tuple[str, int], ExperimentItemOutputResponse]:
         """Wait until OTLP-ingested traces are bound, so our PUT lands last."""
         traced = {(r.item.id, r.repeat): r.trace_id for r in records if r.trace_id}
-        if traced and _otel._INITIALIZED:
+        if traced and current().tracing_enabled:
             _otel.flush()
         else:
             traced = {}
