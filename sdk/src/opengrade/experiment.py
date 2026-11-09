@@ -16,7 +16,7 @@ import time
 from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import contextmanager
-from contextvars import ContextVar, Token
+from contextvars import ContextVar, Token, copy_context
 from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Any
@@ -614,7 +614,10 @@ class Experiment:
                 work(item, repeat)
             return
         with ThreadPoolExecutor(max_workers=max_concurrency) as pool:
-            for future in [pool.submit(work, item, repeat) for item, repeat in jobs]:
+            futures = [
+                pool.submit(copy_context().run, work, item, repeat) for item, repeat in jobs
+            ]
+            for future in futures:
                 future.result()
 
     def __enter__(self) -> Experiment:

@@ -725,6 +725,44 @@ def test_app_config_and_run_task(server: FakeServer) -> None:
     assert sorted(o["actual_output"] for o in server.outputs[result.id].values()) == ["Q1", "Q2"]
 
 
+def test_run_task_preserves_using_attributes_under_concurrency(
+    server: FakeServer, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from opentelemetry import trace
+    from opentelemetry.sdk.trace import TracerProvider
+    from opentelemetry.sdk.trace.export import SimpleSpanProcessor
+    from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
+
+    from opengrade import _otel
+
+    _otel._reset_for_tests()
+    exporter = InMemorySpanExporter()
+    provider = TracerProvider()
+    provider.add_span_processor(SimpleSpanProcessor(exporter))
+    trace.set_tracer_provider(provider)
+    monkeypatch.setattr(_otel, "_INITIALIZED", True)
+
+    def task(item: Any) -> str:
+        with opengrade.span("task-body"):
+            pass
+        return item.input
+
+    try:
+        exp = opengrade.start_experiment("ctx-concurrency", dataset=ROWS)
+        with opengrade.using_attributes(user_id="u-concurrent", tags=["eval-scope"]):
+            exp.run_task(task, max_concurrency=2)
+        exp.finish()
+    finally:
+        _otel._reset_for_tests()
+
+    bodies = [s for s in exporter.get_finished_spans() if s.name == "task-body"]
+    assert len(bodies) == 2
+    for span in bodies:
+        attrs = dict(span.attributes or {})
+        assert attrs["user.id"] == "u-concurrent"
+        assert list(attrs["tag.tags"]) == ["eval-scope"]
+
+
 def test_output_entry_fills_empty_trace_documents() -> None:
     from opengrade.experiment import ItemRun
     from opengrade.models import DatasetItemResponse, ExperimentItemOutputResponse
