@@ -265,6 +265,7 @@ def sweep(
     task_type: str = "rag_qa",
     raise_on_error: bool = False,
     timeout: float = 600.0,
+    og: Any = None,
     client: Client | None = None,
 ) -> SweepResult:
     """Run one experiment per configuration on the same test set and rank them.
@@ -293,6 +294,8 @@ def sweep(
         raise ValueError(f"{SWEEP_PARAM!r} is reserved for the sweep name")
 
     explicit_client = client is not None
+    if client is None and og is not None:
+        client = og.client
     client = client or get_client()
     project_id = _resolve_project(project, client, activate=not explicit_client)
     # Resolve (and upload, for inline rows) the test set once for every configuration.

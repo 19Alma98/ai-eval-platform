@@ -1329,6 +1329,7 @@ def start_experiment(
     app_config_alias: str | None = None,
     repeats: int = 1,
     group_by: str | None = None,
+    og: Any = None,
     client: Client | None = None,
 ) -> Experiment:
     """Create an experiment and return it for a manual loop.
@@ -1357,6 +1358,8 @@ def start_experiment(
     if not 1 <= repeats <= MAX_REPEATS:
         raise ValueError(f"repeats must be between 1 and {MAX_REPEATS}")
     explicit_client = client is not None
+    if client is None and og is not None:
+        client = og.client
     client = client or get_client()
     project_id = _resolve_project(project, client, activate=not explicit_client)
     dataset_id = _resolve_dataset(client, project_id, dataset, task_type=task_type)
@@ -1430,6 +1433,7 @@ def evaluate(
     timeout: float = 600.0,
     repeats: int = 1,
     group_by: str | None = None,
+    og: Any = None,
     client: Client | None = None,
 ) -> ExperimentResult:
     """Run ``task`` on every dataset item, score it and return the result.
@@ -1460,6 +1464,7 @@ def evaluate(
         app_config_alias=app_config_alias,
         repeats=repeats,
         group_by=group_by,
+        og=og,
         client=client,
     )
     exp.run_task(task, max_concurrency=max_concurrency, raise_on_error=raise_on_error)

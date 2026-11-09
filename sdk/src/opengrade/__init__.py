@@ -44,7 +44,10 @@ _LAZY: dict[str, tuple[str, str]] = {
     "LlmJudge": ("opengrade.judges", "LlmJudge"),
     "SweepResult": ("opengrade.sweeps", "SweepResult"),
     "SweepRun": ("opengrade.sweeps", "SweepRun"),
+    "Opengrade": ("opengrade._opengrade", "Opengrade"),
+    "Settings": ("opengrade._state", "Settings"),
     "aset_project": ("opengrade._context", "aset_project"),
+    "current": ("opengrade._opengrade", "current"),
     "bind_evaluation": ("opengrade._eval_run", "bind_evaluation"),
     "evaluate": ("opengrade.experiment", "evaluate"),
     "evaluate_retrieval": ("opengrade.retrieval", "evaluate_retrieval"),
@@ -65,6 +68,9 @@ _LAZY: dict[str, tuple[str, str]] = {
 
 __all__ = [
     "__version__",
+    "Opengrade",
+    "Settings",
+    "current",
     "OpengradeAPIError",
     "OpengradeConnectionError",
     "OpengradeError",

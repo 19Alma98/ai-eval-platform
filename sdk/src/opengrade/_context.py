@@ -26,44 +26,18 @@ def _slugify(value: str) -> str:
     return slug or "project"
 
 
-def _shared_client_project_id() -> str | None:
-    rt = _state._default()
-    if rt.settings.project_id:
-        return rt.settings.project_id
-    return _state._active_project_id()
-
-
 def get_client() -> Client:
-    """Return the shared ``Client`` bound to the current tracking URI."""
-    rt = _state._default()
-    with rt.client_lock:
-        if rt.client is None:
-            rt.client = Client(
-                _config.get_tracking_uri(),
-                project_id=_shared_client_project_id(),
-            )
-        return rt.client
+    """Return the ``Client`` for ``opengrade.current()``."""
+    from opengrade._opengrade import current
+
+    return current().client
 
 
 def get_async_client() -> AsyncClient:
-    """Return an ``AsyncClient`` bound to the current tracking URI and event loop."""
-    rt = _state._default()
-    uri = _config.get_tracking_uri()
-    try:
-        loop = asyncio.get_running_loop()
-    except RuntimeError:
-        with rt.client_lock:
-            if rt.async_client_no_loop is None:
-                rt.async_client_no_loop = AsyncClient(
-                    uri, project_id=_shared_client_project_id()
-                )
-            return rt.async_client_no_loop
-    with rt.client_lock:
-        client = rt.async_clients.get(loop)
-        if client is None:
-            client = AsyncClient(uri, project_id=_shared_client_project_id())
-            rt.async_clients[loop] = client
-        return client
+    """Return the ``AsyncClient`` for ``opengrade.current()`` and the running loop."""
+    from opengrade._opengrade import current
+
+    return current().async_client()
 
 
 def _aclose_async_client_best_effort(client: AsyncClient) -> None:
@@ -82,8 +56,7 @@ def _aclose_async_client_best_effort(client: AsyncClient) -> None:
     )
 
 
-def _reset_client() -> None:
-    rt = _state._default()
+def _close_runtime_clients(rt: _state._Runtime) -> None:
     with rt.client_lock:
         if rt.client is not None:
             rt.client.close()
@@ -96,6 +69,10 @@ def _reset_client() -> None:
         _aclose_async_client_best_effort(async_client)
     if no_loop is not None:
         _aclose_async_client_best_effort(no_loop)
+
+
+def _reset_client() -> None:
+    _close_runtime_clients(_state._default())
 
 
 def _find_project(client: Client, name: str, slug: str) -> ProjectResponse | None:
@@ -114,18 +91,33 @@ async def _afind_project(client: AsyncClient, name: str, slug: str) -> ProjectRe
     return by_name[0] if by_name else None
 
 
-def _activate_project(project: ProjectResponse, cleaned: str) -> ProjectResponse:
+def _activate_project(
+    project: ProjectResponse,
+    cleaned: str,
+    rt: _state._Runtime | None = None,
+) -> ProjectResponse:
     from opengrade import _otel
 
-    rt = _state._default()
-    if _otel._INITIALIZED and _state._active_project_id() != project.id:
+    if rt is None:
+        rt = _state._default()
+    active_id = (
+        _state._active_project_id()
+        if rt is _state._default()
+        else rt.settings.project_id
+    )
+    if _otel._INITIALIZED and active_id != project.id:
         logger.warning(
             "opengrade.set_project(%r) after init(): traces keep going to the previous "
             "project until opengrade.init(force=True)",
             cleaned,
         )
     rt.active_project = project
-    _config._set_active_project(project_id=project.id, project_slug=project.slug)
+    if rt is _state._default():
+        _config._set_active_project(project_id=project.id, project_slug=project.slug)
+    else:
+        rt.settings = rt.settings.with_updates(
+            project_id=project.id, project_slug=project.slug
+        )
     # Keep mock transports / open connections; only refresh the bound project.
     if rt.client is not None:
         rt.client._project_id = project.id
@@ -141,6 +133,7 @@ def resolve_or_create_project(
     client: Client,
     *,
     activate: bool = True,
+    runtime: _state._Runtime | None = None,
 ) -> ProjectResponse | None:
     """Find or create ``name`` on ``client``. Optionally make it the active project.
 
@@ -169,7 +162,11 @@ def resolve_or_create_project(
         return None
 
     if activate:
-        return _activate_project(project, cleaned)
+        if runtime is None:
+            from opengrade._opengrade import current
+
+            runtime = current()._runtime
+        return _activate_project(project, cleaned, runtime)
     return project
 
 
@@ -213,15 +210,19 @@ async def aset_project(name: str) -> ProjectResponse | None:
 
 
 def get_project() -> ProjectResponse | None:
-    """Return the project set via ``set_project``, if any."""
-    return _state._default().active_project
+    """Return the project set via ``set_project`` on ``current()``, if any."""
+    from opengrade._opengrade import current
+
+    return current()._runtime.active_project
 
 
 def _reset_for_tests() -> None:
     from opengrade._client_resolve import reset_global_fallback_warning_for_tests
+    from opengrade._opengrade import _reset_opengrade_for_tests
 
     _reset_client()
-    _state._default().active_project = None
+    _state._reset_default_for_tests()
+    _reset_opengrade_for_tests()
     _config._reset_for_tests()
     reset_global_fallback_warning_for_tests()
 
