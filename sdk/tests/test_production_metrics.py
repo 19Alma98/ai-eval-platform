@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import functools
+import json
 import logging
 import threading
 from collections.abc import Iterator
@@ -234,6 +235,41 @@ def test_uncopyable_sample_skips_metrics(sent: Recorder, caplog: pytest.LogCaptu
 
     assert sent.scores == []
     assert any("could not snapshot" in r.message for r in caplog.records)
+
+
+def test_production_metrics_see_unredacted_io_while_span_is_redacted(
+    sent: Recorder,
+) -> None:
+    seen: list[opengrade.Sample] = []
+
+    @opengrade.metric
+    def record(s: opengrade.Sample) -> float:
+        seen.append(s)
+        return 1.0
+
+    @opengrade.trace(
+        name="secret-handler",
+        metrics=[record],
+        redact=lambda name, value: "***" if name == "api_key" else value,
+        redact_output=lambda value: {"redacted_out": True},
+    )
+    def handler(customer_id: str, api_key: str) -> dict:
+        return {"token": "OUT_SECRET"}
+
+    result = handler("c1", "IN_SECRET")
+    assert result == {"token": "OUT_SECRET"}
+    assert opengrade.flush()
+
+    attrs = dict(_exporter.get_finished_spans()[-1].attributes or {})
+    span_in = json.loads(str(attrs["input.value"]))
+    span_out = json.loads(str(attrs["output.value"]))
+    assert span_in["customer_id"] == "c1"
+    assert span_in["api_key"] == "***"
+    assert span_out == {"redacted_out": True}
+
+    (sample,) = seen
+    assert sample.input == {"args": ["c1", "IN_SECRET"], "kwargs": {}}
+    assert sample.output == {"token": "OUT_SECRET"}
 
 
 def test_input_falls_back_to_args_and_kwargs(sent: Recorder) -> None:

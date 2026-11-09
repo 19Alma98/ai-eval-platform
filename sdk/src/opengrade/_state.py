@@ -89,6 +89,8 @@ class _Runtime:
 
     def reset_config_overrides(self) -> None:
         self.settings = Settings.from_env()
+        self.capture_redact = None
+        self.capture_redact_output = None
 
     def reset_live_overrides(self) -> None:
         self.live_enabled = None
@@ -109,6 +111,8 @@ class _Runtime:
         self.score_sender = None
         self.scores_lock = threading.Lock()
         self.exit_deadline = None
+        self.capture_redact = None
+        self.capture_redact_output = None
 
 
 _MISSING = object()

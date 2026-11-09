@@ -139,7 +139,10 @@ opengrade.configure_capture(
     redact_output=lambda value: {"ok": True},
 )
 
-@opengrade.trace(redact=lambda name, value: value if name != "ssn" else "<redacted>")
+@opengrade.trace(
+    redact=lambda name, value: value if name != "ssn" else "<redacted>",
+    redact_output=lambda value: {"ok": True},
+)
 def lookup(customer_id: str, api_key: str) -> dict: ...
 ```
 

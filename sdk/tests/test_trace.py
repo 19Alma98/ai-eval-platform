@@ -189,9 +189,7 @@ def test_trace_flat_bound_args_payload(spans: InMemorySpanExporter) -> None:
     assert "args" not in payload and "kwargs" not in payload
 
 
-def test_trace_decorator_redact_overrides_global(
-    spans: InMemorySpanExporter, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_trace_decorator_redact_overrides_global(spans: InMemorySpanExporter) -> None:
     _config.configure_capture(redact=lambda n, v: f"global:{v}")
     try:
         @opengrade.trace(name="lookup", redact=lambda n, v: "***" if n == "api_key" else v)
@@ -224,6 +222,34 @@ def test_trace_uses_global_redact_when_decorator_omits(
         assert payload["token"] == "***"
     finally:
         _config.configure_capture()
+
+
+def test_trace_uses_global_redact_output_when_decorator_omits(
+    spans: InMemorySpanExporter,
+) -> None:
+    _config.configure_capture(redact_output=lambda v: {"masked": True})
+    try:
+        @opengrade.trace(name="call-out")
+        def call() -> dict:
+            return {"password": "SECRET"}
+
+        assert call() == {"password": "SECRET"}
+        out = json.loads(
+            str(dict(spans.get_finished_spans()[0].attributes or {})["output.value"])
+        )
+        assert out == {"masked": True}
+    finally:
+        _config.configure_capture()
+
+
+def test_reset_config_overrides_clears_redactors() -> None:
+    _config.configure_capture(
+        redact=lambda n, v: v,
+        redact_output=lambda v: v,
+    )
+    _config._reset_for_tests()
+    assert _config.capture_redact() is None
+    assert _config.capture_redact_output() is None
 
 
 def test_trace_redact_error_placeholder(spans: InMemorySpanExporter) -> None:
