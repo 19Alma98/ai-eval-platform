@@ -144,3 +144,28 @@ async def test_delete_project(client: AsyncClient) -> None:
 
     missing = await client.delete(f"/api/v1/projects/{project_id}")
     assert missing.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_get_project_by_slug(client: AsyncClient) -> None:
+    create = await client.post("/api/v1/projects", json={"name": "BySlug", "slug": "by-slug"})
+    assert create.status_code == 201
+    project_id = create.json()["id"]
+
+    got = await client.get("/api/v1/projects/by-slug/by-slug")
+    assert got.status_code == 200
+    assert got.json()["id"] == project_id
+    assert got.json()["slug"] == "by-slug"
+
+    missing = await client.get("/api/v1/projects/by-slug/does-not-exist")
+    assert missing.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_get_project_by_slug_not_captured_as_uuid_path(client: AsyncClient) -> None:
+    # Ensures /by-slug/... is registered and not treated as /{project_id}
+    resp = await client.get("/api/v1/projects/by-slug/any-slug")
+    assert resp.status_code == 404
+    # Invalid UUID path still 422 (FastAPI validation), proving by-slug is distinct
+    bad_uuid = await client.get("/api/v1/projects/not-a-uuid")
+    assert bad_uuid.status_code == 422

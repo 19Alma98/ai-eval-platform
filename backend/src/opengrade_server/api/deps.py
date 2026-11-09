@@ -104,6 +104,7 @@ from opengrade_server.application.projects import (
     CreateProject,
     DeleteProject,
     GetProject,
+    GetProjectBySlug,
     ListProjects,
 )
 from opengrade_server.application.release_check import ReleaseCheck
@@ -263,6 +264,12 @@ def get_get_project(
     repository: SqlAlchemyProjectRepository = Depends(get_project_repository),
 ) -> GetProject:
     return GetProject(repository)
+
+
+def get_get_project_by_slug(
+    repository: SqlAlchemyProjectRepository = Depends(get_project_repository),
+) -> GetProjectBySlug:
+    return GetProjectBySlug(repository)
 
 
 def get_delete_project(

@@ -8,9 +8,18 @@ from opengrade_server.domain.repositories import ProjectRepository
 
 
 class ProjectNotFoundError(Exception):
-    def __init__(self, project_id: uuid.UUID) -> None:
+    def __init__(
+        self,
+        project_id: uuid.UUID | None = None,
+        *,
+        slug: str | None = None,
+    ) -> None:
+        if project_id is None and slug is None:
+            raise TypeError("ProjectNotFoundError requires project_id or slug")
         self.project_id = project_id
-        super().__init__(f"Project not found: {project_id}")
+        self.slug = slug
+        label = str(project_id) if project_id is not None else f"slug={slug}"
+        super().__init__(f"Project not found: {label}")
 
 
 class ProjectSlugConflictError(Exception):
@@ -60,6 +69,17 @@ class GetProject:
         project = await self._repository.get_by_id(project_id)
         if project is None:
             raise ProjectNotFoundError(project_id)
+        return project
+
+
+class GetProjectBySlug:
+    def __init__(self, repository: ProjectRepository) -> None:
+        self._repository = repository
+
+    async def execute(self, slug: str) -> Project:
+        project = await self._repository.get_by_slug(slug)
+        if project is None:
+            raise ProjectNotFoundError(slug=slug)
         return project
 
 

@@ -8,6 +8,7 @@ from opengrade_server.api.deps import (
     get_create_project,
     get_delete_project,
     get_get_project,
+    get_get_project_by_slug,
     get_list_projects,
 )
 from opengrade_server.api.schemas import CreateProjectRequest, ProjectResponse
@@ -16,6 +17,7 @@ from opengrade_server.application.projects import (
     CreateProjectCommand,
     DeleteProject,
     GetProject,
+    GetProjectBySlug,
     ListProjects,
 )
 
@@ -44,6 +46,15 @@ async def list_projects(
 ) -> list[ProjectResponse]:
     projects = await use_case.execute(slug=slug, name=name, limit=limit, offset=offset)
     return [ProjectResponse.model_validate(project) for project in projects]
+
+
+@router.get("/by-slug/{slug}", response_model=ProjectResponse)
+async def get_project_by_slug(
+    slug: str,
+    use_case: GetProjectBySlug = Depends(get_get_project_by_slug),
+) -> ProjectResponse:
+    project = await use_case.execute(slug)
+    return ProjectResponse.model_validate(project)
 
 
 @router.get("/{project_id}", response_model=ProjectResponse)
