@@ -17,7 +17,12 @@ from opentelemetry.trace import StatusCode
 import opengrade
 from opengrade import _config, _otel, _trace
 from opengrade._config import DEFAULT_MAX_CAPTURE_BYTES
-from opengrade._trace import _chunk_text, _default_join_chunks, truncate_value
+from opengrade._trace import (
+    _TRUNCATE_MARKER,
+    _chunk_text,
+    _default_join_chunks,
+    truncate_value,
+)
 
 _shared_exporter: InMemorySpanExporter | None = None
 
@@ -70,8 +75,8 @@ def test_default_join_chunks_respects_byte_budget(monkeypatch: pytest.MonkeyPatc
     acc = _default_join_chunks("aaaa", None)
     acc2 = _default_join_chunks("bbbb", acc)
     assert isinstance(acc2, str)
-    assert acc2.endswith("…[truncated]") or "…[truncated]" in acc2
-    assert len(acc2.encode("utf-8")) <= 8 + len("…[truncated]".encode("utf-8"))
+    assert acc2 == _TRUNCATE_MARKER  # limit < marker UTF-8 size → empty clip + marker only
+    assert len(acc2.encode("utf-8")) <= len(_TRUNCATE_MARKER.encode("utf-8"))
     # further joins are no-ops once truncated
     assert _default_join_chunks("cccc", acc2) == acc2
 
@@ -479,6 +484,77 @@ def test_trace_sync_generator_span_not_current_between_yields(
     with pytest.raises(StopIteration):
         next(gen)
     assert len(spans.get_finished_spans()) == 1
+
+
+def test_trace_sync_generator_capture_output_false(spans: InMemorySpanExporter) -> None:
+    @opengrade.trace(name="stream-no-out", capture_output=False)
+    def tokens() -> Iterator[str]:
+        yield "a"
+        yield "b"
+
+    assert list(tokens()) == ["a", "b"]
+    span = spans.get_finished_spans()[0]
+    attrs = dict(span.attributes or {})
+    assert "output.value" not in attrs
+
+
+def test_trace_async_generator_capture_output_false(spans: InMemorySpanExporter) -> None:
+    @opengrade.trace(name="astream-no-out", capture_output=False)
+    async def tokens() -> AsyncIterator[str]:
+        yield "x"
+        yield "y"
+
+    async def main() -> list[str]:
+        return [item async for item in tokens()]
+
+    assert asyncio.run(main()) == ["x", "y"]
+    span = spans.get_finished_spans()[0]
+    attrs = dict(span.attributes or {})
+    assert "output.value" not in attrs
+
+
+def test_trace_async_generator_join_chunks_custom(spans: InMemorySpanExporter) -> None:
+    def join(chunk: object, acc: object) -> object:
+        parts = [] if acc is None else list(acc)  # type: ignore[arg-type]
+        parts.append(chunk)
+        return parts
+
+    @opengrade.trace(name="async-custom-join", join_chunks=join)
+    async def tokens() -> AsyncIterator[str]:
+        yield "a"
+        yield "b"
+
+    async def main() -> list[str]:
+        return [item async for item in tokens()]
+
+    assert asyncio.run(main()) == ["a", "b"]
+    span = spans.get_finished_spans()[0]
+    assert json.loads(dict(span.attributes or {})["output.value"]) == ["a", "b"]
+
+
+def test_trace_async_generator_join_chunks_error_stops_reducer(
+    spans: InMemorySpanExporter,
+) -> None:
+    calls = {"n": 0}
+
+    def join(chunk: object, acc: object) -> object:
+        calls["n"] += 1
+        if calls["n"] == 1:
+            raise RuntimeError("boom")
+        return "should-not-run"
+
+    @opengrade.trace(name="async-join-err", join_chunks=join)
+    async def tokens() -> AsyncIterator[str]:
+        yield "a"
+        yield "b"
+
+    async def main() -> list[str]:
+        return [item async for item in tokens()]
+
+    assert asyncio.run(main()) == ["a", "b"]
+    assert calls["n"] == 1
+    span = spans.get_finished_spans()[0]
+    assert dict(span.attributes or {})["output.value"] == "<join error>"
 
 
 def test_trace_async_generator(spans: InMemorySpanExporter) -> None:

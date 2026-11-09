@@ -496,7 +496,7 @@ def _wrap_sync_gen[**P, R](
         acc: Any = None
         join_failed = False
         finished = False
-        gen = cast(Iterator[Any], fn(*args, **kwargs))
+        gen: Iterator[Any] | None = None
 
         def finish(result: Any) -> None:
             nonlocal finished
@@ -519,6 +519,7 @@ def _wrap_sync_gen[**P, R](
             span.end()
 
         try:
+            gen = cast(Iterator[Any], fn(*args, **kwargs))
             while True:
                 try:
                     with otel_trace.use_span(span, end_on_exit=False):
@@ -537,10 +538,11 @@ def _wrap_sync_gen[**P, R](
             raise
         finally:
             finish(acc if capture_output else None)
-            try:
-                gen.close()
-            except Exception:  # noqa: BLE001
-                pass
+            if gen is not None:
+                try:
+                    gen.close()
+                except Exception:  # noqa: BLE001
+                    pass
 
     return cast(Callable[P, R], wrapper)
 
@@ -582,7 +584,7 @@ def _wrap_async_gen[**P, R](
         acc: Any = None
         join_failed = False
         finished = False
-        gen = cast(AsyncIterator[Any], fn(*args, **kwargs))
+        gen: AsyncIterator[Any] | None = None
 
         def finish(result: Any) -> None:
             nonlocal finished
@@ -605,6 +607,7 @@ def _wrap_async_gen[**P, R](
             span.end()
 
         try:
+            gen = cast(AsyncIterator[Any], fn(*args, **kwargs))
             while True:
                 try:
                     with otel_trace.use_span(span, end_on_exit=False):
@@ -623,12 +626,13 @@ def _wrap_async_gen[**P, R](
             raise
         finally:
             finish(acc if capture_output else None)
-            aclose = getattr(gen, "aclose", None)
-            if aclose is not None:
-                try:
-                    await aclose()
-                except Exception:  # noqa: BLE001
-                    pass
+            if gen is not None:
+                aclose = getattr(gen, "aclose", None)
+                if aclose is not None:
+                    try:
+                        await aclose()
+                    except Exception:  # noqa: BLE001
+                        pass
 
     return cast(Callable[P, R], wrapper)
 
