@@ -64,6 +64,10 @@ With pip: `pip install 'opengrade-ai[ui]'`, then `opengrade ui`.
 **[SDK tour →](examples/sdk_tour/README.md)** — runnable offline project: tracing, verifying a
 RAG against a gold set, comparing architectures and models, custom metrics, alerts.
 
+**Multiple projects in one process** — use `Opengrade` + `activate()` (see
+[sdk/README.md](sdk/README.md#multiple-projects-in-one-process-opengrade) and
+[examples/fastapi_multi_tenant](examples/fastapi_multi_tenant/)).
+
 ## What it looks like
 
 **1. Trace your app.** A decorator for the whole request, a `with` block for each step. OpenAI,
