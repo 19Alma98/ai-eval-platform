@@ -2,38 +2,63 @@
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Literal
+
+from pydantic import BaseModel, Field, field_validator
+
+ChatRole = Literal["user", "assistant", "system"]
 
 
-def chat_input(item: Any) -> tuple[list[dict[str, str]], str]:
-    """Return ``(history, question)`` from a dataset item or raw input value.
+class ChatTurn(BaseModel):
+    role: ChatRole
+    content: str
+
+    @field_validator("role", mode="before")
+    @classmethod
+    def _strip_role(cls, value: object) -> object:
+        return value.strip() if isinstance(value, str) else value
+
+    @field_validator("content", mode="before")
+    @classmethod
+    def _strip_content(cls, value: object) -> object:
+        return value.strip() if isinstance(value, str) else value
+
+    @field_validator("content")
+    @classmethod
+    def _non_empty_content(cls, value: str) -> str:
+        if not value:
+            raise ValueError("content must be a non-empty string")
+        return value
+
+
+class RagChatInput(BaseModel):
+    history: list[ChatTurn] = Field(default_factory=list)
+    question: str
+
+    @field_validator("question", mode="before")
+    @classmethod
+    def _strip_question(cls, value: object) -> object:
+        return value.strip() if isinstance(value, str) else value
+
+    @field_validator("question")
+    @classmethod
+    def _non_empty_question(cls, value: str) -> str:
+        if not value:
+            raise ValueError("question must be a non-empty string")
+        return value
+
+
+def chat_input(item: object) -> RagChatInput:
+    """Return parsed chat input from a dataset item or raw input value.
 
     Accepts ``item.input`` shaped as ``{"history": [...], "question": "..."}``
     or a plain string question (empty history).
     """
     value = getattr(item, "input", item)
+    if isinstance(value, RagChatInput):
+        return value
     if isinstance(value, str):
-        question = value.strip()
-        if not question:
-            raise ValueError("chat question must be a non-empty string")
-        return [], question
-    if not isinstance(value, dict):
-        raise ValueError("chat input must be a dict with history and question, or a string")
-    question = value.get("question")
-    if not isinstance(question, str) or not question.strip():
-        raise ValueError("chat input.question must be a non-empty string")
-    history_raw = value.get("history") or []
-    if not isinstance(history_raw, list):
-        raise ValueError("chat input.history must be a list")
-    history: list[dict[str, str]] = []
-    for index, turn in enumerate(history_raw):
-        if not isinstance(turn, dict):
-            raise ValueError(f"chat history[{index}] must be an object")
-        role = turn.get("role")
-        content = turn.get("content")
-        if not isinstance(role, str) or not role.strip():
-            raise ValueError(f"chat history[{index}].role must be a non-empty string")
-        if not isinstance(content, str) or not content.strip():
-            raise ValueError(f"chat history[{index}].content must be a non-empty string")
-        history.append({"role": role.strip(), "content": content.strip()})
-    return history, question.strip()
+        return RagChatInput(history=[], question=value.strip())
+    if isinstance(value, dict):
+        return RagChatInput.model_validate(value)
+    raise ValueError("chat input must be a dict with history and question, or a string")
