@@ -5,13 +5,13 @@ from __future__ import annotations
 import atexit
 import json
 import logging
-import os
 import threading
 import time
 from collections import deque
 from collections.abc import Callable
 from typing import Any
 
+from opengrade import _state
 from opengrade._errors import OpengradeAPIError
 
 logger = logging.getLogger("opengrade")
@@ -204,19 +204,30 @@ class ScoreSender:
         logger.log(logging.WARNING if loud else logging.DEBUG, message, count, project_id, detail)
 
 
-_SENDER: ScoreSender | None = None
-_LOCK = threading.Lock()
-_ATEXIT_REGISTERED = False
-_EXIT_DEADLINE: float | None = None
+def _exit_deadline() -> float | None:
+    value = _state._module_override("opengrade._scores", "_EXIT_DEADLINE")
+    if value is not _state._MISSING:
+        return value
+    return _state._default().exit_deadline
+
+
+def _set_exit_deadline(value: float | None) -> None:
+    import sys
+
+    if _state._module_override("opengrade._scores", "_EXIT_DEADLINE") is not _state._MISSING:
+        sys.modules["opengrade._scores"].__dict__["_EXIT_DEADLINE"] = value
+    else:
+        _state._default().exit_deadline = value
 
 
 def exit_remaining() -> float:
     """Seconds left of the one ``EXIT_FLUSH_TIMEOUT_S`` budget all exit handlers share."""
-    global _EXIT_DEADLINE
     now = time.monotonic()
-    if _EXIT_DEADLINE is None:
-        _EXIT_DEADLINE = now + EXIT_FLUSH_TIMEOUT_S
-    return max(0.0, _EXIT_DEADLINE - now)
+    deadline = _exit_deadline()
+    if deadline is None:
+        deadline = now + EXIT_FLUSH_TIMEOUT_S
+        _set_exit_deadline(deadline)
+    return max(0.0, deadline - now)
 
 
 def _at_exit() -> None:
@@ -227,14 +238,14 @@ def _at_exit() -> None:
 
 
 def sender() -> ScoreSender:
-    global _SENDER, _ATEXIT_REGISTERED
-    with _LOCK:
-        if _SENDER is None:
-            _SENDER = ScoreSender()
-        if not _ATEXIT_REGISTERED:
+    rt = _state._default()
+    with rt.scores_lock:
+        if rt.score_sender is None:
+            rt.score_sender = ScoreSender()
+        if not rt.scores_atexit_registered:
             atexit.register(_at_exit)
-            _ATEXIT_REGISTERED = True
-        return _SENDER
+            rt.scores_atexit_registered = True
+        return rt.score_sender
 
 
 def enqueue(project_id: str, score: dict[str, Any]) -> bool:
@@ -242,26 +253,48 @@ def enqueue(project_id: str, score: dict[str, Any]) -> bool:
 
 
 def flush(timeout: float = 5.0) -> bool:
-    current = _SENDER
+    current = _state._default().score_sender
     return True if current is None else current.flush(timeout)
+
+
+_SCORES_MODULE_STATE_KEYS = ("_SENDER", "_LOCK", "_ATEXIT_REGISTERED", "_EXIT_DEADLINE")
+
+
+def _clear_module_state_keys() -> None:
+    import sys
+
+    mod = sys.modules[__name__]
+    for key in _SCORES_MODULE_STATE_KEYS:
+        mod.__dict__.pop(key, None)
 
 
 def _reset_for_tests(post: Post | None = None, **kwargs: Any) -> ScoreSender | None:
     """Replace the shared sender (``post=None`` → none until first use)."""
-    global _SENDER
-    with _LOCK:
-        _SENDER = ScoreSender(post, **kwargs) if post is not None else None
-        return _SENDER
+    _clear_module_state_keys()
+    rt = _state._default()
+    with rt.scores_lock:
+        rt.score_sender = ScoreSender(post, **kwargs) if post is not None else None
+        rt.exit_deadline = None
+        return rt.score_sender
 
 
 def _after_fork_in_child() -> None:
     """The child inherits the parent's lock/condition (possibly held) and no thread:
     drop the singleton so the child lazily builds a fresh sender."""
-    global _SENDER, _LOCK, _EXIT_DEADLINE
-    _SENDER = None
-    _LOCK = threading.Lock()
-    _EXIT_DEADLINE = None
+    rt = _state._default()
+    rt.score_sender = None
+    rt.scores_lock = threading.Lock()
+    _set_exit_deadline(None)
 
 
-if hasattr(os, "register_at_fork"):  # not on Windows
-    os.register_at_fork(after_in_child=_after_fork_in_child)
+def __getattr__(name: str) -> Any:
+    rt = _state._default()
+    if name == "_SENDER":
+        return rt.score_sender
+    if name == "_LOCK":
+        return rt.scores_lock
+    if name == "_ATEXIT_REGISTERED":
+        return rt.scores_atexit_registered
+    if name == "_EXIT_DEADLINE":
+        return rt.exit_deadline
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

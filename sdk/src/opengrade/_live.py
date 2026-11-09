@@ -25,9 +25,6 @@ LIVE_SAMPLE_RATE_ATTR = "opengrade.live.sample_rate"
 _TRUTHY = frozenset({"1", "true", "yes", "on"})
 _TRACE_ID_LOW_BITS = (1 << 64) - 1
 
-_ENABLED: bool | None = None
-_SAMPLE_RATE: float | None = None
-
 # True while inside a live-marked span: nested traced calls are part of it.
 _IN_LIVE: ContextVar[bool] = ContextVar("opengrade_in_live", default=False)
 
@@ -41,26 +38,36 @@ def _parse_rate(value: object) -> float:
 
 def configure(*, enabled: bool | None = None, sample_rate: float | None = None) -> None:
     """Set live capture from ``init()``; None falls back to the env vars."""
-    global _ENABLED, _SAMPLE_RATE
-    _ENABLED = enabled
-    _SAMPLE_RATE = None if sample_rate is None else _parse_rate(sample_rate)
+    from opengrade import _state
+
+    rt = _state._default()
+    rt.live_enabled = enabled
+    rt.live_sample_rate = None if sample_rate is None else _parse_rate(sample_rate)
 
 
 def _reset_for_tests() -> None:
-    configure()
+    from opengrade import _state
+
+    _state._default().reset_live_overrides()
 
 
 def is_enabled() -> bool:
     """``init(live=...)`` > ``OPENGRADE_LIVE`` > off."""
-    if _ENABLED is not None:
-        return _ENABLED
+    from opengrade import _state
+
+    enabled = _state._default().live_enabled
+    if enabled is not None:
+        return enabled
     return os.getenv("OPENGRADE_LIVE", "").strip().lower() in _TRUTHY
 
 
 def sample_rate() -> float:
     """``init(live_sample_rate=...)`` > ``OPENGRADE_LIVE_SAMPLE_RATE`` > 1.0."""
-    if _SAMPLE_RATE is not None:
-        return _SAMPLE_RATE
+    from opengrade import _state
+
+    override = _state._default().live_sample_rate
+    if override is not None:
+        return override
     raw = os.getenv("OPENGRADE_LIVE_SAMPLE_RATE", "").strip()
     if not raw:
         return 1.0

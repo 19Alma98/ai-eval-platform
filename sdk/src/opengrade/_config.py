@@ -3,7 +3,10 @@ from __future__ import annotations
 import logging
 import os
 from dataclasses import dataclass
+from typing import Any
 from urllib.parse import urlsplit
+
+from opengrade import _state
 
 DEFAULT_TRACKING_URI = "http://localhost:8000"
 OTLP_TRACES_PATH = "/v1/traces"
@@ -12,13 +15,6 @@ DEFAULT_SERVICE_NAME = "opengrade-app"
 DEFAULT_MAX_CAPTURE_BYTES = 32 * 1024
 
 logger = logging.getLogger("opengrade")
-
-_TRACKING_URI: str | None = None
-_API_KEY: str | None = None
-_WARNED_PLAINTEXT_KEY = False
-_ACTIVE_PROJECT_ID: str | None = None
-_ACTIVE_PROJECT_SLUG: str | None = None
-_MAX_CAPTURE_BYTES: int | None = None
 
 
 def _normalize_uri(uri: str) -> str:
@@ -30,9 +26,8 @@ def set_tracking_uri(uri: str) -> None:
     normalized = _normalize_uri(uri)
     if not normalized:
         raise ValueError("tracking URI must not be empty")
-    global _TRACKING_URI
-    if normalized != _TRACKING_URI:
-        _TRACKING_URI = normalized
+    if normalized != _state._tracking_uri_override():
+        _state._set_tracking_uri_override(normalized)
         from opengrade._context import _reset_client
 
         _reset_client()
@@ -43,8 +38,9 @@ def get_tracking_uri() -> str:
 
     Order: ``set_tracking_uri()`` > ``OPENGRADE_TRACKING_URI`` > ``http://localhost:8000``.
     """
-    if _TRACKING_URI is not None:
-        return _TRACKING_URI
+    override = _state._tracking_uri_override()
+    if override is not None:
+        return override
     value = os.getenv("OPENGRADE_TRACKING_URI")
     if value and value.strip():
         return _normalize_uri(value)
@@ -54,9 +50,9 @@ def get_tracking_uri() -> str:
 def set_api_key(key: str | None) -> None:
     """Set the platform API key used by ``Client()`` and OTLP export (``None`` clears it)."""
     normalized = key.strip() if key is not None else None
-    global _API_KEY
-    if normalized != _API_KEY:
-        _API_KEY = normalized or None
+    new_key = normalized or None
+    if new_key != _state._api_key_override():
+        _state._set_api_key_override(new_key)
         from opengrade._context import _reset_client
 
         _reset_client()
@@ -64,8 +60,9 @@ def set_api_key(key: str | None) -> None:
 
 def get_api_key() -> str | None:
     """Resolve the platform API key: ``set_api_key()`` > ``OPENGRADE_API_KEY`` > none."""
-    if _API_KEY is not None:
-        return _API_KEY
+    override = _state._api_key_override()
+    if override is not None:
+        return override
     value = (os.getenv("OPENGRADE_API_KEY") or "").strip()
     return value or None
 
@@ -83,13 +80,12 @@ def auth_headers(url: str, api_key: str | None = None) -> dict[str, str]:
     if not key:
         return {}
     parsed = urlsplit(url)
-    global _WARNED_PLAINTEXT_KEY
     if (
         parsed.scheme == "http"
         and not _is_loopback_host(parsed.hostname or "")
-        and not _WARNED_PLAINTEXT_KEY
+        and not _state._warned_plaintext_key()
     ):
-        _WARNED_PLAINTEXT_KEY = True
+        _state._set_warned_plaintext_key(True)
         logger.warning(
             "opengrade: sending the API key over plain HTTP to %s; use https:// so it "
             "cannot be read on the network",
@@ -108,15 +104,13 @@ def otlp_endpoint() -> str:
 
 def _lazy_resolve_slug(slug: str) -> str | None:
     """Resolve a project slug to an id via the control plane; cache on success."""
-    global _ACTIVE_PROJECT_ID, _ACTIVE_PROJECT_SLUG
     try:
         from opengrade._context import get_client
 
         projects = get_client().projects.list(slug=slug)
         if projects:
             project = projects[0]
-            _ACTIVE_PROJECT_ID = project.id
-            _ACTIVE_PROJECT_SLUG = project.slug
+            _state._set_active_project(project_id=project.id, project_slug=project.slug)
             return project.id
     except Exception as exc:  # noqa: BLE001 — never raise into log_score / metrics
         logger.warning("opengrade: could not resolve project slug %r: %s", slug, exc)
@@ -133,12 +127,13 @@ def resolve_project_id(project_id: str | None = None) -> str:
     """
     if project_id:
         return project_id
-    if _ACTIVE_PROJECT_ID:
-        return _ACTIVE_PROJECT_ID
+    active_id = _state._active_project_id()
+    if active_id:
+        return active_id
     env_id = os.getenv("OPENGRADE_PROJECT_ID")
     if env_id and env_id.strip():
         return env_id.strip()
-    slug = _ACTIVE_PROJECT_SLUG or (os.getenv("OPENGRADE_PROJECT_SLUG") or "").strip() or None
+    slug = _state._active_project_slug() or (os.getenv("OPENGRADE_PROJECT_SLUG") or "").strip() or None
     if slug:
         resolved = _lazy_resolve_slug(slug)
         if resolved:
@@ -154,29 +149,25 @@ def _set_active_project(
     project_id: str | None = None,
     project_slug: str | None = None,
 ) -> None:
-    global _ACTIVE_PROJECT_ID, _ACTIVE_PROJECT_SLUG
-    if project_id is not None:
-        _ACTIVE_PROJECT_ID = project_id
-    if project_slug is not None:
-        _ACTIVE_PROJECT_SLUG = project_slug
+    _state._set_active_project(project_id=project_id, project_slug=project_slug)
 
 
 def configure_capture(*, max_capture_bytes: int | None = None) -> None:
     """Set capture limit from ``init()``; ``None`` falls back to the env var / default."""
-    global _MAX_CAPTURE_BYTES
     if max_capture_bytes is None:
-        _MAX_CAPTURE_BYTES = None
+        _state._set_max_capture_override(None)
         return
     value = int(max_capture_bytes)
     if value < 1:
         raise ValueError(f"max_capture_bytes must be >= 1, got {value}")
-    _MAX_CAPTURE_BYTES = value
+    _state._set_max_capture_override(value)
 
 
 def max_capture_bytes() -> int:
     """``init(max_capture_bytes=...)`` > ``OPENGRADE_MAX_CAPTURE_BYTES`` > 32768."""
-    if _MAX_CAPTURE_BYTES is not None:
-        return _MAX_CAPTURE_BYTES
+    override = _state._max_capture_override()
+    if override is not None:
+        return override
     raw = os.getenv("OPENGRADE_MAX_CAPTURE_BYTES", "").strip()
     if not raw:
         return DEFAULT_MAX_CAPTURE_BYTES
@@ -194,15 +185,44 @@ def max_capture_bytes() -> int:
         return DEFAULT_MAX_CAPTURE_BYTES
 
 
+_CONFIG_MODULE_STATE_KEYS = (
+    "_TRACKING_URI",
+    "_API_KEY",
+    "_ACTIVE_PROJECT_ID",
+    "_ACTIVE_PROJECT_SLUG",
+    "_WARNED_PLAINTEXT_KEY",
+    "_MAX_CAPTURE_BYTES",
+)
+
+
+def _clear_module_state_keys() -> None:
+    import sys
+
+    mod = sys.modules[__name__]
+    for key in _CONFIG_MODULE_STATE_KEYS:
+        mod.__dict__.pop(key, None)
+
+
 def _reset_for_tests() -> None:
-    global _TRACKING_URI, _ACTIVE_PROJECT_ID, _ACTIVE_PROJECT_SLUG, _API_KEY, _WARNED_PLAINTEXT_KEY
-    global _MAX_CAPTURE_BYTES
-    _TRACKING_URI = None
-    _API_KEY = None
-    _WARNED_PLAINTEXT_KEY = False
-    _ACTIVE_PROJECT_ID = None
-    _ACTIVE_PROJECT_SLUG = None
-    _MAX_CAPTURE_BYTES = None
+    _clear_module_state_keys()
+    rt = _state._default()
+    rt.reset_config_overrides()
+
+
+def __getattr__(name: str) -> Any:
+    if name == "_TRACKING_URI":
+        return _state._tracking_uri_override()
+    if name == "_API_KEY":
+        return _state._api_key_override()
+    if name == "_ACTIVE_PROJECT_ID":
+        return _state._active_project_id()
+    if name == "_ACTIVE_PROJECT_SLUG":
+        return _state._active_project_slug()
+    if name == "_WARNED_PLAINTEXT_KEY":
+        return _state._warned_plaintext_key()
+    if name == "_MAX_CAPTURE_BYTES":
+        return _state._max_capture_override()
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 
 @dataclass(frozen=True, slots=True)
@@ -234,11 +254,11 @@ def resolve_config(
     pid = project_id
     pslug = project_slug
     if pid is None and pslug is None:
-        if _ACTIVE_PROJECT_ID is not None:
+        if _state._active_project_id() is not None:
             # set_project() / init(project_id=…) wins over env.
-            pid = _ACTIVE_PROJECT_ID
-        elif _ACTIVE_PROJECT_SLUG is not None:
-            pslug = _ACTIVE_PROJECT_SLUG
+            pid = _state._active_project_id()
+        elif _state._active_project_slug() is not None:
+            pslug = _state._active_project_slug()
         else:
             pid = os.getenv("OPENGRADE_PROJECT_ID")
             pslug = os.getenv("OPENGRADE_PROJECT_SLUG")

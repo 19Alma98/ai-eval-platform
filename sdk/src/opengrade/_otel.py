@@ -3,10 +3,11 @@ from __future__ import annotations
 import atexit
 import logging
 import os
+import sys
 import threading
 import time
 from collections.abc import Sequence
-from typing import Literal
+from typing import Any, Literal
 
 from opentelemetry import trace
 from opentelemetry.context import Context
@@ -14,7 +15,7 @@ from opentelemetry.sdk.trace import ReadableSpan, Span, SpanProcessor, TracerPro
 from opentelemetry.sdk.trace.export import BatchSpanProcessor, SpanExporter, SpanExportResult
 from opentelemetry.util._once import Once
 
-from opengrade import _live, _production
+from opengrade import _live, _production, _state
 from opengrade._config import (
     auth_headers,
     configure_capture,
@@ -38,12 +39,43 @@ EXIT_FLUSH_TIMEOUT_MS = 2000
 OTLP_MAX_REQUEST_BYTES = 2 * 1024 * 1024
 OTLP_MAX_EXPORT_BATCH_SIZE = 64
 
-_PROVIDER: TracerProvider | None = None
-_PROCESSOR: SpanProcessor | None = None
-_EXPORTER: _SafeSpanExporter | None = None
-_OWNS_PROVIDER: bool = False
-_INITIALIZED: bool = False
-_ATEXIT_REGISTERED: bool = False
+_OTEL_MODULE_STATE_KEYS = (
+    "_PROVIDER",
+    "_PROCESSOR",
+    "_EXPORTER",
+    "_OWNS_PROVIDER",
+    "_INITIALIZED",
+    "_ATEXIT_REGISTERED",
+)
+
+
+def _clear_module_state_keys() -> None:
+    """Drop pytest shadow attrs; avoids stale ``None`` after monkeypatch on PEP 562 modules."""
+    mod = sys.modules[__name__]
+    for key in _OTEL_MODULE_STATE_KEYS:
+        mod.__dict__.pop(key, None)
+
+
+def _current_provider() -> TracerProvider | None:
+    mod = sys.modules[__name__]
+    if "_PROVIDER" in mod.__dict__:
+        return mod.__dict__["_PROVIDER"]
+    return _state._default().provider
+
+
+def _atexit_registered() -> bool:
+    mod = sys.modules[__name__]
+    if "_ATEXIT_REGISTERED" in mod.__dict__:
+        return mod.__dict__["_ATEXIT_REGISTERED"]
+    return _state._default().otel_atexit_registered
+
+
+def _mark_atexit_registered() -> None:
+    mod = sys.modules[__name__]
+    if "_ATEXIT_REGISTERED" in mod.__dict__:
+        mod.__dict__["_ATEXIT_REGISTERED"] = True
+    else:
+        _state._default().otel_atexit_registered = True
 
 
 def is_disabled() -> bool:
@@ -158,12 +190,17 @@ class _SafeSpanExporter(SpanExporter):
 
 def _teardown_opengrade_tracing(*, reset_global: bool) -> None:
     """Stop opengrade export. Only shut down / clear the global provider when we own it."""
-    global _PROVIDER, _PROCESSOR, _EXPORTER, _OWNS_PROVIDER
-    processor, exporter, provider, owns = _PROCESSOR, _EXPORTER, _PROVIDER, _OWNS_PROVIDER
-    _PROCESSOR = None
-    _EXPORTER = None
-    _PROVIDER = None
-    _OWNS_PROVIDER = False
+    rt = _state._default()
+    processor, exporter, provider, owns = (
+        rt.processor,
+        rt.exporter,
+        rt.provider,
+        rt.owns_provider,
+    )
+    rt.processor = None
+    rt.exporter = None
+    rt.provider = None
+    rt.owns_provider = False
 
     if exporter is not None:
         exporter.close()
@@ -185,7 +222,7 @@ def _teardown_opengrade_tracing(*, reset_global: bool) -> None:
 
 def _shutdown_and_reset_global_tracer_provider() -> None:
     """Tear down opengrade tracing and clear the global provider (test / owned-init path)."""
-    owns = _OWNS_PROVIDER
+    owns = _state._default().owns_provider
     _teardown_opengrade_tracing(reset_global=owns)
     if not owns:
         # Test isolation: drop whatever is on the global slot without assuming ownership.
@@ -221,17 +258,17 @@ def resolve_trace_sample_rate(explicit: float | None = None) -> float:
 
 
 def _reset_for_tests() -> None:
-    global _INITIALIZED
+    _clear_module_state_keys()
     deactivate_instrumentors()
     _shutdown_and_reset_global_tracer_provider()
     _live._reset_for_tests()
     configure_capture()
-    _INITIALIZED = False
+    _state._default().initialized = False
 
 
 def _at_exit() -> None:
     """Flush pending spans (bounded), then stop opengrade export so exit never hangs."""
-    provider = _PROVIDER
+    provider = _current_provider()
     if provider is None:
         return
     from opengrade import _scores  # lazy: avoids an import cycle through opengrade._context
@@ -242,7 +279,7 @@ def _at_exit() -> None:
         provider.force_flush(timeout_ms)
     except Exception:  # noqa: BLE001
         logger.debug("opengrade: flush at exit raised", exc_info=True)
-    _teardown_opengrade_tracing(reset_global=_OWNS_PROVIDER)
+    _teardown_opengrade_tracing(reset_global=_state._default().owns_provider)
 
 
 def release_attributes(version: str | None, environment: str | None) -> dict[str, str]:
@@ -310,13 +347,13 @@ def init(
     ``metrics_workers`` (or ``OPENGRADE_METRICS_WORKERS``, default 2) is the size of the
     background pool that runs ``@opengrade.trace(metrics=...)``.
     """
-    global _PROVIDER, _PROCESSOR, _EXPORTER, _OWNS_PROVIDER, _INITIALIZED, _ATEXIT_REGISTERED
+    rt = _state._default()
 
     if is_disabled():
         logger.info("opengrade: OPENGRADE_DISABLED is set; tracing disabled")
         return
 
-    if _INITIALIZED and not force:
+    if rt.initialized and not force:
         logger.info("opengrade already initialized; skipping (pass force=True to re-init)")
         return
 
@@ -325,8 +362,8 @@ def init(
         # tearing down the provider so they do not keep exporting to a dead one.
         deactivate_instrumentors()
         # Never shut down a host TracerProvider we did not create.
-        _teardown_opengrade_tracing(reset_global=_OWNS_PROVIDER)
-        _INITIALIZED = False
+        _teardown_opengrade_tracing(reset_global=rt.owns_provider)
+        rt.initialized = False
 
     try:
         _live.configure(enabled=live, sample_rate=live_sample_rate)
@@ -430,14 +467,14 @@ def init(
     elif config.project_slug:
         _set_active_project(project_slug=config.project_slug)
 
-    _PROVIDER = provider
-    _PROCESSOR = processor
-    _EXPORTER = exporter
-    _OWNS_PROVIDER = owns_provider
-    _INITIALIZED = True
-    if not _ATEXIT_REGISTERED:
+    rt.provider = provider
+    rt.processor = processor
+    rt.exporter = exporter
+    rt.owns_provider = owns_provider
+    rt.initialized = True
+    if not _atexit_registered():
         atexit.register(_at_exit)
-        _ATEXIT_REGISTERED = True
+        _mark_atexit_registered()
 
 
 def flush(timeout_millis: int = 5000) -> bool:
@@ -448,9 +485,10 @@ def flush(timeout_millis: int = 5000) -> bool:
     """
     deadline = time.monotonic() + timeout_millis / 1000
     ok = True
-    if _PROVIDER is not None:
+    provider = _current_provider()
+    if provider is not None:
         try:
-            ok = bool(_PROVIDER.force_flush(timeout_millis))
+            ok = bool(provider.force_flush(timeout_millis))
         except Exception:  # noqa: BLE001
             logger.debug("opengrade: flush raised", exc_info=True)
             ok = False
@@ -470,3 +508,20 @@ def flush(timeout_millis: int = 5000) -> bool:
         logger.debug("opengrade: score flush raised", exc_info=True)
         scores_ok = False
     return scores_ok and ok
+
+
+def __getattr__(name: str) -> Any:
+    rt = _state._default()
+    if name == "_PROVIDER":
+        return rt.provider
+    if name == "_PROCESSOR":
+        return rt.processor
+    if name == "_EXPORTER":
+        return rt.exporter
+    if name == "_OWNS_PROVIDER":
+        return rt.owns_provider
+    if name == "_INITIALIZED":
+        return rt.initialized
+    if name == "_ATEXIT_REGISTERED":
+        return rt.otel_atexit_registered
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

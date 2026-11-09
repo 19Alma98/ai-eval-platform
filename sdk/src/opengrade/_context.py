@@ -4,12 +4,12 @@ from __future__ import annotations
 
 import asyncio
 import logging
-import os
 import re
-import threading
+import sys
+import types
 import weakref
 
-from opengrade import _config
+from opengrade import _config, _state
 from opengrade._http import OpengradeAPIError, OpengradeError
 from opengrade.async_client import AsyncClient
 from opengrade.client import Client
@@ -18,16 +18,6 @@ from opengrade.models import ProjectResponse
 logger = logging.getLogger("opengrade")
 
 _SLUG_RE = re.compile(r"[^a-z0-9]+")
-
-_LOCK = threading.Lock()
-_CLIENT: Client | None = None
-# One AsyncClient per running event loop (second asyncio.run must not reuse a closed loop).
-_ASYNC_CLIENTS: weakref.WeakKeyDictionary[asyncio.AbstractEventLoop, AsyncClient] = (
-    weakref.WeakKeyDictionary()
-)
-# Fallback when get_async_client() is called with no running loop (sync bridge / tests).
-_ASYNC_CLIENT_NO_LOOP: AsyncClient | None = None
-_ACTIVE_PROJECT: ProjectResponse | None = None
 
 
 def _slugify(value: str) -> str:
@@ -38,29 +28,29 @@ def _slugify(value: str) -> str:
 
 def get_client() -> Client:
     """Return the shared ``Client`` bound to the current tracking URI."""
-    global _CLIENT
-    with _LOCK:
-        if _CLIENT is None:
-            _CLIENT = Client(_config.get_tracking_uri())
-        return _CLIENT
+    rt = _state._default()
+    with rt.client_lock:
+        if rt.client is None:
+            rt.client = Client(_config.get_tracking_uri())
+        return rt.client
 
 
 def get_async_client() -> AsyncClient:
     """Return an ``AsyncClient`` bound to the current tracking URI and event loop."""
-    global _ASYNC_CLIENT_NO_LOOP
+    rt = _state._default()
     uri = _config.get_tracking_uri()
     try:
         loop = asyncio.get_running_loop()
     except RuntimeError:
-        with _LOCK:
-            if _ASYNC_CLIENT_NO_LOOP is None:
-                _ASYNC_CLIENT_NO_LOOP = AsyncClient(uri)
-            return _ASYNC_CLIENT_NO_LOOP
-    with _LOCK:
-        client = _ASYNC_CLIENTS.get(loop)
+        with rt.client_lock:
+            if rt.async_client_no_loop is None:
+                rt.async_client_no_loop = AsyncClient(uri)
+            return rt.async_client_no_loop
+    with rt.client_lock:
+        client = rt.async_clients.get(loop)
         if client is None:
             client = AsyncClient(uri)
-            _ASYNC_CLIENTS[loop] = client
+            rt.async_clients[loop] = client
         return client
 
 
@@ -81,15 +71,15 @@ def _aclose_async_client_best_effort(client: AsyncClient) -> None:
 
 
 def _reset_client() -> None:
-    global _CLIENT, _ASYNC_CLIENT_NO_LOOP
-    with _LOCK:
-        if _CLIENT is not None:
-            _CLIENT.close()
-        _CLIENT = None
-        async_clients = list(_ASYNC_CLIENTS.values())
-        _ASYNC_CLIENTS.clear()
-        no_loop = _ASYNC_CLIENT_NO_LOOP
-        _ASYNC_CLIENT_NO_LOOP = None
+    rt = _state._default()
+    with rt.client_lock:
+        if rt.client is not None:
+            rt.client.close()
+        rt.client = None
+        async_clients = list(rt.async_clients.values())
+        rt.async_clients.clear()
+        no_loop = rt.async_client_no_loop
+        rt.async_client_no_loop = None
     for async_client in async_clients:
         _aclose_async_client_best_effort(async_client)
     if no_loop is not None:
@@ -113,16 +103,16 @@ async def _afind_project(client: AsyncClient, name: str, slug: str) -> ProjectRe
 
 
 def _activate_project(project: ProjectResponse, cleaned: str) -> ProjectResponse:
-    global _ACTIVE_PROJECT
     from opengrade import _otel
 
-    if _otel._INITIALIZED and _config._ACTIVE_PROJECT_ID != project.id:
+    rt = _state._default()
+    if _otel._INITIALIZED and _state._active_project_id() != project.id:
         logger.warning(
             "opengrade.set_project(%r) after init(): traces keep going to the previous "
             "project until opengrade.init(force=True)",
             cleaned,
         )
-    _ACTIVE_PROJECT = project
+    rt.active_project = project
     _config._set_active_project(project_id=project.id, project_slug=project.slug)
     return project
 
@@ -205,25 +195,41 @@ async def aset_project(name: str) -> ProjectResponse | None:
 
 def get_project() -> ProjectResponse | None:
     """Return the project set via ``set_project``, if any."""
-    return _ACTIVE_PROJECT
+    return _state._default().active_project
 
 
 def _reset_for_tests() -> None:
-    global _ACTIVE_PROJECT
     _reset_client()
-    _ACTIVE_PROJECT = None
+    _state._default().active_project = None
     _config._reset_for_tests()
 
 
 def _after_fork_in_child() -> None:
     """The child inherits the parent's httpx client (sockets/locks); drop it so
     the child lazily builds a fresh one. Do not close — that would affect the parent."""
-    global _CLIENT, _ASYNC_CLIENT_NO_LOOP, _ASYNC_CLIENTS, _LOCK
-    _CLIENT = None
-    _ASYNC_CLIENT_NO_LOOP = None
-    _ASYNC_CLIENTS = weakref.WeakKeyDictionary()
-    _LOCK = threading.Lock()
+    _state._default().reset_client_refs()
 
 
-if hasattr(os, "register_at_fork"):  # not on Windows
-    os.register_at_fork(after_in_child=_after_fork_in_child)
+class _ContextModule(types.ModuleType):
+    @property
+    def _CLIENT(self) -> Client | None:
+        return _state._default().client
+
+    @_CLIENT.setter
+    def _CLIENT(self, value: Client | None) -> None:
+        _state._default().client = value
+
+    @property
+    def _ASYNC_CLIENT_NO_LOOP(self) -> AsyncClient | None:
+        return _state._default().async_client_no_loop
+
+    @_ASYNC_CLIENT_NO_LOOP.setter
+    def _ASYNC_CLIENT_NO_LOOP(self, value: AsyncClient | None) -> None:
+        _state._default().async_client_no_loop = value
+
+    @property
+    def _ASYNC_CLIENTS(self) -> weakref.WeakKeyDictionary[asyncio.AbstractEventLoop, AsyncClient]:
+        return _state._default().async_clients
+
+
+sys.modules[__name__].__class__ = _ContextModule

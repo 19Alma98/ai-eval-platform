@@ -34,7 +34,7 @@ from typing import Any
 from opentelemetry import context as otel_context
 from opentelemetry.trace import Span
 
-from opengrade import _config, _live, _scores, feedback
+from opengrade import _config, _live, _scores, _state, feedback
 from opengrade._run_context import ACTIVE_RUN, PRODUCTION_CAPTURE, ProductionCapture
 from opengrade.metrics import LocalMetric, Sample, evaluate_metric, metric, missing_requirement
 
@@ -66,18 +66,15 @@ def in_metric() -> bool:
 
 _Job = Callable[[], None]
 
-_warned: dict[str, float] = {}
-_warn_lock = threading.Lock()
-
-
 def _warn(key: str, message: str, *args: Any) -> None:
     """WARNING at most once a minute per ``key``, DEBUG otherwise."""
+    rt = _state._default()
     now = time.monotonic()
-    with _warn_lock:
-        last = _warned.get(key)
+    with rt.production_warn_lock:
+        last = rt.production_warned.get(key)
         loud = last is None or now - last >= _WARN_EVERY_S
         if loud:
-            _warned[key] = now
+            rt.production_warned[key] = now
     logger.log(logging.WARNING if loud else logging.DEBUG, message, *args)
 
 
@@ -158,13 +155,6 @@ class _MetricPool:
                 break  # daemon threads: left blocked, they die with the process
 
 
-_POOL: _MetricPool | None = None
-_POOL_SIZE: tuple[int, int] = (MAX_WORKERS, MAX_QUEUE)
-_WORKERS: int | None = None  # from init(metrics_workers=...); None → env / default
-_LOCK = threading.Lock()
-_ATEXIT_REGISTERED = False
-
-
 def parse_workers(value: object) -> int:
     """Validate ``metrics_workers``; raises ValueError when out of range or not an int."""
     message = (
@@ -180,8 +170,9 @@ def parse_workers(value: object) -> int:
 
 def resolve_workers() -> int:
     """``init(metrics_workers=...)`` > ``OPENGRADE_METRICS_WORKERS`` > ``MAX_WORKERS``."""
-    if _WORKERS is not None:
-        return _WORKERS
+    workers = _state._default().metrics_workers
+    if workers is not None:
+        return workers
     raw = os.getenv("OPENGRADE_METRICS_WORKERS", "").strip()
     if not raw:
         return MAX_WORKERS
@@ -200,17 +191,17 @@ def configure(*, workers: int | None = None) -> None:
     If a pool already exists with a different worker count it is closed and rebuilt
     lazily on the next submit.
     """
-    global _WORKERS, _POOL_SIZE, _POOL
+    rt = _state._default()
     if workers is not None:
         workers = parse_workers(workers)
-    _WORKERS = workers
+    rt.metrics_workers = workers
     resolved = resolve_workers()
     new_size = (resolved, MAX_QUEUE)
-    with _LOCK:
+    with rt.production_pool_lock:
         old = None
-        if _POOL is not None and _POOL._workers != resolved:
-            old, _POOL = _POOL, None
-        _POOL_SIZE = new_size
+        if rt.pool is not None and rt.pool._workers != resolved:
+            old, rt.pool = rt.pool, None
+        rt.pool_size = new_size
     if old is not None:
         old.close()
 
@@ -412,14 +403,15 @@ def after_call(
 
 
 def _pool() -> _MetricPool:
-    global _POOL, _ATEXIT_REGISTERED
-    with _LOCK:
-        if _POOL is None:
-            _POOL = _MetricPool(*_POOL_SIZE)
-        if not _ATEXIT_REGISTERED:
+    rt = _state._default()
+    pool_size = rt.pool_size or (MAX_WORKERS, MAX_QUEUE)
+    with rt.production_pool_lock:
+        if rt.pool is None:
+            rt.pool = _MetricPool(*pool_size)
+        if not rt.production_atexit_registered:
             atexit.register(_at_exit)
-            _ATEXIT_REGISTERED = True
-        return _POOL
+            rt.production_atexit_registered = True
+        return rt.pool
 
 
 def _submit(metrics: tuple[LocalMetric, ...], sample: Sample, project_id: str) -> bool:
@@ -476,13 +468,13 @@ def _run_metrics(metrics: tuple[LocalMetric, ...], sample: Sample, project_id: s
 
 def drain(timeout: float) -> bool:
     """Wait for scheduled metrics to finish (bounded); False on timeout."""
-    current = _POOL
+    current = _state._default().pool
     return True if current is None else current.drain(timeout)
 
 
 def dropped() -> int:
     """Calls not scored because the job queue was full."""
-    current = _POOL
+    current = _state._default().pool
     return 0 if current is None else current.dropped
 
 
@@ -497,25 +489,36 @@ def _at_exit() -> None:
 
 def _reset_for_tests(*, workers: int = MAX_WORKERS, max_queue: int = MAX_QUEUE) -> None:
     """Drop the shared pool (rebuilt lazily with this size) and the warning limiter."""
-    global _POOL, _POOL_SIZE, _WORKERS
-    with _LOCK:
-        old, _POOL = _POOL, None
-        _WORKERS = None
-        _POOL_SIZE = (workers, max_queue)
+    rt = _state._default()
+    with rt.production_pool_lock:
+        old, rt.pool = rt.pool, None
+        rt.metrics_workers = None
+        rt.pool_size = (workers, max_queue)
     if old is not None:
         old.close()
-    with _warn_lock:
-        _warned.clear()
+    with rt.production_warn_lock:
+        rt.production_warned.clear()
 
 
 def _after_fork_in_child() -> None:
     """The child inherits the parent's locks (possibly held) and no worker threads:
     drop the pool so the child lazily builds a fresh one."""
-    global _POOL, _LOCK, _warn_lock
-    _POOL = None
-    _LOCK = threading.Lock()
-    _warn_lock = threading.Lock()
+    rt = _state._default()
+    rt.pool = None
+    rt.production_pool_lock = threading.Lock()
+    rt.production_warn_lock = threading.Lock()
 
 
-if hasattr(os, "register_at_fork"):  # not on Windows
-    os.register_at_fork(after_in_child=_after_fork_in_child)
+def __getattr__(name: str) -> Any:
+    rt = _state._default()
+    if name == "_POOL":
+        return rt.pool
+    if name == "_POOL_SIZE":
+        return rt.pool_size or (MAX_WORKERS, MAX_QUEUE)
+    if name == "_WORKERS":
+        return rt.metrics_workers
+    if name == "_LOCK":
+        return rt.production_pool_lock
+    if name == "_ATEXIT_REGISTERED":
+        return rt.production_atexit_registered
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
