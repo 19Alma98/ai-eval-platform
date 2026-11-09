@@ -291,7 +291,7 @@ async def test_evaluate_pack_409_when_already_running(
             "input": "q",
             "expected_output": "a",
             "actual_output": "a",
-            "context": {"retrieved_doc_ids": ["d"]},
+            "context": {"documents": [{"id": "d"}]},
             "metadata": {"expected_doc_ids": ["d"]},
         },
     )
@@ -375,7 +375,7 @@ async def test_concurrent_evaluate_pack_only_one_starts(
             "input": "q",
             "expected_output": "a",
             "actual_output": "a",
-            "context": {"retrieved_doc_ids": ["d"]},
+            "context": {"documents": [{"id": "d"}]},
             "metadata": {"expected_doc_ids": ["d"]},
         },
     )

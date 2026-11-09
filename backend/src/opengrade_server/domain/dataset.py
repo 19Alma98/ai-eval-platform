@@ -8,6 +8,8 @@ from opengrade_server.domain.rag_models import (
     RagChatInput,
     RagItemContext,
     RagItemMetadata,
+    parse_context,
+    parse_metadata,
 )
 from opengrade_server.domain.task_types import normalize_task_type
 
@@ -68,8 +70,8 @@ class DatasetItem:
         *,
         expected_output: str | None = None,
         actual_output: str | None = None,
-        context: RagItemContext | None = None,
-        metadata: RagItemMetadata | None = None,
+        context: RagItemContext | dict[str, object] | None = None,
+        metadata: RagItemMetadata | dict[str, object] | None = None,
         source_trace_id: str | None = None,
         source_span_id: str | None = None,
     ) -> DatasetItem:
@@ -79,8 +81,8 @@ class DatasetItem:
             input=input,
             expected_output=expected_output,
             actual_output=actual_output,
-            context=context,
-            metadata=metadata or RagItemMetadata(),
+            context=parse_context(context),
+            metadata=parse_metadata(metadata),
             source_trace_id=source_trace_id,
             source_span_id=source_span_id,
         )

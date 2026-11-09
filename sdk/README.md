@@ -83,17 +83,17 @@ acme.init_tracing(service_name="worker-acme", instrument=False)
 contoso.init_tracing(service_name="worker-contoso", instrument=False)
 
 with acme.activate():
-  assert current() is acme
-  opengrade.get_client().datasets.list()  # project headers follow this instance
+    assert current() is acme
+    opengrade.get_client().datasets.list()  # project headers follow this instance
 
 with contoso.activate():
-  opengrade.set_project("contoso")  # resolves against contoso's client, not acme's
+    opengrade.set_project("contoso")  # resolves against contoso's client, not acme's
 ```
 
 - **`Opengrade(...)`** holds per-instance settings, clients, and OTLP routing on the shared `TracerProvider`.
 - **`with og.activate():`** (or `with og:` which also calls `close()` on exit) sets `opengrade.current()` so `get_client()`, `init()`, `@opengrade.trace`, and OTLP export use that instance's project headers and exporter.
 - **Explicit `Client(..., project_id=...)`** pins the control plane to one project regardless of `current()` — use this in libraries and long-lived clients so they never depend on whoever last called `set_project()`.
-- **`Client()` without `project_id`** still resolves the project from process-wide state (`set_project`, env, active context); that path emits a **`DeprecationWarning`** — pass `project_id` or use `og.client` inside `activate()` instead.
+- **`Client()` without `project_id`** raises if a method needs a project — pass `project_id` on the client / call, or use `og.client` inside `activate()` after `set_project()`.
 - **Worker threads** do not inherit `ContextVar` values from the parent thread. Wrap thread entry points with `contextvars.copy_context().run(...)` (or call `activate()` inside the thread) so tracing and clients stay on the right instance.
 
 Runnable multi-tenant FastAPI sample: [`examples/fastapi_multi_tenant/`](https://github.com/19Alma98/ai-eval-platform/blob/main/examples/fastapi_multi_tenant/README.md).
@@ -107,11 +107,14 @@ import httpx2
 import opengrade
 from opengrade import Opengrade, Settings
 
+
 def test_two_projects(mock_handler):
     cap_a: list[httpx2.Request] = []
     a = Opengrade(settings=Settings(tracking_uri="http://a", project_id="proj-a"))
     a._runtime.client = opengrade.Client(
-        "http://a", transport=httpx2.MockTransport(mock_handler(cap_a)), project_id="proj-a",
+        "http://a",
+        transport=httpx2.MockTransport(mock_handler(cap_a)),
+        project_id="proj-a",
     )
     with a.activate():
         a.client.projects.list()

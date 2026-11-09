@@ -249,25 +249,18 @@ def _dedupe_ids_first_occurrence(ids: list[str]) -> list[str]:
 
 
 def _retrieved_doc_ids(ctx: dict[str, Any]) -> list[str] | None:
-    if "documents" in ctx:
-        documents = ctx["documents"]
-        if documents is None:
-            return None
-        if not isinstance(documents, list):
-            return None
-        ids: list[str] = []
-        for doc in documents:
-            if isinstance(doc, dict) and doc.get("id") is not None:
-                ids.append(str(doc["id"]))
-        return _dedupe_ids_first_occurrence(ids)
-    if "retrieved_doc_ids" in ctx:
-        retrieved = ctx["retrieved_doc_ids"]
-        if retrieved is None:
-            return None
-        if not isinstance(retrieved, list):
-            return None
-        return _dedupe_ids_first_occurrence([str(doc_id) for doc_id in retrieved])
-    return None
+    if "documents" not in ctx:
+        return None
+    documents = ctx["documents"]
+    if documents is None:
+        return None
+    if not isinstance(documents, list):
+        return None
+    ids: list[str] = []
+    for doc in documents:
+        if isinstance(doc, dict) and doc.get("id") is not None:
+            ids.append(str(doc["id"]))
+    return _dedupe_ids_first_occurrence(ids)
 
 
 def _parse_k(kind: str, config: dict[str, Any], *, default: int = 5) -> int:
@@ -298,9 +291,7 @@ def _retrieval_inputs(
     retrieved = _retrieved_doc_ids(ctx)
     if retrieved is None:
         return (
-            fail_min(
-                "no documents retrieved (context.documents or context.retrieved_doc_ids is missing)"
-            ),
+            fail_min("no documents retrieved (context.documents is missing)"),
             None,
             None,
             {},

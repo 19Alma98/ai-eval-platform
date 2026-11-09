@@ -228,8 +228,8 @@ class ScoreExperimentFromPack:
 
         enabled = [e for e in resolved.entries if e.enabled and e.evaluator_id is not None]
         try:
-            # Guards sets saved before the invariant existed: thresholds and overrides
-            # below are keyed by evaluator, so a shared evaluator would mix two entries.
+            # Thresholds and overrides below are keyed by evaluator; a shared id would
+            # mix two entries.
             assert_unique_evaluator_ids(tuple(enabled))
         except ValueError as exc:
             raise MetricsSetValidationError(str(exc)) from exc

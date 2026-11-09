@@ -1011,7 +1011,7 @@ class Client:
         self.app_configs = AppConfigClient(self._http)
 
     def _project(self, project_id: str | None = None) -> str:
-        return resolve_bound_project(project_id, bound=self._project_id, stacklevel=3)
+        return resolve_bound_project(project_id, bound=self._project_id)
 
     def health(self) -> HealthResponse:
         return self._http.request_model("GET", "/health", response_model=HealthResponse)

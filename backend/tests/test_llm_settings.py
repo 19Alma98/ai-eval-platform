@@ -35,7 +35,6 @@ async def client(
     monkeypatch.setenv("OPENGRADE_API_KEY", ENV_KEY)
     monkeypatch.setenv("LLM_MODEL", "env/model")
     monkeypatch.setenv("LLM_API_KEY", "env-secret")
-    monkeypatch.delenv("OPENGRADE_API_KEY_PREVIOUS", raising=False)
     monkeypatch.delenv("LLM_API_BASE", raising=False)
     get_settings.cache_clear()
     llm_settings_store.clear_cache()

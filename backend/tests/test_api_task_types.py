@@ -93,7 +93,7 @@ async def test_list_task_types(client: AsyncClient) -> None:
     assert res.status_code == 200
     body = res.json()
     ids = {t["id"] for t in body}
-    assert ids == {"rag_qa", "classification", "agent_tools"}
+    assert ids == {"rag_qa", "rag_chat", "classification", "agent_tools"}
     rag = next(t for t in body if t["id"] == "rag_qa")
     assert "groundedness" in rag["recommended_evaluator_kinds"]
     assert "context_recall" in rag["recommended_evaluator_kinds"]

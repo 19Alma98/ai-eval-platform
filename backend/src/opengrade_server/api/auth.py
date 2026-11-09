@@ -6,10 +6,9 @@ localhost / a trusted network, and no key is checked. With it, every ``/api/*`` 
 exporters) or the UI session cookie issued by ``POST /api/v1/auth/session``.
 ``/health``, ``/ready``, the auth endpoints and the static UI stay public.
 
-Accepted keys: the env key (and ``OPENGRADE_API_KEY_PREVIOUS`` during rotation), both with
-the ``admin`` scope, and the per-client keys of the ``api_keys`` table (``admin`` / ``read``
-/ ``ingest``, see :mod:`opengrade_server.application.api_keys`). A valid key outside its
-scope gets ``403``.
+Accepted keys: the env key (``admin`` scope) and the per-client keys of the ``api_keys``
+table (``admin`` / ``read`` / ``ingest``, see :mod:`opengrade_server.application.api_keys`).
+A valid key outside its scope gets ``403``.
 
 The session cookie never holds a key: it is ``<subject>.<expiry>.<HMAC(env key, ...)>``
 where the subject is ``env`` or the id of a table key, so revoking that key or rotating the
@@ -86,11 +85,11 @@ def scope_allows(scope: str, method: str, path: str) -> bool:
 
 
 def key_matches(candidate: str, settings: Settings) -> bool:
-    """Constant-time check of ``candidate`` against the env key and the previous one."""
+    """Constant-time check of ``candidate`` against the env API key."""
     raw = candidate.strip().encode()
     matched = False
     for key in settings.accepted_api_keys():
-        # No early exit: the time taken does not reveal which key matched.
+        # No early exit: keep the comparison shape if more env keys are added later.
         matched |= hmac.compare_digest(raw, key.encode())
     return matched and bool(raw)
 

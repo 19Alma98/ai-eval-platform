@@ -498,18 +498,15 @@ def test_set_project_refreshes_shared_client_bound_project() -> None:
     _context._reset_for_tests()
 
 
-def test_global_fallback_emits_deprecation_warning(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_client_without_project_id_raises() -> None:
     from opengrade import _context
-    from opengrade._client_resolve import reset_global_fallback_warning_for_tests
 
     _context._reset_for_tests()
-    reset_global_fallback_warning_for_tests()
-    monkeypatch.setenv("OPENGRADE_PROJECT_ID", "env-pid")
 
     def handler(request: httpx2.Request) -> httpx2.Response:
         return httpx2.Response(200, json=[])
 
     client = Client("http://test", transport=httpx2.MockTransport(handler))
-    with pytest.warns(DeprecationWarning, match="process-wide opengrade state"):
+    with pytest.raises(ValueError, match="project_id is required"):
         client.experiments.list()
     _context._reset_for_tests()

@@ -10,10 +10,11 @@ from dataclasses import dataclass, field, replace
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
+    from opentelemetry.sdk.trace import SpanProcessor, TracerProvider
+
     from opengrade.async_client import AsyncClient
     from opengrade.client import Client
     from opengrade.models import ProjectResponse
-    from opentelemetry.sdk.trace import SpanProcessor, TracerProvider
 
 
 @dataclass(frozen=True, slots=True)

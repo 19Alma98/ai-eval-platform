@@ -283,7 +283,18 @@ def test_resources_default_to_active_project() -> None:
     ]
 
 
-def test_resources_fall_back_to_env_project_id(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_bare_client_does_not_use_env_project_id(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("OPENGRADE_PROJECT_ID", "env-pid")
+
+    def handler(request: httpx2.Request) -> httpx2.Response:
+        return httpx2.Response(200, json=[])
+
+    client = opengrade.Client("http://test", transport=httpx2.MockTransport(handler))
+    with pytest.raises(ValueError, match="project_id is required"):
+        client.experiments.list()
+
+
+def test_get_client_binds_env_project_id(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("OPENGRADE_PROJECT_ID", "env-pid")
     seen: list[str] = []
 
@@ -291,11 +302,13 @@ def test_resources_fall_back_to_env_project_id(monkeypatch: pytest.MonkeyPatch) 
         seen.append(request.url.path)
         return httpx2.Response(200, json=[])
 
-    client = opengrade.Client("http://test", transport=httpx2.MockTransport(handler))
-    client.experiments.list()
+    _context._CLIENT = opengrade.Client(
+        "http://test", transport=httpx2.MockTransport(handler), project_id="env-pid"
+    )
+    opengrade.get_client().experiments.list()
     assert seen == ["/api/v1/projects/env-pid/experiments"]
 
 
 def test_resources_without_project_raise() -> None:
-    with pytest.raises(ValueError, match="No project"):
+    with pytest.raises(ValueError, match="project_id is required"):
         opengrade.Client("http://test").datasets.list()

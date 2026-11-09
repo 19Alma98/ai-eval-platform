@@ -7,7 +7,7 @@ from typing import Any
 from opengrade_server.application.experiments import ExperimentNotFoundError
 from opengrade_server.domain.dataset import DatasetItem
 from opengrade_server.domain.experiment_output import UNSET, ExperimentItemOutput
-from opengrade_server.domain.rag_models import metadata_as_mapping, parse_metadata
+from opengrade_server.domain.rag_models import metadata_as_mapping, parse_context, parse_metadata
 from opengrade_server.domain.repositories import (
     DatasetRepository,
     ExperimentItemOutputRepository,
@@ -71,7 +71,7 @@ def merge_dataset_item(
         input=item.input,
         expected_output=item.expected_output,
         actual_output=actual_output,
-        context=context,
+        context=parse_context(context),
         metadata=metadata,
         source_trace_id=item.source_trace_id,
         source_span_id=item.source_span_id,

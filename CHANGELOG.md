@@ -13,9 +13,8 @@ breaking changes; they are listed under **Changed** with a migration note.
 
 - **SDK 0.2.0 — multi-instance runtime:** `Opengrade` settings handle, `opengrade.current()`, and
   `with og.activate():` / `with og:` for per-scope clients and tracing in one process.
-- **SDK 0.2.0 — bound control plane:** `Client(..., project_id=...)` and `og.client` avoid
-  implicit project resolution; `Client()` without `project_id` still falls back to process-wide
-  state and emits a `DeprecationWarning`.
+- **SDK 0.2.0 — bound control plane:** `Client(..., project_id=...)` and `og.client` require an
+  explicit project; no process-wide `project_id` fallback.
 - **SDK 0.2.0 — OTLP routing:** per-instance export via `_RoutingSpanProcessor` on the shared
   `TracerProvider` (`Opengrade.init_tracing()` / `init()` on the active instance).
 - Example: multi-tenant FastAPI (`examples/fastapi_multi_tenant/`) activating one `Opengrade` per
@@ -61,6 +60,8 @@ breaking changes; they are listed under **Changed** with a migration note.
 
 ### Removed
 
+- `OPENGRADE_API_KEY_PREVIOUS` / `api_key_previous` (env key rotation overlap).
+- Process-wide `project_id` fallback on `Client` / `AsyncClient` (pass `project_id` explicitly).
 - Docs: the completed MVP planning pages (MVP user stories, definition of done).
 - SQLite startup stamp for pre-Alembic `create_all` databases (delete a stale local DB instead).
 - Standalone `AppConfigClient(...)` construction; use `Client(...).app_configs` /

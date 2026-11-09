@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from collections.abc import Mapping
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
@@ -49,7 +48,7 @@ class RagChatInput(BaseModel):
 
 class RetrievalDocument(BaseModel):
     id: str
-    text: str
+    text: str = ""
 
 
 class RagItemContext(BaseModel):
@@ -111,8 +110,6 @@ def dump_metadata(value: RagItemMetadata, *, exclude_none: bool = False) -> dict
     return value.model_dump(mode="json", exclude_none=exclude_none)
 
 
-def metadata_as_mapping(value: RagItemMetadata | Mapping[str, object]) -> dict[str, object]:
-    """Coerce typed or legacy dict metadata for merges and dotted-path lookups."""
-    if isinstance(value, RagItemMetadata):
-        return dump_metadata(value)
-    return dict(value)
+def metadata_as_mapping(value: RagItemMetadata) -> dict[str, object]:
+    """Dict view of typed metadata for merges and dotted-path lookups."""
+    return dump_metadata(value)

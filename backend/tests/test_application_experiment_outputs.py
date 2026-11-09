@@ -19,27 +19,30 @@ from opengrade_server.domain.dataset import DatasetItem
 from opengrade_server.domain.evaluator import Evaluator
 from opengrade_server.domain.experiment import Experiment
 from opengrade_server.domain.experiment_output import ExperimentItemOutput
-from opengrade_server.domain.rag_models import RagItemMetadata
+from opengrade_server.domain.rag_models import RagItemContext, RagItemMetadata
 from opengrade_server.evaluation.deterministic import register_deterministic_evaluators
 from opengrade_server.evaluation.registry import clear_registry
 from opengrade_server.evaluation.runner import EvaluationRunner
 
 
-def test_resolve_prefers_experiment_then_legacy() -> None:
-    item = DatasetItem.create(uuid.uuid4(), input="q", actual_output="legacy", context={"c": 1})
+def test_resolve_prefers_experiment_output_then_dataset() -> None:
+    ctx = RagItemContext(documents=[])
+    item = DatasetItem.create(uuid.uuid4(), input="q", actual_output="on-dataset", context=ctx)
     out = ExperimentItemOutput.create(uuid.uuid4(), item.id, actual_output="new", context=None)
-    actual, ctx = resolve_item_fields(item, out)
+    actual, resolved_ctx = resolve_item_fields(item, out)
     assert actual == "new"
-    assert ctx == {"c": 1}
+    assert resolved_ctx == ctx
 
 
-def test_resolve_no_output_row_uses_legacy() -> None:
-    item = DatasetItem.create(uuid.uuid4(), input="q", actual_output="legacy")
-    assert resolve_item_fields(item, None) == ("legacy", None)
+def test_resolve_no_output_row_uses_dataset_fields() -> None:
+    item = DatasetItem.create(uuid.uuid4(), input="q", actual_output="on-dataset")
+    assert resolve_item_fields(item, None) == ("on-dataset", None)
 
 
 def test_resolve_without_fallback_ignores_dataset_fields() -> None:
-    item = DatasetItem.create(uuid.uuid4(), input="q", actual_output="legacy", context={"c": 1})
+    item = DatasetItem.create(
+        uuid.uuid4(), input="q", actual_output="on-dataset", context=RagItemContext()
+    )
     out = ExperimentItemOutput.create(uuid.uuid4(), item.id, actual_output="new", context=None)
     assert resolve_item_fields(item, out, fallback_to_item=False) == ("new", None)
     assert resolve_item_fields(item, None, fallback_to_item=False) == (None, None)
@@ -74,14 +77,15 @@ def test_merge_dataset_item_accepts_rag_item_metadata() -> None:
 
 def test_merge_dataset_item_keeps_id_and_resolves_fields() -> None:
     dataset_id = uuid.uuid4()
-    item = DatasetItem.create(dataset_id, input="q", actual_output="legacy", context={"k": 1})
+    ctx = RagItemContext(documents=[{"id": "d1", "text": "chunk"}])
+    item = DatasetItem.create(dataset_id, input="q", actual_output="on-dataset", context=ctx)
     out = ExperimentItemOutput.create(uuid.uuid4(), item.id, actual_output="exp", context=None)
     merged = merge_dataset_item(item, out)
     assert merged.id == item.id
     assert merged.dataset_id == dataset_id
     assert merged.input == "q"
     assert merged.actual_output == "exp"
-    assert merged.context == {"k": 1}
+    assert merged.context == ctx
 
 
 @dataclass

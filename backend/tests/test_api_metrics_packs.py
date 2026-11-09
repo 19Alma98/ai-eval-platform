@@ -8,6 +8,7 @@ from httpx2 import ASGITransport, AsyncClient
 
 from opengrade_server.api.deps import get_dataset_repository, get_project_repository
 from opengrade_server.domain.dataset import Dataset
+from opengrade_server.domain.metrics_set import DEFAULT_RAG_SET_ENTRIES
 from opengrade_server.domain.project import Project
 from opengrade_server.main import create_app
 from tests.support.repositories import InMemoryExperimentRepository, wire_metrics_pack_repos
@@ -85,20 +86,7 @@ async def client() -> AsyncIterator[tuple[AsyncClient, InMemoryExperimentReposit
     app.dependency_overrides.clear()
 
 
-_DEFAULT_PACK_KINDS = (
-    "hit_at_k",
-    "recall_at_k",
-    "mrr",
-    "context_precision",
-    "context_recall",
-    "must_contain",
-    "groundedness",
-    "answer_relevance",
-    "correctness",
-    "citation_accuracy",
-    "refusal",
-    "latency",
-)
+_DEFAULT_PACK_KINDS = tuple(e.kind for e in DEFAULT_RAG_SET_ENTRIES)
 
 
 def _entry_payload(pack: dict, kind: str) -> dict:

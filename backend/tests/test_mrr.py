@@ -13,7 +13,7 @@ async def test_mrr_first_rank() -> None:
         input="q",
         expected_output="a",
         actual_output=None,
-        context={"retrieved_doc_ids": ["a", "b", "c"]},
+        context={"documents": [{"id": "a"}, {"id": "b"}, {"id": "c"}]},
         metadata={"expected_doc_ids": ["a"]},
     )
     result = await ev.evaluate(sample)
@@ -44,7 +44,7 @@ async def test_mrr_miss_outside_k() -> None:
         input="q",
         expected_output="a",
         actual_output=None,
-        context={"retrieved_doc_ids": ["x", "y", "a"]},
+        context={"documents": [{"id": "x"}, {"id": "y"}, {"id": "a"}]},
         metadata={"expected_doc_ids": ["a"]},
     )
     result = await ev.evaluate(sample)
@@ -59,7 +59,7 @@ async def test_mrr_skipped_empty_expected() -> None:
         input="q",
         expected_output="a",
         actual_output=None,
-        context={"retrieved_doc_ids": ["a"]},
+        context={"documents": [{"id": "a"}]},
         metadata={"expected_doc_ids": []},
     )
     result = await ev.evaluate(sample)

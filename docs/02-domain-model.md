@@ -272,7 +272,7 @@ regression:
 #     opengrade.error_rate: {max: 0.05, max_increase: 0.01}
 ```
 
-Legacy/custom evaluator names (for example `quality` with a `contains` evaluator) remain valid when those evaluators exist on the project.
+Custom evaluator names (for example `quality` with a `contains` evaluator) are valid when those evaluators exist on the project.
 
 ## LiveInteraction (Live runs)
 

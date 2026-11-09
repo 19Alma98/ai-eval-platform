@@ -209,7 +209,7 @@ class AsyncClient:
         self.trace_scores = _AsyncTraceScoresResource(self._http, self._project)
 
     def _project(self, project_id: str | None = None) -> str:
-        return resolve_bound_project(project_id, bound=self._project_id, stacklevel=3)
+        return resolve_bound_project(project_id, bound=self._project_id)
 
     async def health(self) -> HealthResponse:
         return await self._http.request_model("GET", "/health", response_model=HealthResponse)

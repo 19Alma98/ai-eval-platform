@@ -24,6 +24,7 @@ from opengrade_server.domain.evaluation import EvaluationResultRecord, Evaluatio
 from opengrade_server.domain.evaluator import Evaluator
 from opengrade_server.domain.experiment import Experiment
 from opengrade_server.domain.experiment_output import ExperimentItemOutput
+from opengrade_server.domain.metrics_set import DEFAULT_RAG_SET_ENTRIES
 from opengrade_server.domain.project import Project
 from opengrade_server.domain.trace import Trace
 from opengrade_server.main import create_app
@@ -398,20 +399,7 @@ async def test_evaluate_uses_experiment_output_not_legacy_actual(
     assert body["runs"][0]["results"][0]["score"] == 1.0
 
 
-_DEFAULT_PACK_KINDS = (
-    "hit_at_k",
-    "recall_at_k",
-    "mrr",
-    "context_precision",
-    "context_recall",
-    "must_contain",
-    "groundedness",
-    "answer_relevance",
-    "correctness",
-    "citation_accuracy",
-    "refusal",
-    "latency",
-)
+_DEFAULT_PACK_KINDS = tuple(e.kind for e in DEFAULT_RAG_SET_ENTRIES)
 
 
 def _pack_entry_payload(pack: dict, kind: str) -> dict:
@@ -461,7 +449,7 @@ async def test_evaluate_pack_uses_enabled_metrics_pack_evaluators(
             "input": "q",
             "expected_output": "a",
             "actual_output": "ans",
-            "context": {"retrieved_doc_ids": ["target"]},
+            "context": {"documents": [{"id": "target"}]},
             "metadata": {"expected_doc_ids": ["target"]},
         },
     )
@@ -509,7 +497,7 @@ async def _rag_dataset_with_item(client: AsyncClient, project_id: str, name: str
             "input": "q",
             "expected_output": "a",
             "actual_output": "ans",
-            "context": {"retrieved_doc_ids": ["target"]},
+            "context": {"documents": [{"id": "target"}]},
             "metadata": {"expected_doc_ids": ["target"]},
         },
     )

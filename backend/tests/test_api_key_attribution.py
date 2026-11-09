@@ -55,7 +55,6 @@ async def auth_client(
     db_path = tmp_path_factory.mktemp("attr") / "opengrade.db"
     monkeypatch.setenv("DATABASE_URL", f"sqlite+aiosqlite:///{db_path}")
     monkeypatch.setenv("OPENGRADE_API_KEY", ENV_KEY)
-    monkeypatch.delenv("OPENGRADE_API_KEY_PREVIOUS", raising=False)
     get_settings.cache_clear()
     await dispose_db()
     init_db(get_settings())
@@ -94,7 +93,6 @@ async def test_trace_score_author_from_key_name(
     db_path = tmp_path_factory.mktemp("attr-db") / "opengrade.db"
     monkeypatch.setenv("DATABASE_URL", f"sqlite+aiosqlite:///{db_path}")
     monkeypatch.setenv("OPENGRADE_API_KEY", ENV_KEY)
-    monkeypatch.delenv("OPENGRADE_API_KEY_PREVIOUS", raising=False)
     get_settings.cache_clear()
     await dispose_db()
     init_db(get_settings())

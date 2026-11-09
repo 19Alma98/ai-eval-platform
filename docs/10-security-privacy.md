@@ -48,10 +48,9 @@ the key once. Each key has a name and one scope:
 Revoking a key rejects it at once (within 30 s when revoked from the CLI in another process) and
 ends the dashboard sessions opened with it. `last_used_at` shows which keys are still in use.
 
-**Rotating the env key:** set the new key in `OPENGRADE_API_KEY` and the old one in
-`OPENGRADE_API_KEY_PREVIOUS`, restart, move clients to the new key, then remove the previous
-one. Dashboard sessions are signed with the env key, so they end when the key they were signed
-with is no longer accepted. Per-client keys are not affected.
+**Rotating the env key:** set the new value in `OPENGRADE_API_KEY` and restart. Dashboard
+sessions are signed with the env key, so they end when that key changes. Per-client keys are
+not affected. Move clients to the new key before or immediately after the restart.
 
 There are **no user accounts**. If you need per-person audit, give each person a `read` or `admin` key with their name. With auth on, that key name is written server-side to `trace_scores.author` and `live_score_reviews.reviewer` (client-supplied values are ignored).
 

@@ -199,7 +199,6 @@ Compose sets `DATABASE_URL` for the `api` service to the `postgres` container. O
 | `DATABASE_URL` | Async SQLAlchemy URL (Compose → Postgres; local default is SQLite) |
 | `APP_HOST` / `APP_PORT` | Bind address inside the container (default `0.0.0.0:8000`) |
 | `OPENGRADE_API_KEY` | Bootstrap admin key; unset = open server (localhost / trusted network only) |
-| `OPENGRADE_API_KEY_PREVIOUS` | Previous key accepted during rotation |
 | `OPENGRADE_UI_SESSION_HOURS` | UI session cookie lifetime (default `12`) |
 | `CONTENT_CAPTURE_ENABLED` | Store span/LLM text at ingest (`true` by default; `false` redacts) |
 | `LLM_MODEL` / `LLM_API_KEY` / `LLM_API_BASE` | LiteLLM judges (Ollama or cloud) |

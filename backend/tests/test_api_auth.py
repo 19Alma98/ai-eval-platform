@@ -20,7 +20,6 @@ KEY = "og-test-key-0123456789"
 @pytest.fixture
 def api_key(monkeypatch: pytest.MonkeyPatch) -> str:
     monkeypatch.setenv("OPENGRADE_API_KEY", KEY)
-    monkeypatch.delenv("OPENGRADE_API_KEY_PREVIOUS", raising=False)
     get_settings.cache_clear()
     reset_auth_failed_rate_limiter_for_tests()
     return KEY
@@ -102,19 +101,6 @@ async def test_health_ready_and_status_stay_public(client: AsyncClient, api_key:
 
 
 @pytest.mark.asyncio
-async def test_previous_key_accepted_during_rotation(
-    client: AsyncClient, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    monkeypatch.setenv("OPENGRADE_API_KEY", "new-key")
-    monkeypatch.setenv("OPENGRADE_API_KEY_PREVIOUS", "old-key")
-    get_settings.cache_clear()
-
-    for key in ("new-key", "old-key"):
-        resp = await client.get("/api/v1/projects", headers=_bearer(key))
-        assert resp.status_code == 200, key
-
-
-@pytest.mark.asyncio
 async def test_ui_session_cookie_flow(client: AsyncClient, api_key: str) -> None:
     bad = await client.post("/api/v1/auth/session", json={"api_key": "nope"})
     assert bad.status_code == 401
@@ -148,8 +134,6 @@ def test_session_token_expires_and_dies_with_key_rotation() -> None:
     assert session_subject(token, settings, now=1_000 + max_age - 1) == "env"
     assert session_subject(token, settings, now=1_000 + max_age) is None
     assert session_subject(token, Settings(api_key="k2"), now=1_001) is None
-    rotated = Settings(api_key="k2", api_key_previous="k1")
-    assert session_subject(token, rotated, now=1_001) == "env"
     assert session_subject("garbage", settings, now=1_001) is None
     subject, expires, signature = token.split(".")
     assert (

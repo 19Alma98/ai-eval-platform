@@ -40,7 +40,7 @@ class Evaluator(Protocol):
 - contains
 - regex
 - json_schema
-- hit_at_k (config `k`; uses `metadata.expected_doc_ids` and run context documents / `retrieved_doc_ids`)
+- hit_at_k (config `k`; uses `metadata.expected_doc_ids` and `context.documents`)
 - recall_at_k (same inputs; `|expected ∩ top-k| / |expected|`)
 - mrr (same inputs; `1/rank` of first expected id in top-k, else `0`)
 - latency

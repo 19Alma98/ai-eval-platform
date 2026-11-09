@@ -17,7 +17,7 @@ from collections.abc import Callable, Mapping
 from decimal import Decimal
 from typing import Any
 
-from opengrade import _config, _scores, _trace
+from opengrade import _scores, _trace
 from opengrade.metrics import LocalMetric, Sample, Score, evaluate_metric, missing_requirement
 
 logger = logging.getLogger("opengrade")

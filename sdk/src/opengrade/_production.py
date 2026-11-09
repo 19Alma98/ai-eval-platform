@@ -34,7 +34,7 @@ from typing import Any
 from opentelemetry import context as otel_context
 from opentelemetry.trace import Span
 
-from opengrade import _config, _live, _scores, _state, feedback
+from opengrade import _live, _scores, _state, feedback
 from opengrade._run_context import ACTIVE_RUN, PRODUCTION_CAPTURE, ProductionCapture
 from opengrade.metrics import LocalMetric, Sample, evaluate_metric, metric, missing_requirement
 
@@ -49,12 +49,10 @@ METRIC_TIMEOUT_S = 60.0  # per async metric call; a sync metric cannot be interr
 MAX_METRIC_SAMPLE_BYTES = 256 * 1024
 _WARN_EVERY_S = 60.0
 
-# The key OTel instrumentors check (opentelemetry.instrumentation.utils); the plain
-# string is the legacy key some still read.
+# Key OTel instrumentors check (opentelemetry.instrumentation.utils).
 _SUPPRESS_KEY: str = getattr(
     otel_context, "_SUPPRESS_INSTRUMENTATION_KEY", "suppress_instrumentation"
 )
-_SUPPRESS_KEY_PLAIN = "suppress_instrumentation"
 
 # True while a production metric runs: ``@opengrade.trace`` then just calls the function.
 _IN_METRIC: ContextVar[bool] = ContextVar("opengrade_in_metric", default=False)
@@ -65,6 +63,7 @@ def in_metric() -> bool:
 
 
 _Job = Callable[[], None]
+
 
 def _warn(key: str, message: str, *args: Any) -> None:
     """WARNING at most once a minute per ``key``, DEBUG otherwise."""
@@ -367,9 +366,10 @@ def after_call(
         if not _live.should_judge(ctx.trace_id, sample_rate):
             return
         try:
+            from opengrade._config import resolve_project_id
             from opengrade._context import get_client
 
-            project_id = get_client()._project(None)
+            project_id = resolve_project_id(get_client()._project_id)
         except ValueError as exc:
             _warn("project", "opengrade: production metrics skipped: %s", exc)
             return
@@ -422,9 +422,7 @@ def _submit(metrics: tuple[LocalMetric, ...], sample: Sample, project_id: str) -
 
 def _run(metrics: tuple[LocalMetric, ...], sample: Sample, project_id: str) -> None:
     """Run a job isolated from tracing (see the module docstring)."""
-    ctx = otel_context.set_value(_SUPPRESS_KEY, True)
-    ctx = otel_context.set_value(_SUPPRESS_KEY_PLAIN, True, ctx)
-    otel_token = otel_context.attach(ctx)
+    otel_token = otel_context.attach(otel_context.set_value(_SUPPRESS_KEY, True))
     metric_token = _IN_METRIC.set(True)
     try:
         _run_metrics(metrics, sample, project_id)

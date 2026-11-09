@@ -6,9 +6,10 @@ import asyncio
 import logging
 import os
 import threading
+from collections.abc import Iterator
 from contextlib import contextmanager
 from contextvars import ContextVar
-from typing import Any, Iterator
+from typing import Any
 
 from opengrade import _config, _context, _state
 from opengrade._config import DEFAULT_TRACKING_URI, _normalize_uri
@@ -85,13 +86,9 @@ class Opengrade:
     def __init__(self, settings: _state.Settings | None = None, **kwargs: Any) -> None:
         fields = _state.Settings.__dataclass_fields__
         if settings is None:
-            settings = _state.Settings.from_env(
-                **{k: v for k, v in kwargs.items() if k in fields}
-            )
+            settings = _state.Settings.from_env(**{k: v for k, v in kwargs.items() if k in fields})
         elif kwargs:
-            settings = settings.with_updates(
-                **{k: v for k, v in kwargs.items() if k in fields}
-            )
+            settings = settings.with_updates(**{k: v for k, v in kwargs.items() if k in fields})
         from opengrade import _otel
 
         self._runtime = _state._Runtime.fresh()
@@ -151,9 +148,7 @@ class Opengrade:
     def set_project(self, name: str) -> ProjectResponse | None:
         from opengrade._context import resolve_or_create_project
 
-        return resolve_or_create_project(
-            name, self.client, activate=True, runtime=self._runtime
-        )
+        return resolve_or_create_project(name, self.client, activate=True, runtime=self._runtime)
 
     def init_tracing(self, **kwargs: Any) -> None:
         """Configure OTLP export for this instance via the shared ``TracerProvider``."""

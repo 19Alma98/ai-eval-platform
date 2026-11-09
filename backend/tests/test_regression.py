@@ -261,7 +261,7 @@ def test_compare_insufficient_n_when_either_side_below_min() -> None:
 
 
 def test_compare_regression_when_both_sides_meet_min_n() -> None:
-    # Without item results, legacy path still classifies by |delta| once n >= 5.
+    # Without item results, compare classifies by |delta| once n >= 5.
     rows = compare_evaluator_metrics(
         evaluator_id=uuid.uuid4(),
         evaluator_name="quality",

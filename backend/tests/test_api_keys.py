@@ -26,7 +26,6 @@ async def client(
     db_path = tmp_path_factory.mktemp("api_keys") / "opengrade.db"
     monkeypatch.setenv("DATABASE_URL", f"sqlite+aiosqlite:///{db_path}")
     monkeypatch.setenv("OPENGRADE_API_KEY", ENV_KEY)
-    monkeypatch.delenv("OPENGRADE_API_KEY_PREVIOUS", raising=False)
     get_settings.cache_clear()
     await dispose_db()
     init_db(get_settings())

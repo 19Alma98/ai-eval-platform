@@ -102,11 +102,7 @@ def _activate_project(
         from opengrade._opengrade import current
 
         rt = current()._runtime
-    active_id = (
-        _state._active_project_id()
-        if rt is _state._default()
-        else rt.settings.project_id
-    )
+    active_id = _state._active_project_id() if rt is _state._default() else rt.settings.project_id
     if _otel._INITIALIZED and active_id != project.id:
         logger.warning(
             "opengrade.set_project(%r) after init(): traces keep going to the previous "
@@ -117,9 +113,7 @@ def _activate_project(
     if rt is _state._default():
         _config._set_active_project(project_id=project.id, project_slug=project.slug)
     else:
-        rt.settings = rt.settings.with_updates(
-            project_id=project.id, project_slug=project.slug
-        )
+        rt.settings = rt.settings.with_updates(project_id=project.id, project_slug=project.slug)
     # Keep mock transports / open connections; only refresh the bound project.
     if rt.client is not None:
         rt.client._project_id = project.id
@@ -221,14 +215,12 @@ def get_project() -> ProjectResponse | None:
 
 
 def _reset_for_tests() -> None:
-    from opengrade._client_resolve import reset_global_fallback_warning_for_tests
     from opengrade._opengrade import _reset_opengrade_for_tests
 
     _reset_client()
     _state._reset_default_for_tests()
     _reset_opengrade_for_tests()
     _config._reset_for_tests()
-    reset_global_fallback_warning_for_tests()
 
 
 def _after_fork_in_child() -> None:
@@ -240,6 +232,7 @@ def _after_fork_in_child() -> None:
 class _ContextModule(types.ModuleType):
     """Pytest contract: attribute assignment like ``_context._CLIENT = …`` must
     mutate the default ``_Runtime``, not a vanished module global."""
+
     @property
     def _CLIENT(self) -> Client | None:
         return _state._default().client

@@ -24,14 +24,14 @@ from typing import Any
 from opentelemetry import trace as otel_trace
 from opentelemetry.trace import Status, StatusCode
 
-from opengrade import _config, _otel
-from opengrade._opengrade import current
+from opengrade import _otel
 from opengrade._async import run_sync
 from opengrade._context import get_client, resolve_or_create_project
 from opengrade._eval_run import bind_evaluation
 from opengrade._git import detect_git, version_from_git
 from opengrade._http import OpengradeAPIError, OpengradeError
 from opengrade._links import experiment_item_url, experiment_url, trace_url, ui_base_url
+from opengrade._opengrade import current
 from opengrade._run_context import ACTIVE_RUN
 from opengrade._trace import current_trace_id, truncate_value
 from opengrade.client import Client

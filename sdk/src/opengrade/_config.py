@@ -133,7 +133,9 @@ def resolve_project_id(project_id: str | None = None) -> str:
     env_id = os.getenv("OPENGRADE_PROJECT_ID")
     if env_id and env_id.strip():
         return env_id.strip()
-    slug = _state._active_project_slug() or (os.getenv("OPENGRADE_PROJECT_SLUG") or "").strip() or None
+    slug = (
+        _state._active_project_slug() or (os.getenv("OPENGRADE_PROJECT_SLUG") or "").strip() or None
+    )
     if slug:
         resolved = _lazy_resolve_slug(slug)
         if resolved:
