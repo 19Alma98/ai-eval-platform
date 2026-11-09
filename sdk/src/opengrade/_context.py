@@ -99,7 +99,9 @@ def _activate_project(
     from opengrade import _otel
 
     if rt is None:
-        rt = _state._default()
+        from opengrade._opengrade import current
+
+        rt = current()._runtime
     active_id = (
         _state._active_project_id()
         if rt is _state._default()
@@ -206,7 +208,9 @@ async def aset_project(name: str) -> ProjectResponse | None:
         logger.warning("opengrade.aset_project(%r) failed: %s", cleaned, exc)
         return None
 
-    return _activate_project(project, cleaned)
+    from opengrade._opengrade import current
+
+    return _activate_project(project, cleaned, current()._runtime)
 
 
 def get_project() -> ProjectResponse | None:
