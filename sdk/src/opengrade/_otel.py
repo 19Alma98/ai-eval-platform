@@ -262,8 +262,8 @@ class _SafeSpanExporter(SpanExporter):
             self._last_status = getattr(outcome, "status_code", None)
             return outcome
 
-        client.export = probed  # type: ignore[method-assign]
-        client._opengrade_status_probed = True  # type: ignore[attr-defined]
+        client.export = probed
+        client._opengrade_status_probed = True
 
     def export(self, spans: Sequence[ReadableSpan]) -> SpanExportResult:
         if self._closed or time.monotonic() < self._retry_after:
@@ -289,7 +289,11 @@ class _SafeSpanExporter(SpanExporter):
         if status in _SIZE_RELATED_STATUS:
             return True
         # Client-side max_request_size rejection: FAILURE with no HTTP round-trip.
-        if status is None and not self._http_attempted and getattr(self._inner, "_client", None) is not None:
+        if (
+            status is None
+            and not self._http_attempted
+            and getattr(self._inner, "_client", None) is not None
+        ):
             return True
         return False
 
