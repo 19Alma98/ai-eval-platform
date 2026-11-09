@@ -3,8 +3,10 @@ from __future__ import annotations
 import asyncio
 import json
 import mimetypes
+import random
 import time
 from collections.abc import Awaitable, Callable
+from email.utils import parsedate_to_datetime
 from pathlib import Path
 from typing import Any, TypeVar
 
@@ -16,8 +18,11 @@ from opengrade._errors import OpengradeAPIError, OpengradeConnectionError, Openg
 
 T = TypeVar("T", bound=BaseModel)
 
-_CONNECT_RETRIES = 2
-_CONNECT_RETRY_BACKOFF_S = 1.0
+_IDEMPOTENT_METHODS = frozenset({"GET", "HEAD", "OPTIONS"})
+_RETRY_STATUSES = frozenset({429, 503})
+_MAX_ATTEMPTS = 3
+_BACKOFF_BASE_S = 0.5
+_RETRY_AFTER_CAP_S = 30.0
 
 __all__ = [
     "OpengradeAPIError",
@@ -40,37 +45,102 @@ def _wrap_http_error(exc: httpx2.HTTPError) -> OpengradeConnectionError:
     return OpengradeConnectionError(f"platform unreachable: {exc}", cause=exc)
 
 
-def _call_with_connect_retry(method: str, call: Callable[[], httpx2.Response]) -> httpx2.Response:
-    """Run ``call()``; retry GET-like methods once on transport failure."""
-    attempts = _CONNECT_RETRIES if method.upper() in {"GET", "HEAD", "OPTIONS"} else 1
-    last: httpx2.HTTPError | None = None
-    for attempt in range(attempts):
+def _parse_retry_after(value: str | None) -> float | None:
+    if value is None:
+        return None
+    raw = value.strip()
+    if not raw:
+        return None
+    if raw.isdigit():
+        return float(raw)
+    try:
+        when = parsedate_to_datetime(raw)
+    except (TypeError, ValueError, IndexError, OverflowError):
+        return None
+    if when.tzinfo is None:
+        from datetime import UTC
+
+        when = when.replace(tzinfo=UTC)
+    delay = when.timestamp() - time.time()
+    return max(0.0, delay)
+
+
+def _retry_decision(
+    method: str,
+    *,
+    attempt: int,
+    status: int | None = None,
+    retry_after: str | None = None,
+    transport_error: bool = False,
+) -> tuple[bool, float]:
+    if method.upper() not in _IDEMPOTENT_METHODS:
+        return False, 0.0
+    if attempt + 1 >= _MAX_ATTEMPTS:
+        return False, 0.0
+    if not transport_error and status not in _RETRY_STATUSES:
+        return False, 0.0
+    parsed = _parse_retry_after(retry_after)
+    if parsed is not None:
+        return True, min(parsed, _RETRY_AFTER_CAP_S)
+    return True, random.uniform(0.0, _BACKOFF_BASE_S * (2**attempt))
+
+
+def _call_with_retry(method: str, call: Callable[[], httpx2.Response]) -> httpx2.Response:
+    last_exc: httpx2.HTTPError | None = None
+    response: httpx2.Response | None = None
+    for attempt in range(_MAX_ATTEMPTS):
         try:
-            return call()
+            response = call()
         except httpx2.HTTPError as exc:
-            last = exc
-            if attempt + 1 >= attempts:
-                break
-            time.sleep(_CONNECT_RETRY_BACKOFF_S)
-    assert last is not None
-    raise _wrap_http_error(last) from last
+            last_exc = exc
+            should, delay = _retry_decision(method, attempt=attempt, transport_error=True)
+            if not should:
+                raise _wrap_http_error(exc) from exc
+            time.sleep(delay)
+            continue
+        should, delay = _retry_decision(
+            method,
+            attempt=attempt,
+            status=response.status_code,
+            retry_after=response.headers.get("Retry-After"),
+        )
+        if not should:
+            return response
+        time.sleep(delay)
+    if response is not None:
+        return response
+    assert last_exc is not None
+    raise _wrap_http_error(last_exc) from last_exc
 
 
-async def _acall_with_connect_retry(
+async def _acall_with_retry(
     method: str, call: Callable[[], Awaitable[httpx2.Response]]
 ) -> httpx2.Response:
-    attempts = _CONNECT_RETRIES if method.upper() in {"GET", "HEAD", "OPTIONS"} else 1
-    last: httpx2.HTTPError | None = None
-    for attempt in range(attempts):
+    last_exc: httpx2.HTTPError | None = None
+    response: httpx2.Response | None = None
+    for attempt in range(_MAX_ATTEMPTS):
         try:
-            return await call()
+            response = await call()
         except httpx2.HTTPError as exc:
-            last = exc
-            if attempt + 1 >= attempts:
-                break
-            await asyncio.sleep(_CONNECT_RETRY_BACKOFF_S)
-    assert last is not None
-    raise _wrap_http_error(last) from last
+            last_exc = exc
+            should, delay = _retry_decision(method, attempt=attempt, transport_error=True)
+            if not should:
+                raise _wrap_http_error(exc) from exc
+            await asyncio.sleep(delay)
+            continue
+        should, delay = _retry_decision(
+            method,
+            attempt=attempt,
+            status=response.status_code,
+            retry_after=response.headers.get("Retry-After"),
+        )
+        if not should:
+            return response
+        await asyncio.sleep(delay)
+    if response is not None:
+        return response
+    assert last_exc is not None
+    raise _wrap_http_error(last_exc) from last_exc
 
 
 class _HttpTransport:
@@ -109,7 +179,7 @@ class _HttpTransport:
         body: dict[str, Any] | None = None,
         query: dict[str, str] | None = None,
     ) -> Any:
-        response = _call_with_connect_retry(
+        response = _call_with_retry(
             method,
             lambda: self._client.request(method, path, json=body, params=query),
         )
@@ -153,7 +223,7 @@ class _HttpTransport:
         query: dict[str, str] | None = None,
     ) -> Any:
         ctype = content_type or mimetypes.guess_type(filename)[0] or "application/octet-stream"
-        response = _call_with_connect_retry(
+        response = _call_with_retry(
             method,
             lambda: self._client.request(
                 method,
@@ -231,7 +301,7 @@ class _AsyncHttpTransport:
         body: dict[str, Any] | None = None,
         query: dict[str, str] | None = None,
     ) -> Any:
-        response = await _acall_with_connect_retry(
+        response = await _acall_with_retry(
             method,
             lambda: self._client.request(method, path, json=body, params=query),
         )
