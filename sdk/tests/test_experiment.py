@@ -599,7 +599,7 @@ def test_csv_path_input(server: FakeServer, tmp_path: Any) -> None:
 def test_csv_empty_optional_and_json_metadata(server: FakeServer, tmp_path: Any) -> None:
     path = tmp_path / "gold.csv"
     path.write_text(
-        'input,expected_output,metadata,context\n'
+        "input,expected_output,metadata,context\n"
         'q1,,"{""tag"":""x""}","{""search_query"":""c1""}"\n'
         "q2,a2,,\n",
         encoding="utf-8",

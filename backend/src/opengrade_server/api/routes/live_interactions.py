@@ -55,12 +55,12 @@ from opengrade_server.application.metrics_sets import MetricsSetNotFoundError
 from opengrade_server.application.projects import ProjectNotFoundError
 from opengrade_server.application.traces import InvalidTraceFilterError, parse_metadata_filters
 from opengrade_server.domain.dataset import DatasetItem
-from opengrade_server.domain.rag_models import dump_context, dump_dataset_input, dump_metadata
 from opengrade_server.domain.live_interaction import (
     LiveInteraction,
     LiveInteractionScore,
     LiveScoreReview,
 )
+from opengrade_server.domain.rag_models import dump_context, dump_dataset_input, dump_metadata
 from opengrade_server.domain.trace_score import TraceScore
 
 router = APIRouter(tags=["live-interactions"])

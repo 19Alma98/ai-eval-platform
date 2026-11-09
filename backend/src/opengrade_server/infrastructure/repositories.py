@@ -17,15 +17,6 @@ from sqlalchemy.orm import selectinload
 from opengrade_server.domain.alert import AlertEvent, AlertRule
 from opengrade_server.domain.app_config import AppConfig, AppConfigAlias
 from opengrade_server.domain.dataset import Dataset, DatasetItem
-from opengrade_server.domain.rag_models import (
-    dump_context,
-    dump_dataset_input,
-    dump_metadata,
-    metadata_as_mapping,
-    parse_context,
-    parse_dataset_input,
-    parse_metadata,
-)
 from opengrade_server.domain.evaluation import EvaluationResultRecord, EvaluationRun
 from opengrade_server.domain.evaluator import Evaluator
 from opengrade_server.domain.experiment import Experiment
@@ -40,6 +31,14 @@ from opengrade_server.domain.live_interaction import (
 from opengrade_server.domain.live_overview import LiveInRangeResult, LiveInteractionInRange
 from opengrade_server.domain.metrics_set import MetricsSet, MetricsSetEntry
 from opengrade_server.domain.project import Project
+from opengrade_server.domain.rag_models import (
+    dump_context,
+    dump_dataset_input,
+    metadata_as_mapping,
+    parse_context,
+    parse_dataset_input,
+    parse_metadata,
+)
 from opengrade_server.domain.trace import (
     MAX_TRACE_TAGS,
     METADATA_KEY_PREFIX,

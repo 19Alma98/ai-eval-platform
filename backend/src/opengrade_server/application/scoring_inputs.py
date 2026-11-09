@@ -7,13 +7,13 @@ from dataclasses import dataclass, field
 
 from opengrade_server.application.experiment_outputs import merge_dataset_item
 from opengrade_server.domain.dataset import DatasetItem
+from opengrade_server.domain.experiment import Experiment
+from opengrade_server.domain.experiment_output import ExperimentItemOutput
 from opengrade_server.domain.rag_models import (
     dump_context,
     dump_dataset_input,
     metadata_as_mapping,
 )
-from opengrade_server.domain.experiment import Experiment
-from opengrade_server.domain.experiment_output import ExperimentItemOutput
 from opengrade_server.domain.repositories import DatasetRepository, ExperimentItemOutputRepository
 from opengrade_server.regression.aggregate import INPUTS_FINGERPRINT_KEY
 

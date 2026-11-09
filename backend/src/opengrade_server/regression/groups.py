@@ -12,8 +12,8 @@ from collections.abc import Iterable, Mapping
 from typing import Any
 
 from opengrade_server.domain.dataset import DatasetItem
-from opengrade_server.domain.rag_models import metadata_as_mapping
 from opengrade_server.domain.evaluation import EvaluationResultRecord
+from opengrade_server.domain.rag_models import metadata_as_mapping
 
 NO_VALUE = "(none)"
 MAX_GROUPS = 50

@@ -3,6 +3,7 @@ from __future__ import annotations
 import uuid
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
+
 from opengrade_server.domain.rag_models import (
     RagChatInput,
     RagItemContext,

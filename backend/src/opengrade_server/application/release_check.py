@@ -16,9 +16,9 @@ from opengrade_server.application.scoring_inputs import (
     current_fingerprint,
 )
 from opengrade_server.domain.dataset import DatasetItem
-from opengrade_server.domain.rag_models import metadata_as_mapping
 from opengrade_server.domain.evaluation import EvaluationRun
 from opengrade_server.domain.experiment import Experiment
+from opengrade_server.domain.rag_models import metadata_as_mapping
 from opengrade_server.domain.repositories import (
     DatasetRepository,
     EvaluationRunRepository,

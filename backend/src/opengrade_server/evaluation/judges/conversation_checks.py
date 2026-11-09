@@ -4,8 +4,8 @@ from __future__ import annotations
 
 from typing import Any
 
-from opengrade_server.domain.rag_models import ChatTurn
 from opengrade_server.domain.rag_input import resolve_chat_history
+from opengrade_server.domain.rag_models import ChatTurn
 from opengrade_server.evaluation.judges import prompts
 from opengrade_server.evaluation.judges.evaluators import _LlmJudge
 from opengrade_server.evaluation.outcomes import skip
@@ -106,14 +106,11 @@ class ResolutionJudge(_LlmJudge):
         answer = prompts.as_text(sample.actual_output)
         question = prompts.question_text(sample.input)
         # User turns in history + the final question ≈ turns toward resolution.
-        user_turns = (
-            sum(
-                1
-                for turn in history
-                if (turn["role"] if isinstance(turn, dict) else turn.role) == "user"
-            )
-            + (1 if question else 0)
-        )
+        user_turns = sum(
+            1
+            for turn in history
+            if (turn["role"] if isinstance(turn, dict) else turn.role) == "user"
+        ) + (1 if question else 0)
         result = await self._rubric(
             prompts.sections(
                 conversation_history=prompts.render_history(history),

@@ -6,8 +6,8 @@ from typing import Any
 
 from opengrade_server.application.experiments import ExperimentNotFoundError
 from opengrade_server.domain.dataset import DatasetItem
-from opengrade_server.domain.rag_models import metadata_as_mapping, parse_metadata
 from opengrade_server.domain.experiment_output import UNSET, ExperimentItemOutput
+from opengrade_server.domain.rag_models import metadata_as_mapping, parse_metadata
 from opengrade_server.domain.repositories import (
     DatasetRepository,
     ExperimentItemOutputRepository,

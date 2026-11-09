@@ -11,9 +11,9 @@ from typing import Any
 from uuid import UUID
 
 from opengrade_server.domain.dataset import DatasetItem
-from opengrade_server.domain.rag_models import dump_context, dump_metadata
 from opengrade_server.domain.evaluation import EvaluationResultRecord, EvaluationRun
 from opengrade_server.domain.evaluator import Evaluator as EvaluatorEntity
+from opengrade_server.domain.rag_models import dump_context, dump_metadata
 from opengrade_server.evaluation.judges.warnings import (
     JUDGE_MODEL_UNSUITABLE,
     unsuitable_model_warning,

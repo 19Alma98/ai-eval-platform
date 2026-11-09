@@ -149,9 +149,7 @@ class GetConversation:
     async def execute(self, project_id: uuid.UUID, session_id: str) -> ConversationDetail:
         if await self._projects.get_by_id(project_id) is None:
             raise ProjectNotFoundError(project_id)
-        traces = await self._traces.list_by_project(
-            project_id, session_id=session_id, limit=200
-        )
+        traces = await self._traces.list_by_project(project_id, session_id=session_id, limit=200)
         if not traces:
             raise ConversationNotFoundError(session_id)
         traces = sorted(traces, key=lambda t: t.start_time)
