@@ -28,9 +28,16 @@ def _search_query(sample: EvaluationSample) -> str | None:
 
 def _history_or_skip(
     sample: EvaluationSample, meta: dict[str, Any]
-) -> list[dict[str, str]] | EvaluationResult:
+) -> list | EvaluationResult:  # list[ChatTurn]
     try:
-        return resolve_chat_history(sample.input if isinstance(sample.input, dict) else {})
+        from opengrade_server.domain.rag_models import RagChatInput
+
+        raw = sample.input
+        if isinstance(raw, RagChatInput):
+            return resolve_chat_history(raw)
+        if isinstance(raw, dict):
+            return resolve_chat_history(raw)
+        return []
     except ValueError as exc:
         return skip(str(exc), metadata=meta)
 
@@ -98,7 +105,14 @@ class ResolutionJudge(_LlmJudge):
         answer = prompts.as_text(sample.actual_output)
         question = prompts.question_text(sample.input)
         # User turns in history + the final question ≈ turns toward resolution.
-        user_turns = sum(1 for turn in history if turn["role"] == "user") + (1 if question else 0)
+        user_turns = (
+            sum(
+                1
+                for turn in history
+                if (turn["role"] if isinstance(turn, dict) else turn.role) == "user"
+            )
+            + (1 if question else 0)
+        )
         result = await self._rubric(
             prompts.sections(
                 conversation_history=prompts.render_history(history),

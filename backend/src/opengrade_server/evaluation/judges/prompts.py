@@ -8,7 +8,10 @@ from __future__ import annotations
 
 import hashlib
 import json
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from opengrade_server.domain.rag_models import ChatTurn, RagChatInput
 
 STEP_PREFIX = "STEP: "
 _SHORT_HASH_LEN = 12
@@ -805,20 +808,27 @@ def as_text(value: Any) -> str:
     return json.dumps(value, ensure_ascii=False, sort_keys=True, default=str)
 
 
-def question_text(value: Any) -> str:
+def question_text(value: str | RagChatInput) -> str:
     """Last-turn question for ``rag_qa`` strings and ``rag_chat`` ``{history, question}``."""
-    from opengrade_server.domain.rag_input import resolve_rag_question
+    from opengrade_server.domain.rag_input import parse_chat_input, resolve_rag_question
 
+    if isinstance(value, dict):
+        value = parse_chat_input(value)
     question = resolve_rag_question(value)
     if question:
         return question
     return as_text(value)
 
 
-def render_history(history: list[dict[str, str]]) -> str:
+def render_history(history: list[dict[str, str]] | list[ChatTurn]) -> str:
     if not history:
         return "(no prior turns)"
-    lines = [f"{turn['role']}: {turn['content']}" for turn in history]
+    lines: list[str] = []
+    for turn in history:
+        if isinstance(turn, dict):
+            lines.append(f"{turn['role']}: {turn['content']}")
+        else:
+            lines.append(f"{turn.role}: {turn.content}")
     return "\n".join(lines)
 
 

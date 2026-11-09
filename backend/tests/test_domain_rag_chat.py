@@ -3,8 +3,24 @@ from __future__ import annotations
 import pytest
 
 from opengrade_server.domain.rag_chat import validate_rag_chat_item
-from opengrade_server.domain.rag_input import resolve_rag_question
+from opengrade_server.domain.rag_input import build_chat_input, resolve_rag_question
+from opengrade_server.domain.rag_models import RagChatInput
 from opengrade_server.evaluation.judges import prompts
+
+
+def test_build_chat_input_returns_model() -> None:
+    built = build_chat_input(
+        history=[{"role": "user", "content": "Hi"}],
+        question="Price?",
+    )
+    assert isinstance(built, RagChatInput)
+    assert built.question == "Price?"
+    assert built.history[0].role == "user"
+
+
+def test_resolve_rag_question_from_model() -> None:
+    value = RagChatInput(history=[], question="What is PTO?")
+    assert resolve_rag_question(value) == "What is PTO?"
 
 
 def test_validate_rag_chat_ok() -> None:
@@ -37,7 +53,7 @@ def test_validate_rejects_bad_role() -> None:
 
 
 def test_question_text_prefers_last_turn() -> None:
-    value = {"history": [], "question": "What is PTO?"}
+    value = RagChatInput.model_validate({"history": [], "question": "What is PTO?"})
     assert resolve_rag_question(value) == "What is PTO?"
     assert prompts.question_text(value) == "What is PTO?"
     assert prompts.question_text("plain") == "plain"

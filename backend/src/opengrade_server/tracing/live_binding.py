@@ -92,9 +92,9 @@ def question_from_input(raw: Any) -> str | None:
     if isinstance(parsed, str):
         return _as_text(parsed)
     if isinstance(parsed, dict) and ("question" in parsed or "history" in parsed):
-        from opengrade_server.domain.rag_input import resolve_rag_question
+        from opengrade_server.domain.rag_input import parse_chat_input, resolve_rag_question
 
-        question = resolve_rag_question(parsed)
+        question = resolve_rag_question(parse_chat_input(parsed))
         return question or None
     if isinstance(parsed, dict) and set(parsed) <= {"args", "kwargs"}:
         raw_args, raw_kwargs = parsed.get("args"), parsed.get("kwargs")
