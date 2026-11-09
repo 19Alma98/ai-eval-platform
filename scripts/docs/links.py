@@ -52,11 +52,11 @@ def _rewrite(url: str, page_src: str) -> str:
         return url
     path, _, frag = url.partition("#")
     repo_path = posixpath.normpath(posixpath.join(DOCS, posixpath.dirname(page_src), path))
-    if repo_path.startswith(DOCS + "/") and repo_path not in PAGES:
-        return url  # inside docs/: MkDocs resolves and validates it
     local = _to_page(repo_path, page_src)
     if local:
         return local + (f"#{frag}" if frag else "")
+    if repo_path.startswith(DOCS + "/") and repo_path not in PAGES:
+        return url
     kind = "tree" if (ROOT / repo_path).is_dir() else "blob"
     return f"{REPO_URL}/{kind}/{BRANCH}/{repo_path}" + (f"#{frag}" if frag else "")
 
