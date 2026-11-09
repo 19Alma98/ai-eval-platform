@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import asyncio
 import functools
-import inspect
 import logging
 import threading
 from collections.abc import Iterator
@@ -287,7 +286,7 @@ def test_async_traced_call_runs_metrics(sent: Recorder) -> None:
     def length(s: opengrade.Sample) -> float:
         return float(len(s.output))
 
-    @opengrade.trace_async(name="async_answer", metrics=[length])
+    @opengrade.trace(name="async_answer", metrics=[length])
     async def async_answer(q: str) -> str:
         await asyncio.sleep(0)
         return "abcd"
@@ -377,7 +376,7 @@ def test_invalid_metric_configuration_fails_at_decoration() -> None:
             metrics=[opengrade.metric(lambda s: 1.0, name="m")], metrics_sample_rate=1.5
         )
     with pytest.raises(ValueError, match="sample_rate"):
-        opengrade.trace_async(
+        opengrade.trace(
             metrics=[opengrade.metric(lambda s: 1.0, name="m")], metrics_sample_rate=float("nan")
         )
 
@@ -411,36 +410,6 @@ def test_sync_trace_with_metrics_accepts_coroutine() -> None:
         return "x"
 
     decorate(coro)  # unified @trace dispatches to the async wrapper
-
-
-def test_trace_async_with_metrics_rejects_non_coroutine_functions() -> None:
-    decorate = opengrade.trace_async(metrics=[opengrade.metric(lambda s: 1.0, name="m")])
-
-    def plain() -> str:
-        return "x"
-
-    async def agen() -> Any:
-        yield "x"
-
-    for fn in (plain, agen):
-        with pytest.raises(TypeError, match="markcoroutinefunction"):
-            decorate(fn)
-
-
-def test_trace_async_with_metrics_accepts_partial_and_marked_callables() -> None:
-    decorate = opengrade.trace_async(metrics=[opengrade.metric(lambda s: 1.0, name="m")])
-
-    async def coro(prefix: str, q: str) -> str:
-        return f"{prefix}{q}"
-
-    decorate(functools.partial(coro, "p:"))
-    decorate(functools.partial(functools.partial(coro, "a:"), "b:"))
-
-    def looks_sync(q: str) -> str:
-        return q
-
-    inspect.markcoroutinefunction(looks_sync)
-    decorate(looks_sync)
 
 
 def test_sync_trace_with_metrics_accepts_partial_of_coroutine() -> None:
@@ -477,7 +446,7 @@ def test_metric_calling_traced_code_creates_no_spans_or_scores(sent: Recorder) -
     def judge_helper(text: str) -> str:
         return text.upper()
 
-    @opengrade.trace_async(name="async_judge_helper", metrics=[inner_metric], live=True)
+    @opengrade.trace(name="async_judge_helper", metrics=[inner_metric], live=True)
     async def async_judge_helper(text: str) -> str:
         return text.lower()
 

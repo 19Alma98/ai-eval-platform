@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import {
   Select,
   SelectContent,
@@ -18,14 +18,11 @@ import {
   toDatetimeLocalValue,
   type TimeWindow,
 } from "@/lib/time-range";
-import { useTimeRange } from "@/lib/time-range-context";
 
 const CUSTOM = "custom";
 
 export function TimeRangePicker({
-  preset: presetProp,
-  onPresetChange,
-  window: windowProp,
+  window,
   onWindowChange,
   timeZone,
   onTimeZoneChange,
@@ -33,33 +30,34 @@ export function TimeRangePicker({
   showCustom = false,
   showTimezone = false,
 }: {
-  /** Legacy preset-only API (overview/context). */
-  preset?: string;
-  onPresetChange?: (p: string) => void;
-  /** Full window API (monitoring with custom ranges). */
-  window?: TimeWindow;
-  onWindowChange?: (window: TimeWindow) => void;
+  window: TimeWindow;
+  onWindowChange: (window: TimeWindow) => void;
   timeZone?: string;
   onTimeZoneChange?: (tz: string) => void;
   timeZoneOptions?: string[];
   showCustom?: boolean;
   showTimezone?: boolean;
-} = {}) {
-  const ctx = useTimeRange();
-  const kind = windowProp?.kind ?? presetProp ?? ctx.preset;
-  const setPreset = onPresetChange ?? ctx.setPreset;
+}) {
+  const kind = window.kind;
 
   const [draftStart, setDraftStart] = useState("");
   const [draftEnd, setDraftEnd] = useState("");
+  const [draftSourceKey, setDraftSourceKey] = useState<string | null>(null);
 
-  useEffect(() => {
-    if (!showCustom || !windowProp || !timeZone) return;
-    setDraftStart(toDatetimeLocalValue(windowProp.start, timeZone));
-    setDraftEnd(toDatetimeLocalValue(windowProp.end, timeZone));
-  }, [showCustom, windowProp, timeZone]);
+  const sourceKey =
+    showCustom && timeZone
+      ? `${window.start.getTime()}-${window.end.getTime()}-${timeZone}`
+      : null;
+  if (sourceKey !== draftSourceKey) {
+    setDraftSourceKey(sourceKey);
+    if (sourceKey && timeZone) {
+      setDraftStart(toDatetimeLocalValue(window.start, timeZone));
+      setDraftEnd(toDatetimeLocalValue(window.end, timeZone));
+    }
+  }
 
   function applyCustom() {
-    if (!onWindowChange || !timeZone) return;
+    if (!timeZone) return;
     const start = fromDatetimeLocalValue(draftStart, timeZone);
     const end = fromDatetimeLocalValue(draftEnd, timeZone);
     if (!start || !end || start.getTime() >= end.getTime()) return;
@@ -69,25 +67,19 @@ export function TimeRangePicker({
   function onSelectChange(v: string | null) {
     if (!v) return;
     if (v === CUSTOM) {
-      if (onWindowChange && windowProp) {
-        onWindowChange({ start: windowProp.start, end: windowProp.end, kind: "custom" });
-      }
+      onWindowChange({ start: window.start, end: window.end, kind: "custom" });
       return;
     }
     if (isPreset(v)) {
-      if (onWindowChange) {
-        // Parent recomputes from preset + fresh anchor.
-        onWindowChange({
-          start: windowProp?.start ?? new Date(),
-          end: windowProp?.end ?? new Date(),
-          kind: v,
-        });
-      }
-      setPreset(v);
+      onWindowChange({
+        start: window.start,
+        end: window.end,
+        kind: v,
+      });
     }
   }
 
-  const selectValue = kind === "custom" || kind === CUSTOM ? CUSTOM : kind;
+  const selectValue = kind === "custom" ? CUSTOM : kind;
 
   return (
     <div className="flex flex-wrap items-center gap-2">

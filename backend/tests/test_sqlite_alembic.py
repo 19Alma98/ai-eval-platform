@@ -1,4 +1,4 @@
-"""SQLite bootstrap uses Alembic (upgrade + legacy stamp)."""
+"""SQLite bootstrap uses Alembic upgrade on startup."""
 
 from __future__ import annotations
 
@@ -17,7 +17,6 @@ from opengrade_server.infrastructure.db import (
     dispose_db,
     init_db,
 )
-from opengrade_server.infrastructure.models import Base
 
 
 @pytest.mark.asyncio
@@ -68,39 +67,6 @@ async def test_file_sqlite_enables_wal_and_busy_timeout(tmp_path: Path) -> None:
         assert str(journal).lower() == "wal"
         assert int(busy) == SQLITE_BUSY_TIMEOUT_MS
     finally:
-        await dispose_db()
-        if previous is None:
-            os.environ.pop("DATABASE_URL", None)
-        else:
-            os.environ["DATABASE_URL"] = previous
-        get_settings.cache_clear()
-
-
-@pytest.mark.asyncio
-async def test_bootstrap_stamps_legacy_create_all_db(tmp_path: Path) -> None:
-    db_path = tmp_path / "legacy.db"
-    sync_url = f"sqlite:///{db_path}"
-    engine = create_engine(sync_url)
-    try:
-        Base.metadata.create_all(engine)
-        assert "alembic_version" not in inspect(engine).get_table_names()
-    finally:
-        engine.dispose()
-
-    previous = os.environ.get("DATABASE_URL")
-    os.environ["DATABASE_URL"] = f"sqlite+aiosqlite:///{db_path}"
-    get_settings.cache_clear()
-    await dispose_db()
-    init_db(get_settings())
-    await bootstrap_schema()
-
-    sync = create_engine(sync_url)
-    try:
-        with sync.connect() as conn:
-            version = conn.execute(text("SELECT version_num FROM alembic_version")).scalar()
-        assert version == "0026_system_llm_settings"
-    finally:
-        sync.dispose()
         await dispose_db()
         if previous is None:
             os.environ.pop("DATABASE_URL", None)

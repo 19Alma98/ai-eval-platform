@@ -18,7 +18,7 @@ uv run opengrade ui
 # → http://127.0.0.1:8000  (SQLite ./opengrade.db by default)
 ```
 
-Local SQLite schema is applied with Alembic on startup (same revisions as Postgres). File-backed SQLite uses WAL and a 5s `busy_timeout`. If a pre-Alembic DB is stale (schema behind models), delete `./opengrade.db` (and any `-wal`/`-shm` sidecars) and restart.
+Local SQLite schema is applied with Alembic on startup (same revisions as Postgres). File-backed SQLite uses WAL and a 5s `busy_timeout`. If a local DB is stale or broken, delete `./opengrade.db` (and any `-wal`/`-shm` sidecars) and restart.
 
 **Backup:** stop the process (or run `PRAGMA wal_checkpoint(FULL)`), then copy `opengrade.db` plus any `opengrade.db-wal` / `opengrade.db-shm` files. Do not copy only the main file while the process is writing under WAL.
 

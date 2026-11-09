@@ -10,8 +10,6 @@ OTLP_TRACES_PATH = "/v1/traces"
 DEFAULT_ENDPOINT = DEFAULT_TRACKING_URI + OTLP_TRACES_PATH
 DEFAULT_SERVICE_NAME = "opengrade-app"
 DEFAULT_MAX_CAPTURE_BYTES = 32 * 1024
-# Back-compat alias for the default capture limit (prefer ``max_capture_bytes()``).
-MAX_CAPTURE_BYTES = DEFAULT_MAX_CAPTURE_BYTES
 
 logger = logging.getLogger("opengrade")
 

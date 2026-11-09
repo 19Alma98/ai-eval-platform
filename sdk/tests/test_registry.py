@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import json
-import warnings
 from typing import Any
 
 import httpx2
@@ -10,20 +9,10 @@ import pytest
 from opengrade.client import Client
 from opengrade.registry import AppConfigClient
 
-# Standalone AppConfigClient(...) is deprecated; the method tests below still exercise it.
-pytestmark = pytest.mark.filterwarnings("ignore::DeprecationWarning")
 
-
-def test_standalone_construction_warns() -> None:
-    with pytest.warns(DeprecationWarning, match="get_client\\(\\).app_configs"):
-        AppConfigClient("http://localhost:8000").close()
-
-
-def test_client_app_configs_does_not_warn() -> None:
-    with warnings.catch_warnings():
-        warnings.simplefilter("error", DeprecationWarning)
-        with Client("http://localhost:8000") as client:
-            assert isinstance(client.app_configs, AppConfigClient)
+def test_client_app_configs_is_app_config_client() -> None:
+    with Client("http://localhost:8000") as client:
+        assert isinstance(client.app_configs, AppConfigClient)
 
 
 @pytest.fixture
@@ -76,8 +65,8 @@ def test_create_app_config_post_body_and_path(
     mock_transport: httpx2.MockTransport,
     captured_requests: list[httpx2.Request],
 ) -> None:
-    with AppConfigClient("http://localhost:8000/", transport=mock_transport) as client:
-        result = client.create_app_config(
+    with Client("http://localhost:8000/", transport=mock_transport) as client:
+        result = client.app_configs.create_app_config(
             "proj-1",
             "rag-faq",
             prompt={"system": "You are helpful."},
@@ -101,9 +90,9 @@ def test_set_alias_put_body_and_path(
     mock_transport: httpx2.MockTransport,
     captured_requests: list[httpx2.Request],
 ) -> None:
-    with AppConfigClient("http://api.example", transport=mock_transport) as client:
+    with Client("http://api.example", transport=mock_transport) as client:
         config_id = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"
-        result = client.set_alias("proj-2", "baseline", config_id)
+        result = client.app_configs.set_alias("proj-2", "baseline", config_id)
 
         assert result.name == "baseline"
         req = captured_requests[0]
@@ -134,11 +123,11 @@ def test_list_app_configs_query_params(
             ],
         )
 
-    with AppConfigClient(
+    with Client(
         "http://localhost:8000",
         transport=httpx2.MockTransport(handler),
     ) as client:
-        rows = client.list_app_configs("proj-1", name="rag-faq", latest=True)
+        rows = client.app_configs.list_app_configs("proj-1", name="rag-faq", latest=True)
 
         assert len(rows) == 1
         assert rows[0].id == "x"
@@ -154,8 +143,8 @@ def test_get_aliases_get_path(
     mock_transport: httpx2.MockTransport,
     captured_requests: list[httpx2.Request],
 ) -> None:
-    with AppConfigClient("http://localhost:8000", transport=mock_transport) as client:
-        aliases = client.get_aliases("proj-9")
+    with Client("http://localhost:8000", transport=mock_transport) as client:
+        aliases = client.app_configs.get_aliases("proj-9")
 
         assert aliases == []
         req = captured_requests[0]

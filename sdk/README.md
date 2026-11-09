@@ -80,7 +80,7 @@ Runnable examples: [`examples/sdk_hello/`](https://github.com/19Alma98/ai-eval-p
 | `opengrade.get_async_client()` | Shared `AsyncClient` for async app code |
 | `opengrade.get_project()` | Project set via `set_project` / `aset_project`, or `None` |
 | `opengrade.init(...)` | OTLP exporter, project headers, optional `instrument="auto"` \| list \| `False` |
-| `@opengrade.trace` / `@opengrade.trace_async` | Parent CHAIN span; optional input/output capture (32 KiB cap) |
+| `@opengrade.trace` | Parent CHAIN span (sync/async/generators); optional input/output capture (32 KiB cap) |
 | `with opengrade.span(name, kind=...)` | Child span for a block of code (`with` / `async with`): retrieve, rerank, tool call… |
 | `opengrade.set_user` / `set_session` / `set_tags` / `set_metadata` | User, session, tags and key/value metadata of the current trace (filterable in the UI) |
 | `opengrade.using_attributes(...)` | Same attributes for every span opened in a block (e.g. in a request middleware) |
@@ -415,7 +415,7 @@ async def lifespan(app):
     await opengrade.get_async_client().aclose()
 
 
-@opengrade.trace_async(name="answer")
+@opengrade.trace(name="answer")
 async def answer(q: str) -> str:
     text = "..."
     client = opengrade.get_async_client()
@@ -512,9 +512,9 @@ opengrade.log_feedback(True, trace_id=trace_id, user_id="user-42", comment="grea
   - `Sample.input` is what you passed to `opengrade.set_input()` inside the call, else the only argument, else `{"args", "kwargs"}`; `Sample.output` is what you passed to `opengrade.set_output()` inside the call, else the return value (so a handler can return a response object and still have its metrics see the answer); `Sample.documents` is the last `set_retrieval_documents()` inside the call (including nested `@opengrade.trace` helpers on the same thread); `expected` is `None`, so metrics with `requires=("expected",)` are skipped. Input, output and documents are deep-copied when the job is queued (so later mutation is invisible); samples over 256 KiB serialized are skipped with a warning. Capture uses a ContextVar: a worker thread your function starts does not inherit it, so `set_retrieval_documents` (or `record_documents`) from that thread does not feed the outer sample — call it on the traced thread before return, or pass documents into the metric yourself.
   - Metrics run on a background pool (default 2 threads; `init(metrics_workers=...)` or `OPENGRADE_METRICS_WORKERS`) fed by a bounded queue; when it is full the call is not scored and a warning is logged. Async metrics time out after 60 s; a sync metric cannot be interrupted. A raising or timed-out metric stores `label="ERROR"` with the exception as explanation (never breaks the traced call). For LLM judges raise `metrics_workers` or lower `metrics_sample_rate`.
   - Metrics run with instrumentation suppressed: LLM calls a judge makes and `@opengrade.trace` helpers it calls do not create production traces (spans started manually with an OpenTelemetry tracer still do).
-  - `trace(metrics=...)` rejects async and generator functions; use `trace_async` for coroutines.
-    `trace_async` also accepts `functools.partial` of a coroutine function; other async wrappers
-    need `inspect.markcoroutinefunction`.
+  - `trace(metrics=...)` accepts sync and `async def` (and `functools.partial` of a coroutine
+    function; other async wrappers need `inspect.markcoroutinefunction`). Generator /
+    async-generator functions are rejected with `metrics=`.
 - These calls never raise. `log_score`, `log_feedback` and `trace(metrics=...)` never block the caller; `score_trace()` blocks for as long as the metric takes. Invalid input (bad value, label or trace id, or metadata over 16 KB serialized) logs a warning and returns `False`; setup problems (no project id, no active trace) warn at most once a minute.
 - Scores are sent in the background (batches every 2 s, 100 scores or about 512 KB). A 413 (body over the server's 1 MiB limit) splits the batch in half and resends, dropping only a single score that is still too large. A batch rejected with 400/422 is resent item by item so only the bad scores are dropped; 401/403/404 and other 4xx drop the batch at once; only network errors and 5xx are retried once after a 1 s backoff, then dropped with a warning.
 - `opengrade.flush(timeout_millis)` is one total budget: spans, then pending metrics, then scores. At exit, spans, pending metrics, and scores share one ~5 s budget (span flush is capped at ~2 s of that).
@@ -614,7 +614,7 @@ latest = registry.list_app_configs(project_id, latest=True)
 registry.set_alias(project_id, "baseline", created.id)
 ```
 
-Methods: `create_app_config`, `list_app_configs` (`name`, `latest`), `set_alias`, `get_aliases`. Constructing `AppConfigClient(...)` directly still works but is deprecated (`DeprecationWarning`).
+Methods: `create_app_config`, `list_app_configs` (`name`, `latest`), `set_alias`, `get_aliases`.
 
 End-to-end prompt A/B (same model, two App Config prompts): `uv run python 05_prompt_ab.py` in [`examples/sdk_tour`](https://github.com/19Alma98/ai-eval-platform/blob/main/examples/sdk_tour/README.md).
 

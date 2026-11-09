@@ -1,61 +1,18 @@
 from __future__ import annotations
 
-import warnings
 from typing import Any
 from urllib.parse import quote
-
-import httpx2
 
 from opengrade._http import _HttpTransport
 from opengrade.models import AppConfigAliasResponse, AppConfigResponse
 
 
 class AppConfigClient:
-    """App config registry calls. Use ``opengrade.get_client().app_configs`` instead of
-    constructing this class directly (standalone construction is deprecated)."""
+    """App config registry calls. Obtained via ``Client(...).app_configs`` /
+    ``opengrade.get_client().app_configs``."""
 
-    def __init__(
-        self,
-        base_url: str,
-        *,
-        timeout: float = 30.0,
-        transport: httpx2.BaseTransport | None = None,
-    ) -> None:
-        warnings.warn(
-            "AppConfigClient(...) is deprecated; use opengrade.get_client().app_configs "
-            "(or Client(...).app_configs), which exposes the same methods.",
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        self._http = _HttpTransport(base_url, timeout=timeout, transport=transport)
-        self._owns_http = True
-
-    @classmethod
-    def from_transport(cls, http: _HttpTransport) -> AppConfigClient:
-        client = cls.__new__(cls)
-        client._http = http
-        client._owns_http = False
-        return client
-
-    def close(self) -> None:
-        if self._owns_http:
-            self._http.close()
-
-    def __enter__(self) -> AppConfigClient:
-        return self
-
-    def __exit__(self, *_exc: object) -> None:
-        self.close()
-
-    def _request(
-        self,
-        method: str,
-        path: str,
-        *,
-        body: dict[str, Any] | None = None,
-        query: dict[str, str] | None = None,
-    ) -> Any:
-        return self._http.request(method, path, body=body, query=query)
+    def __init__(self, http: _HttpTransport) -> None:
+        self._http = http
 
     def create_app_config(
         self,

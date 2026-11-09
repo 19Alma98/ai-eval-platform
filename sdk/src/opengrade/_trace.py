@@ -386,21 +386,15 @@ def _decorate(
     live: bool | None,
     production: tuple[LocalMetric, ...],
     rate: float,
-    metrics_require_async: bool | None,
 ) -> Callable[..., Any]:
     if production:
         target = _unwrap_partial(fn)
-        if metrics_require_async is True:
-            _production.check_function(fn, is_async=True)
-        elif inspect.isasyncgenfunction(target) or inspect.isgeneratorfunction(target):
+        if inspect.isasyncgenfunction(target) or inspect.isgeneratorfunction(target):
             raise TypeError(
                 "@opengrade.trace(metrics=...) needs a function returning its result; "
                 f"got {fn!r}: generators are not supported with metrics="
             )
-        elif _production._is_coroutine_function(fn):
-            # Unified @trace: async def is fine once the wrapper awaits.
-            pass
-        else:
+        elif not _production._is_coroutine_function(fn):
             _production.check_function(fn, is_async=False)
 
     target = _unwrap_partial(fn)
@@ -502,62 +496,6 @@ def trace[**P, R](
                 live=live,
                 production=production,
                 rate=rate,
-                metrics_require_async=None,
-            ),
-        )
-
-    if callable(name):
-        fn = name
-        name = None
-        return decorator(fn)
-    return decorator
-
-
-@overload
-def trace_async[**P, R](name: Callable[P, R]) -> Callable[P, R]: ...
-
-
-@overload
-def trace_async[**P, R](
-    name: str | None = None,
-    *,
-    kind: str = "CHAIN",
-    capture_input: bool = True,
-    capture_output: bool = True,
-    live: bool | None = None,
-    metrics: Sequence[LocalMetric | Callable[..., Any]] | None = None,
-    metrics_sample_rate: float = 1.0,
-) -> Callable[[Callable[P, R]], Callable[P, R]]: ...
-
-
-def trace_async[**P, R](
-    name: str | Callable[P, R] | None = None,
-    *,
-    kind: str = "CHAIN",
-    capture_input: bool = True,
-    capture_output: bool = True,
-    live: bool | None = None,
-    metrics: Sequence[LocalMetric | Callable[..., Any]] | None = None,
-    metrics_sample_rate: float = 1.0,
-) -> Any:
-    """Async ``trace``: same behaviour; kept for compatibility (``@trace`` also works)."""
-    production = _production.normalize_metrics(metrics)
-    rate = _production.parse_sample_rate(metrics_sample_rate)
-
-    def decorator(fn: Callable[P, R]) -> Callable[P, R]:
-        span_name = name if isinstance(name, str) and name else _default_name(fn)
-        return cast(
-            Callable[P, R],
-            _decorate(
-                fn,
-                span_name=span_name,
-                kind=kind,
-                capture_input=capture_input,
-                capture_output=capture_output,
-                live=live,
-                production=production,
-                rate=rate,
-                metrics_require_async=True if production else None,
             ),
         )
 

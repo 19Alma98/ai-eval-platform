@@ -168,11 +168,11 @@ def test_live_context_released_after_error(spans: InMemorySpanExporter) -> None:
 def test_live_async(spans: InMemorySpanExporter) -> None:
     _live.configure(enabled=True)
 
-    @opengrade.trace_async(name="inner")
+    @opengrade.trace(name="inner")
     async def inner() -> str:
         return "x"
 
-    @opengrade.trace_async(name="outer")
+    @opengrade.trace(name="outer")
     async def outer() -> str:
         return await inner()
 

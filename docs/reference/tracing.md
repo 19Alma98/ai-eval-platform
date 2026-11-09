@@ -8,8 +8,6 @@ Export OTLP spans to OpenGrade and annotate them.
 
 ::: opengrade._trace.trace
 
-::: opengrade._trace.trace_async
-
 ::: opengrade._trace.span
 
 ::: opengrade._trace.SpanHandle

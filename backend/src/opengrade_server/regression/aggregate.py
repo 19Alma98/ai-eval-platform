@@ -209,22 +209,13 @@ def classify_delta(
 def runs_config_mismatch(candidate: EvaluationRun | None, baseline: EvaluationRun | None) -> bool:
     """True when candidate and baseline were not scored the same way.
 
-    Differs when both recorded a config_hash and it differs (e.g. k=3 vs k=5), or when
-    the judge prompt version or judge model differs. A missing prompt_version counts as its own
-    version: judge runs from before v3 carry none and are not comparable with v3.
-    Runs without a config_hash (legacy) are otherwise assumed comparable.
+    Compares ``prompt_version``, ``judge_model``, and ``config_hash`` in run metadata.
+    A missing value counts as its own identity (``None`` ≠ a recorded string).
     """
     if candidate is None or baseline is None:
         return False
-    if candidate.metadata.get("prompt_version") != baseline.metadata.get("prompt_version"):
-        return True
-    cand_model = candidate.metadata.get("judge_model")
-    base_model = baseline.metadata.get("judge_model")
-    if cand_model is not None and base_model is not None and cand_model != base_model:
-        return True
-    cand_hash = candidate.metadata.get("config_hash")
-    base_hash = baseline.metadata.get("config_hash")
-    return cand_hash is not None and base_hash is not None and cand_hash != base_hash
+    meta_keys = ("prompt_version", "judge_model", "config_hash")
+    return any(candidate.metadata.get(key) != baseline.metadata.get(key) for key in meta_keys)
 
 
 def _metric_value(result: EvaluationResultRecord, metric: MetricName) -> float:

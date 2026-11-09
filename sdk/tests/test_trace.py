@@ -14,7 +14,7 @@ from opentelemetry.trace import StatusCode
 
 import opengrade
 from opengrade import _config, _otel
-from opengrade._config import MAX_CAPTURE_BYTES
+from opengrade._config import DEFAULT_MAX_CAPTURE_BYTES
 from opengrade._trace import truncate_value
 
 _shared_exporter: InMemorySpanExporter | None = None
@@ -44,9 +44,9 @@ def spans() -> InMemorySpanExporter:
 
 
 def test_truncate_value_adds_marker() -> None:
-    big = "x" * (MAX_CAPTURE_BYTES + 10)
+    big = "x" * (DEFAULT_MAX_CAPTURE_BYTES + 10)
     out = truncate_value(big)
-    assert len(out.encode("utf-8")) <= MAX_CAPTURE_BYTES
+    assert len(out.encode("utf-8")) <= DEFAULT_MAX_CAPTURE_BYTES
     assert out.endswith("…[truncated]")
 
 
@@ -102,17 +102,6 @@ def test_trace_reraises_and_records_exception(spans: InMemorySpanExporter) -> No
     assert len(exception_events) == 1
 
 
-def test_trace_async(spans: InMemorySpanExporter) -> None:
-    @opengrade.trace_async(name="async-faq")
-    async def ask(q: str) -> str:
-        return "pong"
-
-    assert asyncio.run(ask("ping")) == "pong"
-    span = spans.get_finished_spans()[0]
-    assert span.name == "async-faq"
-    assert dict(span.attributes or {})["openinference.span.kind"] == "CHAIN"
-
-
 def test_trace_on_async_def_preserves_coroutine(spans: InMemorySpanExporter) -> None:
     @opengrade.trace(name="async-via-trace")
     async def ask(q: str) -> str:
@@ -155,20 +144,6 @@ def test_trace_async_generator(spans: InMemorySpanExporter) -> None:
     span = spans.get_finished_spans()[0]
     assert span.name == "astream"
     assert dict(span.attributes or {})["output.value"] == '["x", "y"]'
-
-
-def test_trace_async_on_async_generator(spans: InMemorySpanExporter) -> None:
-    @opengrade.trace_async(name="astream2")
-    async def tokens() -> AsyncIterator[str]:
-        yield "z"
-
-    assert inspect.isasyncgenfunction(tokens)
-
-    async def main() -> list[str]:
-        return [item async for item in tokens()]
-
-    assert asyncio.run(main()) == ["z"]
-    assert spans.get_finished_spans()[0].name == "astream2"
 
 
 def test_span_helpers_set_io_attrs_and_trace_id(spans: InMemorySpanExporter) -> None:

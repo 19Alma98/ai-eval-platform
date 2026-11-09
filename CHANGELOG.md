@@ -45,10 +45,19 @@ breaking changes; they are listed under **Changed** with a migration note.
 - `opengrade ui` startup banner says "OpenGrade UI" (was "AI Eval UI").
 - PyPI "Documentation" link points to the docs site.
 - Live interactions list batches score and review loads (one query each per page, not per row).
+- Compare treats missing `prompt_version` / `judge_model` / `config_hash` as their own identity
+  (a recorded value vs missing is a config mismatch).
+- `TimeRangePicker` takes only `window` / `onWindowChange` (no preset-only props or shared
+  time-range context).
 
 ### Removed
 
 - Docs: the completed MVP planning pages (MVP user stories, definition of done).
+- SQLite startup stamp for pre-Alembic `create_all` databases (delete a stale local DB instead).
+- Standalone `AppConfigClient(...)` construction; use `Client(...).app_configs` /
+  `opengrade.get_client().app_configs`.
+- `opengrade.MAX_CAPTURE_BYTES` alias; use `DEFAULT_MAX_CAPTURE_BYTES` or `max_capture_bytes()`.
+- `@opengrade.trace_async`; use `@opengrade.trace` for sync and async functions.
 
 ## [0.1.1] - 2026-11-04
 
@@ -129,7 +138,6 @@ breaking changes; they are listed under **Changed** with a migration note.
 
 - **Content capture is on by default** (`CONTENT_CAPTURE_ENABLED=true`): span inputs/outputs are
   stored. Set it to `false` to keep only structure, timings and metrics.
-- `AppConfigClient(...)` is deprecated; use `opengrade.get_client().app_configs`.
 - Frontend redesign: verdict-first overview, a single Production section, report-card visuals,
   mobile layout and accessibility fixes, side panels instead of modals.
 - Package metadata: license (Apache-2.0), authors, project URLs and classifiers; `py.typed` in the

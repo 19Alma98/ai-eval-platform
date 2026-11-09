@@ -4,7 +4,7 @@ from collections.abc import AsyncGenerator
 from pathlib import Path
 
 from alembic.config import Config
-from sqlalchemy import create_engine, event, inspect, text
+from sqlalchemy import create_engine, event, text
 from sqlalchemy.engine import Connection
 from sqlalchemy.ext.asyncio import (
     AsyncEngine,
@@ -114,26 +114,10 @@ def _alembic_config() -> Config:
     return cfg
 
 
-def _sqlite_needs_legacy_stamp(connection: Connection) -> bool:
-    """True when tables exist from old create_all but alembic_version is missing."""
-    insp = inspect(connection)
-    tables = set(insp.get_table_names())
-    if "alembic_version" in tables:
-        return False
-    user_tables = {t for t in tables if not t.startswith("sqlite_")}
-    return bool(user_tables)
-
-
 def _migrate_sqlite(connection: Connection) -> None:
     from alembic import command
 
     cfg = _alembic_config()
-    if _sqlite_needs_legacy_stamp(connection):
-        # Existing local DBs were created with create_all. Stamp head so upgrade
-        # is a no-op; future revisions apply. Stale DBs (schema behind models)
-        # must be deleted and recreated.
-        cfg.attributes["connection"] = connection
-        command.stamp(cfg, "head")
     cfg.attributes["connection"] = connection
     command.upgrade(cfg, "head")
 

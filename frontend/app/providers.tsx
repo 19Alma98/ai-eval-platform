@@ -6,7 +6,6 @@ import { ApiKeyGate } from "@/components/api-key-gate";
 import { AuthProvider } from "@/lib/auth-context";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { Toaster } from "@/components/ui/sonner";
-import { TimeRangeProvider } from "@/lib/time-range-context";
 import { ThemeProvider } from "@/lib/theme";
 
 export function Providers({ children }: { children: React.ReactNode }) {
@@ -26,16 +25,14 @@ export function Providers({ children }: { children: React.ReactNode }) {
   return (
     <QueryClientProvider client={client}>
       <ThemeProvider>
-        <TimeRangeProvider>
-          <TooltipProvider>
-            <AuthProvider>
-              <ApiKeyGate>
-                <Suspense fallback={null}>{children}</Suspense>
-              </ApiKeyGate>
-            </AuthProvider>
-            <Toaster richColors closeButton position="bottom-right" />
-          </TooltipProvider>
-        </TimeRangeProvider>
+        <TooltipProvider>
+          <AuthProvider>
+            <ApiKeyGate>
+              <Suspense fallback={null}>{children}</Suspense>
+            </ApiKeyGate>
+          </AuthProvider>
+          <Toaster richColors closeButton position="bottom-right" />
+        </TooltipProvider>
       </ThemeProvider>
     </QueryClientProvider>
   );

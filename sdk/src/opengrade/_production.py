@@ -262,8 +262,8 @@ def check_function(fn: Callable[..., Any], *, is_async: bool) -> None:
     if is_async:
         if not _is_coroutine_function(fn):
             raise TypeError(
-                "@opengrade.trace_async(metrics=...) needs a coroutine function (async def); "
-                f"got {fn!r}: use @opengrade.trace for regular functions, or "
+                "@opengrade.trace(metrics=...) needs a coroutine function (async def); "
+                f"got {fn!r}: use a regular function without async, or "
                 "inspect.markcoroutinefunction for other async wrappers"
             )
     elif (
@@ -273,7 +273,7 @@ def check_function(fn: Callable[..., Any], *, is_async: bool) -> None:
     ):
         raise TypeError(
             "@opengrade.trace(metrics=...) needs a regular function returning its result; "
-            f"got {fn!r}: use @opengrade.trace_async for coroutine functions"
+            f"got {fn!r}: generators are not supported with metrics="
         )
 
 

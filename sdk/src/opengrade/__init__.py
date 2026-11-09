@@ -18,7 +18,6 @@ from opengrade._trace import (
     set_output,
     span,
     trace,
-    trace_async,
 )
 from opengrade._trace_attrs import (
     set_metadata,
@@ -113,7 +112,6 @@ __all__ = [
     "start_experiment",
     "sweep",
     "trace",
-    "trace_async",
     "using_attributes",
 ]
 

@@ -976,7 +976,7 @@ class Client:
         self.live_runs = _LiveRunsResource(self._http)
         self.alerts = _AlertsResource(self._http)
         self.trace_scores = _TraceScoresResource(self._http)
-        self.app_configs = AppConfigClient.from_transport(self._http)
+        self.app_configs = AppConfigClient(self._http)
 
     def health(self) -> HealthResponse:
         return self._http.request_model("GET", "/health", response_model=HealthResponse)

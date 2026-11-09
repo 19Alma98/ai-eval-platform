@@ -436,11 +436,10 @@ def _run_with_hash(config_hash: str | None) -> EvaluationRun:
     )
 
 
-def test_runs_config_mismatch_only_when_both_hashes_differ() -> None:
+def test_runs_config_mismatch_on_config_hash() -> None:
     assert runs_config_mismatch(_run_with_hash("aaa"), _run_with_hash("bbb"))
     assert not runs_config_mismatch(_run_with_hash("aaa"), _run_with_hash("aaa"))
-    # Legacy runs without a hash stay comparable.
-    assert not runs_config_mismatch(_run_with_hash("aaa"), _run_with_hash(None))
+    assert runs_config_mismatch(_run_with_hash("aaa"), _run_with_hash(None))
     assert not runs_config_mismatch(None, _run_with_hash("aaa"))
 
 
@@ -466,23 +465,23 @@ def _run_with_meta(**metadata: object) -> EvaluationRun:
 def test_runs_config_mismatch_on_prompt_version() -> None:
     v3 = _run_with_meta(prompt_version="groundedness.claims.v3")
     rubric = _run_with_meta(prompt_version="groundedness.rubric.v3")
-    legacy = _run_with_meta()  # judge run scored before prompt versions were recorded
+    missing = _run_with_meta()
     assert runs_config_mismatch(v3, rubric)
-    assert runs_config_mismatch(v3, legacy)
+    assert runs_config_mismatch(v3, missing)
     assert not runs_config_mismatch(v3, _run_with_meta(prompt_version="groundedness.claims.v3"))
-    assert not runs_config_mismatch(legacy, _run_with_meta())
+    assert not runs_config_mismatch(missing, _run_with_meta())
 
 
 def test_runs_config_mismatch_on_judge_model() -> None:
     pv = "correctness.claims.v3"
     gemma = _run_with_meta(prompt_version=pv, judge_model="ollama/gemma4:e2b")
     claude = _run_with_meta(prompt_version=pv, judge_model="anthropic/claude-sonnet-5-5")
-    legacy = _run_with_meta(prompt_version=pv)  # scored before judge_model was recorded
+    missing_model = _run_with_meta(prompt_version=pv)
     assert runs_config_mismatch(gemma, claude)
     assert not runs_config_mismatch(
         gemma, _run_with_meta(prompt_version=pv, judge_model="ollama/gemma4:e2b")
     )
-    assert not runs_config_mismatch(gemma, legacy)
+    assert runs_config_mismatch(gemma, missing_model)
 
 
 def test_select_runs_skips_runs_scored_on_other_inputs() -> None:
