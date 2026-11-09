@@ -104,13 +104,28 @@ def test_resolve_config_id_wins_over_slug_when_both_in_env(
 
 def test_get_client_rebuilt_after_set_api_key(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("OPENGRADE_API_KEY", "first-key")
+    seen: list[str] = []
+    RealClient = _context.Client
+
+    def handler(request: httpx2.Request) -> httpx2.Response:
+        seen.append(request.headers.get("authorization", ""))
+        return httpx2.Response(200, json={"status": "ok"})
+
+    def client_with_mock(*args: Any, **kwargs: Any) -> opengrade.Client:
+        kwargs.setdefault("transport", httpx2.MockTransport(handler))
+        return RealClient(*args, **kwargs)
+
+    monkeypatch.setattr(_context, "Client", client_with_mock)
+
     first = opengrade.get_client()
-    assert first._http._client.headers.get("authorization") == "Bearer first-key"
+    first.health()
+    assert seen[-1] == "Bearer first-key"
 
     opengrade.set_api_key("second-key")
     second = opengrade.get_client()
     assert second is not first
-    assert second._http._client.headers.get("authorization") == "Bearer second-key"
+    second.health()
+    assert seen[-1] == "Bearer second-key"
 
 
 def test_set_project_after_init_updates_control_plane_not_otlp_until_force(
