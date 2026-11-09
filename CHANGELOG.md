@@ -58,12 +58,6 @@ breaking changes; they are listed under **Changed** with a migration note.
 
 ### Changed
 
-- **Breaking (SDK `@trace` generator `output.value`):** streamed outputs are joined into a single
-  text (or custom reducer result), not a JSON array of chunks. Span context is current only during
-  each `next()` / `__anext__`; abandoned generators finish the span on `close()` / `aclose()`.
-- **Breaking (SDK `@trace` `input.value` shape):** automatic input capture is now a flat JSON
-  object of bound parameter names → values (no `{"args": [...], "kwargs": {...}}` wrapper).
-  `self` / `cls` are omitted. Migrate any tooling that parsed the old shape.
 - `opengrade ui` startup banner says "OpenGrade UI" (was "AI Eval UI").
 - PyPI "Documentation" link points to the docs site.
 - Live interactions list batches score and review loads (one query each per page, not per row).
