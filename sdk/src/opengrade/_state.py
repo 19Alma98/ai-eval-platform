@@ -79,6 +79,9 @@ class _Runtime:
     scores_atexit_registered: bool = False
     exit_deadline: float | None = None
 
+    capture_redact: Any | None = None
+    capture_redact_output: Any | None = None
+
     @classmethod
     def fresh(cls) -> _Runtime:
         # Matches opengrade._production MAX_WORKERS / MAX_QUEUE defaults.
@@ -214,6 +217,22 @@ def _max_capture_override() -> int | None:
 def _set_max_capture_override(value: int | None) -> None:
     rt = _default()
     rt.settings = rt.settings.with_updates(max_capture_bytes=value)
+
+
+def _capture_redact() -> Any | None:
+    return _default().capture_redact
+
+
+def _set_capture_redact(value: Any | None) -> None:
+    _default().capture_redact = value
+
+
+def _capture_redact_output() -> Any | None:
+    return _default().capture_redact_output
+
+
+def _set_capture_redact_output(value: Any | None) -> None:
+    _default().capture_redact_output = value
 
 
 def _warned_plaintext_key() -> bool:

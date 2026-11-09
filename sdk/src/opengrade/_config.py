@@ -3,7 +3,7 @@ from __future__ import annotations
 import logging
 import os
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, Callable
 from urllib.parse import urlsplit
 
 from opengrade import _state
@@ -15,6 +15,11 @@ DEFAULT_SERVICE_NAME = "opengrade-app"
 DEFAULT_MAX_CAPTURE_BYTES = 32 * 1024
 
 logger = logging.getLogger("opengrade")
+
+_UNSET: Any = object()
+
+RedactFn = Callable[[str, Any], Any]
+RedactOutputFn = Callable[[Any], Any]
 
 
 def _normalize_uri(uri: str) -> str:
@@ -154,15 +159,44 @@ def _set_active_project(
     _state._set_active_project(project_id=project_id, project_slug=project_slug)
 
 
-def configure_capture(*, max_capture_bytes: int | None = None) -> None:
-    """Set capture limit from ``init()``; ``None`` falls back to the env var / default."""
-    if max_capture_bytes is None:
+def configure_capture(
+    *,
+    max_capture_bytes: int | None | Any = _UNSET,
+    redact: RedactFn | None | Any = _UNSET,
+    redact_output: RedactOutputFn | None | Any = _UNSET,
+) -> None:
+    """Configure capture limit and optional redactors.
+
+    Omitted kwargs are left unchanged. ``configure_capture()`` with no arguments
+    resets the byte override and both redactors. Pass ``redact=None`` /
+    ``redact_output=None`` to clear that redactor only. Pass
+    ``max_capture_bytes=None`` to clear the byte override only.
+    """
+    if max_capture_bytes is _UNSET and redact is _UNSET and redact_output is _UNSET:
         _state._set_max_capture_override(None)
+        _state._set_capture_redact(None)
+        _state._set_capture_redact_output(None)
         return
-    value = int(max_capture_bytes)
-    if value < 1:
-        raise ValueError(f"max_capture_bytes must be >= 1, got {value}")
-    _state._set_max_capture_override(value)
+    if max_capture_bytes is not _UNSET:
+        if max_capture_bytes is None:
+            _state._set_max_capture_override(None)
+        else:
+            value = int(max_capture_bytes)
+            if value < 1:
+                raise ValueError(f"max_capture_bytes must be >= 1, got {value}")
+            _state._set_max_capture_override(value)
+    if redact is not _UNSET:
+        _state._set_capture_redact(redact)
+    if redact_output is not _UNSET:
+        _state._set_capture_redact_output(redact_output)
+
+
+def capture_redact() -> RedactFn | None:
+    return _state._capture_redact()
+
+
+def capture_redact_output() -> RedactOutputFn | None:
+    return _state._capture_redact_output()
 
 
 def max_capture_bytes() -> int:

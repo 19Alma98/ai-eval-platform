@@ -60,6 +60,54 @@ def test_truncate_value_honors_configured_limit() -> None:
         _config.configure_capture()
 
 
+def test_configure_capture_redact_roundtrip() -> None:
+    def hide(name: str, value: object) -> object:
+        return "***" if name == "api_key" else value
+
+    def hide_out(value: object) -> object:
+        return {"redacted": True}
+
+    _config.configure_capture(redact=hide, redact_output=hide_out)
+    try:
+        assert _config.capture_redact() is hide
+        assert _config.capture_redact_output() is hide_out
+        _config.configure_capture(redact=None)
+        assert _config.capture_redact() is None
+        assert _config.capture_redact_output() is hide_out
+    finally:
+        _config.configure_capture()
+
+
+def test_configure_capture_empty_resets_redactors_and_limit() -> None:
+    _config.configure_capture(
+        max_capture_bytes=64,
+        redact=lambda n, v: v,
+        redact_output=lambda v: v,
+    )
+    _config.configure_capture()
+    assert _config.capture_redact() is None
+    assert _config.capture_redact_output() is None
+    # byte override cleared → default (env or DEFAULT)
+    assert _config.max_capture_bytes() == DEFAULT_MAX_CAPTURE_BYTES
+
+
+def test_configure_capture_partial_preserves_other_fields() -> None:
+    def hide(name: str, value: object) -> object:
+        return value
+
+    _config.configure_capture(max_capture_bytes=128, redact=hide)
+    try:
+        _config.configure_capture(max_capture_bytes=256)
+        assert _config.max_capture_bytes() == 256
+        assert _config.capture_redact() is hide
+    finally:
+        _config.configure_capture()
+
+
+def test_configure_capture_exported_on_opengrade() -> None:
+    assert opengrade.configure_capture is _config.configure_capture
+
+
 def test_trace_sets_kind_input_output(spans: InMemorySpanExporter) -> None:
     @opengrade.trace
     def greet(name: str) -> str:

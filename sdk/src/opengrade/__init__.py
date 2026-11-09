@@ -7,7 +7,13 @@ from importlib.metadata import PackageNotFoundError
 from importlib.metadata import version as _version
 from typing import Any
 
-from opengrade._config import get_api_key, get_tracking_uri, set_api_key, set_tracking_uri
+from opengrade._config import (
+    configure_capture,
+    get_api_key,
+    get_tracking_uri,
+    set_api_key,
+    set_tracking_uri,
+)
 from opengrade._otel import flush, init
 from opengrade._trace import (
     current_trace_id,
@@ -92,6 +98,7 @@ __all__ = [
     "ChatTurn",
     "RagChatInput",
     "chat_input",
+    "configure_capture",
     "current_trace_id",
     "evaluate",
     "evaluate_retrieval",
