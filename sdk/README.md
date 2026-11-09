@@ -69,6 +69,57 @@ opengrade.flush()
 
 Runnable examples: [`examples/sdk_hello/`](https://github.com/19Alma98/ai-eval-platform/blob/main/examples/sdk_hello/README.md) (Ollama via OpenAI-compatible API) and the guided [`examples/sdk_tour/`](https://github.com/19Alma98/ai-eval-platform/blob/main/examples/sdk_tour/README.md) (tracing, RAG verification, architecture comparison, production metrics and alerts; runs offline).
 
+### Multiple projects in one process (`Opengrade`)
+
+Module helpers such as `opengrade.set_project()` and `opengrade.init()` still target a single **process default** runtime — fine for one app and one project. When several projects or tenants share one worker (multi-tenant API, background jobs, or parallel tests), give each scope its own runtime and activate it for the duration of the work:
+
+```python
+from opengrade import Opengrade, Settings, current
+import opengrade
+
+acme = Opengrade(settings=Settings(tracking_uri="http://localhost:8000", project_slug="acme"))
+contoso = Opengrade(settings=Settings(tracking_uri="http://localhost:8000", project_slug="contoso"))
+acme.init_tracing(service_name="worker-acme", instrument=False)
+contoso.init_tracing(service_name="worker-contoso", instrument=False)
+
+with acme.activate():
+  assert current() is acme
+  opengrade.get_client().datasets.list()  # project headers follow this instance
+
+with contoso.activate():
+  opengrade.set_project("contoso")  # resolves against contoso's client, not acme's
+```
+
+- **`Opengrade(...)`** holds per-instance settings, clients, and OTLP routing on the shared `TracerProvider`.
+- **`with og.activate():`** (or `with og:` which also calls `close()` on exit) sets `opengrade.current()` so `get_client()`, `init()`, `@opengrade.trace`, and OTLP export use that instance's project headers and exporter.
+- **Explicit `Client(..., project_id=...)`** pins the control plane to one project regardless of `current()` — use this in libraries and long-lived clients so they never depend on whoever last called `set_project()`.
+- **`Client()` without `project_id`** still resolves the project from process-wide state (`set_project`, env, active context); that path emits a **`DeprecationWarning`** — pass `project_id` or use `og.client` inside `activate()` instead.
+- **Worker threads** do not inherit `ContextVar` values from the parent thread. Wrap thread entry points with `contextvars.copy_context().run(...)` (or call `activate()` inside the thread) so tracing and clients stay on the right instance.
+
+Runnable multi-tenant FastAPI sample: [`examples/fastapi_multi_tenant/`](https://github.com/19Alma98/ai-eval-platform/blob/main/examples/fastapi_multi_tenant/README.md).
+
+#### Testing with `Opengrade` and `httpx2.MockTransport`
+
+Isolate SDK state in pytest without a live platform: construct `Opengrade` with `Settings`, inject a `Client` that uses `httpx2.MockTransport`, and scope module helpers with `activate()`. The SDK tests reset globals in an autouse fixture (`opengrade._context._reset_for_tests()`).
+
+```python
+import httpx2
+import opengrade
+from opengrade import Opengrade, Settings
+
+def test_two_projects(mock_handler):
+    cap_a: list[httpx2.Request] = []
+    a = Opengrade(settings=Settings(tracking_uri="http://a", project_id="proj-a"))
+    a._runtime.client = opengrade.Client(
+        "http://a", transport=httpx2.MockTransport(mock_handler(cap_a)), project_id="proj-a",
+    )
+    with a.activate():
+        a.client.projects.list()
+    assert cap_a and "proj-a" in cap_a[0].url.path
+```
+
+See `sdk/tests/test_opengrade.py` and `sdk/tests/test_client.py` for full handlers and deprecation coverage. Running the suite in parallel (`pytest-xdist`) is optional; each test file already resets module state when it uses the autouse pattern above.
+
 ### API summary
 
 | Function | Purpose |

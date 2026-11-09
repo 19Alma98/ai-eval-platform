@@ -11,6 +11,15 @@ breaking changes; they are listed under **Changed** with a migration note.
 
 ### Added
 
+- **SDK 0.2.0 — multi-instance runtime:** `Opengrade` settings handle, `opengrade.current()`, and
+  `with og.activate():` / `with og:` for per-scope clients and tracing in one process.
+- **SDK 0.2.0 — bound control plane:** `Client(..., project_id=...)` and `og.client` avoid
+  implicit project resolution; `Client()` without `project_id` still falls back to process-wide
+  state and emits a `DeprecationWarning`.
+- **SDK 0.2.0 — OTLP routing:** per-instance export via `_RoutingSpanProcessor` on the shared
+  `TracerProvider` (`Opengrade.init_tracing()` / `init()` on the active instance).
+- Example: multi-tenant FastAPI (`examples/fastapi_multi_tenant/`) activating one `Opengrade` per
+  request.
 - Monitoring/Overview: custom absolute time range, IANA timezone picker (display only), and
   compare-to-previous-period overlay on monitoring charts.
 - Monitoring drill-down: chart bucket clicks and local metric-alarm banners open Traces with
