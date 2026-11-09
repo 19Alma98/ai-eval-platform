@@ -50,9 +50,15 @@ breaking changes; they are listed under **Changed** with a migration note.
   filters and `limit`/`offset`. The SDK passes them through; `set_project` / `evaluate` resolve by
   filtered list instead of scanning everything.
 - Live runs URL sync: `?failed=1`, `?waiting=1`, `?q=`; experiment matrix sort via `?sort=` / `?order=`.
+- SDK capture redaction: `configure_capture(redact=..., redact_output=...)` and
+  `@opengrade.trace(redact=..., redact_output=...)`; `self`/`cls` omitted from automatic
+  input capture; budget-aware truncation before `json.dumps`.
 
 ### Changed
 
+- **Breaking (SDK `@trace` `input.value` shape):** automatic input capture is now a flat JSON
+  object of bound parameter names → values (no `{"args": [...], "kwargs": {...}}` wrapper).
+  `self` / `cls` are omitted. Migrate any tooling that parsed the old shape.
 - `opengrade ui` startup banner says "OpenGrade UI" (was "AI Eval UI").
 - PyPI "Documentation" link points to the docs site.
 - Live interactions list batches score and review loads (one query each per page, not per row).

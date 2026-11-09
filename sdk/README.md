@@ -504,6 +504,10 @@ opengrade.init(
 - `trace_sample_rate` is OTEL head sampling (`TraceIdRatioBased`) when opengrade creates the `TracerProvider`. It does not change a host provider's sampler.
 - `max_capture_bytes` caps UTF-8 size of input/output values written on `@opengrade.trace` spans (default 32 KiB).
 
+#### Capture redaction
+
+Use `opengrade.configure_capture(redact=..., redact_output=...)` for process-wide scrubbing, or `@opengrade.trace(redact=..., redact_output=...)` to override (or inherit with `None`) per function. Automatic capture writes `input.value` as a flat JSON object of bound parameter names → values (`self` / `cls` omitted); values are truncated to the capture budget after redaction. See [Content capture and redaction](../docs/10-security-privacy.md#content-capture-and-redaction) in the security guide.
+
 ### Live runs from tracing (production)
 
 With `live=True`, the outermost `@opengrade.trace` call outside an experiment becomes a live interaction at OTLP ingestion; no separate `live_runs.submit` call is needed.
