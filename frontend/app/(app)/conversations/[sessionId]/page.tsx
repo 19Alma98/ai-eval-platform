@@ -1,10 +1,9 @@
-import { ConversationDetail } from "@/features/conversations/conversation-detail";
+import PageClient from "./page-client";
 
-export default async function ConversationDetailPage({
-  params,
-}: {
-  params: Promise<{ sessionId: string }>;
-}) {
-  const { sessionId } = await params;
-  return <ConversationDetail sessionId={decodeURIComponent(sessionId)} />;
+export function generateStaticParams() {
+  return [{ sessionId: "_" }];
+}
+
+export default function Page() {
+  return <PageClient />;
 }
