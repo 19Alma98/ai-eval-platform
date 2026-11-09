@@ -365,6 +365,32 @@ def test_trace_reraises_and_records_exception(spans: InMemorySpanExporter) -> No
     assert len(exception_events) == 1
 
 
+def test_async_cancelled_error_records_and_stops_capture(
+    spans: InMemorySpanExporter, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """CancelledError is a BaseException — must still record + stop production capture."""
+    stops: list[object] = []
+    real_stop = _trace._production.stop
+
+    def spy_stop(token: object) -> object:
+        stops.append(token)
+        return real_stop(token)
+
+    monkeypatch.setattr(_trace._production, "stop", spy_stop)
+
+    @opengrade.trace(name="cancelled")
+    async def work() -> str:
+        raise asyncio.CancelledError()
+
+    with pytest.raises(asyncio.CancelledError):
+        asyncio.run(work())
+
+    span = spans.get_finished_spans()[0]
+    assert span.status.status_code == StatusCode.ERROR
+    assert any(e.name == "exception" for e in span.events)
+    assert len(stops) == 1
+
+
 def test_trace_on_async_def_preserves_coroutine(spans: InMemorySpanExporter) -> None:
     @opengrade.trace(name="async-via-trace")
     async def ask(q: str) -> str:

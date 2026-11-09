@@ -386,24 +386,29 @@ def _wrap_sync[**P, R](
             kwargs=kwargs,
             redact=redact,
         ) as (span, capture_token):
+            succeeded = False
             try:
                 result = fn(*args, **kwargs)
-            except Exception as exc:
+                succeeded = True
+            except BaseException as exc:
                 _record_error(span, exc)
-                _production.stop(capture_token)
                 raise
-            _finish_span(
-                span,
-                capture_token=capture_token,
-                capture_output=capture_output,
-                production=production,
-                rate=rate,
-                args=args,
-                kwargs=kwargs,
-                result=result,
-                fn=fn,
-                redact_output=redact_output,
-            )
+            finally:
+                if succeeded:
+                    _finish_span(
+                        span,
+                        capture_token=capture_token,
+                        capture_output=capture_output,
+                        production=production,
+                        rate=rate,
+                        args=args,
+                        kwargs=kwargs,
+                        result=result,
+                        fn=fn,
+                        redact_output=redact_output,
+                    )
+                else:
+                    _production.stop(capture_token)
             return result
 
     return wrapper
@@ -437,24 +442,29 @@ def _wrap_async[**P, R](
             kwargs=kwargs,
             redact=redact,
         ) as (span, capture_token):
+            succeeded = False
             try:
                 result = cast(R, await fn(*args, **kwargs))  # type: ignore[misc]
-            except Exception as exc:
+                succeeded = True
+            except BaseException as exc:
                 _record_error(span, exc)
-                _production.stop(capture_token)
                 raise
-            _finish_span(
-                span,
-                capture_token=capture_token,
-                capture_output=capture_output,
-                production=production,
-                rate=rate,
-                args=args,
-                kwargs=kwargs,
-                result=result,
-                fn=fn,
-                redact_output=redact_output,
-            )
+            finally:
+                if succeeded:
+                    _finish_span(
+                        span,
+                        capture_token=capture_token,
+                        capture_output=capture_output,
+                        production=production,
+                        rate=rate,
+                        args=args,
+                        kwargs=kwargs,
+                        result=result,
+                        fn=fn,
+                        redact_output=redact_output,
+                    )
+                else:
+                    _production.stop(capture_token)
             return result
 
     return cast(Callable[P, R], wrapper)
@@ -483,14 +493,10 @@ def _wrap_sync_gen[**P, R](
             return
 
         tracer = otel_trace.get_tracer(_TRACER_NAME)
-        span = tracer.start_span(
-            span_name, record_exception=False, set_status_on_exception=False
-        )
+        span = tracer.start_span(span_name, record_exception=False, set_status_on_exception=False)
         _start_attributes(span, kind)
         if capture_input and span.is_recording():
-            span.set_attribute(
-                "input.value", _serialize_args(fn, args, kwargs, redact=redact)
-            )
+            span.set_attribute("input.value", _serialize_args(fn, args, kwargs, redact=redact))
         live_token = _live.mark_if_live(span, live)
         capture_token = _production.start(production, span)
         acc: Any = None
@@ -533,16 +539,19 @@ def _wrap_sync_gen[**P, R](
                         acc = "<join error>"
                         join_failed = True
                 yield item
-        except Exception as exc:
-            _record_error(span, exc)
+        except BaseException as exc:
+            if not isinstance(exc, GeneratorExit):
+                _record_error(span, exc)
             raise
         finally:
             finish(acc if capture_output else None)
             if gen is not None:
-                try:
-                    gen.close()
-                except Exception:  # noqa: BLE001
-                    pass
+                close = getattr(gen, "close", None)
+                if close is not None:
+                    try:
+                        close()
+                    except Exception:  # noqa: BLE001
+                        pass
 
     return cast(Callable[P, R], wrapper)
 
@@ -571,14 +580,10 @@ def _wrap_async_gen[**P, R](
             return
 
         tracer = otel_trace.get_tracer(_TRACER_NAME)
-        span = tracer.start_span(
-            span_name, record_exception=False, set_status_on_exception=False
-        )
+        span = tracer.start_span(span_name, record_exception=False, set_status_on_exception=False)
         _start_attributes(span, kind)
         if capture_input and span.is_recording():
-            span.set_attribute(
-                "input.value", _serialize_args(fn, args, kwargs, redact=redact)
-            )
+            span.set_attribute("input.value", _serialize_args(fn, args, kwargs, redact=redact))
         live_token = _live.mark_if_live(span, live)
         capture_token = _production.start(production, span)
         acc: Any = None
@@ -621,8 +626,9 @@ def _wrap_async_gen[**P, R](
                         acc = "<join error>"
                         join_failed = True
                 yield item
-        except Exception as exc:
-            _record_error(span, exc)
+        except BaseException as exc:
+            if not isinstance(exc, GeneratorExit):
+                _record_error(span, exc)
             raise
         finally:
             finish(acc if capture_output else None)
