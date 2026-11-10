@@ -232,7 +232,7 @@ uv run --project sdk --only-group docs mkdocs serve
 ```
 
 `scripts/smoke_install.py` checks a clean install (`pip install`) of the built wheels
-on Linux, macOS and Windows (*Install smoke* workflow, and against PyPI after each release).
+on Ubuntu / Python 3.12 (*Install smoke* workflow, and against PyPI after each release).
 Releases from a `vX.Y.Z` tag publish wheels to PyPI (Trusted Publishing) and the API+UI image to GHCR: see [publishing](docs/08-cli-ci.md#publishing-to-pypi).
 
 ## License

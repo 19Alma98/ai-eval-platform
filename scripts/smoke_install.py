@@ -16,8 +16,8 @@ What it checks, in order:
 1. `import opengrade` works and the `opengrade` console script is on the venv's PATH.
 2. `opengrade ui` starts on a free port with a new SQLite file (schema migrations shipped in
    the wheel), `/ready` answers and `/` serves the packaged UI.
-3. The SDK sends a trace over OTLP and the API lists it.
-4. `opengrade.evaluate` runs an offline experiment (deterministic + local metric) and the
+3. An `Opengrade` instance sends a trace over OTLP and the API lists it.
+4. `og.evaluate` runs an offline experiment (deterministic + local metric) and the
    server scores it.
 5. `opengrade evaluate --config` (the CI gate) passes on a good run, promotes a baseline,
    and fails with exit code 1 on a regressed run.
@@ -187,7 +187,7 @@ def check_import() -> None:
     import opengrade
 
     print(f"opengrade from {opengrade.__file__}")
-    for name in ("init", "trace", "span", "evaluate", "flush", "set_project", "Client"):
+    for name in ("Opengrade", "Settings", "current", "trace", "span", "Client"):
         if not hasattr(opengrade, name):
             raise SmokeError(f"opengrade.{name} is missing")
     if "site-packages" not in (opengrade.__file__ or ""):
@@ -243,21 +243,23 @@ def start_ui(workdir: Path, port: int, log_path: Path) -> subprocess.Popen[bytes
 def check_trace(base: str) -> str:
     import opengrade
 
-    opengrade.set_tracking_uri(base)
-    project = opengrade.set_project(PROJECT)
+    og = opengrade.Opengrade(tracking_uri=base)
+    project = og.set_project(PROJECT)
     if project is None:
         raise SmokeError("set_project returned None (platform unreachable?)")
-    opengrade.init(service_name="install-smoke", instrument=False)
+    og.init_tracing(service_name="install-smoke", instrument=False)
 
-    @opengrade.trace
-    def answer(question: str) -> str:
-        with opengrade.span("retrieve", kind="RETRIEVER", input=question) as s:
-            s.set_output(["pto"])
-        return "20 days"
+    with og.activate():
 
-    answer("How many PTO days?")
-    trace_id = opengrade.current_trace_id()  # None outside the span; only for the log
-    opengrade.flush()
+        @opengrade.trace
+        def answer(question: str) -> str:
+            with opengrade.span("retrieve", kind="RETRIEVER", input=question) as s:
+                s.set_output(["pto"])
+            return "20 days"
+
+        answer("How many PTO days?")
+        trace_id = opengrade.current_trace_id()  # None outside the span; only for the log
+        og.flush()
 
     url = f"{base}/api/v1/projects/{project.id}/traces?limit=10"
 
@@ -272,9 +274,13 @@ def check_trace(base: str) -> str:
     return str(project.id)
 
 
-@step("opengrade.evaluate runs and scores an experiment")
-def check_evaluate() -> None:
+@step("og.evaluate runs and scores an experiment")
+def check_evaluate(base: str) -> None:
     import opengrade
+
+    og = opengrade.Opengrade(tracking_uri=base)
+    if og.set_project(PROJECT) is None:
+        raise SmokeError("set_project returned None (platform unreachable?)")
 
     answers = {str(row["input"]): str(row["expected_output"]) for row in GOLD}
 
@@ -284,7 +290,7 @@ def check_evaluate() -> None:
     def short(item: Any, output: str) -> bool:
         return len(output) < 200
 
-    result = opengrade.evaluate(
+    result = og.evaluate(
         dataset=GOLD,
         task=task,
         metrics=["must_contain", "exact_match", short],
@@ -357,7 +363,7 @@ def main() -> int:
     try:
         proc = start_ui(workdir, port, log_path)
         check_trace(base)
-        check_evaluate()
+        check_evaluate(base)
         check_cli_gate(workdir, base)
         ok = True
     except SmokeError as exc:

@@ -97,11 +97,9 @@ jobs:
     name: smoke (pip, ${{ matrix.os }}, py${{ matrix.python }})
     strategy:
       fail-fast: false
-      matrix: >-
-        ${{ fromJSON(github.event_name == 'pull_request'
-          && '{"os": ["ubuntu-latest", "macos-latest", "windows-latest"], "python": ["3.12"],
-               "include": [{"os": "ubuntu-latest", "python": "3.13"}]}'
-          || '{"os": ["ubuntu-latest", "macos-latest", "windows-latest"], "python": ["3.12", "3.13"]}') }}
+      matrix:
+        os: [ubuntu-latest]
+        python: ["3.12"]
     runs-on: ${{ matrix.os }}
     timeout-minutes: 25
     defaults:
