@@ -798,3 +798,125 @@ def test_skips_serialize_when_not_recording(monkeypatch: pytest.MonkeyPatch) -> 
     assert greet("ada") == "hi ada"
     assert serialize_calls == []
     assert truncate_calls == []
+
+
+# --- tracing never breaks the host app -------------------------------------------------
+
+
+@pytest.fixture
+def no_active_og() -> Iterator[None]:
+    from opengrade._opengrade import _CURRENT
+
+    token = _CURRENT.set(None)
+    try:
+        yield
+    finally:
+        _CURRENT.reset(token)
+
+
+def test_trace_without_active_instance_is_a_passthrough(
+    spans: InMemorySpanExporter, no_active_og: None
+) -> None:
+    calls: list[int] = []
+
+    @opengrade.trace
+    def double(x: int) -> int:
+        calls.append(x)
+        return x * 2
+
+    @opengrade.trace
+    async def adouble(x: int) -> int:
+        return x * 2
+
+    @opengrade.trace
+    def gen(n: int) -> Iterator[int]:
+        yield from range(n)
+
+    @opengrade.trace
+    async def agen(n: int) -> AsyncIterator[int]:
+        for i in range(n):
+            yield i
+
+    async def collect() -> list[int]:
+        return [i async for i in agen(3)]
+
+    assert double(2) == 4
+    assert calls == [2]  # body ran exactly once
+    assert asyncio.run(adouble(3)) == 6
+    assert list(gen(3)) == [0, 1, 2]
+    assert asyncio.run(collect()) == [0, 1, 2]
+    with opengrade.span("block", input="q") as s:
+        s.set_output("a")
+        opengrade.set_attribute("k", "v")
+    assert s.is_recording is False
+    assert spans.get_finished_spans() == ()
+
+
+def test_trace_in_worker_thread_without_context_does_not_raise() -> None:
+    from concurrent.futures import ThreadPoolExecutor
+
+    @opengrade.trace
+    def work(x: int) -> int:
+        return x + 1
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        assert pool.submit(work, 1).result() == 2
+
+
+def test_instrumentation_failure_keeps_result_and_runs_body_once(
+    spans: InMemorySpanExporter, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    calls: list[int] = []
+
+    def boom(*_a: object, **_k: object) -> None:
+        raise RuntimeError("instrumentation bug")
+
+    monkeypatch.setattr(_trace, "_finish_span", boom)
+
+    @opengrade.trace
+    def work(x: int) -> int:
+        calls.append(x)
+        return x * 10
+
+    assert work(4) == 40
+    assert calls == [4]
+    assert [s.name for s in spans.get_finished_spans()][-1].endswith("work")
+
+
+def test_span_start_failure_runs_body_untraced(
+    spans: InMemorySpanExporter, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    def boom(*_a: object, **_k: object) -> None:
+        raise RuntimeError("instrumentation bug")
+
+    monkeypatch.setattr(_trace, "_start_attributes", boom)
+
+    @opengrade.trace
+    def work() -> str:
+        return "ok"
+
+    @opengrade.trace
+    def gen() -> Iterator[int]:
+        yield 1
+
+    assert work() == "ok"
+    assert list(gen()) == [1]
+    with opengrade.span("block") as s:
+        pass
+    assert s.is_recording is False
+
+
+def test_user_exception_still_propagates_when_error_recording_fails(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def boom(*_a: object, **_k: object) -> None:
+        raise RuntimeError("instrumentation bug")
+
+    monkeypatch.setattr(_trace, "_record_error", boom)
+
+    @opengrade.trace
+    def fails() -> None:
+        raise ValueError("user error")
+
+    with pytest.raises(ValueError, match="user error"):
+        fails()
