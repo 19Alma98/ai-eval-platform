@@ -6,16 +6,25 @@ import asyncio
 import logging
 import threading
 import weakref
-from collections.abc import Iterator, Mapping
+from collections.abc import Callable, Iterator, Mapping, Sequence
 from contextlib import contextmanager
 from contextvars import ContextVar, Token
-from typing import Any
+from typing import TYPE_CHECKING, Any, Literal
 
 from opengrade import _config, _state
 from opengrade._config import DEFAULT_TRACKING_URI, RedactFn, RedactOutputFn, _normalize_uri
 from opengrade.async_client import AsyncClient
 from opengrade.client import Client
 from opengrade.models import ProjectResponse
+
+if TYPE_CHECKING:
+    from opengrade.experiment.dataset import DatasetLike
+    from opengrade.experiment.result import ExperimentResult
+    from opengrade.experiment.runtime import Experiment
+    from opengrade.experiment.setup import Metric
+    from opengrade.metrics import LocalMetric, Sample
+    from opengrade.models import DatasetItemResponse, ExperimentResponse
+    from opengrade.sweeps import SweepResult
 
 logger = logging.getLogger("opengrade")
 
@@ -193,11 +202,44 @@ class Opengrade:
             redact_output=redact_output,
         )
 
-    def init_tracing(self, **kwargs: Any) -> None:
+    def init_tracing(
+        self,
+        *,
+        project_id: str | None = None,
+        project_slug: str | None = None,
+        endpoint: str | None = None,
+        service_name: str | None = None,
+        instrument: Literal["auto", False] | Sequence[str] = "auto",
+        force: bool = False,
+        live: bool | None = None,
+        live_sample_rate: float | None = None,
+        trace_sample_rate: float | None = None,
+        max_capture_bytes: int | None = None,
+        metrics_workers: int | None = None,
+        version: str | None = None,
+        environment: str | None = None,
+        **kwargs: Any,
+    ) -> None:
         """Configure OTLP export for this instance via the shared ``TracerProvider``."""
         from opengrade import _otel
 
-        _otel.init_for_instance(self, **kwargs)
+        _otel.init_for_instance(
+            self,
+            project_id=project_id,
+            project_slug=project_slug,
+            endpoint=endpoint,
+            service_name=service_name,
+            instrument=instrument,
+            force=force,
+            live=live,
+            live_sample_rate=live_sample_rate,
+            trace_sample_rate=trace_sample_rate,
+            max_capture_bytes=max_capture_bytes,
+            metrics_workers=metrics_workers,
+            version=version,
+            environment=environment,
+            **kwargs,
+        )
 
     @property
     def trace(self) -> Any:
@@ -216,51 +258,247 @@ class Opengrade:
         _close_runtime_clients(self._runtime)
         _unregister_instance(self)
 
-    def log_score(self, *args: Any, **kwargs: Any) -> bool:
+    def log_score(
+        self,
+        name: str,
+        value: float | bool | None,
+        *,
+        trace_id: str | None = None,
+        label: str | None = None,
+        explanation: str | None = None,
+        threshold: float | None = None,
+        metadata: Mapping[str, Any] | None = None,
+    ) -> bool:
         with self.activate():
             from opengrade import feedback
 
-            return feedback.log_score(*args, **kwargs)
+            return feedback.log_score(
+                name,
+                value,
+                trace_id=trace_id,
+                label=label,
+                explanation=explanation,
+                threshold=threshold,
+                metadata=metadata,
+            )
 
-    def log_feedback(self, *args: Any, **kwargs: Any) -> bool:
+    def log_feedback(
+        self,
+        positive: bool,
+        *,
+        trace_id: str | None = None,
+        comment: str | None = None,
+        user_id: str | None = None,
+    ) -> bool:
         with self.activate():
             from opengrade import feedback
 
-            return feedback.log_feedback(*args, **kwargs)
+            return feedback.log_feedback(
+                positive,
+                trace_id=trace_id,
+                comment=comment,
+                user_id=user_id,
+            )
 
-    def score_trace(self, *args: Any, **kwargs: Any) -> bool:
+    def score_trace(
+        self,
+        metric: LocalMetric,
+        sample: Sample,
+        *,
+        trace_id: str | None = None,
+    ) -> bool:
         with self.activate():
             from opengrade import feedback
 
-            return feedback.score_trace(*args, **kwargs)
+            return feedback.score_trace(metric, sample, trace_id=trace_id)
 
-    def start_experiment(self, *args: Any, **kwargs: Any) -> Any:
+    def start_experiment(
+        self,
+        name: str | None = None,
+        *,
+        dataset: DatasetLike,
+        metrics: Sequence[Metric] | None = None,
+        metrics_set_id: str | None = None,
+        params: Mapping[str, Any] | None = None,
+        baseline: str | ExperimentResponse | ExperimentResult | None = None,
+        project: str | None = None,
+        version: str | None = None,
+        git: bool | Mapping[str, Any] = True,
+        task_type: str = "rag_qa",
+        app_config_id: str | None = None,
+        app_config_alias: str | None = None,
+        repeats: int = 1,
+        group_by: str | None = None,
+        og: Any = None,
+        client: Client | None = None,
+    ) -> Experiment:
         with self.activate():
             from opengrade.experiment import start_experiment
 
-            kwargs.setdefault("client", self.client)
-            return start_experiment(*args, **kwargs)
+            return start_experiment(
+                name,
+                dataset=dataset,
+                metrics=metrics,
+                metrics_set_id=metrics_set_id,
+                params=params,
+                baseline=baseline,
+                project=project,
+                version=version,
+                git=git,
+                task_type=task_type,
+                app_config_id=app_config_id,
+                app_config_alias=app_config_alias,
+                repeats=repeats,
+                group_by=group_by,
+                og=og,
+                client=self.client if client is None else client,
+            )
 
-    def evaluate(self, *args: Any, **kwargs: Any) -> Any:
+    def evaluate(
+        self,
+        *,
+        dataset: DatasetLike,
+        task: Callable[[DatasetItemResponse], Any],
+        metrics: Sequence[Metric] | None = None,
+        metrics_set_id: str | None = None,
+        name: str | None = None,
+        params: Mapping[str, Any] | None = None,
+        baseline: str | ExperimentResponse | ExperimentResult | None = None,
+        max_concurrency: int = 1,
+        project: str | None = None,
+        version: str | None = None,
+        git: bool | Mapping[str, Any] = True,
+        task_type: str = "rag_qa",
+        app_config_id: str | None = None,
+        app_config_alias: str | None = None,
+        raise_on_error: bool = False,
+        timeout: float = 600.0,
+        repeats: int = 1,
+        group_by: str | None = None,
+        og: Any = None,
+        client: Client | None = None,
+    ) -> ExperimentResult:
         with self.activate():
             from opengrade.experiment import evaluate
 
-            kwargs.setdefault("client", self.client)
-            return evaluate(*args, **kwargs)
+            return evaluate(
+                dataset=dataset,
+                task=task,
+                metrics=metrics,
+                metrics_set_id=metrics_set_id,
+                name=name,
+                params=params,
+                baseline=baseline,
+                max_concurrency=max_concurrency,
+                project=project,
+                version=version,
+                git=git,
+                task_type=task_type,
+                app_config_id=app_config_id,
+                app_config_alias=app_config_alias,
+                raise_on_error=raise_on_error,
+                timeout=timeout,
+                repeats=repeats,
+                group_by=group_by,
+                og=og,
+                client=self.client if client is None else client,
+            )
 
-    def sweep(self, *args: Any, **kwargs: Any) -> Any:
+    def sweep(
+        self,
+        *,
+        dataset: DatasetLike,
+        task: Callable[[DatasetItemResponse, dict[str, Any]], Any] | None = None,
+        retriever: Callable[[DatasetItemResponse, dict[str, Any]], Any] | None = None,
+        grid: Mapping[str, Sequence[Any]] | None = None,
+        variants: Sequence[Mapping[str, Any]] | None = None,
+        metrics: Sequence[Metric] | None = None,
+        name: str | None = None,
+        params: Mapping[str, Any] | None = None,
+        baseline: str | ExperimentResponse | ExperimentResult | None = None,
+        k: int = 5,
+        max_concurrency: int = 1,
+        repeats: int = 1,
+        group_by: str | None = None,
+        project: str | None = None,
+        version: str | None = None,
+        git: bool | Mapping[str, Any] = True,
+        task_type: str = "rag_qa",
+        raise_on_error: bool = False,
+        timeout: float = 600.0,
+        og: Any = None,
+        client: Client | None = None,
+    ) -> SweepResult:
         with self.activate():
             from opengrade.sweeps import sweep
 
-            kwargs.setdefault("client", self.client)
-            return sweep(*args, **kwargs)
+            return sweep(
+                dataset=dataset,
+                task=task,
+                retriever=retriever,
+                grid=grid,
+                variants=variants,
+                metrics=metrics,
+                name=name,
+                params=params,
+                baseline=baseline,
+                k=k,
+                max_concurrency=max_concurrency,
+                repeats=repeats,
+                group_by=group_by,
+                project=project,
+                version=version,
+                git=git,
+                task_type=task_type,
+                raise_on_error=raise_on_error,
+                timeout=timeout,
+                og=og,
+                client=self.client if client is None else client,
+            )
 
-    def evaluate_retrieval(self, *args: Any, **kwargs: Any) -> Any:
+    def evaluate_retrieval(
+        self,
+        *,
+        dataset: DatasetLike,
+        retriever: Callable[..., Any],
+        k: int = 5,
+        metrics: Sequence[Metric] | None = None,
+        name: str | None = None,
+        params: Mapping[str, Any] | None = None,
+        baseline: str | ExperimentResponse | ExperimentResult | None = None,
+        max_concurrency: int = 1,
+        project: str | None = None,
+        version: str | None = None,
+        git: bool | Mapping[str, Any] = True,
+        doc_id: Callable[[Any], Any] | None = None,
+        raise_on_error: bool = False,
+        timeout: float = 600.0,
+        repeats: int = 1,
+        group_by: str | None = None,
+        client: Client | None = None,
+    ) -> ExperimentResult:
         with self.activate():
             from opengrade.retrieval import evaluate_retrieval
 
-            kwargs.setdefault("client", self.client)
-            return evaluate_retrieval(*args, **kwargs)
+            return evaluate_retrieval(
+                dataset=dataset,
+                retriever=retriever,
+                k=k,
+                metrics=metrics,
+                name=name,
+                params=params,
+                baseline=baseline,
+                max_concurrency=max_concurrency,
+                project=project,
+                version=version,
+                git=git,
+                doc_id=doc_id,
+                raise_on_error=raise_on_error,
+                timeout=timeout,
+                repeats=repeats,
+                group_by=group_by,
+                client=self.client if client is None else client,
+            )
 
     def log_params(self, **params: Any) -> dict[str, Any]:
         with self.activate():

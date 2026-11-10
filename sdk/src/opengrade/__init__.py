@@ -111,6 +111,6 @@ def __dir__() -> list[str]:
 
 
 try:
-    __version__ = _version("opengrade")
+    __version__ = _version("opengrade-ai")
 except PackageNotFoundError:  # pragma: no cover
     __version__ = "0.0.0"
