@@ -134,7 +134,7 @@ def lookup_customer(customer_id: str, api_key: str) -> dict: ...
 When you still need structure in traces but must scrub values, use global hooks and optional per-decorator overrides. Decorator `redact` / `redact_output` replace the global callback for that function; pass `None` on the decorator to inherit the global. There is no built-in key denylist—your callbacks decide what to change.
 
 ```python
-opengrade.configure_capture(
+og.configure_capture(
     redact=lambda name, value: "***" if name == "api_key" else value,
     redact_output=lambda value: {"ok": True},
 )

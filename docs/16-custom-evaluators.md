@@ -5,7 +5,7 @@ There are three ways to add a metric. Pick by where the logic should live.
 | | SDK metric (`@opengrade.metric`) | Custom LLM judge (`opengrade.LlmJudge`) | Server evaluator (`register_evaluator`) |
 | --- | --- | --- | --- |
 | What you write | Python code | criteria in plain language | Python code in `opengrade_server` |
-| Runs in | your process, during `opengrade.evaluate` / `@trace(metrics=…)` | the OpenGrade API (judge model) | the OpenGrade API, on `POST /experiments/{id}/evaluate` |
+| Runs in | your process, during `og.evaluate` / `@trace(metrics=…)` | the OpenGrade API (judge model) | the OpenGrade API, on `POST /experiments/{id}/evaluate` |
 | Change the server? | no | no (stored as a project evaluator) | yes (contribution) |
 | Usable from UI / metrics sets / re-score | listed under "Metrics computed in your code"; cannot be re-run by the server | yes; `live=True` also scores production traffic | yes |
 | Good for | deterministic, app-specific checks | subjective qualities: tone, format, policy, completeness | reusable metrics everyone should get |

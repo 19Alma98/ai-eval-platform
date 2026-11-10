@@ -58,7 +58,7 @@ export function CompareChangesPanel({
         <h2 className="text-xs font-medium text-muted-foreground">Run metrics</h2>
         {metrics.length === 0 ? (
           <p className="text-sm text-muted-foreground">
-            No run metrics on these experiments. <code className="text-xs">opengrade.evaluate</code>{" "}
+            No run metrics on these experiments. <code className="text-xs">og.evaluate</code>{" "}
             logs latency and error rate automatically; add cost or tokens with{" "}
             <code className="text-xs">opengrade.log_metrics</code>.
           </p>

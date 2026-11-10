@@ -369,7 +369,7 @@ export function TraceList({ projectId }: { projectId: string }) {
         ) : (
           <EmptyState
             title={range === "all" ? "No traces yet" : "No traces in this time range"}
-            description="Call `opengrade.init(project_slug=…)` once at startup and decorate your app's entry point with `@opengrade.trace` (or point any OpenTelemetry exporter at `/v1/traces`). Each call shows up here."
+            description="Construct an `Opengrade` handle, call `og.init_tracing()`, and decorate your app's entry point with `@opengrade.trace` inside `og.activate()` (or point any OpenTelemetry exporter at `/v1/traces`). Each call shows up here."
             action={
               range !== "all" ? (
                 <Button type="button" variant="outline" size="sm" onClick={() => setParam("range", "all")}>

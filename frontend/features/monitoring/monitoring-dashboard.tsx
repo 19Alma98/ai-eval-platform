@@ -387,7 +387,7 @@ function Dashboard({
         {data.metrics.length === 0 ? (
           <p className="rounded-md border border-dashed border-border bg-surface px-4 py-6 text-sm text-muted-foreground">
             No scores in this range. Live answers are scored by the judge; SDK metrics and user
-            feedback logged with <code>opengrade.log_score()</code> show up here too.
+            feedback logged with <code>og.log_score()</code> show up here too.
           </p>
         ) : (
           data.metrics.map((metric) => (

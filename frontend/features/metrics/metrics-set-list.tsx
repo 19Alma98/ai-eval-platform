@@ -220,7 +220,7 @@ export function MetricsSetList({ projectId }: { projectId: string }) {
   );
 }
 
-/** Python metrics passed to `opengrade.evaluate(metrics=[fn])`: scored in the SDK, not here. */
+/** Python metrics passed to `og.evaluate(metrics=[fn])`: scored in the SDK, not here. */
 function LocalMetrics({ projectId }: { projectId: string }) {
   const query = useEvaluators(projectId);
   const local = (query.data ?? [])
@@ -236,7 +236,7 @@ function LocalMetrics({ projectId }: { projectId: string }) {
         Metrics computed in your code
       </h2>
       <p className="text-sm text-muted-foreground">
-        Python functions passed to <code>opengrade.evaluate(metrics=[…])</code>. The SDK
+        Python functions passed to <code>og.evaluate(metrics=[…])</code>. The SDK
         scores each answer and uploads the result, so their logic and pass rule live in your
         code, not in a metrics set.
       </p>

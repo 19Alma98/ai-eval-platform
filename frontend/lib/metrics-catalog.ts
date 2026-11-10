@@ -199,7 +199,7 @@ export function metricCodeName(nameOrKind: string | null | undefined): string | 
 const SDK_SET_NAME = /^sdk:(.+)@([0-9a-f]+)$/i;
 
 /**
- * Sets created by `opengrade.evaluate(metrics=[…])` are named
+ * Sets created by `og.evaluate(metrics=[…])` are named
  * `sdk:hit_at_k+must_contain@689cc45d`; show the metrics instead of the raw key.
  */
 export function metricsSetDisplayName(name: string): string {

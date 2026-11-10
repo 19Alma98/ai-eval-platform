@@ -142,7 +142,7 @@ See `sdk/tests/test_opengrade.py` and `sdk/tests/test_client.py` for full handle
 | `og.get_project()` | Active project or `None` |
 | `og.client` / `og.async_client()` | Shared control-plane clients for this instance |
 | `og.flush()` | Drain spans (and related queues) for this instance |
-| `og.evaluate(...)` / `og.start_experiment(...)` / `og.sweep(...)` | Experiments (also work as module helpers inside `activate()`) |
+| `og.evaluate(...)` / `og.start_experiment(...)` / `og.sweep(...)` | Experiments (activate the instance for the call) |
 | `og.log_score` / `og.log_feedback` / `og.score_trace` | Production scores tied to the active runtime |
 | `@opengrade.trace` | Parent CHAIN span (sync/async/generators); optional input/output capture (32 KiB cap) |
 | `with opengrade.span(name, kind=...)` | Child span for a block of code (`with` / `async with`): retrieve, rerank, tool call… |
@@ -154,7 +154,7 @@ See `sdk/tests/test_opengrade.py` and `sdk/tests/test_client.py` for full handle
 | `opengrade.current_trace_id()` | 32-char hex trace id while inside a `@trace` span |
 | `opengrade.bind_evaluation(...)` | Bind current span to `experiment_id` + `dataset_item_id` |
 | `opengrade.set_retrieval_documents([...])` | Attach retrieval docs for RAG eval context |
-| `opengrade.evaluate_retrieval(...)` | Score only the retriever (hit@k, recall@k, MRR, optional context judges), no answer generated |
+| `og.evaluate_retrieval(...)` | Score only the retriever (hit@k, recall@k, MRR, optional context judges), no answer generated |
 | `opengrade.Client(...)` | Control-plane REST client (projects, datasets, experiments, …) |
 | `opengrade.AsyncClient(...)` | Async control-plane client (projects, live_runs, trace_scores, health) |
 
@@ -184,7 +184,7 @@ def answer(question: str) -> str:
 - The handle has `set_input`, `set_output`, `set_attribute(s)`, `set_error`, `trace_id`, `span_id`.
   `set_output` on a span does not change the experiment output (use `opengrade.set_output` for that).
 - An exception in the block marks the span ERROR and propagates. `async with` works the same way.
-- Outside any traced call, the span is a root span; with `init(live=True)` it becomes a live
+- Outside any traced call, the span is a root span; with `init_tracing(live=True)` it becomes a live
   interaction like an outermost `@opengrade.trace` (`live=False` opts out).
 
 ### Users, sessions, tags and metadata
@@ -350,22 +350,22 @@ og.evaluate(dataset="gold-v1", task=answer_question, metrics=["groundedness", to
 ```
 
 - The judge is stored as a project evaluator (`custom_judge`); `evaluate` reuses it while the config is unchanged and creates a new version when it changes, so different criteria are never compared as the same metric.
-- `live=True` also scores production traffic from `init(live=True)`, next to the built-in judges (a live judge cannot read `expected`). `evaluate` registers the judge; for production only, call `tone.register()` once (e.g. at startup). You can then alert on its `score_fail_rate` / `score_mean`.
+- `live=True` also scores production traffic from `init_tracing(live=True)`, next to the built-in judges (a live judge cannot read `expected`). `evaluate` registers the judge; for production only, call `tone.register()` once (e.g. at startup). You can then alert on its `score_fail_rate` / `score_mean`.
 - Missing inputs (no answer, no reference for `expected`, no documents for `documents`) SKIP the item. Judge failures are ERROR with the reason.
 - UI: Metrics → **Custom judges** (with a "Grade sample" preview), and "Add a custom judge" on a metrics set.
 
 ### Params and run metrics
 ```python
-with opengrade.start_experiment("v2", dataset="gold-v1", params={"model": "gemma4"}) as exp:
+with og.start_experiment("v2", dataset="gold-v1", params={"model": "gemma4"}) as exp:
     exp.log_params(temperature=0.2)  # merged into the experiment's model_config
     exp.run_task(answer_question)
-    opengrade.log_metrics({"cost_usd": total_cost})  # experiment-level scalar, last value wins
+    og.log_metrics({"cost_usd": total_cost})  # experiment-level scalar, last value wins
 print(exp.result.experiment_metrics)
 ```
 
 - `log_params` merges into `model_config` until an evaluation starts. After that, or when the experiment was created from an app config, the server answers 409: start a new experiment instead.
 - `log_metrics` stores one final number per key (no steps). Keys use letters, digits and `_ . - /`. They appear in `result.summary()` with the delta against the baseline, and can gate a release via the release-check policy: `{"experiment_metrics": {"cost_usd": {"max": 2.0}}}`.
-- `opengrade.log_params` / `opengrade.log_metrics` act on the active experiment: inside `with start_experiment(...)` and inside any item run (`exp.run(...)`, `run_task`, `evaluate()` tasks). Elsewhere they raise `RuntimeError`. With concurrency > 1, call `log_metrics`/`log_params` once outside per-item code: per-item calls overwrite each other (last write wins).
+- `og.log_params` / `og.log_metrics` act on the active experiment: inside `with og.start_experiment(...)` and inside any item run (`exp.run(...)`, `run_task`, `evaluate()` tasks). Elsewhere they raise `RuntimeError`. With concurrency > 1, call `log_metrics`/`log_params` once outside per-item code: per-item calls overwrite each other (last write wins).
 - Every `finish()` logs `opengrade.error_rate`, `opengrade.latency_p50_ms` and `opengrade.latency_p95_ms` (the task's wall-clock latency as measured by the SDK, over the items that did not fail, nearest-rank percentiles).
 
 ### Comparing configurations (`sweep`)
@@ -379,7 +379,7 @@ def answer(item, params):  # each configuration's params come in as the second a
     return generate(item.input, docs, model=params["model"])
 
 
-result = opengrade.sweep(
+result = og.sweep(
     dataset="gold-v1",
     task=answer,
     grid={"model": ["gemma4", "llama3.3"], "top_k": [3, 5]},  # 4 experiments
@@ -397,7 +397,7 @@ print(result.url)  # Compare view pinned to the sweep's experiments
 - Every configuration is a normal experiment named `<sweep> [model=gemma4, top_k=3]`, with its configuration plus `sweep=<name>` stored as params. In the UI (**Experiments → Compare all**) filter on the `sweep` parameter, color the charts by any parameter, and plot quality against cost or latency.
 - `leaderboard(metric)` / `best(metric)` rank on a scored metric or a run metric (`opengrade.latency_p95_ms`, `cost_usd` from `log_metrics`); latency, cost, error and token metrics rank lower-is-better (override with `lower_is_better=`).
 - The test set is resolved (inline rows uploaded) once. Configurations run one after another; `max_concurrency` and `repeats` apply within each. A configuration that fails to run is reported in `result.errors` and the others still run (`raise_on_error=True` stops instead).
-- `retriever=` instead of `task=` sweeps a retrieval-only evaluation (see below), e.g. chunk sizes or embedding models: `opengrade.sweep(dataset=..., retriever=search, grid={"chunk_size": [256, 512]}, k=5)`.
+- `retriever=` instead of `task=` sweeps a retrieval-only evaluation (see below), e.g. chunk sizes or embedding models: `og.sweep(dataset=..., retriever=search, grid={"chunk_size": [256, 512]}, k=5)`.
 
 ### Retrieval-only evaluation (`evaluate_retrieval`)
 
@@ -521,7 +521,7 @@ og.init_tracing(
 
 #### Capture redaction
 
-Use `opengrade.configure_capture(redact=..., redact_output=...)` for process-wide scrubbing, or `@opengrade.trace(redact=..., redact_output=...)` to override (or inherit with `None`) per function. Automatic capture writes `input.value` as a flat JSON object of bound parameter names → values (`self` / `cls` omitted); values are truncated to the capture budget after redaction. See [Content capture and redaction](../docs/10-security-privacy.md#content-capture-and-redaction) in the security guide.
+Use `og.configure_capture(redact=..., redact_output=...)` for instance-wide scrubbing, or `@opengrade.trace(redact=..., redact_output=...)` to override (or inherit with `None`) per function. Automatic capture writes `input.value` as a flat JSON object of bound parameter names → values (`self` / `cls` omitted); values are truncated to the capture budget after redaction. See [Content capture and redaction](../docs/10-security-privacy.md#content-capture-and-redaction) in the security guide.
 
 For **generator** and **async-generator** functions, `@opengrade.trace` joins streamed chunks into `output.value` (plain strings and common LLM delta shapes by default). Pass `join_chunks=(chunk, acc) -> ...` to accumulate differently (`acc` starts as `None`). The span is current only during each `next()` / `__anext__`; between yields it is not the active trace context. Abandoned iterators finish the span on `close()` / `aclose()`.
 
@@ -543,7 +543,7 @@ def answer(question: str) -> str:
 
 - Every call is recorded; only `live_sample_rate` of them (default `1.0`) are sent to the judge. The rest show `judge_status="unsampled"` and can still be judged with `live_runs.rescore`. Sampling is deterministic on the trace id.
 - Question = the only string argument (or a `question`/`query`/`input`/`prompt` kwarg); answer = the return value. Override with `opengrade.set_input(...)` / `opengrade.set_output(...)`.
-- `@opengrade.trace(live=False)` excludes a function; `live=True` opts one in when `init(live=...)` is off.
+- `@opengrade.trace(live=False)` excludes a function; `live=True` opts one in when `init_tracing(live=...)` is off.
 - The server stores span text by default; with `CONTENT_CAPTURE_ENABLED=false` input/output are redacted and no live interaction is created.
 - Idempotent per trace (`external_id="trace:<trace_id>"`).
 
@@ -572,20 +572,20 @@ def answer(question: str) -> str:
 @opengrade.trace
 def handle(question: str) -> dict:
     out = answer(question)
-    opengrade.log_score("answer_chars", len(out))  # current trace
+    opengrade.current().log_score("answer_chars", len(out))  # current trace
     return {"answer": out, "trace_id": opengrade.current_trace_id()}  # send the id to your frontend
 
 
 # later, from the thumbs button (trace_id is the one handle() returned)
-opengrade.log_feedback(True, trace_id=trace_id, user_id="user-42", comment="great")
+og.log_feedback(True, trace_id=trace_id, user_id="user-42", comment="great")
 ```
 
-- `log_score(name, value, *, trace_id=None, label=None, explanation=None, threshold=None, metadata=None)`: without `trace_id` it uses the current trace. PASS/FAIL follows the same rule as experiment metrics: a `FAIL` label fails; a value under `threshold` fails; otherwise, with a threshold a value at or above it passes, and without one only a value of 0 fails.
-- `log_feedback(positive, *, trace_id=None, comment=None, user_id=None)`: stored as `user_feedback` (1 or 0); `positive` must be a bool (or 0/1). One value per user per trace: a user changing their mind replaces it. Without `user_id` the feedback is anonymous and all anonymous feedback on a trace shares one row (last write wins). A thumbs-down counts as a failure in the Live "Failing" filter.
-- `opengrade.score_trace(metric, sample, trace_id=...)` runs one metric now, on the calling thread (only the sending is in the background), and stores the result. The trace is `trace_id`, else `sample.trace_id`, else the current trace. A raising metric queues `label="ERROR"` with the exception as explanation (returns `True` when that score is queued); missing `requires` skips with `False`.
+- `og.log_score(name, value, *, trace_id=None, label=None, explanation=None, threshold=None, metadata=None)` (or `current().log_score` inside an active instance): without `trace_id` it uses the current trace. PASS/FAIL follows the same rule as experiment metrics: a `FAIL` label fails; a value under `threshold` fails; otherwise, with a threshold a value at or above it passes, and without one only a value of 0 fails.
+- `og.log_feedback(positive, *, trace_id=None, comment=None, user_id=None)`: stored as `user_feedback` (1 or 0); `positive` must be a bool (or 0/1). One value per user per trace: a user changing their mind replaces it. Without `user_id` the feedback is anonymous and all anonymous feedback on a trace shares one row (last write wins). A thumbs-down counts as a failure in the Live "Failing" filter.
+- `og.score_trace(metric, sample, trace_id=...)` runs one metric now, on the calling thread (only the sending is in the background), and stores the result. The trace is `trace_id`, else `sample.trace_id`, else the current trace. A raising metric queues `label="ERROR"` with the exception as explanation (returns `True` when that score is queued); missing `requires` skips with `False`.
 - `@opengrade.trace(metrics=[...], metrics_sample_rate=1.0)` runs your metrics after the function returns successfully (not when it raises, not inside experiments, which score their own metrics). Needs `init_tracing()`. Sampling is per trace and configured separately from the judge's `live_sample_rate`; both use the same hash of the trace id, so when both are set the sampled traces are nested (the lower rate's traces are a subset of the higher rate's).
   - `Sample.input` is what you passed to `opengrade.set_input()` inside the call, else the only argument, else `{"args", "kwargs"}`; `Sample.output` is what you passed to `opengrade.set_output()` inside the call, else the return value (so a handler can return a response object and still have its metrics see the answer); `Sample.documents` is the last `set_retrieval_documents()` inside the call (including nested `@opengrade.trace` helpers on the same thread); `expected` is `None`, so metrics with `requires=("expected",)` are skipped. Input, output and documents are deep-copied when the job is queued (so later mutation is invisible); samples over 256 KiB serialized are skipped with a warning. Capture uses a ContextVar: a worker thread your function starts does not inherit it, so `set_retrieval_documents` (or `record_documents`) from that thread does not feed the outer sample — call it on the traced thread before return, or pass documents into the metric yourself.
-  - Metrics run on a background pool (default 2 threads; `init(metrics_workers=...)` or `OPENGRADE_METRICS_WORKERS`) fed by a bounded queue; when it is full the call is not scored and a warning is logged. Async metrics time out after 60 s; a sync metric cannot be interrupted. A raising or timed-out metric stores `label="ERROR"` with the exception as explanation (never breaks the traced call). For LLM judges raise `metrics_workers` or lower `metrics_sample_rate`.
+  - Metrics run on a background pool (default 2 threads; `init_tracing(metrics_workers=...)` or `OPENGRADE_METRICS_WORKERS`) fed by a bounded queue; when it is full the call is not scored and a warning is logged. Async metrics time out after 60 s; a sync metric cannot be interrupted. A raising or timed-out metric stores `label="ERROR"` with the exception as explanation (never breaks the traced call). For LLM judges raise `metrics_workers` or lower `metrics_sample_rate`.
   - Metrics run with instrumentation suppressed: LLM calls a judge makes and `@opengrade.trace` helpers it calls do not create production traces (spans started manually with an OpenTelemetry tracer still do).
   - `trace(metrics=...)` accepts sync and `async def` (and `functools.partial` of a coroutine
     function; other async wrappers need `inspect.markcoroutinefunction`). Generator /

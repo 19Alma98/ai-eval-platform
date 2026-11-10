@@ -6,12 +6,12 @@ tone = opengrade.LlmJudge(
     criteria="The answer is polite and professional, with no slang.",
     scale="binary",
 )
-opengrade.evaluate(dataset="gold-v1", task=answer, metrics=["groundedness", tone])
+og.evaluate(dataset="gold-v1", task=answer, metrics=["groundedness", tone])
 ```
 
 The judge is stored on the server as a project evaluator (``kind: custom_judge``), so
 its scores show up in the UI, in compare and in the release gate like built-in
-metrics. ``live=True`` also applies it to production traffic (``init(live=True)``).
+metrics. ``live=True`` also applies it to production traffic (``og.init_tracing(live=True)``).
 """
 
 from __future__ import annotations

@@ -402,7 +402,7 @@ export function LiveRunList() {
     ) : (
       <EmptyState
         title="No live traffic yet"
-        description="Call `opengrade.init(project_slug=…, live=True)` at startup and decorate your app's entry point with `@opengrade.trace`: each call becomes a live answer scored by the judge. The question is the function's only text argument (or a question/query kwarg), the answer its return value; with several text arguments call `opengrade.set_input()` / `set_output()` so the question isn't the raw argument list. The server must not run with `CONTENT_CAPTURE_ENABLED=false`."
+        description="Construct an `Opengrade` handle, call `og.init_tracing(live=True)`, and decorate your app's entry point with `@opengrade.trace` inside `og.activate()`: each call becomes a live answer scored by the judge. The question is the function's only text argument (or a question/query kwarg), the answer its return value; with several text arguments call `opengrade.set_input()` / `set_output()` so the question isn't the raw argument list. The server must not run with `CONTENT_CAPTURE_ENABLED=false`."
       />
     );
   } else {

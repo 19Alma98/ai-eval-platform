@@ -30,7 +30,7 @@ def _active_experiment() -> Experiment:
     exp = ACTIVE_EXPERIMENT.get()
     if exp is None:
         raise RuntimeError(
-            "no active experiment: call inside `with opengrade.start_experiment(...)` "
+            "no active experiment: call inside `with og.start_experiment(...)` "
             "or inside an item run (exp.run, run_task or an evaluate() task)"
         )
     return exp

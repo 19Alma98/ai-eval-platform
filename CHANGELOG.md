@@ -11,6 +11,16 @@ breaking changes; they are listed under **Changed** with a migration note.
 
 ### Changed
 
+- **Breaking (SDK):** Removed module-level process helpers — `opengrade.init`, `set_project`,
+  `aset_project`, `evaluate`, `evaluate_retrieval`, `sweep`, `start_experiment`, `flush`,
+  `log_score`, `log_feedback`, `score_trace`, `log_params`, `log_metrics`, `set_tracking_uri`,
+  `get_tracking_uri`, `set_api_key`, `get_api_key`, `get_client`, `get_async_client`,
+  `get_project`, and `configure_capture`. Construct an `Opengrade` handle (`Settings` / env),
+  call instance methods (`init_tracing`, `set_project`, `evaluate`, `flush`, `log_score`, …),
+  and scope `@opengrade.trace` work with `with og.activate():` (or use `og.evaluate` /
+  `og.log_*`, which activate for you). Migration: replace `opengrade.init(...)` with
+  `og.init_tracing(...)`; replace `opengrade.evaluate` / `sweep` / `flush` / `set_project` with
+  the same names on `og`. See [Python SDK](sdk/README.md) and [getting started](docs/getting-started.md).
 - **Breaking (SDK):** `Experiment.finish()` / `evaluate()` re-raise when output upsert fails; they no longer soft-fail, score, or return an `ExperimentResult` with missing outputs.
 - **Breaking (SDK):** `set_retrieval_documents` emits OpenInference flattened keys (`retrieval.documents.{i}.document.*`) instead of a single `retrieval.documents` JSON blob.
 - SDK HTTP: PUT and DELETE retry on 429/503 (with GET/HEAD/OPTIONS). Transport/`ConnectError` retries apply to any method, including POST. Max 3 attempts, `Retry-After`, jittered backoff unchanged.
@@ -33,7 +43,7 @@ breaking changes; they are listed under **Changed** with a migration note.
 - **SDK 0.2.0 — bound control plane:** `Client(..., project_id=...)` and `og.client` require an
   explicit project; no process-wide `project_id` fallback.
 - **SDK 0.2.0 — OTLP routing:** per-instance export via `_RoutingSpanProcessor` on the shared
-  `TracerProvider` (`Opengrade.init_tracing()` / `init()` on the active instance).
+  `TracerProvider` (`Opengrade.init_tracing()` on each instance).
 - Example: multi-tenant FastAPI (`examples/fastapi_multi_tenant/`) activating one `Opengrade` per
   request.
 - Monitoring/Overview: custom absolute time range, IANA timezone picker (display only), and
@@ -44,7 +54,7 @@ breaking changes; they are listed under **Changed** with a migration note.
   SDK metrics and feedback chips in the Scores column; Overview/Monitoring/Traces auto-refresh
   every 30s.
 - OTLP head sampling (`OTLP_TRACE_SAMPLE_RATE`) and span attribute size limits
-  (`OTLP_MAX_SPAN_ATTR_CHARS`); SDK `init(trace_sample_rate=..., max_capture_bytes=...)` /
+  (`OTLP_MAX_SPAN_ATTR_CHARS`); SDK `init_tracing(trace_sample_rate=..., max_capture_bytes=...)` /
   `OPENGRADE_TRACE_SAMPLE_RATE` / `OPENGRADE_MAX_CAPTURE_BYTES`.
 - Read-only dashboard for `read` API key sessions: write buttons are hidden (`useCanWrite`).
 - With auth on, `trace_scores.author` and `live_score_reviews.reviewer` are set from the API key
@@ -64,7 +74,7 @@ breaking changes; they are listed under **Changed** with a migration note.
   filters and `limit`/`offset`. The SDK passes them through; `set_project` / `evaluate` resolve by
   filtered list instead of scanning everything.
 - Live runs URL sync: `?failed=1`, `?waiting=1`, `?q=`; experiment matrix sort via `?sort=` / `?order=`.
-- SDK capture redaction: `configure_capture(redact=..., redact_output=...)` and
+- SDK capture redaction: `og.configure_capture(redact=..., redact_output=...)` and
   `@opengrade.trace(redact=..., redact_output=...)`; `self`/`cls` omitted from automatic
   input capture; budget-aware truncation before `json.dumps`.
 
@@ -80,12 +90,13 @@ breaking changes; they are listed under **Changed** with a migration note.
 
 ### Removed
 
+- Module-level SDK helpers listed under **Changed** (Breaking): use `Opengrade` instance methods
+  and `Settings` instead of process-wide `opengrade.init` / `evaluate` / `set_project` / …
 - `OPENGRADE_API_KEY_PREVIOUS` / `api_key_previous` (env key rotation overlap).
 - Process-wide `project_id` fallback on `Client` / `AsyncClient` (pass `project_id` explicitly).
 - Docs: the completed MVP planning pages (MVP user stories, definition of done).
 - SQLite startup stamp for pre-Alembic `create_all` databases (delete a stale local DB instead).
-- Standalone `AppConfigClient(...)` construction; use `Client(...).app_configs` /
-  `opengrade.get_client().app_configs`.
+- Standalone `AppConfigClient(...)` construction; use `Client(...).app_configs` or `og.client.app_configs`.
 - `opengrade.MAX_CAPTURE_BYTES` alias; use `DEFAULT_MAX_CAPTURE_BYTES` or `max_capture_bytes()`.
 - `@opengrade.trace_async`; use `@opengrade.trace` for sync and async functions.
 

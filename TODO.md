@@ -47,7 +47,7 @@ reusing the same judges.
 
 - [x] **1. Multi-turn datasets**: task type `rag_chat`; an item holds the chat history (list of
   `{role, content}` turns) plus the final user question; `expected_output` is the reference for the
-  last turn. CSV/JSONL import and `opengrade.evaluate` pass the history to the task
+  last turn. CSV/JSONL import and `og.evaluate` pass the history to the task
   (`item.input` = `{"history": [...], "question": "..."}`; helper `opengrade.chat_input`).
 - [x] **2. Conversation judges**:
   - query rewriting: `query_rewrite_faithfulness` + `opengrade.set_search_query` /

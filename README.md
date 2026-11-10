@@ -75,10 +75,13 @@ Anthropic, LangChain, LlamaIndex and Bedrock calls become child spans automatica
 
 ```python
 import opengrade
+from opengrade import Opengrade, Settings
 
-opengrade.set_tracking_uri("http://localhost:8000")
-opengrade.set_project("support-bot")
-opengrade.init(instrument="auto")
+og = Opengrade(
+    settings=Settings(tracking_uri="http://localhost:8000", project_slug="support-bot")
+)
+og.set_project("support-bot")
+og.init_tracing(instrument="auto")
 
 
 @opengrade.trace
@@ -88,12 +91,17 @@ def answer(question: str) -> str:
         s.set_output([d.id for d in docs])
     opengrade.set_retrieval_documents(docs)  # feeds the retrieval metrics and RAG judges
     return llm.generate(question, docs)
+
+
+with og.activate():
+    answer("How many PTO days do I get?")
+og.flush()
 ```
 
 **2. Evaluate it on a test set**, against a baseline:
 
 ```python
-result = opengrade.evaluate(
+result = og.evaluate(
     dataset="gold.jsonl",                   # or a dataset name, a list of dicts, a DataFrame
     task=lambda item: answer(item.input),
     metrics=["hit_at_k", "groundedness", "correctness", "latency"],
@@ -127,7 +135,9 @@ opengrade evaluate --config opengrade.yaml --require-baseline   # exit 1 when th
 **4. Watch production.** Score live traffic with the same metrics, collect user feedback, alert on drift:
 
 ```python
-opengrade.init(live=True, live_sample_rate=0.1, version=GIT_SHA, environment="prod")
+og.init_tracing(
+    live=True, live_sample_rate=0.1, version=GIT_SHA, environment="prod"
+)
 ```
 
 ## Documentation

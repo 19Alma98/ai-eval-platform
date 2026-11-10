@@ -44,7 +44,7 @@ Two consequences that are easy to miss:
 
 | Term | Meaning |
 |---|---|
-| **Project** | Workspace that holds everything else. `opengrade.set_project("name")` creates it on first use |
+| **Project** | Workspace that holds everything else. `og.set_project("name")` creates it on first use |
 | **Trace** | Span tree of one request, sent over OTLP to `/v1/traces` |
 | **Dataset** (test set) | Versioned list of items: `input`, `expected_output`, `metadata` (e.g. `expected_doc_ids`, `must_contain`, `critical`). Called *test set* in the UI |
 | **Task type** | Shape of the items and default metrics: `rag_qa` (default), `classification`, `agent_tools` |
@@ -53,7 +53,7 @@ Two consequences that are easy to miss:
 | **Experiment** (run) | One pass of your code over a dataset, scored by a metrics set. Records params, version and git commit |
 | **Baseline / alias** | The experiment to compare with. An alias (`alias:main`) points to the last accepted run and moves on `--promote` |
 | **Policy** | YAML rules (`opengrade.yaml`) that turn an experiment and its baseline into pass / fail for CI |
-| **Live interaction** | A production request recorded with `init(live=True)` and scored by judges without gold. Can be promoted into a dataset |
+| **Live interaction** | A production request recorded with `og.init_tracing(live=True)` and scored by judges without gold. Can be promoted into a dataset |
 
 ## Step by step
 
@@ -65,18 +65,21 @@ Two consequences that are easy to miss:
 | Team, CI baselines, production traffic | `docker compose up` (PostgreSQL), or `opengrade ui --backend-store-uri postgresql+asyncpg://…` |
 | Server reachable beyond localhost | set `OPENGRADE_API_KEY`, create per-client keys, put TLS in front: [Security and API keys](10-security-privacy.md) |
 
-Apps and scripts find the server through `opengrade.set_tracking_uri(...)` or
+Apps and scripts find the server through `Settings(tracking_uri=...)` /
 `OPENGRADE_TRACKING_URI` (default `http://localhost:8000`), and send a key from
-`OPENGRADE_API_KEY` when the server requires one.
+`OPENGRADE_API_KEY` / `Settings(api_key=...)` when the server requires one.
 
 ### 2. Trace your app
 
 ```python
 import opengrade
+from opengrade import Opengrade, Settings
 
-opengrade.set_tracking_uri("http://localhost:8000")
-opengrade.set_project("support-bot")
-opengrade.init(instrument="auto")  # OpenAI, Anthropic, LangChain, LlamaIndex, Bedrock spans
+og = Opengrade(
+    settings=Settings(tracking_uri="http://localhost:8000", project_slug="support-bot")
+)
+og.set_project("support-bot")
+og.init_tracing(instrument="auto")  # OpenAI, Anthropic, LangChain, LlamaIndex, Bedrock spans
 
 
 @opengrade.trace
@@ -84,6 +87,11 @@ def answer(question: str) -> str:
     docs = retriever.search(question)
     opengrade.set_retrieval_documents(docs)  # needed by retrieval metrics and RAG judges
     return llm.generate(question, docs)
+
+
+with og.activate():
+    answer("How many PTO days do I get?")
+og.flush()
 ```
 
 Install the extra for your provider (`opengrade-ai[openai]`, `[anthropic]`, …, or `[ai]` for all).
@@ -133,7 +141,7 @@ drops of about 0.28, with 100 about 0.07. See [statistical power](08-cli-ci.md#s
 | The answer addresses the question | `answer_relevance` | LLM judge |
 | It declines when it should | `refusal` | `answerable` / `expected_refusal` |
 | No personal data, toxicity or prompt injection | `pii`, `toxicity`, `prompt_injection` | LLM judge; no gold needed |
-| Speed and cost | `latency`, `cost`, `token_usage` | tracing on (`opengrade.init()`) for tokens and cost |
+| Speed and cost | `latency`, `cost`, `token_usage` | tracing on (`og.init_tracing()`) for tokens and cost |
 | Exact labels, formats, tool calls | `exact_match`, `contains`, `regex`, `json_schema`, `tool_call_success` | set as a server evaluator in a metrics set |
 | Something specific to your app | `@opengrade.metric` (Python) or `opengrade.LlmJudge` (criteria in plain language) | — |
 
@@ -143,7 +151,7 @@ Writing your own: [Custom evaluators](16-custom-evaluators.md).
 ### 5. Run an experiment
 
 ```python
-result = opengrade.evaluate(
+result = og.evaluate(
     dataset="gold.jsonl",
     task=lambda item: answer(item.input),
     metrics=["hit_at_k", "groundedness", "correctness", "latency"],
@@ -154,8 +162,8 @@ print(result.summary(), result.url)
 ```
 
 - Compare several configurations (models, prompts, `top_k`, chunk sizes) in one call with
-  `opengrade.sweep(grid=...)`.
-- Test only the retriever, without generating answers, with `opengrade.evaluate_retrieval`.
+  `og.sweep(grid=...)`.
+- Test only the retriever, without generating answers, with `og.evaluate_retrieval`.
 - Reduce LLM noise with `repeats=3`; spot a weak category with `group_by="category"`.
 
 Details: [Python SDK → Experiments](../sdk/README.md#experiments-evaluate-start_experiment).
@@ -207,13 +215,15 @@ Every rule: [Policy reference](08-cli-ci.md#policy-reference). Full workflows:
 ### 8. Monitor production
 
 ```python
-opengrade.init(live=True, live_sample_rate=0.1, version=GIT_SHA, environment="prod")
+og.init_tracing(
+    live=True, live_sample_rate=0.1, version=GIT_SHA, environment="prod"
+)
 ```
 
 - `live=True`: each top-level traced request becomes a live interaction, and a sample of them is
   scored by the gold-less judges (`groundedness`, `answer_relevance`, custom judges with `live=True`).
 - `@opengrade.trace(metrics=[...])` runs your own metrics off the request path;
-  `opengrade.log_score` / `opengrade.log_feedback` attach scores and thumbs up/down.
+  `og.log_score` / `og.log_feedback` (or `current().log_score` inside a traced call) attach scores and thumbs up/down.
 - `version` / `environment` let **Production → Health** compare one deploy with the previous one.
 - Alert rules (UI or `client.alerts.create`) notify Slack or a webhook on thresholds, drift or anomalies.
 

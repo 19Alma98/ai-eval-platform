@@ -80,13 +80,18 @@ from __future__ import annotations
 
 import os
 
-from openai import OpenAI
-
 import opengrade
+from openai import OpenAI
+from opengrade import Opengrade, Settings
 
-opengrade.set_tracking_uri(os.getenv("OPENGRADE_TRACKING_URI", "http://127.0.0.1:8000"))
-opengrade.set_project(os.getenv("OPENGRADE_PROJECT_SLUG", "demo"))
-opengrade.init(service_name="getting-started-core", instrument="auto")
+og = Opengrade(
+    settings=Settings(
+        tracking_uri=os.getenv("OPENGRADE_TRACKING_URI", "http://127.0.0.1:8000"),
+        project_slug=os.getenv("OPENGRADE_PROJECT_SLUG", "demo"),
+    )
+)
+og.set_project(os.getenv("OPENGRADE_PROJECT_SLUG", "demo"))
+og.init_tracing(service_name="getting-started-core", instrument="auto")
 
 base = os.getenv("OPENAI_BASE_URL") or (
     os.getenv("OLLAMA_HOST", "http://127.0.0.1:11434") + "/v1"
@@ -105,8 +110,9 @@ def ask(q: str) -> str:
 
 
 def main() -> None:
-    print(ask("What is OpenGrade in one sentence?"))
-    opengrade.flush()
+    with og.activate():
+        print(ask("What is OpenGrade in one sentence?"))
+    og.flush()
     print("Open Traces in the UI for project demo.")
 
 
@@ -145,12 +151,16 @@ from __future__ import annotations
 import os
 
 from openai import OpenAI
+from opengrade import Opengrade, Settings
 
-import opengrade
-
-opengrade.set_tracking_uri(os.getenv("OPENGRADE_TRACKING_URI", "http://127.0.0.1:8000"))
-opengrade.set_project(os.getenv("OPENGRADE_PROJECT_SLUG", "demo"))
-opengrade.init(service_name="getting-started-bonus", instrument="auto")
+og = Opengrade(
+    settings=Settings(
+        tracking_uri=os.getenv("OPENGRADE_TRACKING_URI", "http://127.0.0.1:8000"),
+        project_slug=os.getenv("OPENGRADE_PROJECT_SLUG", "demo"),
+    )
+)
+og.set_project(os.getenv("OPENGRADE_PROJECT_SLUG", "demo"))
+og.init_tracing(service_name="getting-started-bonus", instrument="auto")
 
 base = os.getenv("OPENAI_BASE_URL") or (
     os.getenv("OLLAMA_HOST", "http://127.0.0.1:11434") + "/v1"
@@ -181,7 +191,7 @@ def task(item) -> str:
 
 
 def main() -> None:
-    result = opengrade.evaluate(
+    result = og.evaluate(
         dataset=ROWS,
         task=task,
         task_type="rag_qa",
@@ -197,7 +207,7 @@ if __name__ == "__main__":
     main()
 ```
 
-It calls `opengrade.evaluate` on two Q&A rows with metrics `correctness` and `latency`, then prints a UI URL.
+It calls `og.evaluate` on two Q&A rows with metrics `correctness` and `latency`, then prints a UI URL.
 
 Open **Experiments**, then the run named `getting-started-bonus`.
 

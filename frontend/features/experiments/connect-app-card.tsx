@@ -5,13 +5,16 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 
 function snippet(experimentId: string, datasetId: string, projectSlug: string | null): string {
-  const initLine = projectSlug
-    ? `opengrade.init(project_slug="${projectSlug}")`
-    : "opengrade.init()  # set OPENGRADE_PROJECT_SLUG";
+  const slug = projectSlug ?? "my-project";
+  const settingsLine = projectSlug
+    ? `og = Opengrade(settings=Settings(project_slug="${slug}"))`
+    : `og = Opengrade(settings=Settings(project_slug="${slug}"))  # or set OPENGRADE_PROJECT_SLUG`;
   return `import opengrade
-from opengrade import Client
+from opengrade import Opengrade, Settings
 
-${initLine}
+${settingsLine}
+og.set_project("${slug}")
+og.init_tracing()
 
 @opengrade.trace
 def answer(item):
@@ -25,10 +28,10 @@ def answer(item):
     opengrade.set_output(reply)
     return reply
 
-with Client() as client:
-    for item in client.datasets.get("${datasetId}").items:
+with og.activate():
+    for item in og.client.datasets.get("${datasetId}").items:
         answer(item)
-opengrade.flush()`;
+og.flush()`;
 }
 
 /**

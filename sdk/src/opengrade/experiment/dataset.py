@@ -217,7 +217,7 @@ def _inline_dataset_id(
         name=name,
         items=bodies,
         task_type=task_type,
-        description="Created by opengrade.evaluate() from in-memory rows",
+        description="Created by Opengrade.evaluate() from in-memory rows",
     )
     logger.info("opengrade created dataset %s (%d items)", name, len(bodies))
     return created.id

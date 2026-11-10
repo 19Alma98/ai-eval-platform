@@ -36,7 +36,7 @@ export function VersionsSection({
         </h2>
         <p className="text-xs text-muted-foreground">
           Releases in this range (<code>service.version</code>, set with{" "}
-          <code>opengrade.init(version=…)</code>), most traffic first. The worst value per
+          <code>og.init_tracing(version=…)</code>), most traffic first. The worst value per
           column is red. Click a version to filter the page.
         </p>
       </div>

@@ -81,7 +81,7 @@ def _activate_project(
     active_id = rt.settings.project_id
     if rt.initialized and active_id != project.id:
         logger.warning(
-            "opengrade.set_project(%r) after init_tracing(): traces keep going to the previous "
+            "Opengrade.set_project(%r) after init_tracing(): traces keep going to the previous "
             "project until init_tracing(force=True)",
             cleaned,
         )
@@ -127,7 +127,7 @@ def resolve_or_create_project(
                 if project is None:
                     raise
     except OpengradeError as exc:
-        logger.warning("opengrade.set_project(%r) failed: %s", cleaned, exc)
+        logger.warning("Opengrade.set_project(%r) failed: %s", cleaned, exc)
         return None
 
     if activate:

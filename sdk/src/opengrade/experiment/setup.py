@@ -127,7 +127,7 @@ def _resolve_metrics_set(client: Client, project_id: str, requested: list[dict[s
             project_id,
             name=name,
             entries=entries,
-            description="Created by opengrade.evaluate()",
+            description="Created by Opengrade.evaluate()",
         )
     except OpengradeAPIError as exc:
         if exc.status != 409:

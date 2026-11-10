@@ -5,12 +5,16 @@ from __future__ import annotations
 import os
 
 from openai import OpenAI
+from opengrade import Opengrade, Settings
 
-import opengrade
-
-opengrade.set_tracking_uri(os.getenv("OPENGRADE_TRACKING_URI", "http://127.0.0.1:8000"))
-opengrade.set_project(os.getenv("OPENGRADE_PROJECT_SLUG", "demo"))
-opengrade.init(service_name="getting-started-bonus", instrument="auto")
+og = Opengrade(
+    settings=Settings(
+        tracking_uri=os.getenv("OPENGRADE_TRACKING_URI", "http://127.0.0.1:8000"),
+        project_slug=os.getenv("OPENGRADE_PROJECT_SLUG", "demo"),
+    )
+)
+og.set_project(os.getenv("OPENGRADE_PROJECT_SLUG", "demo"))
+og.init_tracing(service_name="getting-started-bonus", instrument="auto")
 
 base = os.getenv("OPENAI_BASE_URL") or (
     os.getenv("OLLAMA_HOST", "http://127.0.0.1:11434") + "/v1"
@@ -41,7 +45,7 @@ def task(item) -> str:
 
 
 def main() -> None:
-    result = opengrade.evaluate(
+    result = og.evaluate(
         dataset=ROWS,
         task=task,
         task_type="rag_qa",

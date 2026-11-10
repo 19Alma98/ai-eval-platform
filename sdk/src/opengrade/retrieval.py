@@ -111,7 +111,7 @@ def _check_metrics(metrics: Sequence[Metric]) -> None:
             raise ValueError(
                 f"metric {kind!r} grades a generated answer; evaluate_retrieval produces none. "
                 "Use retrieval metrics (hit_at_k, recall_at_k, mrr, context_precision, "
-                "context_recall) or opengrade.evaluate for the full pipeline."
+                "context_recall) or Opengrade.evaluate for the full pipeline."
             )
 
 
