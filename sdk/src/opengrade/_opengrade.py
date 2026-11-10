@@ -71,6 +71,22 @@ def current() -> Opengrade:
     return og
 
 
+def ambient() -> Opengrade | None:
+    """Instance tracing should use here: the active one, else the sole tracing instance.
+
+    ``ContextVar`` values do not reach threads started without ``copy_context()`` (plain
+    ``ThreadPoolExecutor``, library-owned threads). With a single traced instance in the
+    process there is no ambiguity, so tracing there still lands in that instance. With
+    several, nothing is guessed and the caller gets None.
+    """
+    og = _CURRENT.get()
+    if og is not None:
+        return og
+    with _INSTANCES_LOCK:
+        traced = [inst for inst in _INSTANCES if inst.tracing_enabled]
+    return traced[0] if len(traced) == 1 else None
+
+
 def _register_instance(og: Opengrade) -> None:
     with _INSTANCES_LOCK:
         _INSTANCES.add(og)

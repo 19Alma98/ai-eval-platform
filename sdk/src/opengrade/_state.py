@@ -194,10 +194,14 @@ def active_runtime() -> _Runtime:
 
 
 def active_runtime_or_none() -> _Runtime | None:
-    """Runtime for the activated ``Opengrade``, or None when no instance is active."""
-    from opengrade._opengrade import _CURRENT
+    """Runtime tracing should use: the activated ``Opengrade``, else the only traced one.
 
-    og = _CURRENT.get()
+    See ``opengrade._opengrade.ambient``. None when nothing is active and the process
+    has zero or several traced instances.
+    """
+    from opengrade._opengrade import ambient
+
+    og = ambient()
     return None if og is None else og._runtime
 
 

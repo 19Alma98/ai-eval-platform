@@ -68,7 +68,7 @@ _Job = Callable[[], None]
 def _rt(runtime: _state._Runtime | None = None) -> _state._Runtime:
     if runtime is not None:
         return runtime
-    return _state.active_runtime()
+    return _state.active_runtime_or_none() or _state.active_runtime()
 
 
 def _warn(key: str, message: str, *args: Any, runtime: _state._Runtime | None = None) -> None:
@@ -380,9 +380,9 @@ def after_call(
             return
         try:
             from opengrade._config import resolve_project_id
-            from opengrade._opengrade import current
+            from opengrade._opengrade import ambient, current
 
-            og = current()
+            og = ambient() or current()
             runtime = og._runtime
             project_id = resolve_project_id(
                 og.client._project_id, runtime=runtime, client=og.client

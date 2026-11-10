@@ -40,9 +40,9 @@ def _parse_rate(value: object) -> float:
 def _runtime(rt: _Runtime | None = None) -> _Runtime:
     if rt is not None:
         return rt
-    from opengrade._state import active_runtime
+    from opengrade._state import active_runtime, active_runtime_or_none
 
-    return active_runtime()
+    return active_runtime_or_none() or active_runtime()
 
 
 def configure(
