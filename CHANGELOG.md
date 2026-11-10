@@ -23,7 +23,9 @@ breaking changes; they are listed under **Changed** with a migration note.
   the same names on `og`. See [Python SDK](sdk/README.md) and [getting started](docs/getting-started.md).
 - **Breaking (SDK):** `Experiment.finish()` / `evaluate()` re-raise when output upsert fails; they no longer soft-fail, score, or return an `ExperimentResult` with missing outputs.
 - **Breaking (SDK):** `set_retrieval_documents` emits OpenInference flattened keys (`retrieval.documents.{i}.document.*`) instead of a single `retrieval.documents` JSON blob.
-- SDK HTTP: PUT and DELETE retry on 429/503 (with GET/HEAD/OPTIONS). Transport/`ConnectError` retries apply to any method, including POST. Max 3 attempts, `Retry-After`, jittered backoff unchanged.
+- SDK HTTP: PUT and DELETE retry on 429/503 (with GET/HEAD/OPTIONS). Transport errors are retried for idempotent methods; POST is retried only when nothing was sent (`ConnectError`, `ConnectTimeout`, `PoolTimeout`), not after `ReadTimeout` / dropped responses that could duplicate a write. Max 3 attempts, `Retry-After`, jittered backoff unchanged.
+- **Breaking (SDK):** unknown keyword arguments to `Opengrade(...)`, `Settings.from_env(...)`, `Settings.with_updates(...)` and `og.init_tracing(...)` raise `TypeError` (with a did-you-mean hint) instead of being ignored.
+- SDK: `og.flush(timeout_millis)` honours its budget (the OTel batch processor ignores it), returns `False` when spans were dropped (unreachable platform, rejected batch), and flushes only that instance's span processor.
 - SDK: `DatasetResponse.item_count` from list responses; `_inline_dataset_id` uses it instead of downloading all items via `get`.
 
 ### Added
@@ -101,6 +103,11 @@ breaking changes; they are listed under **Changed** with a migration note.
 - `@opengrade.trace_async`; use `@opengrade.trace` for sync and async functions.
 
 ### Fixed
+
+- SDK: `@opengrade.trace` / `opengrade.span` no longer raise when no `Opengrade` is active (they run untraced) and internal tracing failures are logged instead of raised — previously the decorated body ran and then its return value was lost to a `RuntimeError`.
+- SDK: with several `Opengrade` instances every span was exported once per extra instance (the routing processor was attached to the shared provider on each `init_tracing`).
+- SDK: a child span joins its parent's instance instead of whichever instance is active when it starts, so traces are not split or dropped; root spans in threads without a copied context go to the only traced instance when there is exactly one.
+- SDK: each instance exports its own `service.name` / `service.version` / `deployment.environment` resource on a shared `TracerProvider` (previously only the first instance's).
 
 - `run_task` / `evaluate` with `max_concurrency > 1` propagate the caller's
   ContextVars into worker threads (`copy_context`), so `using_attributes` and

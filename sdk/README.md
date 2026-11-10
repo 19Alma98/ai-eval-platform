@@ -101,7 +101,8 @@ with contoso.activate():
 - **`with og.activate():`** (or `with og:` which also calls `close()` on exit) sets `opengrade.current()` so `@opengrade.trace`, OTLP export, `og.evaluate()`, and `og.client` use that instance.
 - **Explicit `Client(..., project_id=...)`** pins the control plane to one project regardless of `current()` — use this in libraries and long-lived clients so they never depend on whoever last called `set_project()`.
 - **`Client()` without `project_id`** raises if a method needs a project — pass `project_id` on the client / call, or use `og.client` inside `activate()` after `og.set_project()`.
-- **Worker threads** do not inherit `ContextVar` values from the parent thread. Wrap thread entry points with `contextvars.copy_context().run(...)` (or call `activate()` inside the thread) so tracing and clients stay on the right instance.
+- **Worker threads** do not inherit `ContextVar` values from the parent thread. With a single traced instance in the process, tracing in such threads still lands in it. With several, wrap thread entry points with `contextvars.copy_context().run(...)` (or call `activate()` inside the thread); otherwise spans started there are not exported (nothing is guessed, nothing raises).
+- **Tracing never breaks your code:** without an active instance `@opengrade.trace` / `opengrade.span` run the function untraced, and an internal tracing failure is logged once, never raised. A child span always joins its parent's instance, so a trace is never split across projects.
 
 Runnable multi-tenant FastAPI sample: [`examples/fastapi_multi_tenant/`](https://github.com/19Alma98/ai-eval-platform/blob/main/examples/fastapi_multi_tenant/README.md).
 
