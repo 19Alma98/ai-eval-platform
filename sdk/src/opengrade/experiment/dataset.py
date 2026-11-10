@@ -198,8 +198,10 @@ def _inline_dataset_id(
     name = f"inline-{_digest([task_type, bodies])[:12]}"
     expected = len(bodies)
     for existing in client.datasets.list(project_id, name=name):
-        detail = client.datasets.get(existing.id)
-        have = len(detail.items)
+        have = existing.item_count
+        if have is None:
+            # Older servers omit item_count on list; fall back to a full get.
+            have = len(client.datasets.get(existing.id).items)
         if have == expected:
             return existing.id
         if have > expected:

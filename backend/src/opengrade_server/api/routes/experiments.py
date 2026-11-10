@@ -105,9 +105,11 @@ from opengrade_server.application.experiment_metrics import (
 )
 from opengrade_server.application.experiment_outputs import (
     ExperimentItemNotInDatasetError,
+    InvalidExperimentOutputKeyError,
     ListExperimentOutputs,
     UpsertExperimentOutputs,
     UpsertOutputItem,
+    parse_output_keys,
 )
 from opengrade_server.application.experiments import (
     CreateExperiment,
@@ -442,10 +444,14 @@ async def upsert_experiment_outputs(
 )
 async def list_experiment_outputs(
     experiment_id: uuid.UUID,
+    key: list[str] | None = Query(default=None),
     use_case: ListExperimentOutputs = Depends(get_list_experiment_outputs),
 ) -> list[ExperimentItemOutputResponse]:
     try:
-        items = await use_case.execute(experiment_id)
+        keys = parse_output_keys(key)
+        items = await use_case.execute(experiment_id, keys=keys)
+    except InvalidExperimentOutputKeyError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
     except ExperimentNotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
     return [_output_response(item) for item in items]

@@ -79,9 +79,13 @@ def test_request_raises_opengrade_api_error() -> None:
 def test_retry_decision_idempotent_statuses_and_methods() -> None:
     assert _retry_decision("GET", attempt=0, status=429)[0] is True
     assert _retry_decision("GET", attempt=0, status=503)[0] is True
+    assert _retry_decision("PUT", attempt=0, status=503)[0] is True
+    assert _retry_decision("DELETE", attempt=0, status=429)[0] is True
     assert _retry_decision("GET", attempt=0, status=500)[0] is False
     assert _retry_decision("POST", attempt=0, status=503)[0] is False
     assert _retry_decision("GET", attempt=2, status=503)[0] is False  # 3rd attempt index → no more
+    assert _retry_decision("POST", attempt=0, transport_error=True)[0] is True
+    assert _retry_decision("PUT", attempt=0, transport_error=True)[0] is True
 
 
 def test_retry_decision_retry_after_seconds(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -164,6 +168,90 @@ def test_post_does_not_retry_503(monkeypatch: pytest.MonkeyPatch) -> None:
         transport.request("POST", "/api/v1/projects", body={"name": "x"})
     assert exc_info.value.status == 503
     assert calls["n"] == 1
+    transport.close()
+
+
+def test_put_retries_503_then_succeeds(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(http_mod, "_BACKOFF_BASE_S", 0.0)
+    sleeps: list[float] = []
+    monkeypatch.setattr(http_mod.time, "sleep", sleeps.append)
+    calls = {"n": 0}
+
+    def handler(request: httpx2.Request) -> httpx2.Response:
+        calls["n"] += 1
+        if calls["n"] < 3:
+            return httpx2.Response(503, text="busy")
+        return httpx2.Response(200, json={"ok": True})
+
+    transport = _HttpTransport(
+        "http://localhost:8000",
+        transport=httpx2.MockTransport(handler),
+    )
+    assert transport.request("PUT", "/api/v1/experiments/e1/outputs", body={}) == {"ok": True}
+    assert calls["n"] == 3
+    assert len(sleeps) == 2
+    transport.close()
+
+
+def test_delete_retries_503_then_succeeds(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(http_mod, "_BACKOFF_BASE_S", 0.0)
+    monkeypatch.setattr(http_mod.time, "sleep", lambda _s: None)
+    calls = {"n": 0}
+
+    def handler(request: httpx2.Request) -> httpx2.Response:
+        calls["n"] += 1
+        if calls["n"] == 1:
+            return httpx2.Response(503, text="busy")
+        return httpx2.Response(204)
+
+    transport = _HttpTransport(
+        "http://localhost:8000",
+        transport=httpx2.MockTransport(handler),
+    )
+    assert transport.request("DELETE", "/api/v1/projects/x") is None
+    assert calls["n"] == 2
+    transport.close()
+
+
+def test_post_retries_connect_error_then_succeeds(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(http_mod, "_BACKOFF_BASE_S", 0.0)
+    sleeps: list[float] = []
+    monkeypatch.setattr(http_mod.time, "sleep", sleeps.append)
+    calls = {"n": 0}
+
+    def handler(request: httpx2.Request) -> httpx2.Response:
+        calls["n"] += 1
+        if calls["n"] == 1:
+            raise httpx2.ConnectError("boom", request=request)
+        return httpx2.Response(200, json={"ok": True})
+
+    transport = _HttpTransport(
+        "http://localhost:8000",
+        transport=httpx2.MockTransport(handler),
+    )
+    assert transport.request("POST", "/api/v1/projects", body={"name": "x"}) == {"ok": True}
+    assert calls["n"] == 2
+    assert len(sleeps) == 1
+    transport.close()
+
+
+def test_put_retries_connect_error_then_succeeds(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(http_mod, "_BACKOFF_BASE_S", 0.0)
+    monkeypatch.setattr(http_mod.time, "sleep", lambda _s: None)
+    calls = {"n": 0}
+
+    def handler(request: httpx2.Request) -> httpx2.Response:
+        calls["n"] += 1
+        if calls["n"] == 1:
+            raise httpx2.ConnectError("boom", request=request)
+        return httpx2.Response(200, json={"ok": True})
+
+    transport = _HttpTransport(
+        "http://localhost:8000",
+        transport=httpx2.MockTransport(handler),
+    )
+    assert transport.request("PUT", "/api/v1/experiments/e1/outputs", body={}) == {"ok": True}
+    assert calls["n"] == 2
     transport.close()
 
 

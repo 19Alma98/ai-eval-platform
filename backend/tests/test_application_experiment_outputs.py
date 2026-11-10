@@ -137,11 +137,17 @@ class FakeExperimentItemOutputRepository:
             self.outputs[(output.experiment_id, output.dataset_item_id)] = output
         return outputs
 
-    async def list_by_experiment(self, experiment_id: uuid.UUID) -> list[ExperimentItemOutput]:
-        return sorted(
-            (o for (eid, _), o in self.outputs.items() if eid == experiment_id),
-            key=lambda o: o.dataset_item_id,
-        )
+    async def list_by_experiment(
+        self,
+        experiment_id: uuid.UUID,
+        *,
+        keys: list[tuple[uuid.UUID, int]] | None = None,
+    ) -> list[ExperimentItemOutput]:
+        rows = [o for (eid, _), o in self.outputs.items() if eid == experiment_id]
+        if keys is not None:
+            wanted = set(keys)
+            rows = [o for o in rows if (o.dataset_item_id, o.repeat) in wanted]
+        return sorted(rows, key=lambda o: o.dataset_item_id)
 
 
 @pytest.mark.asyncio
@@ -259,6 +265,42 @@ async def test_list_outputs_returns_repository_rows() -> None:
     )
     listed = await use_case.execute(experiment.id)
     assert listed == [out]
+
+
+@pytest.mark.asyncio
+async def test_list_outputs_filters_by_keys() -> None:
+    from opengrade_server.application.experiment_outputs import parse_output_keys
+
+    dataset_id = uuid.uuid4()
+    experiment = Experiment.create(uuid.uuid4(), "exp", dataset_id, model_config={})
+    item_a = DatasetItem.create(dataset_id, input="a")
+    item_b = DatasetItem.create(dataset_id, input="b")
+    out_a = ExperimentItemOutput.create(experiment.id, item_a.id, actual_output="va", context=None)
+    out_b = ExperimentItemOutput.create(experiment.id, item_b.id, actual_output="vb", context=None)
+    output_repo = FakeExperimentItemOutputRepository(
+        {(experiment.id, item_a.id): out_a, (experiment.id, item_b.id): out_b}
+    )
+    use_case = ListExperimentOutputs(
+        FakeExperimentRepository({experiment.id: experiment}),
+        output_repo,
+    )
+    keys = parse_output_keys([f"{item_a.id}:0"])
+    listed = await use_case.execute(experiment.id, keys=keys)
+    assert listed == [out_a]
+
+
+def test_parse_output_keys_rejects_invalid() -> None:
+    from opengrade_server.application.experiment_outputs import (
+        InvalidExperimentOutputKeyError,
+        parse_output_keys,
+    )
+
+    with pytest.raises(InvalidExperimentOutputKeyError):
+        parse_output_keys(["not-a-uuid:0"])
+    with pytest.raises(InvalidExperimentOutputKeyError):
+        parse_output_keys(["abc"])
+    with pytest.raises(InvalidExperimentOutputKeyError):
+        parse_output_keys([f"{uuid.uuid4()}:-1"])
 
 
 @dataclass

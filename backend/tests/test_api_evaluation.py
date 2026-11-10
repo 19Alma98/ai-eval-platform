@@ -221,11 +221,17 @@ class InMemoryExperimentItemOutputRepository:
             self._outputs[(output.experiment_id, output.dataset_item_id, output.repeat)] = output
         return outputs
 
-    async def list_by_experiment(self, experiment_id: uuid.UUID) -> list[ExperimentItemOutput]:
-        return sorted(
-            (o for (eid, _, _), o in self._outputs.items() if eid == experiment_id),
-            key=lambda o: o.dataset_item_id,
-        )
+    async def list_by_experiment(
+        self,
+        experiment_id: uuid.UUID,
+        *,
+        keys: list[tuple[uuid.UUID, int]] | None = None,
+    ) -> list[ExperimentItemOutput]:
+        rows = [o for (eid, _, _), o in self._outputs.items() if eid == experiment_id]
+        if keys is not None:
+            wanted = set(keys)
+            rows = [o for o in rows if (o.dataset_item_id, o.repeat) in wanted]
+        return sorted(rows, key=lambda o: o.dataset_item_id)
 
 
 @pytest.fixture

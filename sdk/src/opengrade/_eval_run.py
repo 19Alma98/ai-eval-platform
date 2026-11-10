@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json
+
 from opengrade._run_context import record_documents, record_search_query
 from opengrade._trace import set_attributes
 
@@ -25,17 +27,30 @@ def _document_has_id(doc: dict[str, object]) -> bool:
 
 
 def set_retrieval_documents(documents: list[dict[str, object]]) -> None:
-    """Record retrieved documents on the current span."""
+    """Record retrieved documents on the current span as OpenInference flattened attrs."""
     for index, doc in enumerate(documents):
         if not _document_has_id(doc):
             raise ValueError(f"retrieval document at index {index} must include a non-empty id")
     record_documents([dict(doc) for doc in documents])
-    set_attributes(
-        {
-            "retrieval.document_count": len(documents),
-            "retrieval.documents": documents,
-        }
-    )
+    attributes: dict[str, object] = {"retrieval.document_count": len(documents)}
+    for index, doc in enumerate(documents):
+        prefix = f"retrieval.documents.{index}.document"
+        attributes[f"{prefix}.id"] = str(doc["id"]).strip()
+        text = doc.get("text")
+        if text is not None and str(text):
+            attributes[f"{prefix}.content"] = str(text)
+        score = doc.get("score")
+        if score is not None:
+            attributes[f"{prefix}.score"] = score
+        metadata: dict[str, object] = {}
+        if "metadata" in doc and isinstance(doc["metadata"], dict):
+            metadata.update(doc["metadata"])
+        title = doc.get("title")
+        if title is not None and str(title).strip():
+            metadata.setdefault("title", str(title).strip())
+        if metadata:
+            attributes[f"{prefix}.metadata"] = json.dumps(metadata, default=str)
+    set_attributes(attributes)
 
 
 def set_search_query(query: str) -> None:

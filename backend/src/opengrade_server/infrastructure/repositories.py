@@ -6,7 +6,7 @@ from collections.abc import Collection, Sequence
 from datetime import UTC, datetime
 from typing import Any, cast
 
-from sqlalchemy import Select, and_, case, delete, exists, func, select, update
+from sqlalchemy import Select, and_, case, delete, exists, func, select, tuple_, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.engine import CursorResult
@@ -1459,12 +1459,28 @@ class SqlAlchemyExperimentItemOutputRepository:
     async def upsert_many(self, outputs: list[ExperimentItemOutput]) -> list[ExperimentItemOutput]:
         return [await self.upsert(output) for output in outputs]
 
-    async def list_by_experiment(self, experiment_id: uuid.UUID) -> list[ExperimentItemOutput]:
-        result = await self._session.execute(
-            select(ExperimentItemOutputModel)
-            .where(ExperimentItemOutputModel.experiment_id == experiment_id)
-            .order_by(ExperimentItemOutputModel.dataset_item_id, ExperimentItemOutputModel.repeat)
+    async def list_by_experiment(
+        self,
+        experiment_id: uuid.UUID,
+        *,
+        keys: Sequence[tuple[uuid.UUID, int]] | None = None,
+    ) -> list[ExperimentItemOutput]:
+        stmt = select(ExperimentItemOutputModel).where(
+            ExperimentItemOutputModel.experiment_id == experiment_id
         )
+        if keys is not None:
+            if not keys:
+                return []
+            stmt = stmt.where(
+                tuple_(
+                    ExperimentItemOutputModel.dataset_item_id,
+                    ExperimentItemOutputModel.repeat,
+                ).in_(list(keys))
+            )
+        stmt = stmt.order_by(
+            ExperimentItemOutputModel.dataset_item_id, ExperimentItemOutputModel.repeat
+        )
+        result = await self._session.execute(stmt)
         return [_experiment_item_output_to_domain(row) for row in result.scalars().all()]
 
     async def get(

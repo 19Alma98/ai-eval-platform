@@ -41,6 +41,7 @@ class FakeServer:
         self.experiment_metrics: dict[str, dict[str, float]] = {}
         self.aliases: dict[str, str] = {}
         self.fail_metrics = False
+        self.fail_upsert = False
         self.summary_repeats = 1
         self.calls: list[tuple[str, str, Any]] = []
         self.add_metrics_set(
@@ -111,7 +112,8 @@ class FakeServer:
                 name = request.url.params.get("name")
                 if name is not None:
                     datasets = [d for d in datasets if d["name"] == name]
-                return httpx2.Response(200, json=datasets)
+                payload = [{**d, "item_count": len(self.items.get(d["id"], []))} for d in datasets]
+                return httpx2.Response(200, json=payload)
             ds_id = self.add_dataset(body["name"], [])
             return httpx2.Response(201, json=self.datasets[ds_id])
         if m := re.fullmatch(r"/api/v1/datasets/([^/]+)/items", path):
@@ -159,6 +161,8 @@ class FakeServer:
         if m := re.fullmatch(r"/api/v1/experiments/([^/]+)/outputs", path):
             store = self.outputs[m[1]]
             if method == "PUT":
+                if self.fail_upsert:
+                    return httpx2.Response(503, json={"detail": "upsert unavailable"})
                 for entry in body["items"]:
                     key = entry["dataset_item_id"]
                     if entry.get("repeat"):
@@ -169,7 +173,19 @@ class FakeServer:
                     )
                     current.update(entry)
                 return httpx2.Response(200, json={"upserted": len(body["items"]), "items": []})
-            return httpx2.Response(200, json=list(store.values()))
+            rows = list(store.values())
+            filter_keys = request.url.params.get_list("key")
+            if filter_keys:
+                wanted = set()
+                for raw in filter_keys:
+                    item_id, _, repeat_text = raw.partition(":")
+                    wanted.add((item_id, int(repeat_text or "0")))
+                rows = [
+                    row
+                    for row in rows
+                    if (str(row["dataset_item_id"]), int(row.get("repeat") or 0)) in wanted
+                ]
+            return httpx2.Response(200, json=rows)
         if m := re.fullmatch(r"/api/v1/experiments/([^/]+)/evaluate-pack", path):
             self.experiments[m[1]]["status"] = "completed"
             self.scored_on_server.add(m[1])
@@ -362,6 +378,21 @@ def test_evaluate_metrics_set_id_reuses_existing_set(server: FakeServer) -> None
         current().evaluate(
             dataset=ROWS, task=_task, metrics=["hit_at_k"], metrics_set_id=ms_id, name="bad"
         )
+
+
+def test_inline_dataset_reuses_by_item_count_without_get(server: FakeServer) -> None:
+    rows = [{"input": "q1"}, {"input": "q2"}]
+    first = _inline_dataset_id(current().client, PROJECT_ID, rows, task_type="rag_qa")
+    server.calls.clear()
+    second = _inline_dataset_id(current().client, PROJECT_ID, rows, task_type="rag_qa")
+    assert second == first
+    detail_gets = [
+        path
+        for method, path, _ in server.calls
+        if method == "GET" and re.fullmatch(r"/api/v1/datasets/[^/]+", path)
+    ]
+    assert detail_gets == []
+    assert any(method == "GET" and path.endswith("/datasets") for method, path, _ in server.calls)
 
 
 def test_inline_dataset_resumes_partial_create(server: FakeServer) -> None:
@@ -1043,6 +1074,18 @@ def test_finish_survives_run_metrics_failure(server: FakeServer) -> None:
         for stored in server.experiment_metrics.values()
         for key in stored
     )
+
+
+def test_finish_raises_when_upsert_fails(server: FakeServer) -> None:
+    from opengrade._errors import OpengradeAPIError
+
+    server.fail_upsert = True
+    with pytest.raises(OpengradeAPIError) as exc_info:
+        current().evaluate(dataset=ROWS, task=_task, metrics=["hit_at_k"])
+    assert exc_info.value.status == 503
+    assert server.scored_on_server == set()
+    assert server.client_results == {}
+    assert all(not store for store in server.outputs.values())
 
 
 def test_fmt_delta_labels_unchanged_as_not_significant() -> None:

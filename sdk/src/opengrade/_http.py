@@ -18,7 +18,7 @@ from opengrade._errors import OpengradeAPIError, OpengradeConnectionError, Openg
 
 T = TypeVar("T", bound=BaseModel)
 
-_IDEMPOTENT_METHODS = frozenset({"GET", "HEAD", "OPTIONS"})
+_IDEMPOTENT_METHODS = frozenset({"GET", "HEAD", "OPTIONS", "PUT", "DELETE"})
 _RETRY_STATUSES = frozenset({429, 503})
 _MAX_ATTEMPTS = 3
 _BACKOFF_BASE_S = 0.5
@@ -73,11 +73,12 @@ def _retry_decision(
     retry_after: str | None = None,
     transport_error: bool = False,
 ) -> tuple[bool, float]:
-    if method.upper() not in _IDEMPOTENT_METHODS:
-        return False, 0.0
     if attempt + 1 >= _MAX_ATTEMPTS:
         return False, 0.0
-    if not transport_error and status not in _RETRY_STATUSES:
+    if transport_error:
+        # Request never completed; safe to retry any method.
+        pass
+    elif method.upper() not in _IDEMPOTENT_METHODS or status not in _RETRY_STATUSES:
         return False, 0.0
     parsed = _parse_retry_after(retry_after)
     if parsed is not None:
@@ -86,6 +87,21 @@ def _retry_decision(
 
 
 def _call_with_retry(method: str, call: Callable[[], httpx2.Response]) -> httpx2.Response:
+    return _run_with_retry(method, call, sleep=time.sleep)
+
+
+async def _acall_with_retry(
+    method: str, call: Callable[[], Awaitable[httpx2.Response]]
+) -> httpx2.Response:
+    return await _arun_with_retry(method, call, sleep=asyncio.sleep)
+
+
+def _run_with_retry(
+    method: str,
+    call: Callable[[], httpx2.Response],
+    *,
+    sleep: Callable[[float], None],
+) -> httpx2.Response:
     last_exc: httpx2.HTTPError | None = None
     response: httpx2.Response | None = None
     for attempt in range(_MAX_ATTEMPTS):
@@ -96,7 +112,7 @@ def _call_with_retry(method: str, call: Callable[[], httpx2.Response]) -> httpx2
             should, delay = _retry_decision(method, attempt=attempt, transport_error=True)
             if not should:
                 raise _wrap_http_error(exc) from exc
-            time.sleep(delay)
+            sleep(delay)
             continue
         should, delay = _retry_decision(
             method,
@@ -106,15 +122,18 @@ def _call_with_retry(method: str, call: Callable[[], httpx2.Response]) -> httpx2
         )
         if not should:
             return response
-        time.sleep(delay)
+        sleep(delay)
     if response is not None:
         return response
     assert last_exc is not None
     raise _wrap_http_error(last_exc) from last_exc
 
 
-async def _acall_with_retry(
-    method: str, call: Callable[[], Awaitable[httpx2.Response]]
+async def _arun_with_retry(
+    method: str,
+    call: Callable[[], Awaitable[httpx2.Response]],
+    *,
+    sleep: Callable[[float], Awaitable[None]],
 ) -> httpx2.Response:
     last_exc: httpx2.HTTPError | None = None
     response: httpx2.Response | None = None
@@ -126,7 +145,7 @@ async def _acall_with_retry(
             should, delay = _retry_decision(method, attempt=attempt, transport_error=True)
             if not should:
                 raise _wrap_http_error(exc) from exc
-            await asyncio.sleep(delay)
+            await sleep(delay)
             continue
         should, delay = _retry_decision(
             method,
@@ -136,7 +155,7 @@ async def _acall_with_retry(
         )
         if not should:
             return response
-        await asyncio.sleep(delay)
+        await sleep(delay)
     if response is not None:
         return response
     assert last_exc is not None
@@ -177,7 +196,7 @@ class _HttpTransport:
         path: str,
         *,
         body: dict[str, Any] | None = None,
-        query: dict[str, str] | None = None,
+        query: dict[str, Any] | None = None,
     ) -> Any:
         response = _call_with_retry(
             method,
@@ -192,7 +211,7 @@ class _HttpTransport:
         *,
         response_model: type[T],
         body: dict[str, Any] | None = None,
-        query: dict[str, str] | None = None,
+        query: dict[str, Any] | None = None,
     ) -> T:
         data = self.request(method, path, body=body, query=query)
         return response_model.model_validate(data)
@@ -204,7 +223,7 @@ class _HttpTransport:
         *,
         response_model: type[T],
         body: dict[str, Any] | None = None,
-        query: dict[str, str] | None = None,
+        query: dict[str, Any] | None = None,
     ) -> list[T]:
         data = self.request(method, path, body=body, query=query)
         if not isinstance(data, list):
@@ -220,7 +239,7 @@ class _HttpTransport:
         filename: str,
         content: bytes,
         content_type: str | None = None,
-        query: dict[str, str] | None = None,
+        query: dict[str, Any] | None = None,
     ) -> Any:
         ctype = content_type or mimetypes.guess_type(filename)[0] or "application/octet-stream"
         response = _call_with_retry(
@@ -244,7 +263,7 @@ class _HttpTransport:
         filename: str,
         content: bytes,
         content_type: str | None = None,
-        query: dict[str, str] | None = None,
+        query: dict[str, Any] | None = None,
     ) -> T:
         data = self.request_multipart(
             method,
@@ -299,7 +318,7 @@ class _AsyncHttpTransport:
         path: str,
         *,
         body: dict[str, Any] | None = None,
-        query: dict[str, str] | None = None,
+        query: dict[str, Any] | None = None,
     ) -> Any:
         response = await _acall_with_retry(
             method,
@@ -314,7 +333,7 @@ class _AsyncHttpTransport:
         *,
         response_model: type[T],
         body: dict[str, Any] | None = None,
-        query: dict[str, str] | None = None,
+        query: dict[str, Any] | None = None,
     ) -> T:
         data = await self.request(method, path, body=body, query=query)
         return response_model.model_validate(data)
@@ -326,7 +345,7 @@ class _AsyncHttpTransport:
         *,
         response_model: type[T],
         body: dict[str, Any] | None = None,
-        query: dict[str, str] | None = None,
+        query: dict[str, Any] | None = None,
     ) -> list[T]:
         data = await self.request(method, path, body=body, query=query)
         if not isinstance(data, list):

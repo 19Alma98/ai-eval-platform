@@ -81,7 +81,12 @@ class FakeEvaluationRunRepository:
 
 @dataclass
 class FakeExperimentItemOutputRepository:
-    async def list_by_experiment(self, experiment_id: uuid.UUID) -> list:
+    async def list_by_experiment(
+        self,
+        experiment_id: uuid.UUID,
+        *,
+        keys: list[tuple[uuid.UUID, int]] | None = None,
+    ) -> list:
         return []
 
 

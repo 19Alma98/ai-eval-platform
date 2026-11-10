@@ -34,6 +34,7 @@ class DatasetResponse(_ApiModel):
     description: str | None = None
     task_type: str | None = None
     created_at: datetime | str | None = None
+    item_count: int | None = None
 
 
 class DatasetItemResponse(_ApiModel):

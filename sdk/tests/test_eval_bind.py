@@ -72,10 +72,11 @@ def test_set_retrieval_documents_sets_count_and_payload(
     run()
     attrs = dict(spans.get_finished_spans()[0].attributes or {})
     assert attrs["retrieval.document_count"] == 2
-    raw = attrs["retrieval.documents"]
-    assert isinstance(raw, str)
-    parsed = json.loads(raw)
-    assert parsed == documents
+    assert "retrieval.documents" not in attrs
+    assert attrs["retrieval.documents.0.document.id"] == "doc-1"
+    assert json.loads(attrs["retrieval.documents.0.document.metadata"]) == {"title": "A"}
+    assert attrs["retrieval.documents.1.document.id"] == "doc-2"
+    assert attrs["retrieval.documents.1.document.content"] == "body"
 
 
 @pytest.mark.parametrize(

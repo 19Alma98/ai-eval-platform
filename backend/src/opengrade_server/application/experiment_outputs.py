@@ -119,6 +119,43 @@ class UpsertExperimentOutputs:
         return await self._outputs.upsert_many(patched)
 
 
+_OUTPUT_KEY_LIMIT = 500
+
+
+class InvalidExperimentOutputKeyError(ValueError):
+    """Raised when a list-outputs ``key`` query value is malformed."""
+
+
+def parse_output_keys(raw: list[str] | None) -> list[tuple[uuid.UUID, int]] | None:
+    """Parse ``{dataset_item_id}:{repeat}`` query values; ``None`` means no filter."""
+    if raw is None:
+        return None
+    if len(raw) > _OUTPUT_KEY_LIMIT:
+        raise InvalidExperimentOutputKeyError(
+            f"at most {_OUTPUT_KEY_LIMIT} key filters are allowed per request"
+        )
+    keys: list[tuple[uuid.UUID, int]] = []
+    for value in raw:
+        item_id_text, sep, repeat_text = value.partition(":")
+        if not sep or not item_id_text or not repeat_text:
+            raise InvalidExperimentOutputKeyError(
+                f"invalid output key {value!r}; expected '{{dataset_item_id}}:{{repeat}}'"
+            )
+        try:
+            item_id = uuid.UUID(item_id_text)
+            repeat = int(repeat_text)
+        except ValueError as exc:
+            raise InvalidExperimentOutputKeyError(
+                f"invalid output key {value!r}; expected '{{dataset_item_id}}:{{repeat}}'"
+            ) from exc
+        if repeat < 0:
+            raise InvalidExperimentOutputKeyError(
+                f"invalid output key {value!r}; repeat must be >= 0"
+            )
+        keys.append((item_id, repeat))
+    return keys
+
+
 class ListExperimentOutputs:
     def __init__(
         self,
@@ -128,8 +165,13 @@ class ListExperimentOutputs:
         self._experiments = experiments
         self._outputs = outputs
 
-    async def execute(self, experiment_id: uuid.UUID) -> list[ExperimentItemOutput]:
+    async def execute(
+        self,
+        experiment_id: uuid.UUID,
+        *,
+        keys: list[tuple[uuid.UUID, int]] | None = None,
+    ) -> list[ExperimentItemOutput]:
         experiment = await self._experiments.get_by_id(experiment_id)
         if experiment is None:
             raise ExperimentNotFoundError(experiment_id)
-        return await self._outputs.list_by_experiment(experiment_id)
+        return await self._outputs.list_by_experiment(experiment_id, keys=keys)

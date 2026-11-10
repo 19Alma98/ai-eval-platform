@@ -424,11 +424,21 @@ class _ExperimentsResource:
             f"/api/v1/projects/{project_id}/experiment-aliases/{quote(alias, safe='')}",
         )
 
-    def list_outputs(self, experiment_id: str) -> builtins.list[ExperimentItemOutputResponse]:
+    def list_outputs(
+        self,
+        experiment_id: str,
+        *,
+        keys: builtins.list[tuple[str, int]] | None = None,
+    ) -> builtins.list[ExperimentItemOutputResponse]:
+        query: dict[str, Any] | None = None
+        if keys is not None:
+            # httpx encodes list values as repeated query params.
+            query = {"key": [f"{item_id}:{repeat}" for item_id, repeat in keys]}
         return self._http.request_model_list(
             "GET",
             f"/api/v1/experiments/{experiment_id}/outputs",
             response_model=ExperimentItemOutputResponse,
+            query=query,
         )
 
     def upsert_outputs(

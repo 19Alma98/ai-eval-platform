@@ -56,6 +56,7 @@ logger = logging.getLogger("opengrade")
 ACTIVE_EXPERIMENT: ContextVar[Experiment | None] = ContextVar(
     "opengrade_active_experiment", default=None
 )
+_OUTPUT_KEY_CHUNK = 500
 
 
 @dataclass
@@ -409,12 +410,7 @@ class Experiment:
             _output_entry(record, stored.get((record.item.id, record.repeat))) for record in records
         ]
         for chunk in _chunk_by_bytes(payload, max_count=_UPSERT_CHUNK, max_bytes=_UPSERT_MAX_BYTES):
-            try:
-                self._client.experiments.upsert_outputs(self.id, chunk)
-            except OpengradeError as exc:
-                logger.warning(
-                    "opengrade: could not upsert outputs for experiment %s: %s", self.id, exc
-                )
+            self._client.experiments.upsert_outputs(self.id, chunk)
 
         # After the outputs: client runs record the inputs fingerprint they scored.
         submitted = self._submit_local_scores(records)
@@ -490,16 +486,26 @@ class Experiment:
             _otel.flush()
         else:
             traced = {}
-        deadline = time.monotonic() + bind_timeout
-        while True:
-            stored = {
+        if not traced:
+            # No binding wait; still load existing rows so upsert can merge metadata.
+            return {
                 (str(o.dataset_item_id), o.repeat): o
                 for o in self._client.experiments.list_outputs(self.id)
             }
+        deadline = time.monotonic() + bind_timeout
+        stored: dict[tuple[str, int], ExperimentItemOutputResponse] = {}
+        pending = list(traced)
+        while True:
+            if pending:
+                for offset in range(0, len(pending), _OUTPUT_KEY_CHUNK):
+                    chunk = pending[offset : offset + _OUTPUT_KEY_CHUNK]
+                    for o in self._client.experiments.list_outputs(self.id, keys=chunk):
+                        stored[(str(o.dataset_item_id), o.repeat)] = o
             pending = [
                 key
                 for key, trace_id in traced.items()
-                if (o := stored.get(key)) is None or o.metadata.get("source_trace_id") != trace_id
+                if (row := stored.get(key)) is None
+                or row.metadata.get("source_trace_id") != trace_id
             ]
             if not pending:
                 return stored

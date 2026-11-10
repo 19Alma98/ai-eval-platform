@@ -208,11 +208,17 @@ class InMemoryExperimentItemOutputRepository:
             self._outputs[(output.experiment_id, output.dataset_item_id, output.repeat)] = output
         return outputs
 
-    async def list_by_experiment(self, experiment_id: uuid.UUID) -> list[ExperimentItemOutput]:
-        return sorted(
-            (o for (eid, _, _), o in self._outputs.items() if eid == experiment_id),
-            key=lambda o: o.dataset_item_id,
-        )
+    async def list_by_experiment(
+        self,
+        experiment_id: uuid.UUID,
+        *,
+        keys: list[tuple[uuid.UUID, int]] | None = None,
+    ) -> list[ExperimentItemOutput]:
+        rows = [o for (eid, _, _), o in self._outputs.items() if eid == experiment_id]
+        if keys is not None:
+            wanted = set(keys)
+            rows = [o for o in rows if (o.dataset_item_id, o.repeat) in wanted]
+        return sorted(rows, key=lambda o: o.dataset_item_id)
 
 
 @pytest.fixture
@@ -383,6 +389,46 @@ async def test_put_omit_context_preserves_null_clears(client: AsyncClient) -> No
     assert clear.status_code == 200
     assert clear.json()["items"][0]["context"] is None
     assert clear.json()["items"][0]["actual_output"] == "v2"
+
+
+@pytest.mark.asyncio
+async def test_list_outputs_filters_by_key_query(client: AsyncClient) -> None:
+    experiment_id, item_id = await _seed_experiment_with_item(client)
+    exp = await client.get(f"/api/v1/experiments/{experiment_id}")
+    assert exp.status_code == 200
+    dataset_id = exp.json()["dataset_id"]
+    other = await client.post(
+        f"/api/v1/datasets/{dataset_id}/items",
+        json={"input": "other", "expected_output": "x"},
+    )
+    assert other.status_code == 201
+    other_id = other.json()["id"]
+
+    put = await client.put(
+        f"/api/v1/experiments/{experiment_id}/outputs",
+        json={
+            "items": [
+                {"dataset_item_id": item_id, "actual_output": "a"},
+                {"dataset_item_id": other_id, "actual_output": "b"},
+            ]
+        },
+    )
+    assert put.status_code == 200
+
+    filtered = await client.get(
+        f"/api/v1/experiments/{experiment_id}/outputs",
+        params=[("key", f"{item_id}:0")],
+    )
+    assert filtered.status_code == 200
+    rows = filtered.json()
+    assert len(rows) == 1
+    assert rows[0]["dataset_item_id"] == item_id
+
+    bad = await client.get(
+        f"/api/v1/experiments/{experiment_id}/outputs",
+        params=[("key", "not-a-key")],
+    )
+    assert bad.status_code == 400
 
 
 @pytest.mark.asyncio

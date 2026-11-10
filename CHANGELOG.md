@@ -9,8 +9,16 @@ breaking changes; they are listed under **Changed** with a migration note.
 
 ## [Unreleased]
 
+### Changed
+
+- **Breaking (SDK):** `Experiment.finish()` / `evaluate()` re-raise when output upsert fails; they no longer soft-fail, score, or return an `ExperimentResult` with missing outputs.
+- **Breaking (SDK):** `set_retrieval_documents` emits OpenInference flattened keys (`retrieval.documents.{i}.document.*`) instead of a single `retrieval.documents` JSON blob.
+- SDK HTTP: PUT and DELETE retry on 429/503 (with GET/HEAD/OPTIONS). Transport/`ConnectError` retries apply to any method, including POST. Max 3 attempts, `Retry-After`, jittered backoff unchanged.
+- SDK: `DatasetResponse.item_count` from list responses; `_inline_dataset_id` uses it instead of downloading all items via `get`.
+
 ### Added
 
+- API/SDK: `GET /api/v1/experiments/{id}/outputs?key={dataset_item_id}:{repeat}` filters rows; SDK `list_outputs(..., keys=...)` and the experiment bind poller use it for pending keys only.
 - API: `GET /api/v1/projects/by-slug/{slug}` returns one project or 404.
 - SDK: `Client.projects.get_by_slug` / async equivalent; lazy slug resolve uses it and caches 404s for the process lifetime.
 - SDK: idempotent HTTP GETs retry on connection errors and 429/503, honor `Retry-After`, and use short exponential backoff with jitter (max 3 attempts).
