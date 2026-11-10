@@ -76,28 +76,35 @@ def _clear_module_state_keys() -> None:
         mod.__dict__.pop(key, None)
 
 
+_PROCESS_ATEXIT_REGISTERED = False
+
+
 def _current_provider() -> TracerProvider | None:
     mod = sys.modules[__name__]
     if "_PROVIDER" in mod.__dict__:
         return cast(TracerProvider | None, mod.__dict__["_PROVIDER"])
     if _SHARED_PROVIDER is not None:
         return _SHARED_PROVIDER
-    return _state._default().provider
+    for og in list(_OPEN_TRACING_INSTANCES):
+        if og._runtime.provider is not None:
+            return og._runtime.provider
+    return None
 
 
 def _atexit_registered() -> bool:
     mod = sys.modules[__name__]
     if "_ATEXIT_REGISTERED" in mod.__dict__:
         return cast(bool, mod.__dict__["_ATEXIT_REGISTERED"])
-    return _state._default().otel_atexit_registered
+    return _PROCESS_ATEXIT_REGISTERED
 
 
 def _mark_atexit_registered() -> None:
+    global _PROCESS_ATEXIT_REGISTERED
     mod = sys.modules[__name__]
     if "_ATEXIT_REGISTERED" in mod.__dict__:
         mod.__dict__["_ATEXIT_REGISTERED"] = True
     else:
-        _state._default().otel_atexit_registered = True
+        _PROCESS_ATEXIT_REGISTERED = True
 
 
 def is_disabled() -> bool:
@@ -410,17 +417,12 @@ def _teardown_instance_tracing(og: Opengrade) -> None:
 
 
 def _all_tracing_instances() -> list[Opengrade]:
-    from opengrade._opengrade import _default_opengrade
-
     seen: set[int] = set()
     ordered: list[Opengrade] = []
     for og in list(_OPEN_TRACING_INSTANCES):
         if id(og) not in seen:
             seen.add(id(og))
             ordered.append(og)
-    default = _default_opengrade()
-    if default._runtime.initialized and id(default) not in seen:
-        ordered.append(default)
     return ordered
 
 
@@ -443,12 +445,6 @@ def _teardown_opengrade_tracing(*, reset_global: bool) -> None:
     _SHARED_PROVIDER = None
     _OWNS_SHARED_PROVIDER = False
     _ROUTER = None
-    rt = _state._default()
-    rt.processor = None
-    rt.exporter = None
-    rt.provider = None
-    rt.owns_provider = False
-    rt.initialized = False
 
 
 def _shutdown_and_reset_global_tracer_provider() -> None:
@@ -485,20 +481,6 @@ def resolve_trace_sample_rate(explicit: float | None = None) -> float:
     except (TypeError, ValueError):
         logger.warning("opengrade: invalid OPENGRADE_TRACE_SAMPLE_RATE=%r; keeping all traces", raw)
         return 1.0
-
-
-def _reset_for_tests() -> None:
-    global _INSTANCE_ID_COUNTER
-    _clear_module_state_keys()
-    deactivate_instrumentors()
-    _shutdown_and_reset_global_tracer_provider()
-    _live._reset_for_tests()
-    configure_capture()
-    _state._default().initialized = False
-    _INSTANCE_ID_COUNTER = 0
-    from opengrade._opengrade import _reset_opengrade_for_tests
-
-    _reset_opengrade_for_tests()
 
 
 def _at_exit() -> None:
@@ -568,39 +550,37 @@ def init_for_instance(
         logger.debug("opengrade: ignoring unknown init_tracing kwargs: %s", sorted(kwargs))
 
     rt = og._runtime
-    is_default = rt is _state._default()
 
     if is_disabled():
         logger.info("opengrade: OPENGRADE_DISABLED is set; tracing disabled")
         return
 
     if rt.initialized and not force:
-        if is_default:
-            logger.info("opengrade already initialized; skipping (pass force=True to re-init)")
         return
 
     if force:
-        if is_default:
+        owner = _INSTRUMENTOR_OWNER() if _INSTRUMENTOR_OWNER is not None else None
+        if owner is og:
             deactivate_instrumentors()
         _teardown_instance_tracing(og)
 
-    if is_default:
-        try:
-            _live.configure(enabled=live, sample_rate=live_sample_rate)
-        except (TypeError, ValueError) as exc:
-            logger.warning("opengrade: live capture disabled: %s", exc)
-            _live.configure(enabled=False)
+    try:
+        _live.configure(enabled=live, sample_rate=live_sample_rate, runtime=rt)
+    except (TypeError, ValueError) as exc:
+        logger.warning("opengrade: live capture disabled: %s", exc)
+        _live.configure(enabled=False, runtime=rt)
 
-        try:
-            configure_capture(max_capture_bytes=max_capture_bytes)
-        except (TypeError, ValueError) as exc:
-            logger.warning("opengrade: max_capture_bytes ignored: %s", exc)
-            configure_capture()
+    try:
+        if max_capture_bytes is not None:
+            configure_capture(rt, max_capture_bytes=max_capture_bytes)
+    except (TypeError, ValueError) as exc:
+        logger.warning("opengrade: max_capture_bytes ignored: %s", exc)
+        configure_capture(rt)
 
-        try:
-            _production.configure(workers=metrics_workers)
-        except (TypeError, ValueError) as exc:
-            logger.warning("opengrade: metrics_workers ignored: %s", exc)
+    try:
+        _production.configure(workers=metrics_workers, runtime=rt)
+    except (TypeError, ValueError) as exc:
+        logger.warning("opengrade: metrics_workers ignored: %s", exc)
 
     try:
         sample_rate = resolve_trace_sample_rate(trace_sample_rate)
@@ -615,12 +595,13 @@ def init_for_instance(
         from opentelemetry.sdk.resources import Resource
         from opentelemetry.sdk.trace.sampling import ParentBased, TraceIdRatioBased
 
-        pid = project_id
-        pslug = project_slug
-        if pid is None and pslug is None and not is_default:
-            pid = settings.project_id
-            pslug = settings.project_slug
+        pid = project_id if project_id is not None else settings.project_id
+        pslug = project_slug if project_slug is not None else settings.project_slug
+        if pid is not None and pslug is not None:
+            pslug = None
         config = resolve_config(
+            runtime=rt,
+            settings=settings,
             project_id=pid,
             project_slug=pslug,
             endpoint=endpoint,
@@ -628,7 +609,10 @@ def init_for_instance(
             version=version or settings.version,
             environment=environment or settings.environment,
         )
-        headers = {**project_headers(config), **auth_headers(config.endpoint)}
+        headers = {
+            **project_headers(config),
+            **auth_headers(config.endpoint, api_key=_state.api_key_for(rt), runtime=rt),
+        }
         release = release_attributes(config.version, config.environment)
         resource = Resource.create(
             {
@@ -707,13 +691,10 @@ def init_for_instance(
             except Exception as exc:  # noqa: BLE001
                 logger.warning("opengrade: auto-instrumentation skipped: %s", exc)
 
-    if is_default:
-        from opengrade._config import _set_active_project
-
-        if config.project_id:
-            _set_active_project(project_id=config.project_id)
-        elif config.project_slug:
-            _set_active_project(project_slug=config.project_slug)
+    if config.project_id:
+        _state.set_active_project(rt, project_id=config.project_id)
+    elif config.project_slug:
+        _state.set_active_project(rt, project_slug=config.project_slug)
 
     rt.provider = provider
     rt.processor = processor
@@ -727,44 +708,7 @@ def init_for_instance(
         _mark_atexit_registered()
 
 
-def init(
-    *,
-    project_id: str | None = None,
-    project_slug: str | None = None,
-    endpoint: str | None = None,
-    service_name: str | None = None,
-    instrument: Literal["auto", False] | Sequence[str] = "auto",
-    force: bool = False,
-    live: bool | None = None,
-    live_sample_rate: float | None = None,
-    trace_sample_rate: float | None = None,
-    max_capture_bytes: int | None = None,
-    metrics_workers: int | None = None,
-    version: str | None = None,
-    environment: str | None = None,
-) -> None:
-    """Configure OTLP export for the default ``Opengrade`` instance (module facade)."""
-    from opengrade._opengrade import _default_opengrade
-
-    init_for_instance(
-        _default_opengrade(),
-        project_id=project_id,
-        project_slug=project_slug,
-        endpoint=endpoint,
-        service_name=service_name,
-        instrument=instrument,
-        force=force,
-        live=live,
-        live_sample_rate=live_sample_rate,
-        trace_sample_rate=trace_sample_rate,
-        max_capture_bytes=max_capture_bytes,
-        metrics_workers=metrics_workers,
-        version=version,
-        environment=environment,
-    )
-
-
-def flush(timeout_millis: int = 5000) -> bool:
+def flush(timeout_millis: int = 5000, *, runtime: _state._Runtime | None = None) -> bool:
     """Flush spans, then production metrics, then queued trace scores.
 
     ``timeout_millis`` is the total budget: each stage gets what the previous left.
@@ -785,12 +729,12 @@ def flush(timeout_millis: int = 5000) -> bool:
     )  # lazy: avoids an import cycle through opengrade._context
 
     try:
-        ok = _production.drain(max(0.0, deadline - time.monotonic())) and ok
+        ok = _production.drain(max(0.0, deadline - time.monotonic()), runtime=runtime) and ok
     except Exception:  # noqa: BLE001
         logger.debug("opengrade: production metrics drain raised", exc_info=True)
         ok = False
     try:
-        scores_ok = _scores.flush(max(0.0, deadline - time.monotonic()))
+        scores_ok = _scores.flush(max(0.0, deadline - time.monotonic()), runtime=runtime)
     except Exception:  # noqa: BLE001
         logger.debug("opengrade: score flush raised", exc_info=True)
         scores_ok = False
@@ -798,17 +742,20 @@ def flush(timeout_millis: int = 5000) -> bool:
 
 
 def __getattr__(name: str) -> Any:
-    rt = _state._default()
     if name == "_PROVIDER":
-        return rt.provider
-    if name == "_PROCESSOR":
-        return rt.processor
-    if name == "_EXPORTER":
-        return rt.exporter
+        return _SHARED_PROVIDER
     if name == "_OWNS_PROVIDER":
-        return rt.owns_provider
-    if name == "_INITIALIZED":
-        return rt.initialized
+        return _OWNS_SHARED_PROVIDER
     if name == "_ATEXIT_REGISTERED":
-        return rt.otel_atexit_registered
+        return _PROCESS_ATEXIT_REGISTERED
+    if name in {"_PROCESSOR", "_EXPORTER", "_INITIALIZED"}:
+        for og in list(_OPEN_TRACING_INSTANCES):
+            rt = og._runtime
+            if name == "_PROCESSOR":
+                return rt.processor
+            if name == "_EXPORTER":
+                return rt.exporter
+            if name == "_INITIALIZED":
+                return rt.initialized
+        return None if name != "_INITIALIZED" else False
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

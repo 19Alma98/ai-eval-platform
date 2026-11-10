@@ -99,9 +99,15 @@ def answer_question(question: str, config: RagConfig = DEFAULT_CONFIG) -> str:
 and once at startup:
 
 ```python
-opengrade.set_tracking_uri("http://localhost:8000")
-opengrade.set_project("nimbus-support")
-opengrade.init(service_name="nimbus-support", instrument="auto", version="1.4.0", environment="dev")
+from opengrade import Opengrade, Settings
+
+og = Opengrade(Settings(tracking_uri="http://localhost:8000", project_slug="nimbus-support"))
+og.set_project("nimbus-support")
+og.init_tracing(service_name="nimbus-support", instrument="auto", version="1.4.0", environment="dev")
+
+with og.activate():
+    ...  # traced handlers and business logic
+og.flush()
 ```
 
 `instrument="auto"` makes calls to OpenAI, Anthropic, LangChain, LlamaIndex or Bedrock appear as LLM spans with prompt, tokens and cost, with no extra code. For a provider without an instrumentor, open the `LLM` span yourself: see `_fake_llm_call` in [`nimbus_apps/llm.py`](nimbus_apps/llm.py).
@@ -145,11 +151,11 @@ Traces tell you *what happened*; to know whether it was *right* you need expecte
 The script goes through five steps:
 
 1. **Register the gold set** as `nimbus-rag-gold-v1` ([`nimbus_apps/datasets.py`](nimbus_apps/datasets.py)). When you change the questions, bump the version: runs are only comparable on the same set.
-2. **Test the retriever alone** with `opengrade.evaluate_retrieval`: no LLM call, so it is cheap enough to run on every change to chunking or embeddings.
-3. **Test the whole pipeline** with `opengrade.evaluate`:
+2. **Test the retriever alone** with `og.evaluate_retrieval`: no LLM call, so it is cheap enough to run on every change to chunking or embeddings.
+3. **Test the whole pipeline** with `og.evaluate`:
 
    ```python
-   result = opengrade.evaluate(
+   result = og.evaluate(
        dataset="nimbus-rag-gold-v1",
        task=lambda item: answer_question(item.input),  # your app, unchanged
        metrics=[
@@ -202,14 +208,14 @@ The "vs baseline" column is a paired statistical comparison on the same question
 
 **Question:** keyword search or BM25? How many documents? Which model? Is the new classifier really better?
 
-`opengrade.sweep` runs one experiment per configuration on the same gold set and ranks them. Your task receives the configuration as a second argument:
+`og.sweep` runs one experiment per configuration on the same gold set and ranks them. Your task receives the configuration as a second argument:
 
 ```python
 def full_pipeline(item, params):
     return answer_question(item.input, DEFAULT_CONFIG.with_params(params))
 
 
-result = opengrade.sweep(
+result = og.sweep(
     dataset="nimbus-rag-gold-v1",
     task=full_pipeline,
     grid={"model": ["fake-small", "fake-large"], "retriever": ["keyword", "bm25"]},
@@ -249,13 +255,13 @@ In production there is no expected answer, but you can still measure a lot on re
 | What | How | Example in the script |
 |---|---|---|
 | Your Python metrics, on every call or a sample | `@opengrade.trace(metrics=[...], metrics_sample_rate=...)` | `cites_retrieved_source`, `answer_is_concise` (the **same** functions used in the tests of script 2) and `retrieval_confidence` (production only) |
-| Values your code already knows | `opengrade.log_score(name, value)` | `resolved_by_assistant`: answered, or handed over to a human? |
-| What users think | `opengrade.log_feedback(positive, trace_id=...)` | thumbs up / down from the chat widget |
+| Values your code already knows | `og.log_score(name, value)` | `resolved_by_assistant`: answered, or handed over to a human? |
+| What users think | `og.log_feedback(positive, trace_id=...)` | thumbs up / down from the chat widget |
 | A quality an LLM has to judge | `opengrade.LlmJudge("support_tone", criteria="...", live=True)` | only with `TOUR_LLM_JUDGES=1` |
 | Alerts on any of the above | `client.alerts.create(...)` | fail rate of a score, error rate, latency anomaly |
 
 ```python
-opengrade.init(service_name="nimbus-support", environment="prod", version="1.4.0", live=True)
+og.init_tracing(service_name="nimbus-support", environment="prod", version="1.4.0", live=True)
 
 
 @opengrade.trace(name="assistant", metrics=PRODUCTION_METRICS, metrics_sample_rate=1.0)
@@ -266,13 +272,15 @@ def assistant(question: str) -> str:
 @opengrade.trace(name="support_chat")
 def support_chat(question, *, user_id, conversation_id) -> dict:
     ...
-    answer = assistant(question)
-    opengrade.log_score("resolved_by_assistant", not is_refusal(answer))
+    with og.activate():
+        answer = assistant(question)
+        og.log_score("resolved_by_assistant", not is_refusal(answer))
     return {"answer": answer, "trace_id": opengrade.current_trace_id()}
 
 
 # later, when the user clicks a thumb in the UI of your product:
-opengrade.log_feedback(False, trace_id=trace_id, user_id="u-03", comment="I needed a real answer")
+with og.activate():
+    og.log_feedback(False, trace_id=trace_id, user_id="u-03", comment="I needed a real answer")
 ```
 
 The script sends 14 simulated chat messages, then lists the answers that need attention, with the reason (a score below threshold or a thumbs-down):

@@ -17,7 +17,7 @@ from collections.abc import Callable, Mapping
 from decimal import Decimal
 from typing import Any
 
-from opengrade import _scores, _trace
+from opengrade import _scores, _state, _trace
 from opengrade.metrics import LocalMetric, Sample, Score, evaluate_metric, missing_requirement
 
 logger = logging.getLogger("opengrade")
@@ -131,11 +131,6 @@ class _ConfigError(ValueError):
         self.category = category
 
 
-def _reset_for_tests() -> None:
-    with _config_lock:
-        _config_warned.clear()
-
-
 def _warn_config(category: str, what: str, message: str) -> None:
     now = time.monotonic()
     with _config_lock:
@@ -191,10 +186,13 @@ def _queue(what: str, trace_id: str | None, build: Callable[[], dict[str, Any]])
         normalized = _trace_id(resolved)
         try:
             from opengrade._config import resolve_project_id
-            from opengrade._context import get_client
+            from opengrade._opengrade import current
 
-            project_id = resolve_project_id(get_client()._project_id)
-        except ValueError as exc:
+            og = current()
+            project_id = resolve_project_id(
+                og.client._project_id, runtime=og._runtime, client=og.client
+            )
+        except (ValueError, RuntimeError) as exc:
             raise _ConfigError("project", str(exc)) from None
         payload = build()
         return _scores.enqueue(project_id, {"trace_id": normalized, **payload})
@@ -277,7 +275,14 @@ def log_feedback(
     )
 
 
-def queue_metric_score(project_id: str, trace_id: str, metric: LocalMetric, result: Score) -> bool:
+def queue_metric_score(
+    project_id: str,
+    trace_id: str,
+    metric: LocalMetric,
+    result: Score,
+    *,
+    runtime: _state._Runtime | None = None,
+) -> bool:
     """Queue one metric result computed for ``trace_id`` (used by production metrics)."""
 
     def action() -> bool:
@@ -285,7 +290,7 @@ def queue_metric_score(project_id: str, trace_id: str, metric: LocalMetric, resu
             raise ValueError("the metric needs a name")
         normalized = _trace_id(trace_id)
         payload = _metric_payload(metric, result)
-        return _scores.enqueue(project_id, {"trace_id": normalized, **payload})
+        return _scores.enqueue(project_id, {"trace_id": normalized, **payload}, runtime=runtime)
 
     return _guarded(f"metric {_name_for_log(getattr(metric, 'name', None))} result", action)
 

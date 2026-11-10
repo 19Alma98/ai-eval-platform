@@ -4,15 +4,15 @@ from __future__ import annotations
 
 import asyncio
 import logging
-import os
 import threading
-from collections.abc import Iterator
+import weakref
+from collections.abc import Iterator, Mapping
 from contextlib import contextmanager
 from contextvars import ContextVar, Token
 from typing import Any
 
-from opengrade import _config, _context, _state
-from opengrade._config import DEFAULT_TRACKING_URI, _normalize_uri
+from opengrade import _config, _state
+from opengrade._config import DEFAULT_TRACKING_URI, RedactFn, RedactOutputFn, _normalize_uri
 from opengrade.async_client import AsyncClient
 from opengrade.client import Client
 from opengrade.models import ProjectResponse
@@ -21,47 +21,23 @@ logger = logging.getLogger("opengrade")
 
 _CURRENT: ContextVar[Opengrade | None] = ContextVar("opengrade_current", default=None)
 
-_DEFAULT_OPENGRADE: Opengrade | None = None
-_DEFAULT_OPENGRADE_LOCK = threading.Lock()
+_INSTANCES: weakref.WeakSet[Opengrade] = weakref.WeakSet()
+_INSTANCES_LOCK = threading.Lock()
 
 
 def _tracking_uri_for_runtime(rt: _state._Runtime) -> str:
     if rt.settings.tracking_uri is not None:
         return _normalize_uri(rt.settings.tracking_uri)
-    if rt is _state._default():
-        return _config.get_tracking_uri()
-    value = os.getenv("OPENGRADE_TRACKING_URI")
-    if value and value.strip():
-        return _normalize_uri(value)
     return DEFAULT_TRACKING_URI
 
 
 def _api_key_for_runtime(rt: _state._Runtime) -> str | None:
-    if rt.settings.api_key is not None:
-        return rt.settings.api_key or None
-    if rt is _state._default():
-        return _config.get_api_key()
-    value = (os.getenv("OPENGRADE_API_KEY") or "").strip()
-    return value or None
+    return rt.settings.api_key or None
 
 
 def _shared_client_project_id(rt: _state._Runtime) -> str | None:
-    """Project id to bind on shared ``get_client()`` / ``async_client()``.
-
-    Settings / ``set_project`` first; on the process default runtime, also
-    ``OPENGRADE_PROJECT_ID``. Bare ``Client()`` does not use this helper.
-    """
-    if rt.settings.project_id:
-        return rt.settings.project_id
-    if rt is not _state._default():
-        return rt.settings.project_id
-    active = _state._active_project_id()
-    if active:
-        return active
-    env_id = os.getenv("OPENGRADE_PROJECT_ID")
-    if env_id and env_id.strip():
-        return env_id.strip()
-    return None
+    """Project id to bind on shared ``client`` / ``async_client()``."""
+    return rt.settings.project_id
 
 
 def _ensure_client_project_id(client: Client | AsyncClient, rt: _state._Runtime) -> None:
@@ -78,28 +54,31 @@ def active_runtime() -> _state._Runtime:
 
 def current() -> Opengrade:
     og = _CURRENT.get()
-    if og is not None:
-        return og
-    return _default_opengrade()
+    if og is None:
+        raise RuntimeError(
+            "No active Opengrade instance. Construct Opengrade(...), use its methods, "
+            "or wrap the call in `with og.activate():`."
+        )
+    return og
 
 
-def _default_opengrade() -> Opengrade:
-    global _DEFAULT_OPENGRADE
-    with _DEFAULT_OPENGRADE_LOCK:
-        if _DEFAULT_OPENGRADE is None:
-            _DEFAULT_OPENGRADE = Opengrade._wrap_default(_state._default())
-        return _DEFAULT_OPENGRADE
+def _register_instance(og: Opengrade) -> None:
+    with _INSTANCES_LOCK:
+        _INSTANCES.add(og)
 
 
-def _reset_opengrade_for_tests() -> None:
-    global _DEFAULT_OPENGRADE
-    _CURRENT.set(None)
-    with _DEFAULT_OPENGRADE_LOCK:
-        _DEFAULT_OPENGRADE = None
+def _unregister_instance(og: Opengrade) -> None:
+    with _INSTANCES_LOCK:
+        _INSTANCES.discard(og)
+
+
+def _all_instances() -> list[Opengrade]:
+    with _INSTANCES_LOCK:
+        return [og for og in _INSTANCES]
 
 
 class Opengrade:
-    """Configurable opengrade runtime (settings, client, tracing flags)."""
+    """Configurable opengrade runtime (settings, client, tracing, evaluate)."""
 
     __slots__ = ("_runtime", "tracing_enabled", "_activate_token", "_instance_id", "__weakref__")
 
@@ -113,20 +92,11 @@ class Opengrade:
 
         self._runtime = _state._Runtime.fresh()
         self._runtime.settings = settings
+        _state.register_runtime(self._runtime)
         self.tracing_enabled = False
         self._activate_token: Token[Opengrade | None] | None = None
         self._instance_id = _otel._next_instance_id()
-
-    @classmethod
-    def _wrap_default(cls, rt: _state._Runtime) -> Opengrade:
-        og = cls.__new__(cls)
-        from opengrade import _otel
-
-        og._runtime = rt
-        og.tracing_enabled = bool(rt.initialized)
-        og._activate_token = None
-        og._instance_id = _otel._next_instance_id()
-        return og
+        _register_instance(self)
 
     @property
     def settings(self) -> _state.Settings:
@@ -137,6 +107,8 @@ class Opengrade:
         rt = self._runtime
         with rt.client_lock:
             if rt.client is None:
+                from opengrade import _context
+
                 rt.client = _context.Client(
                     _tracking_uri_for_runtime(rt),
                     api_key=_api_key_for_runtime(rt),
@@ -151,6 +123,8 @@ class Opengrade:
         uri = _tracking_uri_for_runtime(rt)
         api_key = _api_key_for_runtime(rt)
         project_id = _shared_client_project_id(rt)
+        from opengrade import _context
+
         try:
             loop = asyncio.get_running_loop()
         except RuntimeError:
@@ -176,6 +150,49 @@ class Opengrade:
 
         return resolve_or_create_project(name, self.client, activate=True, runtime=self._runtime)
 
+    async def aset_project(self, name: str) -> ProjectResponse | None:
+        from opengrade._context import _activate_project, _afind_project, _slugify
+        from opengrade._http import OpengradeAPIError, OpengradeError
+
+        cleaned = name.strip()
+        if not cleaned:
+            raise ValueError("project name must not be empty")
+        slug = _slugify(cleaned)
+        client = self.async_client()
+        try:
+            project = await _afind_project(client, cleaned, slug)
+            if project is None:
+                try:
+                    project = await client.projects.create(name=cleaned, slug=slug)
+                    logger.info("opengrade created project %r (slug=%s)", cleaned, slug)
+                except OpengradeAPIError as exc:
+                    if exc.status != 409:
+                        raise
+                    project = await _afind_project(client, cleaned, slug)
+                    if project is None:
+                        raise
+        except OpengradeError as exc:
+            logger.warning("opengrade.aset_project(%r) failed: %s", cleaned, exc)
+            return None
+        return _activate_project(project, cleaned, self._runtime)
+
+    def get_project(self) -> ProjectResponse | None:
+        return self._runtime.active_project
+
+    def configure_capture(
+        self,
+        *,
+        max_capture_bytes: int | None | Any = _config._UNSET,
+        redact: RedactFn | None | Any = _config._UNSET,
+        redact_output: RedactOutputFn | None | Any = _config._UNSET,
+    ) -> None:
+        _config.configure_capture(
+            self._runtime,
+            max_capture_bytes=max_capture_bytes,
+            redact=redact,
+            redact_output=redact_output,
+        )
+
     def init_tracing(self, **kwargs: Any) -> None:
         """Configure OTLP export for this instance via the shared ``TracerProvider``."""
         from opengrade import _otel
@@ -191,12 +208,71 @@ class Opengrade:
     def flush(self, timeout_millis: int = 5000) -> bool:
         from opengrade import _otel
 
-        return _otel.flush(timeout_millis=timeout_millis)
+        return _otel.flush(timeout_millis=timeout_millis, runtime=self._runtime)
 
     def close(self) -> None:
         from opengrade._context import _close_runtime_clients
 
         _close_runtime_clients(self._runtime)
+        _unregister_instance(self)
+
+    def log_score(self, *args: Any, **kwargs: Any) -> bool:
+        with self.activate():
+            from opengrade import feedback
+
+            return feedback.log_score(*args, **kwargs)
+
+    def log_feedback(self, *args: Any, **kwargs: Any) -> bool:
+        with self.activate():
+            from opengrade import feedback
+
+            return feedback.log_feedback(*args, **kwargs)
+
+    def score_trace(self, *args: Any, **kwargs: Any) -> bool:
+        with self.activate():
+            from opengrade import feedback
+
+            return feedback.score_trace(*args, **kwargs)
+
+    def start_experiment(self, *args: Any, **kwargs: Any) -> Any:
+        with self.activate():
+            from opengrade.experiment import start_experiment
+
+            kwargs.setdefault("client", self.client)
+            return start_experiment(*args, **kwargs)
+
+    def evaluate(self, *args: Any, **kwargs: Any) -> Any:
+        with self.activate():
+            from opengrade.experiment import evaluate
+
+            kwargs.setdefault("client", self.client)
+            return evaluate(*args, **kwargs)
+
+    def sweep(self, *args: Any, **kwargs: Any) -> Any:
+        with self.activate():
+            from opengrade.sweeps import sweep
+
+            kwargs.setdefault("client", self.client)
+            return sweep(*args, **kwargs)
+
+    def evaluate_retrieval(self, *args: Any, **kwargs: Any) -> Any:
+        with self.activate():
+            from opengrade.retrieval import evaluate_retrieval
+
+            kwargs.setdefault("client", self.client)
+            return evaluate_retrieval(*args, **kwargs)
+
+    def log_params(self, **params: Any) -> dict[str, Any]:
+        with self.activate():
+            from opengrade.experiment import log_params
+
+            return log_params(**params)
+
+    def log_metrics(self, metrics: Mapping[str, float]) -> dict[str, float]:
+        with self.activate():
+            from opengrade.experiment import log_metrics
+
+            return log_metrics(metrics)
 
     @contextmanager
     def activate(self) -> Iterator[Opengrade]:

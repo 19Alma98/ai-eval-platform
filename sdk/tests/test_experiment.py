@@ -9,9 +9,10 @@ from typing import Any
 
 import httpx2
 import pytest
+from tests.support.instance import activated, make_og
 
 import opengrade
-from opengrade import Client, _context
+from opengrade import Client, current
 from opengrade.experiment import (
     _auto_metrics,
     _chunk_by_bytes,
@@ -254,13 +255,17 @@ class FakeServer:
 @pytest.fixture
 def server(monkeypatch: pytest.MonkeyPatch) -> Iterator[FakeServer]:
     fake = FakeServer()
-    client = Client("http://test", transport=httpx2.MockTransport(fake.handler))
-    _context._reset_for_tests()
-    monkeypatch.setattr(_context, "_CLIENT", client)
+    client = Client(
+        "http://test",
+        transport=httpx2.MockTransport(fake.handler),
+        project_id=PROJECT_ID,
+    )
     monkeypatch.setenv("OPENGRADE_PROJECT_ID", PROJECT_ID)
     monkeypatch.delenv("OPENGRADE_UI_URL", raising=False)
-    yield fake
-    _context._reset_for_tests()
+    og = make_og(project_id=PROJECT_ID)
+    og._runtime.client = client
+    with activated(og):
+        yield fake
 
 
 ROWS = [
@@ -278,7 +283,7 @@ def test_evaluate_inline_rows_writes_outputs_and_scores(server: FakeServer) -> N
     def exact(item: Any, output: Any) -> bool:
         return output == f"answer to {item.input}"
 
-    result = opengrade.evaluate(
+    result = current().evaluate(
         dataset=ROWS,
         task=_task,
         metrics=["hit_at_k", exact],
@@ -325,26 +330,26 @@ def test_evaluate_inline_rows_writes_outputs_and_scores(server: FakeServer) -> N
 def test_evaluate_prints_the_results_link(
     server: FakeServer, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    result = opengrade.evaluate(dataset=ROWS, task=_task, metrics=["hit_at_k"], name="linked")
+    result = current().evaluate(dataset=ROWS, task=_task, metrics=["hit_at_k"], name="linked")
     assert f"opengrade: experiment linked -> {result.url}" in capsys.readouterr().err
 
     monkeypatch.setenv("OPENGRADE_QUIET", "1")
-    opengrade.evaluate(dataset=ROWS, task=_task, metrics=["hit_at_k"], name="quiet")
+    current().evaluate(dataset=ROWS, task=_task, metrics=["hit_at_k"], name="quiet")
     assert capsys.readouterr().err == ""
 
 
 def test_evaluate_reuses_inline_dataset_and_metrics_set(server: FakeServer) -> None:
-    opengrade.evaluate(dataset=ROWS, task=_task, metrics=["hit_at_k"], name="a")
-    opengrade.evaluate(dataset=ROWS, task=_task, metrics=["hit_at_k"], name="b")
+    current().evaluate(dataset=ROWS, task=_task, metrics=["hit_at_k"], name="a")
+    current().evaluate(dataset=ROWS, task=_task, metrics=["hit_at_k"], name="b")
     assert len(server.datasets) == 1
     assert len(server.metrics_sets) == 2  # default + one sdk set
 
 
 def test_evaluate_metrics_set_id_reuses_existing_set(server: FakeServer) -> None:
-    first = opengrade.evaluate(dataset=ROWS, task=_task, metrics=["hit_at_k"], name="seed")
+    first = current().evaluate(dataset=ROWS, task=_task, metrics=["hit_at_k"], name="seed")
     ms_id = server.experiments[first.id]["metrics_set_id"]
     before = len(server.metrics_sets)
-    second = opengrade.evaluate(
+    second = current().evaluate(
         dataset=first.experiment.dataset_id,
         task=_task,
         metrics_set_id=ms_id,
@@ -354,7 +359,7 @@ def test_evaluate_metrics_set_id_reuses_existing_set(server: FakeServer) -> None
     assert server.experiments[second.id]["metrics_set_id"] == ms_id
     assert len(server.metrics_sets) == before
     with pytest.raises(ValueError, match="not both"):
-        opengrade.evaluate(
+        current().evaluate(
             dataset=ROWS, task=_task, metrics=["hit_at_k"], metrics_set_id=ms_id, name="bad"
         )
 
@@ -373,8 +378,10 @@ def test_inline_dataset_resumes_partial_create(server: FakeServer) -> None:
         return original_add(request)
 
     server.handler = flaky  # type: ignore[method-assign]
-    _context._CLIENT = opengrade.Client("http://test", transport=httpx2.MockTransport(flaky))
-    client = opengrade.get_client()
+    current()._runtime.client = opengrade.Client(
+        "http://test", transport=httpx2.MockTransport(flaky)
+    )
+    client = current().client
     with pytest.raises(opengrade.OpengradeAPIError):
         _inline_dataset_id(client, PROJECT_ID, rows, task_type="rag_qa")
     assert len(server.datasets) == 1
@@ -382,9 +389,11 @@ def test_inline_dataset_resumes_partial_create(server: FakeServer) -> None:
     assert len(server.items[ds_id]) == 2  # failed on 3rd
 
     # Second call resumes remaining items.
-    _context._CLIENT = opengrade.Client("http://test", transport=httpx2.MockTransport(original_add))
+    current()._runtime.client = opengrade.Client(
+        "http://test", transport=httpx2.MockTransport(original_add)
+    )
     server.handler = original_add  # type: ignore[method-assign]
-    resumed = _inline_dataset_id(opengrade.get_client(), PROJECT_ID, rows, task_type="rag_qa")
+    resumed = _inline_dataset_id(current().client, PROJECT_ID, rows, task_type="rag_qa")
     assert resumed == ds_id
     assert len(server.items[ds_id]) == 5
 
@@ -410,7 +419,7 @@ def test_evaluate_by_dataset_name_with_baseline_by_name(server: FakeServer) -> N
     server.add_experiment("prod", ds_id, "2026-01-01T00:00:00Z")
     newest = server.add_experiment("prod", ds_id, "2026-02-01T00:00:00Z")
 
-    result = opengrade.evaluate(
+    result = current().evaluate(
         dataset="gold-v1", task=lambda item: "x", baseline="prod", max_concurrency=4
     )
 
@@ -427,7 +436,7 @@ def test_baseline_by_alias_uses_promoted_experiment(server: FakeServer) -> None:
     server.add_experiment("ci", ds_id, "2026-02-01T00:00:00Z")
     server.aliases["main"] = promoted
 
-    result = opengrade.evaluate(dataset="gold-v1", task=lambda item: "x", baseline="alias:main")
+    result = current().evaluate(dataset="gold-v1", task=lambda item: "x", baseline="alias:main")
 
     assert result.baseline_id == promoted
     assert server.experiments[result.id]["baseline_experiment_id"] == promoted
@@ -436,19 +445,19 @@ def test_baseline_by_alias_uses_promoted_experiment(server: FakeServer) -> None:
 def test_baseline_by_missing_alias_is_a_clear_error(server: FakeServer) -> None:
     server.add_dataset("gold-v1", [{"input": "q1"}])
     with pytest.raises(ValueError, match="no experiment alias 'main'"):
-        opengrade.evaluate(dataset="gold-v1", task=lambda item: "x", baseline="alias:main")
+        current().evaluate(dataset="gold-v1", task=lambda item: "x", baseline="alias:main")
     with pytest.raises(ValueError, match="empty alias"):
-        opengrade.evaluate(dataset="gold-v1", task=lambda item: "x", baseline="alias: ")
+        current().evaluate(dataset="gold-v1", task=lambda item: "x", baseline="alias: ")
 
 
 def test_metrics_none_uses_project_default_pack(server: FakeServer) -> None:
-    opengrade.evaluate(dataset=ROWS, task=_task)
+    current().evaluate(dataset=ROWS, task=_task)
     pack_calls = [c for c in server.calls if c[1].endswith("/evaluate-pack")]
     assert pack_calls and pack_calls[0][2] is None
 
 
 def test_local_only_metrics_skip_server_scoring(server: FakeServer) -> None:
-    result = opengrade.evaluate(dataset=ROWS, task=_task, metrics=[lambda item, out: 0.5])
+    result = current().evaluate(dataset=ROWS, task=_task, metrics=[lambda item, out: 0.5])
     assert not [c for c in server.calls if c[1].endswith("/evaluate-pack")]
     assert result.metrics == {"metric_0": 0.5}
 
@@ -462,7 +471,7 @@ def test_local_metric_options_and_failures_are_submitted(server: FakeServer) -> 
     def broken(item: Any, output: Any) -> float:
         raise ValueError("bad metric")
 
-    opengrade.evaluate(
+    current().evaluate(
         dataset=ROWS + [{"input": "q3"}],
         task=lambda item: flaky_task(item),
         metrics=[
@@ -485,7 +494,7 @@ def test_local_metric_options_and_failures_are_submitted(server: FakeServer) -> 
 
 def test_rejected_client_results_fall_back_to_local_means(server: FakeServer) -> None:
     server.reject_client_results = True
-    result = opengrade.evaluate(dataset=ROWS, task=_task, metrics=[lambda item, out: 0.5])
+    result = current().evaluate(dataset=ROWS, task=_task, metrics=[lambda item, out: 0.5])
     assert result.metrics == {"metric_0": 0.5}
     assert "metric_0 (local only)" in result.summary()
 
@@ -495,7 +504,7 @@ def test_duplicate_local_metric_names_rejected(server: FakeServer) -> None:
         return 1.0
 
     with pytest.raises(ValueError, match="duplicate local metric"):
-        opengrade.evaluate(dataset=ROWS, task=_task, metrics=[m, opengrade.LocalMetric(m)])
+        current().evaluate(dataset=ROWS, task=_task, metrics=[m, opengrade.LocalMetric(m)])
 
 
 def test_task_errors_are_recorded_not_raised(server: FakeServer) -> None:
@@ -504,17 +513,17 @@ def test_task_errors_are_recorded_not_raised(server: FakeServer) -> None:
             raise RuntimeError("boom")
         return "ok"
 
-    result = opengrade.evaluate(dataset=ROWS, task=flaky, metrics=["hit_at_k"])
+    result = current().evaluate(dataset=ROWS, task=flaky, metrics=["hit_at_k"])
     assert [r.error for r in result.errors] == ["RuntimeError: boom"]
     errored = next(o for o in server.outputs[result.id].values() if "error" in o["metadata"])
     assert "actual_output" not in errored
 
     with pytest.raises(RuntimeError, match="boom"):
-        opengrade.evaluate(dataset=ROWS, task=flaky, metrics=["hit_at_k"], raise_on_error=True)
+        current().evaluate(dataset=ROWS, task=flaky, metrics=["hit_at_k"], raise_on_error=True)
 
 
 def test_start_experiment_context_manager(server: FakeServer) -> None:
-    with opengrade.start_experiment("v2", dataset=ROWS, metrics=["hit_at_k"]) as exp:
+    with current().start_experiment("v2", dataset=ROWS, metrics=["hit_at_k"]) as exp:
         for item in exp.items():
             with exp.run(item):
                 opengrade.set_output(f"via set_output {item.input}")
@@ -528,7 +537,7 @@ def test_start_experiment_context_manager(server: FakeServer) -> None:
 
 
 def test_explicit_log_beats_captured_set_output(server: FakeServer) -> None:
-    with opengrade.start_experiment("v2", dataset=ROWS, metrics=["hit_at_k"]) as exp:
+    with current().start_experiment("v2", dataset=ROWS, metrics=["hit_at_k"]) as exp:
         item = exp.items()[0]
         with exp.run(item) as run:
             run.log("explicit")
@@ -539,7 +548,7 @@ def test_explicit_log_beats_captured_set_output(server: FakeServer) -> None:
 
 def test_context_manager_skips_scoring_on_exception(server: FakeServer) -> None:
     with pytest.raises(ValueError):
-        with opengrade.start_experiment("v2", dataset=ROWS) as exp:
+        with current().start_experiment("v2", dataset=ROWS) as exp:
             raise ValueError("stop")
     assert exp.result is None
     assert not [c for c in server.calls if c[1].endswith("/evaluate-pack")]
@@ -548,7 +557,7 @@ def test_context_manager_skips_scoring_on_exception(server: FakeServer) -> None:
 def test_dataframe_input(server: FakeServer) -> None:
     pd = pytest.importorskip("pandas")
     df = pd.DataFrame({"input": ["q1", "q2"], "expected_output": ["a1", None]})
-    result = opengrade.evaluate(dataset=df, task=_task, metrics=["hit_at_k"])
+    result = current().evaluate(dataset=df, task=_task, metrics=["hit_at_k"])
     (ds_id,) = server.items
     assert [i["input"] for i in server.items[ds_id]] == ["q1", "q2"]
     assert "expected_output" not in server.items[ds_id][1]
@@ -558,14 +567,14 @@ def test_dataframe_input(server: FakeServer) -> None:
 def test_polars_dataframe_input(server: FakeServer) -> None:
     pl = pytest.importorskip("polars")
     df = pl.DataFrame({"input": ["q1", "q2"], "expected_output": ["a1", None]})
-    result = opengrade.evaluate(dataset=df, task=_task, metrics=["hit_at_k"])
+    result = current().evaluate(dataset=df, task=_task, metrics=["hit_at_k"])
     (ds_id,) = server.items
     assert [i["input"] for i in server.items[ds_id]] == ["q1", "q2"]
     assert len(result.items) == 2
 
 
 def test_question_alias_accepted(server: FakeServer) -> None:
-    result = opengrade.evaluate(
+    result = current().evaluate(
         dataset=[{"question": "q1", "expected_answer": "a1"}],
         task=_task,
         metrics=["hit_at_k"],
@@ -580,7 +589,7 @@ def test_question_alias_accepted(server: FakeServer) -> None:
 
 def test_row_without_input_is_rejected(server: FakeServer) -> None:
     with pytest.raises(opengrade.DatasetColumnError, match="missing column") as exc_info:
-        opengrade.evaluate(dataset=[{"expected_output": "a"}], task=_task)
+        current().evaluate(dataset=[{"expected_output": "a"}], task=_task)
     assert exc_info.value.missing == ["input (or question)"]
     assert "expected_output" in exc_info.value.found
     assert "Required: 'input'" in str(exc_info.value)
@@ -589,7 +598,7 @@ def test_row_without_input_is_rejected(server: FakeServer) -> None:
 def test_csv_path_input(server: FakeServer, tmp_path: Any) -> None:
     path = tmp_path / "gold.csv"
     path.write_text("question,expected_answer\nq1,a1\nq2,a2\n", encoding="utf-8")
-    result = opengrade.evaluate(dataset=str(path), task=_task, metrics=["hit_at_k"])
+    result = current().evaluate(dataset=str(path), task=_task, metrics=["hit_at_k"])
     (ds_id,) = server.items
     assert [i["input"] for i in server.items[ds_id]] == ["q1", "q2"]
     assert [i["expected_output"] for i in server.items[ds_id]] == ["a1", "a2"]
@@ -604,7 +613,7 @@ def test_csv_empty_optional_and_json_metadata(server: FakeServer, tmp_path: Any)
         "q2,a2,,\n",
         encoding="utf-8",
     )
-    opengrade.evaluate(dataset=str(path), task=_task, metrics=["hit_at_k"])
+    current().evaluate(dataset=str(path), task=_task, metrics=["hit_at_k"])
     (ds_id,) = server.items
     items = server.items[ds_id]
     assert "expected_output" not in items[0]
@@ -618,14 +627,14 @@ def test_csv_invalid_metadata_json_raises(server: FakeServer, tmp_path: Any) -> 
     path = tmp_path / "bad.csv"
     path.write_text("input,metadata\nq1,not-json\n", encoding="utf-8")
     with pytest.raises(ValueError, match="metadata"):
-        opengrade.evaluate(dataset=path, task=_task)
+        current().evaluate(dataset=path, task=_task)
 
 
 def test_csv_missing_input_column_raises(server: FakeServer, tmp_path: Any) -> None:
     path = tmp_path / "bad.csv"
     path.write_text("expected_answer,expected_doc_ids\na1,pto\n", encoding="utf-8")
     with pytest.raises(opengrade.DatasetColumnError, match=re.escape(str(path))) as exc_info:
-        opengrade.evaluate(dataset=path, task=_task)
+        current().evaluate(dataset=path, task=_task)
     assert exc_info.value.missing == ["input (or question)"]
     assert exc_info.value.found == ["expected_answer", "expected_doc_ids"]
     assert "Optional: 'expected_output'" in str(exc_info.value)
@@ -637,7 +646,7 @@ def test_jsonl_path_input(server: FakeServer, tmp_path: Any) -> None:
         '{"input": "q1", "expected_output": "a1"}\n{"question": "q2", "expected_answer": "a2"}\n',
         encoding="utf-8",
     )
-    result = opengrade.evaluate(dataset=path, task=_task, metrics=["hit_at_k"])
+    result = current().evaluate(dataset=path, task=_task, metrics=["hit_at_k"])
     (ds_id,) = server.items
     assert [i["input"] for i in server.items[ds_id]] == ["q1", "q2"]
     assert len(result.items) == 2
@@ -648,14 +657,14 @@ def test_iterable_materialized(server: FakeServer) -> None:
         yield {"input": "q1", "expected_output": "a1"}
         yield {"input": "q2", "expected_output": "a2"}
 
-    result = opengrade.evaluate(dataset=rows(), task=_task, metrics=["hit_at_k"])
+    result = current().evaluate(dataset=rows(), task=_task, metrics=["hit_at_k"])
     assert len(result.items) == 2
     # Same generator content reused via content-addressed inline dataset.
     same_rows = [
         {"input": "q1", "expected_output": "a1"},
         {"input": "q2", "expected_output": "a2"},
     ]
-    opengrade.evaluate(dataset=same_rows, task=_task, metrics=["hit_at_k"])
+    current().evaluate(dataset=same_rows, task=_task, metrics=["hit_at_k"])
     assert len(server.datasets) == 1
 
 
@@ -666,15 +675,13 @@ def test_traced_run_waits_for_binding_then_explicit_output_wins(
     from opentelemetry.sdk.trace import TracerProvider
     from opentelemetry.sdk.trace.export import SimpleSpanProcessor
     from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
+    from tests.support.reset import reset_sdk
 
-    from opengrade import _otel
-
-    _otel._reset_for_tests()
+    reset_sdk(otel=True)
     exporter = InMemorySpanExporter()
     provider = TracerProvider()
     provider.add_span_processor(SimpleSpanProcessor(exporter))
     trace.set_tracer_provider(provider)
-    monkeypatch.setattr(_otel, "_INITIALIZED", True)
 
     # Simulate OTLP ingestion: bound root spans become stored outputs on read.
     original = server.handler
@@ -696,14 +703,18 @@ def test_traced_run_waits_for_binding_then_explicit_output_wins(
         return original(request)
 
     monkeypatch.setattr(server, "handler", handler)
-    _context._reset_client()
-    monkeypatch.setattr(
-        _context, "_CLIENT", Client("http://test", transport=httpx2.MockTransport(handler))
+    og = make_og(project_id=PROJECT_ID)
+    og._runtime.client = Client(
+        "http://test",
+        transport=httpx2.MockTransport(handler),
+        project_id=PROJECT_ID,
     )
+    og._runtime.initialized = True
     try:
-        result = opengrade.evaluate(dataset=ROWS, task=_task, metrics=["hit_at_k"])
+        with activated(og):
+            result = og.evaluate(dataset=ROWS, task=_task, metrics=["hit_at_k"])
     finally:
-        _otel._reset_for_tests()
+        reset_sdk(otel=True)
 
     spans = [s for s in exporter.get_finished_spans() if s.name.startswith("opengrade.eval")]
     assert len(spans) == 2
@@ -716,7 +727,7 @@ def test_traced_run_waits_for_binding_then_explicit_output_wins(
 
 
 def test_app_config_and_run_task(server: FakeServer) -> None:
-    exp = opengrade.start_experiment("ab", dataset=ROWS, app_config_id="cfg-1")
+    exp = current().start_experiment("ab", dataset=ROWS, app_config_id="cfg-1")
     assert server.experiments[exp.id]["app_config_id"] == "cfg-1"
     assert exp.params == {}
 
@@ -732,28 +743,34 @@ def test_run_task_preserves_using_attributes_under_concurrency(
     from opentelemetry.sdk.trace import TracerProvider
     from opentelemetry.sdk.trace.export import SimpleSpanProcessor
     from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
+    from tests.support.reset import reset_sdk
 
-    from opengrade import _otel
-
-    _otel._reset_for_tests()
+    reset_sdk(otel=True)
     exporter = InMemorySpanExporter()
     provider = TracerProvider()
     provider.add_span_processor(SimpleSpanProcessor(exporter))
     trace.set_tracer_provider(provider)
-    monkeypatch.setattr(_otel, "_INITIALIZED", True)
 
     def task(item: Any) -> str:
         with opengrade.span("task-body"):
             pass
         return item.input
 
+    og = make_og(project_id=PROJECT_ID)
+    og._runtime.client = Client(
+        "http://test",
+        transport=httpx2.MockTransport(server.handler),
+        project_id=PROJECT_ID,
+    )
+    og._runtime.initialized = True
     try:
-        exp = opengrade.start_experiment("ctx-concurrency", dataset=ROWS)
-        with opengrade.using_attributes(user_id="u-concurrent", tags=["eval-scope"]):
-            exp.run_task(task, max_concurrency=2)
-        exp.finish()
+        with activated(og):
+            exp = og.start_experiment("ctx-concurrency", dataset=ROWS)
+            with opengrade.using_attributes(user_id="u-concurrent", tags=["eval-scope"]):
+                exp.run_task(task, max_concurrency=2)
+            exp.finish()
     finally:
-        _otel._reset_for_tests()
+        reset_sdk(otel=True)
 
     bodies = [s for s in exporter.get_finished_spans() if s.name == "task-body"]
     assert len(bodies) == 2
@@ -805,7 +822,7 @@ def test_sample_metric_gets_documents_and_reports_explanation(server: FakeServer
             metadata={"n_docs": len(sample.documents)},
         )
 
-    result = opengrade.evaluate(dataset=ROWS, task=_task, metrics=[cites])
+    result = current().evaluate(dataset=ROWS, task=_task, metrics=[cites])
 
     (submitted,) = server.client_results[result.id]
     assert submitted["name"] == "cites"
@@ -824,7 +841,7 @@ def test_missing_required_field_is_submitted_as_skipped(server: FakeServer) -> N
     def needs_docs(sample: opengrade.Sample) -> float:
         return 1.0
 
-    result = opengrade.evaluate(
+    result = current().evaluate(
         dataset=ROWS, task=lambda item: "no retrieval", metrics=[needs_docs]
     )
 
@@ -844,7 +861,7 @@ def test_async_metric_and_non_finite_score(server: FakeServer) -> None:
     def nan(item: Any, output: Any) -> float:
         return float("nan")
 
-    result = opengrade.evaluate(dataset=ROWS, task=_task, metrics=[slow, nan], max_concurrency=2)
+    result = current().evaluate(dataset=ROWS, task=_task, metrics=[slow, nan], max_concurrency=2)
 
     slow_sub, nan_sub = server.client_results[result.id]
     assert [r["score"] for r in slow_sub["results"]] == [0.25, 0.25]
@@ -858,7 +875,7 @@ def test_async_task_is_awaited(server: FakeServer) -> None:
         opengrade.set_retrieval_documents([{"id": "d1", "text": "doc"}])
         return f"answer to {item.input}"
 
-    result = opengrade.evaluate(dataset=ROWS, task=async_task, metrics=["hit_at_k"])
+    result = current().evaluate(dataset=ROWS, task=async_task, metrics=["hit_at_k"])
     assert sorted(o["actual_output"] for o in server.outputs[result.id].values()) == [
         "answer to q1",
         "answer to q2",
@@ -870,15 +887,15 @@ def test_evaluate_explicit_client_project_does_not_mutate_global(
 ) -> None:
     monkeypatch.delenv("OPENGRADE_PROJECT_ID", raising=False)
     explicit = Client("http://test", transport=httpx2.MockTransport(server.handler))
-    before = opengrade.get_project()
-    opengrade.evaluate(
+    before = current().get_project()
+    current().evaluate(
         dataset=ROWS,
         task=_task,
         metrics=["hit_at_k"],
         project="Demo Project",
         client=explicit,
     )
-    assert opengrade.get_project() is before
+    assert current().get_project() is before
     assert server.projects[0]["slug"] == "demo-project"
     created_pid = server.projects[0]["id"]
     exp_posts = [
@@ -893,7 +910,7 @@ def test_non_json_metadata_becomes_item_error(server: FakeServer) -> None:
     def bad_meta(item: Any, output: Any) -> opengrade.Score:
         return opengrade.Score(1.0, metadata={"x": float("nan")})
 
-    result = opengrade.evaluate(dataset=ROWS, task=_task, metrics=[bad_meta])
+    result = current().evaluate(dataset=ROWS, task=_task, metrics=[bad_meta])
 
     (submitted,) = server.client_results[result.id]
     assert {r["label"] for r in submitted["results"]} == {"ERROR"}
@@ -901,7 +918,7 @@ def test_non_json_metadata_becomes_item_error(server: FakeServer) -> None:
 
 
 def test_client_experiment_metrics_and_params(server: FakeServer) -> None:
-    client = opengrade.get_client()
+    client = current().client
     ds_id = server.add_dataset("gold", [{"input": "q"}])
     exp = client.experiments.create(
         PROJECT_ID, name="e", dataset_id=ds_id, model_config={"model": "a"}
@@ -914,15 +931,15 @@ def test_client_experiment_metrics_and_params(server: FakeServer) -> None:
 
 
 def test_log_params_and_metrics_on_active_experiment(server: FakeServer) -> None:
-    with opengrade.start_experiment(
+    with current().start_experiment(
         "v1", dataset=ROWS, metrics=[lambda item, out: 1.0], params={"model": "a"}
     ) as exp:
         assert exp.log_params(temperature=0.2) == {"model": "a", "temperature": 0.2}
         for item in exp.items():
             with exp.run(item) as run:
                 run.log("x")
-                opengrade.log_metrics({"tokens": 10})  # inside an item run
-        opengrade.log_metrics({"cost_usd": 1.5})  # inside the with block
+                current().log_metrics({"tokens": 10})  # inside an item run
+        current().log_metrics({"cost_usd": 1.5})  # inside the with block
 
     assert opengrade.experiment.ACTIVE_EXPERIMENT.get() is None
     stored = server.experiment_metrics[exp.id]
@@ -932,7 +949,7 @@ def test_log_params_and_metrics_on_active_experiment(server: FakeServer) -> None
 
 
 def test_log_params_after_scoring_is_rejected(server: FakeServer) -> None:
-    exp = opengrade.start_experiment("v1", dataset=ROWS, metrics=[lambda item, out: 1.0])
+    exp = current().start_experiment("v1", dataset=ROWS, metrics=[lambda item, out: 1.0])
     exp.run_task(_task)
     exp.finish()
     with pytest.raises(opengrade.OpengradeAPIError) as err:
@@ -941,14 +958,16 @@ def test_log_params_after_scoring_is_rejected(server: FakeServer) -> None:
 
 
 def test_module_level_logging_needs_an_active_experiment() -> None:
-    with pytest.raises(RuntimeError, match="no active experiment"):
-        opengrade.log_metrics({"x": 1.0})
-    with pytest.raises(RuntimeError, match="no active experiment"):
-        opengrade.log_params(model="a")
+    og = make_og(project_id=PROJECT_ID)
+    with activated(og):
+        with pytest.raises(RuntimeError, match="no active experiment"):
+            og.log_metrics({"x": 1.0})
+        with pytest.raises(RuntimeError, match="no active experiment"):
+            og.log_params(model="a")
 
 
 def test_log_methods_reject_empty_input(server: FakeServer) -> None:
-    exp = opengrade.start_experiment("v1", dataset=ROWS, metrics=[lambda item, out: 1.0])
+    exp = current().start_experiment("v1", dataset=ROWS, metrics=[lambda item, out: 1.0])
     with pytest.raises(ValueError, match="at least one"):
         exp.log_metrics({})
     with pytest.raises(ValueError, match="at least one"):
@@ -956,10 +975,10 @@ def test_log_methods_reject_empty_input(server: FakeServer) -> None:
 
 
 def test_log_metrics_from_concurrent_workers(server: FakeServer) -> None:
-    exp = opengrade.start_experiment("v1", dataset=ROWS, metrics=[lambda item, out: 1.0])
+    exp = current().start_experiment("v1", dataset=ROWS, metrics=[lambda item, out: 1.0])
 
     def task(item: Any) -> str:
-        opengrade.log_metrics({f"m_{item.input}": 1.0})
+        current().log_metrics({f"m_{item.input}": 1.0})
         return "x"
 
     exp.run_task(task, max_concurrency=4, raise_on_error=True)
@@ -967,7 +986,7 @@ def test_log_metrics_from_concurrent_workers(server: FakeServer) -> None:
 
 
 def test_log_metrics_rejects_non_numbers(server: FakeServer) -> None:
-    exp = opengrade.start_experiment("v1", dataset=ROWS, metrics=[lambda item, out: 1.0])
+    exp = current().start_experiment("v1", dataset=ROWS, metrics=[lambda item, out: 1.0])
     with pytest.raises(ValueError, match="must be a number"):
         exp.log_metrics({"x": True})
     with pytest.raises(ValueError, match="must be a number"):
@@ -975,7 +994,7 @@ def test_log_metrics_rejects_non_numbers(server: FakeServer) -> None:
 
 
 def test_experiment_reentry_is_rejected(server: FakeServer) -> None:
-    exp = opengrade.start_experiment("v1", dataset=ROWS, metrics=[lambda item, out: 1.0])
+    exp = current().start_experiment("v1", dataset=ROWS, metrics=[lambda item, out: 1.0])
     with exp:
         with pytest.raises(RuntimeError, match="already active"):
             exp.__enter__()
@@ -1004,7 +1023,7 @@ def test_finish_logs_run_metrics_and_exposes_them(server: FakeServer) -> None:
             raise RuntimeError("boom")
         return "ok"
 
-    result = opengrade.evaluate(dataset=ROWS, task=flaky, metrics=[lambda item, out: 1.0])
+    result = current().evaluate(dataset=ROWS, task=flaky, metrics=[lambda item, out: 1.0])
 
     stored = server.experiment_metrics[result.id]
     assert stored["opengrade.error_rate"] == 0.5
@@ -1015,7 +1034,7 @@ def test_finish_logs_run_metrics_and_exposes_them(server: FakeServer) -> None:
 
 def test_finish_survives_run_metrics_failure(server: FakeServer) -> None:
     server.fail_metrics = True
-    result = opengrade.evaluate(dataset=ROWS, task=_task, metrics=["hit_at_k"])
+    result = current().evaluate(dataset=ROWS, task=_task, metrics=["hit_at_k"])
 
     assert result.metrics == {"hit_at_k": 0.5}
     assert result.experiment_metrics == {}
@@ -1039,10 +1058,10 @@ def test_fmt_delta_labels_unchanged_as_not_significant() -> None:
 
 
 def test_summary_shows_negative_experiment_metric_delta(server: FakeServer) -> None:
-    base = opengrade.evaluate(dataset=ROWS, task=_task, metrics=["hit_at_k"], name="base")
+    base = current().evaluate(dataset=ROWS, task=_task, metrics=["hit_at_k"], name="base")
     server.experiment_metrics[base.id]["cost_usd"] = 2.5
 
-    with opengrade.start_experiment(
+    with current().start_experiment(
         "cand", dataset=ROWS, metrics=["hit_at_k"], baseline=base
     ) as exp:
         exp.run_task(_task)
@@ -1054,10 +1073,10 @@ def test_summary_shows_negative_experiment_metric_delta(server: FakeServer) -> N
 
 
 def test_summary_shows_experiment_metric_delta_vs_baseline(server: FakeServer) -> None:
-    base = opengrade.evaluate(dataset=ROWS, task=_task, metrics=["hit_at_k"], name="base")
+    base = current().evaluate(dataset=ROWS, task=_task, metrics=["hit_at_k"], name="base")
     server.experiment_metrics[base.id]["cost_usd"] = 1.5
 
-    with opengrade.start_experiment(
+    with current().start_experiment(
         "cand", dataset=ROWS, metrics=["hit_at_k"], baseline=base
     ) as exp:
         exp.run_task(_task)
@@ -1076,17 +1095,17 @@ def test_start_experiment_records_git_and_default_version(
     git = {"commit": "b" * 40, "branch": "main", "dirty": True, "remote_url": None}
     monkeypatch.setattr(opengrade.experiment, "detect_git", lambda: dict(git))
 
-    exp = opengrade.start_experiment("v1", dataset=ROWS, metrics=[lambda item, out: 1.0])
+    exp = current().start_experiment("v1", dataset=ROWS, metrics=[lambda item, out: 1.0])
     stored = server.experiments[exp.id]
     assert stored["git"] == git
     assert stored["version"] == "b" * 12 + "-dirty"
 
-    pinned = opengrade.start_experiment(
+    pinned = current().start_experiment(
         "v2", dataset=ROWS, metrics=[lambda item, out: 1.0], version="1.4.0"
     )
     assert server.experiments[pinned.id]["version"] == "1.4.0"
 
-    skipped = opengrade.start_experiment(
+    skipped = current().start_experiment(
         "v3", dataset=ROWS, metrics=[lambda item, out: 1.0], git=False
     )
     assert "git" not in server.experiments[skipped.id]
@@ -1104,7 +1123,7 @@ def test_evaluate_repeats_runs_each_item_n_times(server: FakeServer) -> None:
     def even(item: Any, output: Any) -> float:
         return float(int(output.split()[-1]) % 2 == 0)
 
-    result = opengrade.evaluate(
+    result = current().evaluate(
         dataset=ROWS, task=task, metrics=["hit_at_k", even], name="rep", repeats=3
     )
 
@@ -1129,7 +1148,7 @@ def test_evaluate_repeats_runs_each_item_n_times(server: FakeServer) -> None:
 
 
 def test_manual_loop_repeat_keeps_runs_apart(server: FakeServer) -> None:
-    with opengrade.start_experiment("manual-rep", dataset=ROWS, metrics=["hit_at_k"]) as exp:
+    with current().start_experiment("manual-rep", dataset=ROWS, metrics=["hit_at_k"]) as exp:
         (item, _) = exp.items()
         for repeat in range(2):
             with exp.run(item, repeat=repeat) as run:
@@ -1143,11 +1162,11 @@ def test_manual_loop_repeat_keeps_runs_apart(server: FakeServer) -> None:
 
 def test_repeats_out_of_range_rejected(server: FakeServer) -> None:
     with pytest.raises(ValueError, match="repeats must be"):
-        opengrade.evaluate(dataset=ROWS, task=_task, metrics=["hit_at_k"], repeats=0)
+        current().evaluate(dataset=ROWS, task=_task, metrics=["hit_at_k"], repeats=0)
 
 
 def test_evaluate_group_by_reports_groups(server: FakeServer) -> None:
-    result = opengrade.evaluate(
+    result = current().evaluate(
         dataset=ROWS, task=_task, metrics=["hit_at_k"], name="grouped", group_by="category"
     )
     summary_calls = [c for c in server.calls if c[1].endswith("/summary")]

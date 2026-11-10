@@ -32,6 +32,7 @@ import time
 from typing import Any
 
 import opengrade
+from opengrade import Opengrade, Settings
 
 from nimbus_apps import settings
 from nimbus_apps.console import note, step, title
@@ -72,6 +73,7 @@ def system_prompt_from_params(params: dict[str, Any]) -> str:
 
 
 def run_with_app_config(
+    og: Opengrade,
     *,
     name: str,
     app_config_id: str,
@@ -79,7 +81,7 @@ def run_with_app_config(
     metrics: list[Any],
 ) -> opengrade.ExperimentResult:
     """One evaluated run whose params are the App Config snapshot."""
-    exp = opengrade.start_experiment(
+    exp = og.start_experiment(
         name,
         dataset=RAG_GOLD,
         metrics=metrics,
@@ -100,79 +102,82 @@ def main() -> None:
     title("OpenGrade SDK tour - 05 Prompt A/B via App Config")
 
     step(0, "Connect")
-    opengrade.set_tracking_uri(settings.TRACKING_URI)
-    project = opengrade.set_project(settings.PROJECT)
-    if project is None:
-        sys.exit(f"OpenGrade is not reachable at {settings.TRACKING_URI}: start it first.")
-    opengrade.init(service_name="nimbus-support-eval", instrument="auto")
-    client = opengrade.get_client()
-    ensure_dataset(RAG_GOLD)
-    metrics = list(METRICS)
-    if settings.USE_LLM_JUDGES:
-        metrics += ["groundedness", "correctness"]
+    og = Opengrade(Settings(tracking_uri=settings.TRACKING_URI, project_slug=settings.PROJECT))
+    with og.activate():
+        project = og.set_project(settings.PROJECT)
+        if project is None:
+            sys.exit(f"OpenGrade is not reachable at {settings.TRACKING_URI}: start it first.")
+        og.init_tracing(service_name="nimbus-support-eval", instrument="auto")
+        client = og.client
+        ensure_dataset(RAG_GOLD)
+        metrics = list(METRICS)
+        if settings.USE_LLM_JUDGES:
+            metrics += ["groundedness", "correctness"]
 
-    stamp = time.strftime("%Y%m%d-%H%M%S")
-    model = settings.DEFAULT_MODEL
-    print(f"  model (fixed)={model}")
-    print("  varying: system prompt via App Config (baseline vs candidate)")
+        stamp = time.strftime("%Y%m%d-%H%M%S")
+        model = settings.DEFAULT_MODEL
+        print(f"  model (fixed)={model}")
+        print("  varying: system prompt via App Config (baseline vs candidate)")
 
-    step(1, "Create two App Config versions (same model/retrieval, different prompt)")
-    baseline_cfg = client.app_configs.create_app_config(
-        project.id,
-        CONFIG_FAMILY,
-        description=f"baseline prompt {stamp}",
-        prompt={"system": BASELINE_SYSTEM},
-        model={"model_id": model},
-        retrieval={"top_k": DEFAULT_CONFIG.top_k, "strategy": DEFAULT_CONFIG.retriever},
-    )
-    candidate_cfg = client.app_configs.create_app_config(
-        project.id,
-        CONFIG_FAMILY,
-        description=f"candidate prompt {stamp}",
-        prompt={"system": CANDIDATE_SYSTEM},
-        model={"model_id": model},
-        retrieval={"top_k": DEFAULT_CONFIG.top_k, "strategy": DEFAULT_CONFIG.retriever},
-    )
-    print(
-        f"  baseline  {baseline_cfg.name}@v{baseline_cfg.version}  id={baseline_cfg.id}"
-    )
-    print(
-        f"  candidate {candidate_cfg.name}@v{candidate_cfg.version}  id={candidate_cfg.id}"
-    )
-    note(
-        """Each create bumps the version of the family. The experiment will freeze the
-        chosen version as a snapshot, so later edits to the family do not rewrite history."""
-    )
+        step(1, "Create two App Config versions (same model/retrieval, different prompt)")
+        baseline_cfg = client.app_configs.create_app_config(
+            project.id,
+            CONFIG_FAMILY,
+            description=f"baseline prompt {stamp}",
+            prompt={"system": BASELINE_SYSTEM},
+            model={"model_id": model},
+            retrieval={"top_k": DEFAULT_CONFIG.top_k, "strategy": DEFAULT_CONFIG.retriever},
+        )
+        candidate_cfg = client.app_configs.create_app_config(
+            project.id,
+            CONFIG_FAMILY,
+            description=f"candidate prompt {stamp}",
+            prompt={"system": CANDIDATE_SYSTEM},
+            model={"model_id": model},
+            retrieval={"top_k": DEFAULT_CONFIG.top_k, "strategy": DEFAULT_CONFIG.retriever},
+        )
+        print(
+            f"  baseline  {baseline_cfg.name}@v{baseline_cfg.version}  id={baseline_cfg.id}"
+        )
+        print(
+            f"  candidate {candidate_cfg.name}@v{candidate_cfg.version}  id={candidate_cfg.id}"
+        )
+        note(
+            """Each create bumps the version of the family. The experiment will freeze the
+            chosen version as a snapshot, so later edits to the family do not rewrite history."""
+        )
 
-    step(2, "Evaluate baseline, then candidate (bound to each App Config)")
-    baseline = run_with_app_config(
-        name=f"prompt-baseline-{stamp}",
-        app_config_id=baseline_cfg.id,
-        baseline=None,
-        metrics=metrics,
-    )
-    print(baseline.summary())
-    candidate = run_with_app_config(
-        name=f"prompt-candidate-{stamp}",
-        app_config_id=candidate_cfg.id,
-        baseline=baseline.id,
-        metrics=metrics,
-    )
-    print(candidate.summary())
+        step(2, "Evaluate baseline, then candidate (bound to each App Config)")
+        baseline = run_with_app_config(
+            og,
+            name=f"prompt-baseline-{stamp}",
+            app_config_id=baseline_cfg.id,
+            baseline=None,
+            metrics=metrics,
+        )
+        print(baseline.summary())
+        candidate = run_with_app_config(
+            og,
+            name=f"prompt-candidate-{stamp}",
+            app_config_id=candidate_cfg.id,
+            baseline=baseline.id,
+            metrics=metrics,
+        )
+        print(candidate.summary())
 
-    step(3, "Compare candidate vs baseline")
-    compare = client.experiments.compare(candidate.id, baseline.id)
-    print(compare.model_dump_json(indent=2))
-    note(
-        """In the UI, open each run and check App config snapshot: you should see the two
-        different system prompts. With fake models the quality delta may be tiny; with a
-        real model the stricter candidate often changes must_contain / refusal scores."""
-    )
+        step(3, "Compare candidate vs baseline")
+        compare = client.experiments.compare(candidate.id, baseline.id)
+        print(compare.model_dump_json(indent=2))
+        note(
+            """In the UI, open each run and check App config snapshot: you should see the two
+            different system prompts. With fake models the quality delta may be tiny; with a
+            real model the stricter candidate often changes must_contain / refusal scores."""
+        )
 
-    opengrade.flush()
-    print(f"\nBaseline:  {baseline.url}")
-    print(f"Candidate: {candidate.url}")
-    print(f"App config family: {CONFIG_FAMILY}")
+        print(f"\nBaseline:  {baseline.url}")
+        print(f"Candidate: {candidate.url}")
+        print(f"App config family: {CONFIG_FAMILY}")
+    og.flush()
 
 
 if __name__ == "__main__":

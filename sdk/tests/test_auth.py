@@ -6,9 +6,11 @@ from typing import Any
 
 import httpx2
 import pytest
+from tests.support.instance import init_og
+from tests.support.reset import reset_sdk
 
 import opengrade
-from opengrade import _config, _otel
+from opengrade import Opengrade, Settings
 from opengrade._config import auth_headers
 from opengrade._http import _HttpTransport
 
@@ -19,26 +21,26 @@ def reset_state(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
     monkeypatch.delenv("OPENGRADE_PROJECT_ID", raising=False)
     monkeypatch.delenv("OPENGRADE_PROJECT_SLUG", raising=False)
     monkeypatch.delenv("OPENGRADE_DISABLED", raising=False)
-    _config._reset_for_tests()
-    _otel._reset_for_tests()
+    reset_sdk(otel=True)
     yield
-    _config._reset_for_tests()
-    _otel._reset_for_tests()
+    reset_sdk(otel=True)
 
 
 def test_no_key_sends_no_header() -> None:
-    assert opengrade.get_api_key() is None
-    assert auth_headers("http://localhost:8000") == {}
+    og = Opengrade(Settings())
+    assert auth_headers("http://localhost:8000", runtime=og._runtime) == {}
 
 
-def test_key_from_env_and_setter_precedence(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_key_from_settings(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("OPENGRADE_API_KEY", " env-key ")
-    assert opengrade.get_api_key() == "env-key"
-    opengrade.set_api_key("set-key")
-    assert opengrade.get_api_key() == "set-key"
-    assert auth_headers("https://og.example.com") == {"Authorization": "Bearer set-key"}
-    opengrade.set_api_key(None)
-    assert opengrade.get_api_key() == "env-key"
+    og = Opengrade(Settings.from_env())
+    assert og.settings.api_key == "env-key"
+    og2 = Opengrade(Settings(api_key="set-key", project_id="p1"))
+    assert auth_headers("https://og.example.com", runtime=og2._runtime) == {
+        "Authorization": "Bearer set-key"
+    }
+    og3 = Opengrade(Settings.from_env(project_id="p1"))
+    assert og3.settings.api_key == "env-key"
 
 
 def test_transport_sends_bearer(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -76,12 +78,13 @@ def test_client_api_key_argument() -> None:
 
 
 def test_plain_http_to_remote_host_warns_once(caplog: pytest.LogCaptureFixture) -> None:
+    og = Opengrade(Settings(project_id="p1"))
     with caplog.at_level(logging.WARNING, logger="opengrade"):
-        auth_headers("http://localhost:8000", "k")
+        auth_headers("http://localhost:8000", "k", runtime=og._runtime)
         assert "plain HTTP" not in caplog.text
-        auth_headers("http://og.internal:8000", "k")
-        auth_headers("http://og.internal:8000", "k")
-        auth_headers("https://og.example.com", "k")
+        auth_headers("http://og.internal:8000", "k", runtime=og._runtime)
+        auth_headers("http://og.internal:8000", "k", runtime=og._runtime)
+        auth_headers("https://og.example.com", "k", runtime=og._runtime)
     assert caplog.text.count("plain HTTP") == 1
 
 
@@ -98,7 +101,7 @@ def test_otlp_exporter_gets_bearer(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(trace_exporter, "OTLPSpanExporter", fake_exporter)
     monkeypatch.setenv("OPENGRADE_API_KEY", "otlp-key")
 
-    opengrade.init(project_slug="demo", instrument=False)
+    init_og(project_slug="demo", instrument=False)
 
     assert captured["headers"]["Authorization"] == "Bearer otlp-key"
     assert captured["headers"]["X-Project-Slug"] == "demo"

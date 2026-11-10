@@ -2,7 +2,7 @@
 
 One API worker serves two OpenGrade projects. At startup each tenant gets an `Opengrade` handle with
 its own `project_slug`; each HTTP request calls `with og.activate():` so tracing and
-`opengrade.get_client()` use the right project headers.
+`og.client` use the right project headers.
 
 ## Prerequisites
 

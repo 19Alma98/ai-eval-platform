@@ -1003,7 +1003,7 @@ class Client:
         api_key: str | None = None,
         project_id: str | None = None,
     ) -> None:
-        """``api_key`` defaults to ``opengrade.set_api_key()`` / ``OPENGRADE_API_KEY``."""
+        """``api_key`` is fixed at construction (pass explicitly or via ``Opengrade.client``)."""
         resolved = resolve_api_base_url(base_url)
         self._http = _HttpTransport(resolved, timeout=timeout, transport=transport, api_key=api_key)
         self.base_url = resolved

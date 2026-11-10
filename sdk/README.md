@@ -41,15 +41,21 @@ uv sync --extra openai   # add OpenAI instrumentor
 
 ## Quickstart
 
-One tracking URI, one active project, one `init`. A `@trace` wrapper for your app logic, and provider calls become child spans when the matching instrumentor is installed:
+Construct an `Opengrade` handle (settings from env or `Settings(...)`), call `init_tracing()`, then use `@opengrade.trace` — provider calls become child spans when the matching instrumentor is installed:
 
 ```python
 import opengrade
 from openai import OpenAI
+from opengrade import Opengrade, Settings
 
-opengrade.set_tracking_uri("http://localhost:8000")  # or OPENGRADE_TRACKING_URI
-opengrade.set_project("demo")  # created if it does not exist
-opengrade.init(instrument="auto")  # OTLP → <tracking_uri>/v1/traces
+og = Opengrade(
+    settings=Settings(
+        tracking_uri="http://localhost:8000",  # or OPENGRADE_TRACKING_URI
+        project_slug="demo",
+    )
+)
+og.set_project("demo")  # created if it does not exist
+og.init_tracing(instrument="auto")  # OTLP → <tracking_uri>/v1/traces
 
 client = OpenAI(base_url="http://localhost:11434/v1", api_key="ollama")
 
@@ -63,15 +69,16 @@ def ask(q: str) -> str:
     return r.choices[0].message.content or ""
 
 
-ask("ping")
-opengrade.flush()
+with og.activate():
+    ask("ping")
+og.flush()
 ```
 
 Runnable examples: [`examples/sdk_hello/`](https://github.com/19Alma98/ai-eval-platform/blob/main/examples/sdk_hello/README.md) (Ollama via OpenAI-compatible API) and the guided [`examples/sdk_tour/`](https://github.com/19Alma98/ai-eval-platform/blob/main/examples/sdk_tour/README.md) (tracing, RAG verification, architecture comparison, production metrics and alerts; runs offline).
 
 ### Multiple projects in one process (`Opengrade`)
 
-Module helpers such as `opengrade.set_project()` and `opengrade.init()` still target a single **process default** runtime — fine for one app and one project. When several projects or tenants share one worker (multi-tenant API, background jobs, or parallel tests), give each scope its own runtime and activate it for the duration of the work:
+Every app should hold an **`Opengrade`** runtime (settings, shared `Client`, OTLP routing). When several projects or tenants share one worker (multi-tenant API, background jobs, or parallel tests), construct one handle per scope and **`activate()`** it for the duration of the work:
 
 ```python
 from opengrade import Opengrade, Settings, current
@@ -84,23 +91,23 @@ contoso.init_tracing(service_name="worker-contoso", instrument=False)
 
 with acme.activate():
     assert current() is acme
-    opengrade.get_client().datasets.list()  # project headers follow this instance
+    acme.client.datasets.list()  # project headers follow this instance
 
 with contoso.activate():
-    opengrade.set_project("contoso")  # resolves against contoso's client, not acme's
+    contoso.set_project("contoso")  # resolves against contoso's client, not acme's
 ```
 
 - **`Opengrade(...)`** holds per-instance settings, clients, and OTLP routing on the shared `TracerProvider`.
-- **`with og.activate():`** (or `with og:` which also calls `close()` on exit) sets `opengrade.current()` so `get_client()`, `init()`, `@opengrade.trace`, and OTLP export use that instance's project headers and exporter.
+- **`with og.activate():`** (or `with og:` which also calls `close()` on exit) sets `opengrade.current()` so `@opengrade.trace`, OTLP export, `og.evaluate()`, and `og.client` use that instance.
 - **Explicit `Client(..., project_id=...)`** pins the control plane to one project regardless of `current()` — use this in libraries and long-lived clients so they never depend on whoever last called `set_project()`.
-- **`Client()` without `project_id`** raises if a method needs a project — pass `project_id` on the client / call, or use `og.client` inside `activate()` after `set_project()`.
+- **`Client()` without `project_id`** raises if a method needs a project — pass `project_id` on the client / call, or use `og.client` inside `activate()` after `og.set_project()`.
 - **Worker threads** do not inherit `ContextVar` values from the parent thread. Wrap thread entry points with `contextvars.copy_context().run(...)` (or call `activate()` inside the thread) so tracing and clients stay on the right instance.
 
 Runnable multi-tenant FastAPI sample: [`examples/fastapi_multi_tenant/`](https://github.com/19Alma98/ai-eval-platform/blob/main/examples/fastapi_multi_tenant/README.md).
 
 #### Testing with `Opengrade` and `httpx2.MockTransport`
 
-Isolate SDK state in pytest without a live platform: construct `Opengrade` with `Settings`, inject a `Client` that uses `httpx2.MockTransport`, and scope module helpers with `activate()`. The SDK tests reset globals in an autouse fixture (`opengrade._context._reset_for_tests()`).
+Isolate SDK state in pytest without a live platform: construct `Opengrade` with `Settings`, inject a `Client` that uses `httpx2.MockTransport`, and scope calls with `activate()`. Helpers: `tests.support.instance.make_og` / `init_og` / `activated`, and `tests.support.reset.reset_sdk`.
 
 ```python
 import httpx2
@@ -121,19 +128,22 @@ def test_two_projects(mock_handler):
     assert cap_a and "proj-a" in cap_a[0].url.path
 ```
 
-See `sdk/tests/test_opengrade.py` and `sdk/tests/test_client.py` for full handlers and deprecation coverage. Running the suite in parallel (`pytest-xdist`) is optional; each test file already resets module state when it uses the autouse pattern above.
+See `sdk/tests/test_opengrade.py` and `sdk/tests/test_client.py` for full handlers. Running the suite in parallel (`pytest-xdist`) is optional; tests call `reset_sdk()` where needed.
 
 ### API summary
 
-| Function | Purpose |
+| API | Purpose |
 |---|---|
-| `opengrade.set_tracking_uri(uri)` | Platform URL for both `Client` and OTLP (`<uri>/v1/traces`) |
-| `opengrade.set_project(name)` | Get-or-create project by slug/name; becomes the default for `init()`. Returns `None` (with a warning) if the platform is unreachable |
-| `opengrade.aset_project(name)` | Async variant of `set_project` (uses shared `AsyncClient`) |
-| `opengrade.get_client()` | Shared `Client` bound to the tracking URI (no per-call `Client()`) |
-| `opengrade.get_async_client()` | Shared `AsyncClient` for async app code |
-| `opengrade.get_project()` | Project set via `set_project` / `aset_project`, or `None` |
-| `opengrade.init(...)` | OTLP exporter, project headers, optional `instrument="auto"` \| list \| `False` |
+| `Opengrade(settings=Settings(...))` | Runtime handle: settings, shared clients, tracing, evaluate |
+| `Settings(tracking_uri=..., project_id=..., project_slug=..., ...)` | Immutable config; `Settings.from_env()` merges env vars |
+| `with og.activate():` / `opengrade.current()` | Route tracing, clients, and evaluate to this instance |
+| `og.init_tracing(...)` | OTLP exporter, optional `instrument="auto"` \| list \| `False` |
+| `og.set_project(name)` / `await og.aset_project(name)` | Get-or-create project; updates bound `project_id` on shared clients |
+| `og.get_project()` | Active project or `None` |
+| `og.client` / `og.async_client()` | Shared control-plane clients for this instance |
+| `og.flush()` | Drain spans (and related queues) for this instance |
+| `og.evaluate(...)` / `og.start_experiment(...)` / `og.sweep(...)` | Experiments (also work as module helpers inside `activate()`) |
+| `og.log_score` / `og.log_feedback` / `og.score_trace` | Production scores tied to the active runtime |
 | `@opengrade.trace` | Parent CHAIN span (sync/async/generators); optional input/output capture (32 KiB cap) |
 | `with opengrade.span(name, kind=...)` | Child span for a block of code (`with` / `async with`): retrieve, rerank, tool call… |
 | `opengrade.set_user` / `set_session` / `set_tags` / `set_metadata` | User, session, tags and key/value metadata of the current trace (filterable in the UI) |
@@ -144,10 +154,6 @@ See `sdk/tests/test_opengrade.py` and `sdk/tests/test_client.py` for full handle
 | `opengrade.current_trace_id()` | 32-char hex trace id while inside a `@trace` span |
 | `opengrade.bind_evaluation(...)` | Bind current span to `experiment_id` + `dataset_item_id` |
 | `opengrade.set_retrieval_documents([...])` | Attach retrieval docs for RAG eval context |
-| `opengrade.flush()` | Drain the batch span processor before exit |
-| `opengrade.evaluate(...)` | Run a task over a dataset, score, compare with a baseline → `ExperimentResult` |
-| `opengrade.start_experiment(...)` | Context manager for a manual item loop (`exp.items()`, `exp.run(item)`) |
-| `opengrade.sweep(...)` | One experiment per configuration of a grid (models, prompts, chunk sizes…), ranked → `SweepResult` |
 | `opengrade.evaluate_retrieval(...)` | Score only the retriever (hit@k, recall@k, MRR, optional context judges), no answer generated |
 | `opengrade.Client(...)` | Control-plane REST client (projects, datasets, experiments, …) |
 | `opengrade.AsyncClient(...)` | Async control-plane client (projects, live_runs, trace_scores, health) |
@@ -211,13 +217,15 @@ with opengrade.using_attributes(user_id=user.id, session_id=chat_id, tags=["beta
 
 ## Experiments (`evaluate` / `start_experiment`)
 
-One call runs a task over a dataset, writes the outputs, scores them and compares against a baseline:
+One call runs a task over a dataset, writes the outputs, scores them and compares against a baseline. Examples use an `Opengrade` handle `og` (from the quickstart); `og.evaluate()` and `og.start_experiment()` call `activate()` for you:
 
 ```python
 import opengrade
+from opengrade import Opengrade, Settings
 
-opengrade.set_project("demo")
-opengrade.init()  # optional: adds trace context (tokens, cost, tool calls) to each item
+og = Opengrade(settings=Settings(project_slug="demo"))
+og.set_project("demo")
+og.init_tracing()  # optional: adds trace context (tokens, cost, tool calls) to each item
 
 
 def answer_question(item):  # item.input, item.expected_output, item.metadata
@@ -230,7 +238,7 @@ def short(item, output) -> bool:  # local metric: float | bool | None
     return len(output) < 400
 
 
-result = opengrade.evaluate(
+result = og.evaluate(
     dataset="gold-v1",  # name/id, path, list/iterable of dicts, pandas/Polars DataFrame
     task=answer_question,
     metrics=["groundedness", "hit_at_k", short],
@@ -247,13 +255,13 @@ result = opengrade.evaluate(
 print(result.summary(), result.url)
 
 # Promote the run as the new baseline (the CLI does this with --promote when the gate passes):
-opengrade.get_client().experiments.set_alias("main", result.id, note="accepted")
+og.client.experiments.set_alias("main", result.id, note="accepted")
 ```
 
 Manual loop, same plumbing (binding, flush, output upload, scoring on exit):
 
 ```python
-with opengrade.start_experiment("v2", dataset="gold-v1", metrics=["hit_at_k"]) as exp:
+with og.start_experiment("v2", dataset="gold-v1", metrics=["hit_at_k"]) as exp:
     for item in exp.items():
         with exp.run(item) as run:  # root span bound to (experiment, item)
             run.log(my_app(item.input))  # or opengrade.set_output(...) anywhere inside
@@ -264,7 +272,7 @@ How it behaves:
 
 - **Metrics**: a string is a server metric kind (`hit_at_k`, `recall_at_k`, `mrr`, `must_contain`, `groundedness`, `correctness`, `answer_relevance`, `context_precision`, `context_recall`, `citation_accuracy`, `refusal`, `latency`). A dict sets threshold/config, for example `{"kind": "hit_at_k", "config": {"k": 3}}`. The SDK finds or creates a metrics set that holds exactly those kinds, using the project's defaults for anything you leave out. `metrics=None` uses the project default set. A Python metric runs locally (see *Custom metrics* below), and its scores are submitted to the platform (`POST /experiments/{id}/client-results`). From there they are aggregated, shown in the UI and compared with the baseline like server metrics.
 - **Datasets**: pass a registered name/id, a path to CSV/JSON/JSONL, a list or iterable of dicts, a pandas DataFrame, or a Polars DataFrame. Rows need an `input` column (or `question`). `expected_output` (or `expected_answer`), `context` and `metadata` map to item fields; any other column goes into `metadata` (so `expected_doc_ids` and `must_contain` work). With the default `task_type="rag_qa"` every row needs `expected_output` and `expected_doc_ids`, except rows labelled unanswerable (`metadata.answerable: false` or `expected_refusal: true`), which may omit both. A missing `input`/`question` raises `opengrade.DatasetColumnError` (CSV headers are checked up front). Inline rows are hashed into a dataset name, so re-running on the same rows reuses the same dataset. Generators are materialised before upload (no lazy streaming).
-- **Outputs** are uploaded with `PUT /experiments/{id}/outputs`, so this works without `opengrade.init()`. With tracing on, `finish()` waits for the OTLP traces to be bound (up to 30s) and merges their context in. Your explicit output always wins.
+- **Outputs** are uploaded with `PUT /experiments/{id}/outputs`, so this works without `init_tracing()`. With tracing on, `finish()` waits for the OTLP traces to be bound (up to 30s) and merges their context in. Your explicit output always wins.
 - **Repeats**: `repeats=N` runs the task N times per item (each run is its own trace and output, `repeat` 0..N-1). Scores are averaged per item before aggregating, so every item weighs once and the baseline comparison still pairs items; the bootstrap CI then reflects run-to-run noise less. Items whose PASS/FAIL changes between repeats count as flaky (`result.flaky`, the `flaky` column in `summary()`, the UI scorecard). In a manual loop pass `exp.run(item, repeat=i)`. Max 100.
 - **Concurrency:** `max_concurrency > 1` runs items on a thread pool. Caller
   ContextVars (for example `using_attributes(...)` and `activate()`) are copied
@@ -278,7 +286,7 @@ How it behaves:
 Two server judges check behaviours that answer-quality scores miss:
 
 ```python
-opengrade.evaluate(
+og.evaluate(
     dataset=[
         {
             "input": "How many PTO days?",
@@ -308,7 +316,7 @@ def cites_source(s: opengrade.Sample) -> opengrade.Score:
     return opengrade.Score(1.0 if hit else 0.0, explanation="cited" if hit else "no citation")
 
 
-opengrade.evaluate(dataset="gold-v1", task=answer_question, metrics=["hit_at_k", cites_source])
+og.evaluate(dataset="gold-v1", task=answer_question, metrics=["hit_at_k", cites_source])
 ```
 
 - `Sample` fields: `input`, `output`, `expected` (dataset `expected_output`), `documents` (from `set_retrieval_documents`), `context`, `metadata`, `trace_id`, `item_id`.
@@ -338,7 +346,7 @@ tone = opengrade.LlmJudge(
 print(
     tone.preview(input="Can I carry over PTO?", output="lol no").explanation
 )  # try it, nothing stored
-opengrade.evaluate(dataset="gold-v1", task=answer_question, metrics=["groundedness", tone])
+og.evaluate(dataset="gold-v1", task=answer_question, metrics=["groundedness", tone])
 ```
 
 - The judge is stored as a project evaluator (`custom_judge`); `evaluate` reuses it while the config is unchanged and creates a new version when it changes, so different criteria are never compared as the same metric.
@@ -400,7 +408,7 @@ def search(query: str):  # or search(item); return the ranked documents
     return vector_store.similarity_search(query, k=10)
 
 
-result = opengrade.evaluate_retrieval(dataset="gold-v1", retriever=search, k=5)
+result = og.evaluate_retrieval(dataset="gold-v1", retriever=search, k=5)
 print(result.summary())  # hit_at_k, recall_at_k, mrr at cutoff 5 + retrieval latency
 ```
 
@@ -411,18 +419,19 @@ print(result.summary())  # hit_at_k, recall_at_k, mrr at cutoff 5 + retrieval la
 
 ## Control plane (`Client`)
 
-HTTP client for the platform JSON API (uses `httpx2`, a core SDK dependency). Without `base_url` it uses the tracking URI. In app code prefer the shared instance, `opengrade.get_client()`, over building a `Client()` per function:
+HTTP client for the platform JSON API (uses `httpx2`, a core SDK dependency). Without `base_url` it uses the tracking URI. In app code prefer `og.client` on your `Opengrade` handle over building a `Client()` per function:
 
 ```python
-import opengrade
+from opengrade import Opengrade, Settings
 
-opengrade.set_project("demo")
-client = opengrade.get_client()
+og = Opengrade(settings=Settings(tracking_uri="http://localhost:8000", project_slug="demo"))
+og.set_project("demo")
+client = og.client
 datasets = client.datasets.list()  # project_id defaults to the active project
 exp = client.experiments.create(name="baseline", dataset_id=datasets[0].id)
 ```
 
-Project-scoped methods (`datasets.create/list/create_with_items`, `experiments.create/list`, `metrics_packs.ensure/get`, `live_runs.submit/list`, `projects.get`) take `project_id` as an optional first argument: explicit value > `init()` / `set_project()` id > `OPENGRADE_PROJECT_ID` > lazy slug resolve (`init(project_slug=…)` / `OPENGRADE_PROJECT_SLUG`), else `ValueError`.
+Project-scoped methods (`datasets.create/list/create_with_items`, `experiments.create/list`, `metrics_packs.ensure/get`, `live_runs.submit/list`, `projects.get`) take `project_id` as an optional first argument: explicit value > active `Settings.project_id` / `set_project()` > `OPENGRADE_PROJECT_ID` > lazy slug resolve (`Settings(project_slug=…)` / `OPENGRADE_PROJECT_SLUG`), else `ValueError`.
 
 Explicit, self-managed client:
 
@@ -458,37 +467,39 @@ Namespaces: `projects`, `datasets` (`create`, `create_with_items`, `add_item`, `
 
 ### Async control plane (`AsyncClient`)
 
-For FastAPI / async RAG apps, use `AsyncClient` so control-plane calls do not block the event loop. Prefer `opengrade.get_async_client()` and `await opengrade.aset_project(...)`. MVP surface: `health`, `projects`, `live_runs` (full), `trace_scores`. Datasets, experiments, metrics packs/sets, and app configs remain on the sync `Client`.
+For FastAPI / async RAG apps, use `AsyncClient` so control-plane calls do not block the event loop. Prefer `og.async_client()` and `await og.aset_project(...)`. MVP surface: `health`, `projects`, `live_runs` (full), `trace_scores`. Datasets, experiments, metrics packs/sets, and app configs remain on the sync `Client`.
 
 ```python
 import opengrade
+from opengrade import Opengrade, Settings
+
+og = Opengrade(settings=Settings(tracking_uri="http://localhost:8000", project_slug="my-rag"))
 
 
 # FastAPI lifespan
 async def lifespan(app):
-    opengrade.set_tracking_uri("http://localhost:8000")
-    await opengrade.aset_project("my-rag")
-    opengrade.init(instrument=False)
+    await og.aset_project("my-rag")
+    og.init_tracing(instrument=False)
     yield
-    await opengrade.get_async_client().aclose()
+    await og.async_client().aclose()
 
 
 @opengrade.trace(name="answer")
 async def answer(q: str) -> str:
     text = "..."
-    client = opengrade.get_async_client()
+    client = og.async_client()
     await client.live_runs.submit(question=q, answer=text, documents=[])
     return text
 ```
 
-Or manage the client yourself: `async with AsyncClient(...) as client: ...`. Changing `set_tracking_uri` resets both shared clients; if an event loop is already running, `aclose` the async client before changing the URI (otherwise the shared async client is dropped with a warning).
+Or manage the client yourself: `async with AsyncClient(...) as client: ...`. Update `og`'s `Settings` (or construct a new `Opengrade`) to change tracking URI; if an event loop is already running, `aclose` the async client before replacing settings (otherwise the shared async client is dropped with a warning).
 
 ### Releases and environments
 
 Tag production traffic with the release and deployment that served it, so a deploy can be compared with the previous one:
 
 ```python
-opengrade.init(
+og.init_tracing(
     version=os.environ["GIT_SHA"], environment="prod"
 )  # or OPENGRADE_VERSION / OPENGRADE_ENVIRONMENT
 ```
@@ -498,7 +509,7 @@ They become the OTel resource attributes `service.version` / `deployment.environ
 ### Trace sampling and capture size
 
 ```python
-opengrade.init(
+og.init_tracing(
     project_slug="acme",
     trace_sample_rate=0.1,  # or OPENGRADE_TRACE_SAMPLE_RATE
     max_capture_bytes=16_384,  # or OPENGRADE_MAX_CAPTURE_BYTES
@@ -519,7 +530,7 @@ For **generator** and **async-generator** functions, `@opengrade.trace` joins st
 With `live=True`, the outermost `@opengrade.trace` call outside an experiment becomes a live interaction at OTLP ingestion; no separate `live_runs.submit` call is needed.
 
 ```python
-opengrade.init(
+og.init_tracing(
     project_slug="acme", live=True, live_sample_rate=0.1
 )  # or OPENGRADE_LIVE=1, OPENGRADE_LIVE_SAMPLE_RATE=0.1
 
@@ -541,7 +552,7 @@ def answer(question: str) -> str:
 Attach scores and end-user feedback to a production trace. They are stored per trace and show up on the Live page (next to the judge verdicts), in the "Failing" filter and on the overview.
 
 ```python
-opengrade.init(live=True)
+og.init_tracing(live=True)
 
 
 @opengrade.metric(threshold=0.5, requires=("documents",))
@@ -572,7 +583,7 @@ opengrade.log_feedback(True, trace_id=trace_id, user_id="user-42", comment="grea
 - `log_score(name, value, *, trace_id=None, label=None, explanation=None, threshold=None, metadata=None)`: without `trace_id` it uses the current trace. PASS/FAIL follows the same rule as experiment metrics: a `FAIL` label fails; a value under `threshold` fails; otherwise, with a threshold a value at or above it passes, and without one only a value of 0 fails.
 - `log_feedback(positive, *, trace_id=None, comment=None, user_id=None)`: stored as `user_feedback` (1 or 0); `positive` must be a bool (or 0/1). One value per user per trace: a user changing their mind replaces it. Without `user_id` the feedback is anonymous and all anonymous feedback on a trace shares one row (last write wins). A thumbs-down counts as a failure in the Live "Failing" filter.
 - `opengrade.score_trace(metric, sample, trace_id=...)` runs one metric now, on the calling thread (only the sending is in the background), and stores the result. The trace is `trace_id`, else `sample.trace_id`, else the current trace. A raising metric queues `label="ERROR"` with the exception as explanation (returns `True` when that score is queued); missing `requires` skips with `False`.
-- `@opengrade.trace(metrics=[...], metrics_sample_rate=1.0)` runs your metrics after the function returns successfully (not when it raises, not inside experiments, which score their own metrics). Needs `opengrade.init()`. Sampling is per trace and configured separately from the judge's `live_sample_rate`; both use the same hash of the trace id, so when both are set the sampled traces are nested (the lower rate's traces are a subset of the higher rate's).
+- `@opengrade.trace(metrics=[...], metrics_sample_rate=1.0)` runs your metrics after the function returns successfully (not when it raises, not inside experiments, which score their own metrics). Needs `init_tracing()`. Sampling is per trace and configured separately from the judge's `live_sample_rate`; both use the same hash of the trace id, so when both are set the sampled traces are nested (the lower rate's traces are a subset of the higher rate's).
   - `Sample.input` is what you passed to `opengrade.set_input()` inside the call, else the only argument, else `{"args", "kwargs"}`; `Sample.output` is what you passed to `opengrade.set_output()` inside the call, else the return value (so a handler can return a response object and still have its metrics see the answer); `Sample.documents` is the last `set_retrieval_documents()` inside the call (including nested `@opengrade.trace` helpers on the same thread); `expected` is `None`, so metrics with `requires=("expected",)` are skipped. Input, output and documents are deep-copied when the job is queued (so later mutation is invisible); samples over 256 KiB serialized are skipped with a warning. Capture uses a ContextVar: a worker thread your function starts does not inherit it, so `set_retrieval_documents` (or `record_documents`) from that thread does not feed the outer sample — call it on the traced thread before return, or pass documents into the metric yourself.
   - Metrics run on a background pool (default 2 threads; `init(metrics_workers=...)` or `OPENGRADE_METRICS_WORKERS`) fed by a bounded queue; when it is full the call is not scored and a warning is logged. Async metrics time out after 60 s; a sync metric cannot be interrupted. A raising or timed-out metric stores `label="ERROR"` with the exception as explanation (never breaks the traced call). For LLM judges raise `metrics_workers` or lower `metrics_sample_rate`.
   - Metrics run with instrumentation suppressed: LLM calls a judge makes and `@opengrade.trace` helpers it calls do not create production traces (spans started manually with an OpenTelemetry tracer still do).
@@ -581,14 +592,14 @@ opengrade.log_feedback(True, trace_id=trace_id, user_id="user-42", comment="grea
     async-generator functions are rejected with `metrics=`.
 - These calls never raise. `log_score`, `log_feedback` and `trace(metrics=...)` never block the caller; `score_trace()` blocks for as long as the metric takes. Invalid input (bad value, label or trace id, or metadata over 16 KB serialized) logs a warning and returns `False`; setup problems (no project id, no active trace) warn at most once a minute.
 - Scores are sent in the background (batches every 2 s, 100 scores or about 512 KB). A 413 (body over the server's 1 MiB limit) splits the batch in half and resends, dropping only a single score that is still too large. A batch rejected with 400/422 is resent item by item so only the bad scores are dropped; 401/403/404 and other 4xx drop the batch at once; only network errors and 5xx are retried once after a 1 s backoff, then dropped with a warning.
-- `opengrade.flush(timeout_millis)` is one total budget: spans, then pending metrics, then scores. At exit, spans, pending metrics, and scores share one ~5 s budget (span flush is capped at ~2 s of that).
+- `og.flush(timeout_millis=...)` is one total budget: spans, then pending metrics, then scores. At exit, spans, pending metrics, and scores share one ~5 s budget (span flush is capped at ~2 s of that).
 
 ### Alerts
 
 The server checks alert rules every minute on production data and notifies a webhook (Slack or any URL) when one fires or resolves. A rule compares the metric with a fixed `threshold` (default), with the previous period (`condition="change"`: drift, threshold is a relative change) or with its recent history (`condition="anomaly"`: threshold is a z-score). Create them in the UI (Production → Alerts) or as code:
 
 ```python
-client = opengrade.get_client()
+client = og.client
 client.alerts.create(
     name="Groundedness failing",
     metric="score_fail_rate",  # also error_rate, latency_p90_ms, traffic, cost_usd, ...
@@ -664,10 +675,11 @@ def run_item(question: str) -> str:
 Versioned prompt + model configs live under `client.app_configs`:
 
 ```python
-import opengrade
+from opengrade import Opengrade, Settings
 
-project_id = opengrade.set_project("demo").id
-registry = opengrade.get_client().app_configs
+og = Opengrade(settings=Settings(project_slug="demo"))
+project_id = og.set_project("demo").id
+registry = og.client.app_configs
 created = registry.create_app_config(
     project_id,
     "rag-faq",
@@ -692,26 +704,26 @@ End-to-end prompt A/B (same model, two App Config prompts): `uv run python 05_pr
 | `llama_index` | `llama_index` | `openinference-instrumentation-llama-index` | Extra name: `llama-index` |
 | `bedrock` | `boto3` (Bedrock runtime) | `openinference-instrumentation-bedrock` | Documented; manual smoke outside default CI |
 
-Install the extra for the providers you use, then `init(instrument="auto")` activates every tier-1 entry whose target library and instrumentor package are importable. Use `init(instrument=["openai", "langchain"])` to restrict keys, or `instrument=False` for decorator-only tracing.
+Install the extra for the providers you use, then `og.init_tracing(instrument="auto")` activates every tier-1 entry whose target library and instrumentor package are importable. Use `instrument=["openai", "langchain"]` to restrict keys, or `instrument=False` for decorator-only tracing.
 
 ## Environment variables
 
 | Variable | Purpose |
 |---|---|
-| `OPENGRADE_TRACKING_URI` | Platform URL for `Client()` and OTLP (default `http://localhost:8000`); `set_tracking_uri()` wins |
+| `OPENGRADE_TRACKING_URI` | Platform URL for `Client()` and OTLP (default `http://localhost:8000`); `Settings(tracking_uri=...)` wins |
 | `OPENGRADE_UI_URL` | Base URL for experiment/trace links in `announce()` / `ExperimentResult.url` (default: same as the API host) |
-| `OPENGRADE_PROJECT_ID` | Project UUID header (`X-Project-Id`); used when no `set_project()` / `init()` argument |
+| `OPENGRADE_PROJECT_ID` | Project UUID header (`X-Project-Id`); used when not set on `Settings` / `set_project()` |
 | `OPENGRADE_PROJECT_SLUG` | Project slug header (`X-Project-Slug`); the project must already exist |
 | `OPENGRADE_SERVICE_NAME` | OpenTelemetry `service.name` (default `opengrade-app`) |
 | `OPENGRADE_OTLP_ENDPOINT` | Optional override of the derived OTLP URL (e.g. a separate collector) |
-| `OPENGRADE_DISABLED` | `1` / `true` / `yes` / `on` turns `init()` into a no-op and skips score/feedback HTTP (`log_score`, `log_feedback`, production metrics); decorators keep working |
-| `OPENGRADE_VERSION` | Release of your app (`service.version`); production views, traces and alerts can be filtered and compared per version. `init(version=...)` wins |
-| `OPENGRADE_ENVIRONMENT` | Deployment environment (`deployment.environment`, e.g. `prod`, `staging`). `init(environment=...)` wins |
-| `OPENGRADE_METRICS_WORKERS` | Size of the `@opengrade.trace(metrics=...)` background pool (default `2`, range 1–64); `init(metrics_workers=...)` wins |
-| `OPENGRADE_TRACE_SAMPLE_RATE` | OTEL head sampling when opengrade owns the `TracerProvider` (`TraceIdRatioBased`, default `1.0`); `init(trace_sample_rate=...)` wins. Independent of `live_sample_rate` / `metrics_sample_rate` |
-| `OPENGRADE_MAX_CAPTURE_BYTES` | Max UTF-8 bytes for captured input/output span attributes (default `32768`); `init(max_capture_bytes=...)` wins |
+| `OPENGRADE_DISABLED` | `1` / `true` / `yes` / `on` turns `init_tracing()` into a no-op and skips score/feedback HTTP (`log_score`, `log_feedback`, production metrics); decorators keep working |
+| `OPENGRADE_VERSION` | Release of your app (`service.version`); production views, traces and alerts can be filtered and compared per version. `init_tracing(version=...)` wins |
+| `OPENGRADE_ENVIRONMENT` | Deployment environment (`deployment.environment`, e.g. `prod`, `staging`). `init_tracing(environment=...)` wins |
+| `OPENGRADE_METRICS_WORKERS` | Size of the `@opengrade.trace(metrics=...)` background pool (default `2`, range 1–64); `init_tracing(metrics_workers=...)` wins |
+| `OPENGRADE_TRACE_SAMPLE_RATE` | OTEL head sampling when opengrade owns the `TracerProvider` (`TraceIdRatioBased`, default `1.0`); `init_tracing(trace_sample_rate=...)` wins. Independent of `live_sample_rate` / `metrics_sample_rate` |
+| `OPENGRADE_MAX_CAPTURE_BYTES` | Max UTF-8 bytes for captured input/output span attributes (default `32768`); `init_tracing(max_capture_bytes=...)` wins |
 
-Project precedence for `init()`: arguments > `set_project()` > env. If both `OPENGRADE_PROJECT_ID` and `OPENGRADE_PROJECT_SLUG` are set, id wins. `init(project_slug=…)` also wires control-plane calls (`log_score`, production metrics) via lazy slug→id resolution.
+Project precedence for `init_tracing()`: keyword arguments > `set_project()` > env on `Settings`. If both `OPENGRADE_PROJECT_ID` and `OPENGRADE_PROJECT_SLUG` are set, id wins. `Settings(project_slug=…)` also wires control-plane calls (`log_score`, production metrics) via lazy slug→id resolution.
 
 When the UI is served on a different host than the API, set `OPENGRADE_UI_URL` so result links open the UI instead of the API origin.
 
@@ -723,8 +735,8 @@ Control-plane calls (`Client`, `log_score`, experiments) use **httpx2**. OTLP sp
 
 Tracing never breaks the host app:
 
-- `init()` never raises. Without a project it logs a warning on the `opengrade` logger and stays a no-op; a broken instrumentor is skipped with a warning.
-- Pending spans are flushed at interpreter exit (`atexit`, sharing the ~5 s exit budget with metrics/scores; span stage capped at ~2 s), so short scripts don't need `opengrade.flush()`.
+- `init_tracing()` never raises. Without a project it logs a warning on the `opengrade` logger and stays a no-op; a broken instrumentor is skipped with a warning.
+- Pending spans are flushed at interpreter exit (`atexit`, sharing the ~5 s exit budget with metrics/scores; span stage capped at ~2 s), so short scripts don't need `og.flush()`.
 - If the platform is unreachable, spans are dropped: one warning when export starts failing, one info when it recovers. After a failure, export pauses for 30s, so a platform that is down adds no network calls and doesn't slow down exit.
 
 ## Content capture
@@ -748,12 +760,15 @@ uv pip install anthropic
 uv run python -c "
 import opengrade
 import anthropic
-opengrade.init(project_slug='demo', instrument=['anthropic'])
+from opengrade import Opengrade, Settings
+og = Opengrade(settings=Settings(project_slug='demo'))
+og.init_tracing(instrument=['anthropic'])
 c = anthropic.Anthropic()
 @opengrade.trace
 def go():
     c.messages.create(model='claude-3-5-haiku-20241022', max_tokens=16, messages=[{'role':'user','content':'hi'}])
-go(); opengrade.flush()
+with og.activate(): go()
+og.flush()
 "
 ```
 
@@ -764,9 +779,11 @@ cd sdk && uv sync --extra langchain
 # install langchain + your LLM backend as needed
 uv run python -c "
 import opengrade
-opengrade.init(project_slug='demo', instrument=['langchain'])
-# invoke your LangChain chain here
-opengrade.flush()
+from opengrade import Opengrade, Settings
+og = Opengrade(settings=Settings(project_slug='demo'))
+og.init_tracing(instrument=['langchain'])
+# invoke your LangChain chain here (inside og.activate() if using @opengrade.trace)
+og.flush()
 "
 ```
 

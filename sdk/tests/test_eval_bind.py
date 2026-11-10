@@ -8,34 +8,43 @@ from opentelemetry import trace
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import SimpleSpanProcessor
 from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
+from tests.support.instance import activated, init_og, make_og
+from tests.support.reset import reset_sdk
 
 import opengrade
-from opengrade import _otel
+from opengrade import Opengrade
 
+_og: Opengrade | None = None
 _shared_exporter: InMemorySpanExporter | None = None
 
 
 @pytest.fixture(scope="module", autouse=True)
 def _reset_otel_before_eval_bind_tests() -> Iterator[None]:
-    global _shared_exporter
-    _otel._reset_for_tests()
+    global _og, _shared_exporter
+    reset_sdk(otel=True)
+    _og = None
     _shared_exporter = None
     yield
+    _og = None
     _shared_exporter = None
-    _otel._reset_for_tests()
+    reset_sdk(otel=True)
 
 
 @pytest.fixture
-def spans() -> InMemorySpanExporter:
-    global _shared_exporter
+def spans(monkeypatch: pytest.MonkeyPatch) -> Iterator[InMemorySpanExporter]:
+    global _og, _shared_exporter
     if _shared_exporter is None:
         _shared_exporter = InMemorySpanExporter()
         provider = TracerProvider()
         provider.add_span_processor(SimpleSpanProcessor(_shared_exporter))
         trace.set_tracer_provider(provider)
+        monkeypatch.setenv("OPENGRADE_PROJECT_ID", "p-eval-bind")
+        _og = init_og(project_id="p-eval-bind", instrument=False, _span_exporter=_shared_exporter)
     else:
         _shared_exporter.clear()
-    return _shared_exporter
+    assert _og is not None
+    with activated(_og):
+        yield _shared_exporter
 
 
 def test_bind_evaluation_sets_experiment_and_dataset_item_ids(
@@ -79,8 +88,10 @@ def test_set_retrieval_documents_sets_count_and_payload(
     ],
 )
 def test_set_retrieval_documents_requires_document_id(documents: list[dict[str, object]]) -> None:
+    og = make_og(project_id="p-eval-bind")
     with pytest.raises(ValueError, match="id"):
-        opengrade.set_retrieval_documents(documents)
+        with activated(og):
+            opengrade.set_retrieval_documents(documents)
 
 
 def test_eval_bind_helpers_exported_in_public_api() -> None:

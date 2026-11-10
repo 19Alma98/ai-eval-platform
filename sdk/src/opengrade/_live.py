@@ -15,6 +15,7 @@ from contextvars import ContextVar, Token
 from opentelemetry.trace import Span
 
 from opengrade._run_context import ACTIVE_RUN
+from opengrade._state import _Runtime
 
 logger = logging.getLogger("opengrade")
 
@@ -36,36 +37,43 @@ def _parse_rate(value: object) -> float:
     return rate
 
 
-def configure(*, enabled: bool | None = None, sample_rate: float | None = None) -> None:
-    """Set live capture from ``init()``; None falls back to the env vars."""
-    from opengrade import _state
+def _runtime(rt: _Runtime | None = None) -> _Runtime:
+    if rt is not None:
+        return rt
+    from opengrade._state import active_runtime
 
-    rt = _state._default()
+    return active_runtime()
+
+
+def configure(
+    *,
+    enabled: bool | None = None,
+    sample_rate: float | None = None,
+    runtime: _Runtime | None = None,
+) -> None:
+    """Set live capture from ``init_tracing()``; None falls back to the env vars."""
+    rt = _runtime(runtime)
     rt.live_enabled = enabled
     rt.live_sample_rate = None if sample_rate is None else _parse_rate(sample_rate)
 
 
-def _reset_for_tests() -> None:
-    from opengrade import _state
-
-    _state._default().reset_live_overrides()
-
-
-def is_enabled() -> bool:
-    """``init(live=...)`` > ``OPENGRADE_LIVE`` > off."""
-    from opengrade import _state
-
-    enabled = _state._default().live_enabled
+def is_enabled(runtime: _Runtime | None = None) -> bool:
+    """``init_tracing(live=...)`` / Settings > ``OPENGRADE_LIVE`` > off."""
+    try:
+        enabled = _runtime(runtime).live_enabled
+    except RuntimeError:
+        enabled = None
     if enabled is not None:
         return enabled
     return os.getenv("OPENGRADE_LIVE", "").strip().lower() in _TRUTHY
 
 
-def sample_rate() -> float:
-    """``init(live_sample_rate=...)`` > ``OPENGRADE_LIVE_SAMPLE_RATE`` > 1.0."""
-    from opengrade import _state
-
-    override = _state._default().live_sample_rate
+def sample_rate(runtime: _Runtime | None = None) -> float:
+    """``init_tracing(live_sample_rate=...)`` / Settings > ``OPENGRADE_LIVE_SAMPLE_RATE`` > 1.0."""
+    try:
+        override = _runtime(runtime).live_sample_rate
+    except RuntimeError:
+        override = None
     if override is not None:
         return override
     raw = os.getenv("OPENGRADE_LIVE_SAMPLE_RATE", "").strip()

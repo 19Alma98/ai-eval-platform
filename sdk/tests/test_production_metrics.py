@@ -10,14 +10,15 @@ from typing import Any
 
 import pytest
 from opentelemetry import trace
-from opentelemetry.sdk.trace import TracerProvider
-from opentelemetry.sdk.trace.export import SimpleSpanProcessor
 from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
+from tests.support.instance import activated, init_og, make_og
+from tests.support.reset import reset_production, reset_scores, reset_sdk
 
 import opengrade
-from opengrade import _config, _otel, _production, _scores
+from opengrade import Opengrade, _otel, _production, _scores, current
 from opengrade._run_context import ACTIVE_RUN
 
+_og: Opengrade | None = None
 _exporter = InMemorySpanExporter()
 
 
@@ -37,25 +38,39 @@ class Recorder:
 
 @pytest.fixture(scope="module", autouse=True)
 def _tracer() -> Iterator[None]:
-    _otel._reset_for_tests()
-    provider = TracerProvider()
-    provider.add_span_processor(SimpleSpanProcessor(_exporter))
-    trace.set_tracer_provider(provider)
+    global _og
+    reset_sdk(otel=True)
+    _og = None
     yield
-    _otel._reset_for_tests()
+    _og = None
+    reset_sdk(otel=True)
+
+
+@pytest.fixture(autouse=True)
+def _active_og(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
+    global _og
+    from opengrade import _state
+
+    if _og is None:
+        monkeypatch.setenv("OPENGRADE_PROJECT_ID", "p1")
+        _og = init_og(project_id="p1", instrument=False, _span_exporter=_exporter)
+    else:
+        _exporter.clear()
+    _state.register_runtime(_og._runtime)
+    with activated(_og):
+        yield
 
 
 @pytest.fixture
 def sent(monkeypatch: pytest.MonkeyPatch) -> Iterator[Recorder]:
-    monkeypatch.setattr(_config, "_ACTIVE_PROJECT_ID", None)
     monkeypatch.setenv("OPENGRADE_PROJECT_ID", "p1")
     _exporter.clear()
-    _production._reset_for_tests()
+    reset_production()
     recorder = Recorder()
-    _scores._reset_for_tests(recorder, interval=60.0)
+    reset_scores(recorder, interval=60.0)
     yield recorder
-    _production._reset_for_tests()
-    _scores._reset_for_tests()
+    reset_production()
+    reset_scores()
 
 
 def _span_trace_id(name: str) -> str:
@@ -83,7 +98,7 @@ def test_traced_call_runs_metrics_with_captured_input_and_documents(sent: Record
         return f"answer to {q}"
 
     assert answer("hi") == "answer to hi"
-    assert opengrade.flush()
+    assert current().flush()
 
     (sample,) = seen
     assert sample.input == "hi" and sample.output == "answer to hi"
@@ -115,7 +130,7 @@ def test_set_input_overrides_call_arguments(sent: Recorder) -> None:
         return "ok"
 
     handler({"question": "q?"}, "u1")
-    opengrade.flush()
+    current().flush()
     assert seen == ["q?"]
 
 
@@ -133,7 +148,7 @@ def test_set_output_overrides_return_value(sent: Recorder) -> None:
         return {"answer": "the answer", "trace_id": opengrade.current_trace_id()}
 
     handler("q?")
-    opengrade.flush()
+    current().flush()
     assert seen == ["the answer"]
 
 
@@ -156,7 +171,7 @@ def test_nested_set_output_does_not_overwrite_outer_output(sent: Recorder) -> No
         return "outer"
 
     outer_output("q")
-    assert opengrade.flush()
+    assert current().flush()
     assert seen == ["outer"]
 
 
@@ -184,7 +199,7 @@ def test_metric_sees_snapshot_not_later_mutations(sent: Recorder) -> None:
     docs[0]["meta"]["n"] = 99
     out["text"] = "mutated-output"
     release.set()
-    assert opengrade.flush()
+    assert current().flush()
 
     (sample_input, sample_output, sample_docs) = seen[0]
     assert sample_input == {"q": "hi"}
@@ -207,7 +222,7 @@ def test_oversized_sample_skips_metrics(
 
     with caplog.at_level(logging.WARNING, logger="opengrade"):
         assert big("q") == "x" * 200
-        assert opengrade.flush()
+        assert current().flush()
 
     assert sent.scores == []
     assert any("sample is" in r.message and "limit 64" in r.message for r in caplog.records)
@@ -231,7 +246,7 @@ def test_uncopyable_sample_skips_metrics(sent: Recorder, caplog: pytest.LogCaptu
 
     with caplog.at_level(logging.WARNING, logger="opengrade"):
         assert isinstance(bad("q"), Bad)
-        assert opengrade.flush()
+        assert current().flush()
 
     assert sent.scores == []
     assert any("could not snapshot" in r.message for r in caplog.records)
@@ -258,7 +273,7 @@ def test_production_metrics_see_unredacted_io_while_span_is_redacted(
 
     result = handler("c1", "IN_SECRET")
     assert result == {"token": "OUT_SECRET"}
-    assert opengrade.flush()
+    assert current().flush()
 
     attrs = dict(_exporter.get_finished_spans()[-1].attributes or {})
     span_in = json.loads(str(attrs["input.value"]))
@@ -290,7 +305,7 @@ def test_input_falls_back_to_args_and_kwargs(sent: Recorder) -> None:
 
     two_args("x", b="y")
     one_kwarg(question="q")
-    opengrade.flush()
+    current().flush()
     # Two calls run on a 2-thread pool: order is not guaranteed.
     assert sorted(seen, key=repr) == sorted([{"args": ["x"], "kwargs": {"b": "y"}}, "q"], key=repr)
 
@@ -313,7 +328,7 @@ def test_method_trace_drops_self_from_metric_input(sent: Recorder) -> None:
 
     rag = Rag()
     assert rag.query("hi") == "a:hi"
-    opengrade.flush()
+    current().flush()
     assert seen == ["hi"]
 
 
@@ -328,7 +343,7 @@ def test_async_traced_call_runs_metrics(sent: Recorder) -> None:
         return "abcd"
 
     assert asyncio.run(async_answer("q")) == "abcd"
-    opengrade.flush()
+    current().flush()
     assert [s["value"] for s in sent.scores] == [4.0]
 
 
@@ -340,7 +355,7 @@ def test_zero_sample_rate_skips(sent: Recorder) -> None:
         return "ok"
 
     never("q")
-    opengrade.flush()
+    current().flush()
     assert sent.scores == []
 
 
@@ -354,7 +369,7 @@ def test_skipped_inside_experiment_run(sent: Recorder) -> None:
         in_run("q")
     finally:
         ACTIVE_RUN.reset(token)
-    opengrade.flush()
+    current().flush()
     assert sent.scores == []
 
 
@@ -365,7 +380,7 @@ def test_raising_function_is_not_scored(sent: Recorder) -> None:
 
     with pytest.raises(RuntimeError):
         boom("q")
-    opengrade.flush()
+    current().flush()
     assert sent.scores == []
 
 
@@ -387,7 +402,7 @@ def test_broken_metric_and_missing_requirement_store_error_and_success(sent: Rec
         return "ok"
 
     assert mixed("q") == "ok"
-    opengrade.flush()
+    current().flush()
     by_name = {s["name"]: s for s in sent.scores}
     assert set(by_name) == {"broken", "fine"}
     assert by_name["broken"]["label"] == "ERROR"
@@ -503,7 +518,7 @@ def test_metric_calling_traced_code_creates_no_spans_or_scores(sent: Recorder) -
         return "ok"
 
     outer("q")
-    assert opengrade.flush()
+    assert current().flush()
     assert [s.name for s in _exporter.get_finished_spans()] == ["outer"]
     assert sorted(s["name"] for s in sent.scores) == ["async_judge", "judge"]
     assert inner_calls == []
@@ -529,7 +544,7 @@ def test_nested_set_input_does_not_overwrite_outer_input(sent: Recorder) -> None
         return rewrite(q)
 
     outer_input("original")
-    assert opengrade.flush()
+    assert current().flush()
     (sample,) = seen
     assert sample.input == "original"
     assert sample.documents == [{"id": "d1"}]  # documents still bubble up
@@ -556,7 +571,7 @@ def test_set_retrieval_documents_from_worker_thread_is_not_captured(sent: Record
         return q
 
     threaded_docs("q")
-    assert opengrade.flush()
+    assert current().flush()
     (sample,) = seen
     assert sample.documents == []
 
@@ -575,7 +590,7 @@ def test_async_metric_runs_on_worker(sent: Recorder) -> None:
         return "abc"
 
     with_async_metric("q")
-    assert opengrade.flush()
+    assert current().flush()
     assert [s["value"] for s in sent.scores] == [3.0]
     assert threads and threads[0] != threading.current_thread().name
 
@@ -602,7 +617,7 @@ def test_hung_async_metric_times_out_as_failure(
     caplog.set_level(logging.DEBUG, logger="opengrade")
     hangs("a")
     hangs("b")
-    assert opengrade.flush()
+    assert current().flush()
     never.set()
     assert len(_warnings(caplog, "production metric 'hung' timed out")) == 1
     assert sorted((s["name"], s.get("label"), s.get("value")) for s in sent.scores) == sorted(
@@ -642,7 +657,7 @@ def test_fractional_sample_rate_is_deterministic_per_trace(
 
     for i in range(4):
         sampled(str(i))
-    assert opengrade.flush()
+    assert current().flush()
     assert sorted(s["trace_id"] for s in sent.scores) == [
         format((1 << 64) | 1, "032x"),
         format((2 << 64) | 2, "032x"),
@@ -653,12 +668,12 @@ def test_exit_handlers_share_one_deadline(monkeypatch: pytest.MonkeyPatch) -> No
     clock = _Clock()
     calls: list[tuple[str, float]] = []
 
-    def drain(timeout: float) -> bool:
+    def drain(timeout: float, *, runtime=None) -> bool:
         calls.append(("metrics", timeout))
         clock.now += 2.0
         return True
 
-    def scores_flush(timeout: float) -> bool:
+    def scores_flush(timeout: float, *, runtime=None) -> bool:
         calls.append(("scores", timeout))
         clock.now += 1.0
         return True
@@ -694,6 +709,11 @@ def test_exit_handlers_share_one_deadline(monkeypatch: pytest.MonkeyPatch) -> No
     ]
     assert min(span_cap, remaining_for_spans) + 4.0 <= total
 
+    reset_production()
+    reset_scores()
+    if _og is not None:
+        _og.init_tracing(instrument=False, _span_exporter=_exporter, force=True)
+
 
 # --- never raise / never block the caller -------------------------------------------
 
@@ -705,7 +725,10 @@ def _warnings(caplog: pytest.LogCaptureFixture, needle: str) -> list[logging.Log
 def test_full_queue_drops_with_one_warning_and_never_blocks(
     sent: Recorder, caplog: pytest.LogCaptureFixture
 ) -> None:
-    _production._reset_for_tests(workers=1, max_queue=1)
+    assert _og is not None
+    reset_production(workers=1, max_queue=1)
+    with _og._runtime.production_pool_lock:
+        _og._runtime.pool = None
     started = threading.Event()
     release = threading.Event()
 
@@ -729,7 +752,7 @@ def test_full_queue_drops_with_one_warning_and_never_blocks(
     assert _production.dropped() == 2
 
     release.set()
-    assert opengrade.flush()
+    assert current().flush()
     assert len(sent.scores) == 2
 
 
@@ -745,7 +768,7 @@ def test_metric_failures_are_rate_limited(sent: Recorder, caplog: pytest.LogCapt
     caplog.set_level(logging.DEBUG, logger="opengrade")
     for i in range(3):
         often(str(i))
-    assert opengrade.flush()
+    assert current().flush()
     assert len(_warnings(caplog, "production metric 'broken' failed")) == 1
     assert len(sent.scores) == 3
     assert all(s["label"] == "ERROR" and s["name"] == "broken" for s in sent.scores)
@@ -754,6 +777,7 @@ def test_metric_failures_are_rate_limited(sent: Recorder, caplog: pytest.LogCapt
 def test_unexpected_worker_error_is_logged_and_worker_survives(
     sent: Recorder, caplog: pytest.LogCaptureFixture, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    assert _og is not None
     real = _production.missing_requirement
     calls = {"n": 0}
 
@@ -764,7 +788,9 @@ def test_unexpected_worker_error_is_logged_and_worker_survives(
         return real(sample, requires)
 
     monkeypatch.setattr(_production, "missing_requirement", flaky)
-    _production._reset_for_tests(workers=1)
+    reset_production(workers=1)
+    with _og._runtime.production_pool_lock:
+        _og._runtime.pool = None
 
     @opengrade.trace(name="job", metrics=[opengrade.metric(lambda s: 1.0, name="m")])
     def job(q: str) -> str:
@@ -773,7 +799,7 @@ def test_unexpected_worker_error_is_logged_and_worker_survives(
     caplog.set_level(logging.DEBUG, logger="opengrade")
     job("a")
     job("b")
-    assert opengrade.flush()
+    assert current().flush()
     assert len(_warnings(caplog, "internal bug")) == 1
     assert [s["name"] for s in sent.scores] == ["m"]
 
@@ -791,44 +817,47 @@ def test_scheduling_failure_never_reaches_the_caller(
         return q
 
     assert safe("x") == "x"
-    assert opengrade.flush()
+    assert current().flush()
     assert sent.scores == []
 
 
 def test_missing_project_warns_once_and_skips(
     sent: Recorder, caplog: pytest.LogCaptureFixture, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    from opengrade import _context
-
     monkeypatch.delenv("OPENGRADE_PROJECT_ID")
-    _context._reset_client()
+    noproj = make_og()
+    noproj.init_tracing(instrument=False, _span_exporter=_exporter)
 
     @opengrade.trace(name="noproj", metrics=[opengrade.metric(lambda s: 1.0, name="m")])
-    def noproj(q: str) -> str:
+    def noproj_fn(q: str) -> str:
         return q
 
     caplog.set_level(logging.DEBUG, logger="opengrade")
-    assert noproj("a") == "a"
-    assert noproj("b") == "b"
-    assert opengrade.flush()
+    with activated(noproj):
+        assert noproj_fn("a") == "a"
+        assert noproj_fn("b") == "b"
+        assert noproj.flush()
     assert len(_warnings(caplog, "production metrics skipped")) == 1
     assert sent.scores == []
 
 
 def test_after_fork_in_child_resets_pool(sent: Recorder) -> None:
+    assert _og is not None
+    rt = _og._runtime
+
     @opengrade.trace(name="pre_fork", metrics=[opengrade.metric(lambda s: 1.0, name="m")])
     def pre_fork(q: str) -> str:
         return q
 
     pre_fork("a")
-    assert opengrade.flush()
-    assert _production._POOL is not None
-    old_lock = _production._LOCK
+    assert current().flush()
+    assert _production._pool(rt) is not None
+    old_lock = rt.production_pool_lock
     _production._after_fork_in_child()
-    assert _production._POOL is None
-    assert _production._LOCK is not old_lock
+    assert rt.pool is None
+    assert rt.production_pool_lock is not old_lock
     pre_fork("b")  # a fresh pool is built lazily
-    assert opengrade.flush()
+    assert current().flush()
     assert len(sent.scores) == 2
 
 
@@ -855,17 +884,18 @@ def test_flush_shares_one_deadline_spans_then_metrics_then_scores(
             clock.now += 1.0
             return True
 
-    def drain(timeout: float) -> bool:
+    def drain(timeout: float, *, runtime=None) -> bool:
         calls.append(("metrics", timeout))
         clock.now += 1.5
         return True
 
-    def scores_flush(timeout: float) -> bool:
+    def scores_flush(timeout: float, *, runtime=None) -> bool:
         calls.append(("scores", timeout))
         return True
 
     monkeypatch.setattr(_otel, "time", clock)
     monkeypatch.setattr(_otel, "_PROVIDER", Provider())
+    monkeypatch.setattr(_otel, "_SHARED_PROVIDER", None)
     monkeypatch.setattr(_production, "drain", drain)
     monkeypatch.setattr(_scores, "flush", scores_flush)
 
@@ -876,14 +906,15 @@ def test_flush_shares_one_deadline_spans_then_metrics_then_scores(
 def test_flush_survives_a_raising_drain(monkeypatch: pytest.MonkeyPatch) -> None:
     calls: list[str] = []
 
-    def drain(timeout: float) -> bool:
+    def drain(timeout: float, *, runtime=None) -> bool:
         raise RuntimeError("boom")
 
-    def scores_flush(timeout: float) -> bool:
+    def scores_flush(timeout: float, *, runtime=None) -> bool:
         calls.append("scores")
         return True
 
     monkeypatch.setattr(_otel, "_PROVIDER", None)
+    monkeypatch.setattr(_otel, "_SHARED_PROVIDER", None)
     monkeypatch.setattr(_production, "drain", drain)
     monkeypatch.setattr(_scores, "flush", scores_flush)
 
@@ -895,17 +926,18 @@ def test_flush_budget_is_never_negative(monkeypatch: pytest.MonkeyPatch) -> None
     clock = _Clock()
     calls: list[tuple[str, float]] = []
 
-    def drain(timeout: float) -> bool:
+    def drain(timeout: float, *, runtime=None) -> bool:
         calls.append(("metrics", timeout))
         clock.now += 10.0
         return False
 
-    def scores_flush(timeout: float) -> bool:
+    def scores_flush(timeout: float, *, runtime=None) -> bool:
         calls.append(("scores", timeout))
         return True
 
     monkeypatch.setattr(_otel, "time", clock)
     monkeypatch.setattr(_otel, "_PROVIDER", None)
+    monkeypatch.setattr(_otel, "_SHARED_PROVIDER", None)
     monkeypatch.setattr(_production, "drain", drain)
     monkeypatch.setattr(_scores, "flush", scores_flush)
 
@@ -918,85 +950,67 @@ def test_flush_budget_is_never_negative(monkeypatch: pytest.MonkeyPatch) -> None
 
 def test_init_metrics_workers_sets_pool_size(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("OPENGRADE_METRICS_WORKERS", raising=False)
-    _production._reset_for_tests()
-    try:
-        opengrade.init(project_slug="demo", instrument=False, metrics_workers=4, force=True)
-        pool = _production._pool()
+    reset_production()
+    og = init_og(project_slug="demo", instrument=False, metrics_workers=4, force=True)
+    with activated(og):
+        pool = _production._pool(og._runtime)
         assert pool._workers == 4
-        assert _production._POOL_SIZE == (4, _production.MAX_QUEUE)
-    finally:
-        _otel._reset_for_tests()
-        _production._reset_for_tests()
+        assert og._runtime.pool_size == (4, _production.MAX_QUEUE)
 
 
 def test_env_metrics_workers_sets_pool_size(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("OPENGRADE_METRICS_WORKERS", "8")
-    _production._reset_for_tests()
-    try:
-        opengrade.init(project_slug="demo", instrument=False, force=True)
-        assert _production._pool()._workers == 8
-    finally:
-        _otel._reset_for_tests()
-        _production._reset_for_tests()
+    reset_production()
+    og = init_og(project_slug="demo", instrument=False, force=True)
+    with activated(og):
+        assert _production._pool(og._runtime)._workers == 8
 
 
 def test_init_metrics_workers_wins_over_env(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("OPENGRADE_METRICS_WORKERS", "8")
-    _production._reset_for_tests()
-    try:
-        opengrade.init(project_slug="demo", instrument=False, metrics_workers=3, force=True)
-        assert _production._pool()._workers == 3
-    finally:
-        _otel._reset_for_tests()
-        _production._reset_for_tests()
+    reset_production()
+    og = init_og(project_slug="demo", instrument=False, metrics_workers=3, force=True)
+    with activated(og):
+        assert _production._pool(og._runtime)._workers == 3
 
 
 def test_invalid_env_metrics_workers_falls_back(
     monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
 ) -> None:
     monkeypatch.setenv("OPENGRADE_METRICS_WORKERS", "nope")
-    _production._reset_for_tests()
-    try:
-        with caplog.at_level(logging.WARNING, logger="opengrade"):
-            opengrade.init(project_slug="demo", instrument=False, force=True)
-        assert _production._pool()._workers == _production.MAX_WORKERS
+    reset_production()
+    with caplog.at_level(logging.WARNING, logger="opengrade"):
+        og = init_og(project_slug="demo", instrument=False, force=True)
+    with activated(og):
+        assert _production._pool(og._runtime)._workers == _production.MAX_WORKERS
         assert any("OPENGRADE_METRICS_WORKERS" in r.message for r in caplog.records)
-    finally:
-        _otel._reset_for_tests()
-        _production._reset_for_tests()
 
 
 def test_invalid_init_metrics_workers_ignored(
     monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
 ) -> None:
     monkeypatch.delenv("OPENGRADE_METRICS_WORKERS", raising=False)
-    _production._reset_for_tests()
-    try:
-        with caplog.at_level(logging.WARNING, logger="opengrade"):
-            opengrade.init(project_slug="demo", instrument=False, metrics_workers=0, force=True)
-        assert _otel._INITIALIZED is True
-        assert _production._pool()._workers == _production.MAX_WORKERS
+    reset_production()
+    with caplog.at_level(logging.WARNING, logger="opengrade"):
+        og = init_og(project_slug="demo", instrument=False, metrics_workers=0, force=True)
+    with activated(og):
+        assert og.tracing_enabled is True
+        assert _production._pool(og._runtime)._workers == _production.MAX_WORKERS
         assert any("metrics_workers ignored" in r.message for r in caplog.records)
-    finally:
-        _otel._reset_for_tests()
-        _production._reset_for_tests()
 
 
 def test_force_reinit_rebuilds_pool_with_new_workers(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("OPENGRADE_METRICS_WORKERS", raising=False)
-    _production._reset_for_tests()
-    try:
-        opengrade.init(project_slug="demo", instrument=False, metrics_workers=2, force=True)
-        first = _production._pool()
+    reset_production()
+    og = init_og(project_slug="demo", instrument=False, metrics_workers=2, force=True)
+    with activated(og):
+        first = _production._pool(og._runtime)
         assert first._workers == 2
-        opengrade.init(project_slug="demo", instrument=False, metrics_workers=5, force=True)
-        second = _production._pool()
+        og.init_tracing(instrument=False, metrics_workers=5, force=True)
+        second = _production._pool(og._runtime)
         assert second is not first
         assert second._workers == 5
         assert first._closed
-    finally:
-        _otel._reset_for_tests()
-        _production._reset_for_tests()
 
 
 def test_configure_rejects_out_of_range_workers() -> None:

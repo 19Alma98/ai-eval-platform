@@ -4,9 +4,11 @@ from collections.abc import Iterator
 
 import httpx2
 import pytest
+from tests.support.instance import activated, make_og
+from tests.support.reset import reset_sdk
 
 import opengrade
-from opengrade import _config, _context, _otel
+from opengrade import Settings
 from opengrade._config import project_headers, resolve_config, resolve_project_id
 
 
@@ -20,13 +22,9 @@ def reset_config_state(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
         "OPENGRADE_TRACKING_URI",
     ):
         monkeypatch.delenv(name, raising=False)
-    _config._reset_for_tests()
-    _context._reset_for_tests()
-    _otel._reset_for_tests()
+    reset_sdk(otel=True)
     yield
-    _config._reset_for_tests()
-    _context._reset_for_tests()
-    _otel._reset_for_tests()
+    reset_sdk(otel=True)
 
 
 def test_resolve_config_from_project_slug_arg() -> None:
@@ -42,7 +40,7 @@ def test_resolve_config_from_env(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("OPENGRADE_PROJECT_ID", "11111111-1111-1111-1111-111111111111")
     monkeypatch.setenv("OPENGRADE_OTLP_ENDPOINT", "http://api:8000/v1/traces")
     monkeypatch.setenv("OPENGRADE_SERVICE_NAME", "my-svc")
-    cfg = resolve_config()
+    cfg = resolve_config(settings=Settings.from_env())
     assert cfg.project_id == "11111111-1111-1111-1111-111111111111"
     assert cfg.endpoint == "http://api:8000/v1/traces"
     assert cfg.service_name == "my-svc"
@@ -57,7 +55,7 @@ def test_resolve_config_rejects_both_args() -> None:
 def test_resolve_config_dual_env_id_wins(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("OPENGRADE_PROJECT_ID", "pid-from-env")
     monkeypatch.setenv("OPENGRADE_PROJECT_SLUG", "slug-from-env")
-    cfg = resolve_config()
+    cfg = resolve_config(settings=Settings.from_env())
     assert cfg.project_id == "pid-from-env"
     assert cfg.project_slug is None
 
@@ -87,16 +85,20 @@ def test_init_records_project_slug_for_resolve_project_id() -> None:
             )
         return httpx2.Response(404)
 
-    _context._CLIENT = opengrade.Client("http://test", transport=httpx2.MockTransport(handler))
-    opengrade.init(project_slug="acme", instrument=False)
-    assert _config._ACTIVE_PROJECT_SLUG == "acme"
-    assert resolve_project_id() == "p-1"
-    assert _config._ACTIVE_PROJECT_ID == "p-1"
+    og = make_og(project_slug="acme")
+    og._runtime.client = opengrade.Client("http://test", transport=httpx2.MockTransport(handler))
+    with activated(og):
+        og.init_tracing(instrument=False)
+        assert og.settings.project_slug == "acme"
+        assert resolve_project_id() == "p-1"
+        assert og.settings.project_id == "p-1"
 
 
 def test_init_records_project_id() -> None:
-    opengrade.init(project_id="pid-direct", instrument=False)
-    assert resolve_project_id() == "pid-direct"
+    og = make_og(project_id="pid-direct")
+    with activated(og):
+        og.init_tracing(instrument=False)
+        assert resolve_project_id() == "pid-direct"
 
 
 def test_lazy_resolve_slug_negative_cache_skips_second_lookup() -> None:
@@ -108,13 +110,15 @@ def test_lazy_resolve_slug_negative_cache_skips_second_lookup() -> None:
             return httpx2.Response(404, json={"detail": "not found"})
         return httpx2.Response(404)
 
-    _context._CLIENT = opengrade.Client("http://test", transport=httpx2.MockTransport(handler))
-    opengrade.init(project_slug="missing", instrument=False)
+    og = make_og(project_slug="missing")
+    og._runtime.client = opengrade.Client("http://test", transport=httpx2.MockTransport(handler))
+    with activated(og):
+        og.init_tracing(instrument=False)
 
-    with pytest.raises(ValueError, match="No project"):
-        resolve_project_id()
-    with pytest.raises(ValueError, match="No project"):
-        resolve_project_id()
+        with pytest.raises(ValueError, match="No project"):
+            resolve_project_id()
+        with pytest.raises(ValueError, match="No project"):
+            resolve_project_id()
 
     assert calls.count("/api/v1/projects/by-slug/missing") == 1
 
@@ -138,17 +142,18 @@ def test_lazy_resolve_slug_clears_negative_cache_on_set_project() -> None:
         if path.endswith("/by-slug/ok"):
             return httpx2.Response(200, json=projects["ok"])
         if path.rstrip("/") == "/api/v1/projects" and request.method == "GET":
-            # set_project still uses list()
             return httpx2.Response(200, json=[projects["ok"]])
         return httpx2.Response(404)
 
-    _context._CLIENT = opengrade.Client("http://test", transport=httpx2.MockTransport(handler))
-    opengrade.init(project_slug="missing", instrument=False)
-    with pytest.raises(ValueError):
-        resolve_project_id()
+    og = make_og(project_slug="missing")
+    og._runtime.client = opengrade.Client("http://test", transport=httpx2.MockTransport(handler))
+    with activated(og):
+        og.init_tracing(instrument=False)
+        with pytest.raises(ValueError):
+            resolve_project_id()
 
-    opengrade.set_project("ok")
-    assert resolve_project_id() == "p-ok"
+        og.set_project("ok")
+        assert resolve_project_id() == "p-ok"
 
 
 def test_lazy_resolve_connection_error_not_cached(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -160,13 +165,15 @@ def test_lazy_resolve_connection_error_not_cached(monkeypatch: pytest.MonkeyPatc
 
     monkeypatch.setattr("opengrade._http._BACKOFF_BASE_S", 0.0)
     monkeypatch.setattr("opengrade._http.time.sleep", lambda _s: None)
-    _context._CLIENT = opengrade.Client("http://test", transport=httpx2.MockTransport(handler))
-    opengrade.init(project_slug="flaky", instrument=False)
+    og = make_og(project_slug="flaky")
+    og._runtime.client = opengrade.Client("http://test", transport=httpx2.MockTransport(handler))
+    with activated(og):
+        og.init_tracing(instrument=False)
 
-    with pytest.raises(ValueError):
-        resolve_project_id()
-    with pytest.raises(ValueError):
-        resolve_project_id()
+        with pytest.raises(ValueError):
+            resolve_project_id()
+        with pytest.raises(ValueError):
+            resolve_project_id()
     assert calls["n"] >= 2
 
 
@@ -184,7 +191,9 @@ def test_get_by_slug_success_via_resolve() -> None:
             )
         return httpx2.Response(404)
 
-    _context._CLIENT = opengrade.Client("http://test", transport=httpx2.MockTransport(handler))
-    opengrade.init(project_slug="acme", instrument=False)
-    assert resolve_project_id() == "p-1"
-    assert resolve_project_id() == "p-1"  # active id short-circuit; no second HTTP needed
+    og = make_og(project_slug="acme")
+    og._runtime.client = opengrade.Client("http://test", transport=httpx2.MockTransport(handler))
+    with activated(og):
+        og.init_tracing(instrument=False)
+        assert resolve_project_id() == "p-1"
+        assert resolve_project_id() == "p-1"

@@ -58,7 +58,7 @@ and `reports/stepN.xml` (JUnit, one test case per check).
 
 This example is a **CI gate**, not a production-tracing tour. It is not a full `retrieve → generate` span tree. For that pattern see [`sdk_tour/nimbus_apps/rag.py`](../sdk_tour/nimbus_apps/rag.py). The real-LLM variant is [`llm_regression_gate`](../llm_regression_gate/README.md).
 
-For each gold-set item, `opengrade.evaluate` opens **one root `CHAIN` span**. What lands
+For each gold-set item, the evaluate step opens **one root `CHAIN` span**. What lands
 on that tree:
 
 | Source | What you see | Role |

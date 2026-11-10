@@ -49,10 +49,10 @@ def test_sweep_runs_every_configuration_and_ranks_them(server: FakeServer) -> No
 
     def task(item: Any, params: dict[str, Any]) -> float:
         seen.append(dict(params))
-        opengrade.log_metrics({"cost_usd": 2.0 if params["model"] == "big" else 0.5})
+        opengrade.current().log_metrics({"cost_usd": 2.0 if params["model"] == "big" else 0.5})
         return params["temperature"] / 10 + (0.5 if params["model"] == "big" else 0.0)
 
-    result = opengrade.sweep(
+    result = opengrade.current().sweep(
         dataset=ROWS,
         task=task,
         grid={"model": ["small", "big"], "temperature": [0, 2]},
@@ -118,7 +118,7 @@ def test_sweep_explicit_variants_and_failure_isolation(
         return real_evaluate(**kwargs)
 
     monkeypatch.setattr(sweeps, "evaluate", flaky_evaluate)
-    result = opengrade.sweep(
+    result = opengrade.current().sweep(
         dataset=ROWS,
         task=task,
         variants=[{"model": "a"}, {"model": "b"}],
@@ -139,13 +139,13 @@ def test_sweep_argument_validation(server: FakeServer) -> None:
         return "x"
 
     with pytest.raises(ValueError, match="exactly one of grid= or variants="):
-        opengrade.sweep(dataset=ROWS, task=two_args)
+        opengrade.current().sweep(dataset=ROWS, task=two_args)
     with pytest.raises(ValueError, match="exactly one of task= or retriever="):
-        opengrade.sweep(dataset=ROWS, grid={"a": [1]})
+        opengrade.current().sweep(dataset=ROWS, grid={"a": [1]})
     with pytest.raises(TypeError, match=r"accept \(item, params\)"):
-        opengrade.sweep(dataset=ROWS, task=one_arg, grid={"a": [1]})
+        opengrade.current().sweep(dataset=ROWS, task=one_arg, grid={"a": [1]})
     with pytest.raises(ValueError, match="reserved"):
-        opengrade.sweep(dataset=ROWS, task=two_args, variants=[{"sweep": 1}])
+        opengrade.current().sweep(dataset=ROWS, task=two_args, variants=[{"sweep": 1}])
     assert server.experiments == {}
 
 
@@ -175,7 +175,9 @@ def test_evaluate_retrieval_records_documents_without_an_answer(server: FakeServ
     def search(query: str) -> list[dict[str, Any]]:
         return [{"id": "d1", "text": f"doc for {query}"}, "free text"]
 
-    result = opengrade.evaluate_retrieval(dataset=ROWS, retriever=search, k=3, name="bm25")
+    result = opengrade.current().evaluate_retrieval(
+        dataset=ROWS, retriever=search, k=3, name="bm25"
+    )
 
     exp = server.experiments[result.id]
     assert exp["model_config"] == {"eval_mode": "retrieval"}
@@ -204,11 +206,15 @@ def test_evaluate_retrieval_passes_the_item_and_rejects_answer_metrics(
         got.append(item)
         return [{"id": "d2"}]
 
-    opengrade.evaluate_retrieval(dataset=ROWS, retriever=retrieve, metrics=["context_recall"])
+    opengrade.current().evaluate_retrieval(
+        dataset=ROWS, retriever=retrieve, metrics=["context_recall"]
+    )
     assert {item.input for item in got} == {"q1", "q2"}
 
     with pytest.raises(ValueError, match="grades a generated answer"):
-        opengrade.evaluate_retrieval(dataset=ROWS, retriever=retrieve, metrics=["groundedness"])
+        opengrade.current().evaluate_retrieval(
+            dataset=ROWS, retriever=retrieve, metrics=["groundedness"]
+        )
     with pytest.raises(ValueError):
         retrieval_metrics(0)
 
@@ -217,7 +223,7 @@ def test_evaluate_retrieval_async_retriever(server: FakeServer) -> None:
     async def search(query: str) -> list[str]:
         return ["a", "b"]
 
-    result = opengrade.evaluate_retrieval(dataset=ROWS, retriever=search)
+    result = opengrade.current().evaluate_retrieval(dataset=ROWS, retriever=search)
     outputs = list(server.outputs[result.id].values())
     assert all(len(o["context"]["documents"]) == 2 for o in outputs)
 
@@ -226,7 +232,7 @@ def test_sweep_over_retrievers(server: FakeServer) -> None:
     def retrieve(item: Any, params: dict[str, Any]) -> list[dict[str, Any]]:
         return [{"id": f"d{i}"} for i in range(params["top_k"])]
 
-    result = opengrade.sweep(
+    result = opengrade.current().sweep(
         dataset=ROWS, retriever=retrieve, grid={"top_k": [1, 4]}, k=4, name="chunks"
     )
     assert not result.errors

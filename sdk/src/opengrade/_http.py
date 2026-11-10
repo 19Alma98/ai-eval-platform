@@ -13,7 +13,7 @@ from typing import Any, TypeVar
 import httpx2
 from pydantic import BaseModel
 
-from opengrade._config import auth_headers, get_tracking_uri
+from opengrade._config import auth_headers
 from opengrade._errors import OpengradeAPIError, OpengradeConnectionError, OpengradeError
 
 T = TypeVar("T", bound=BaseModel)
@@ -348,10 +348,18 @@ def _parse_response(response: httpx2.Response) -> Any:
 
 
 def resolve_api_base_url(base_url: str | None = None) -> str:
-    """Resolve API host from arg, else the tracking URI (see ``opengrade.get_tracking_uri``)."""
+    """Resolve API host from ``base_url``, else the active Opengrade tracking URI."""
     if base_url is not None and base_url.strip():
         return base_url.rstrip("/")
-    return get_tracking_uri()
+    from opengrade._config import DEFAULT_TRACKING_URI
+    from opengrade._state import tracking_uri_for
+
+    try:
+        from opengrade._opengrade import current
+
+        return tracking_uri_for(current()._runtime)
+    except RuntimeError:
+        return DEFAULT_TRACKING_URI
 
 
 def read_upload(

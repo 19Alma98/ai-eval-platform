@@ -2,7 +2,7 @@
 
 - Real models (any name not starting with ``fake-``) are called through the ``openai``
   client against ``LLM_BASE_URL`` (Ollama by default). You write no tracing code for
-  them: ``opengrade.init(instrument="auto")`` activates the OpenInference instrumentor,
+  them: ``og.init_tracing(instrument="auto")`` activates the OpenInference instrumentor,
   which records every call as an LLM span with model, prompt, tokens and latency.
 - ``fake-small`` / ``fake-large`` are deterministic stand-ins so the whole tour runs
   without a GPU or an API key. They are also an example of how to trace a provider that

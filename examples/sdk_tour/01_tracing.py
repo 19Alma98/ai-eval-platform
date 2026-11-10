@@ -25,6 +25,7 @@ from __future__ import annotations
 import sys
 
 import opengrade
+from opengrade import Opengrade, Settings
 
 from nimbus_apps import settings
 from nimbus_apps.classifier import classify_ticket
@@ -101,79 +102,80 @@ def main() -> None:
     title("OpenGrade SDK tour - 01 Tracing")
 
     step(0, "Connect to the platform")
-    # Three calls, once at startup:
-    opengrade.set_tracking_uri(settings.TRACKING_URI)  # where the platform runs
-    if opengrade.set_project(settings.PROJECT) is None:  # project (created if missing)
-        sys.exit(f"OpenGrade is not reachable at {settings.TRACKING_URI}: start it first.")
-    opengrade.init(
-        service_name="nimbus-support",  # name of this application in the traces
-        instrument="auto",  # auto-trace installed LLM SDKs (openai, anthropic, langchain...)
-        version=settings.APP_VERSION,  # release of your app -> compare deploys
-        environment=settings.APP_ENVIRONMENT,  # dev / staging / prod
+    og = Opengrade(
+        Settings(tracking_uri=settings.TRACKING_URI, project_slug=settings.PROJECT)
     )
-    note(f"Project '{settings.PROJECT}' at {settings.TRACKING_URI}, model {settings.DEFAULT_MODEL}")
-
-    step(1, "One RAG call = one trace")
-    answer = answer_question("How long is the password reset link valid?")
-    print(f"  answer: {answer}")
-    note(
-        """In the UI open the trace 'support_assistant'. You will see the tree
-        support_assistant -> retrieve (RETRIEVER, with the documents) -> generate ->
-        llm.chat (LLM, with model, tokens and cost). Look at nimbus_apps/rag.py: the
-        whole instrumentation is one decorator, two 'with opengrade.span' blocks and one
-        set_retrieval_documents call."""
-    )
-
-    step(2, "Business context: users, conversations, tags, metadata")
-    conversation = [
-        ("u-alice", "conv-1", "pro", "How much does the Pro plan cost?"),
-        ("u-alice", "conv-1", "pro", "And how long is version history kept on Business accounts?"),
-        ("u-bob", "conv-2", "free", "How much storage do I get on the Free plan?"),
-    ]
-    for user_id, conversation_id, plan, question in conversation:
-        result = handle_chat_turn(
-            question, user_id=user_id, conversation_id=conversation_id, plan=plan
+    with og.activate():
+        if og.set_project(settings.PROJECT) is None:  # project (created if missing)
+            sys.exit(f"OpenGrade is not reachable at {settings.TRACKING_URI}: start it first.")
+        og.init_tracing(
+            service_name="nimbus-support",  # name of this application in the traces
+            instrument="auto",  # auto-trace installed LLM SDKs (openai, anthropic, langchain...)
+            version=settings.APP_VERSION,  # release of your app -> compare deploys
+            environment=settings.APP_ENVIRONMENT,  # dev / staging / prod
         )
-        print(f"  [{user_id}/{conversation_id}] {question}\n      -> {result['answer']}")
-        print(f"      trace_id={result['trace_id']}")
-    note(
-        """Production -> Traces: filter 'session:conv-1' to read Alice's whole conversation,
-        'tag:plan-free' for free users, 'user:u-bob' for one customer."""
-    )
+        note(f"Project '{settings.PROJECT}' at {settings.TRACKING_URI}, model {settings.DEFAULT_MODEL}")
 
-    step(3, "A non-RAG app + context for a whole block (batch job)")
-    tickets = {
-        "T-101": "I was charged twice, please refund. Contact me at bob@example.com",
-        "T-102": "I can't log in, the password reset email never arrives.",
-        "T-103": "Uploads stop at 99% and then fail with an error.",
-    }
-    # using_attributes: every span opened inside the block gets these fields. Handy in a
-    # request middleware or a batch job, where you do not want to touch each function.
-    with opengrade.using_attributes(tags=["nightly-batch"], metadata={"job": "ticket-routing"}):
-        for ticket_id, text in tickets.items():
-            print(f"  {ticket_id} -> queue '{route_ticket(ticket_id, text)}'")
-    note(
-        """Open a 'route_ticket' trace: pii_guardrail (GUARDRAIL) shows the e-mail masked
-        before classification; T-102 also has a crm.lookup_customer TOOL span. Filter
-        'tag:nightly-batch' to see the whole job."""
-    )
+        step(1, "One RAG call = one trace")
+        answer = answer_question("How long is the password reset link valid?")
+        print(f"  answer: {answer}")
+        note(
+            """In the UI open the trace 'support_assistant'. You will see the tree
+            support_assistant -> retrieve (RETRIEVER, with the documents) -> generate ->
+            llm.chat (LLM, with model, tokens and cost). Look at nimbus_apps/rag.py: the
+            whole instrumentation is one decorator, two 'with opengrade.span' blocks and one
+            set_retrieval_documents call."""
+        )
 
-    step(4, "Failures: exceptions and handled errors")
-    try:
-        answer_with_broken_search("Can I get a refund?")
-    except SearchBackendDown as exc:
-        print(f"  exception propagated to the caller as usual: {exc!r}")
-    print(f"  fallback answer: {answer_with_fallback('Who won the football match yesterday?')}")
-    note(
-        """Both traces are marked ERROR (red in the trace list) with the exception or the
-        message you passed to set_error. They count in Production -> Health error rate,
-        which alerts can watch (script 04). Tracing never raises in your code: if the
-        platform is down, spans are dropped with a single warning."""
-    )
+        step(2, "Business context: users, conversations, tags, metadata")
+        conversation = [
+            ("u-alice", "conv-1", "pro", "How much does the Pro plan cost?"),
+            ("u-alice", "conv-1", "pro", "And how long is version history kept on Business accounts?"),
+            ("u-bob", "conv-2", "free", "How much storage do I get on the Free plan?"),
+        ]
+        for user_id, conversation_id, plan, question in conversation:
+            result = handle_chat_turn(
+                question, user_id=user_id, conversation_id=conversation_id, plan=plan
+            )
+            print(f"  [{user_id}/{conversation_id}] {question}\n      -> {result['answer']}")
+            print(f"      trace_id={result['trace_id']}")
+        note(
+            """Production -> Traces: filter 'session:conv-1' to read Alice's whole conversation,
+            'tag:plan-free' for free users, 'user:u-bob' for one customer."""
+        )
 
-    # Spans are sent in the background; flush before a short script exits.
-    opengrade.flush()
-    print(f"\nDone. Open {settings.TRACKING_URI} -> Production -> Traces.")
+        step(3, "A non-RAG app + context for a whole block (batch job)")
+        tickets = {
+            "T-101": "I was charged twice, please refund. Contact me at bob@example.com",
+            "T-102": "I can't log in, the password reset email never arrives.",
+            "T-103": "Uploads stop at 99% and then fail with an error.",
+        }
+        # using_attributes: every span opened inside the block gets these fields. Handy in a
+        # request middleware or a batch job, where you do not want to touch each function.
+        with opengrade.using_attributes(tags=["nightly-batch"], metadata={"job": "ticket-routing"}):
+            for ticket_id, text in tickets.items():
+                print(f"  {ticket_id} -> queue '{route_ticket(ticket_id, text)}'")
+        note(
+            """Open a 'route_ticket' trace: pii_guardrail (GUARDRAIL) shows the e-mail masked
+            before classification; T-102 also has a crm.lookup_customer TOOL span. Filter
+            'tag:nightly-batch' to see the whole job."""
+        )
+
+        step(4, "Failures: exceptions and handled errors")
+        try:
+            answer_with_broken_search("Can I get a refund?")
+        except SearchBackendDown as exc:
+            print(f"  exception propagated to the caller as usual: {exc!r}")
+        print(f"  fallback answer: {answer_with_fallback('Who won the football match yesterday?')}")
+        note(
+            """Both traces are marked ERROR (red in the trace list) with the exception or the
+            message you passed to set_error. They count in Production -> Health error rate,
+            which alerts can watch (script 04). Tracing never raises in your code: if the
+            platform is down, spans are dropped with a single warning."""
+        )
+
+        print(f"\nDone. Open {settings.TRACKING_URI} -> Production -> Traces.")
+    og.flush()
 
 
 if __name__ == "__main__":

@@ -6,10 +6,16 @@ import os
 
 import opengrade
 from openai import OpenAI
+from opengrade import Opengrade, Settings
 
-opengrade.set_tracking_uri(os.getenv("OPENGRADE_TRACKING_URI", "http://localhost:8000"))
-opengrade.set_project(os.getenv("OPENGRADE_PROJECT_SLUG", "demo"))
-opengrade.init(service_name="sdk-hello", instrument="auto")
+og = Opengrade(
+    settings=Settings(
+        tracking_uri=os.getenv("OPENGRADE_TRACKING_URI", "http://localhost:8000"),
+        project_slug=os.getenv("OPENGRADE_PROJECT_SLUG", "demo"),
+    )
+)
+og.set_project(os.getenv("OPENGRADE_PROJECT_SLUG", "demo"))
+og.init_tracing(service_name="sdk-hello", instrument="auto")
 
 client = OpenAI(
     base_url=os.getenv("OLLAMA_HOST", "http://localhost:11434") + "/v1",
@@ -28,8 +34,9 @@ def ask(q: str) -> str:
 
 
 def main() -> None:
-    print(ask("ping"))
-    opengrade.flush()
+    with og.activate():
+        print(ask("ping"))
+    og.flush()
 
 
 if __name__ == "__main__":

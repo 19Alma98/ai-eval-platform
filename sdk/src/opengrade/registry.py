@@ -9,7 +9,7 @@ from opengrade.models import AppConfigAliasResponse, AppConfigResponse
 
 class AppConfigClient:
     """App config registry calls. Obtained via ``Client(...).app_configs`` /
-    ``opengrade.get_client().app_configs``."""
+    ``og.client.app_configs``."""
 
     def __init__(self, http: _HttpTransport) -> None:
         self._http = http

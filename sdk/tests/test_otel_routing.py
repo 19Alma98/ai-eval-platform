@@ -9,8 +9,9 @@ from opentelemetry import trace
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import BatchSpanProcessor
 from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
+from tests.support.reset import reset_sdk
 
-from opengrade import Opengrade, _config, _otel
+from opengrade import Opengrade, _otel
 
 
 @contextmanager
@@ -24,11 +25,9 @@ def reset_otel_state(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
     monkeypatch.delenv("OPENGRADE_PROJECT_ID", raising=False)
     monkeypatch.delenv("OPENGRADE_PROJECT_SLUG", raising=False)
     monkeypatch.delenv("OPENGRADE_DISABLED", raising=False)
-    _config._reset_for_tests()
-    _otel._reset_for_tests()
+    reset_sdk(otel=True)
     yield
-    _config._reset_for_tests()
-    _otel._reset_for_tests()
+    reset_sdk(otel=True)
 
 
 def _flush_instance(og: Opengrade) -> None:

@@ -5,17 +5,17 @@ from typing import Any
 
 import httpx2
 import pytest
+from tests.support.reset import reset_sdk
 
 import opengrade
 from opengrade import Opengrade, Settings, current
-from opengrade._context import _reset_for_tests
 
 
 @pytest.fixture(autouse=True)
 def reset_state() -> None:
-    _reset_for_tests()
+    reset_sdk(otel=False)
     yield
-    _reset_for_tests()
+    reset_sdk(otel=False)
 
 
 def _project(pid: str, name: str, slug: str) -> dict[str, Any]:
@@ -62,19 +62,22 @@ def test_instances_isolate_control_plane_calls() -> None:
 
 
 def test_activate_sets_current_and_restores() -> None:
-    default = current()
+    with pytest.raises(RuntimeError, match="No active Opengrade"):
+        current()
+    default = Opengrade(settings=Settings(tracking_uri="http://default"))
     other = Opengrade(settings=Settings(tracking_uri="http://other"))
-    assert current() is default
-    with other.activate():
-        assert current() is other
-    assert current() is default
+    with default.activate():
+        assert current() is default
+        with other.activate():
+            assert current() is other
+        assert current() is default
 
 
 def test_set_project_inside_activate_targets_active_instance() -> None:
     cap_default: list[httpx2.Request] = []
     cap_active: list[httpx2.Request] = []
-    default_rt = current()
-    default_rt._runtime.client = opengrade.Client(
+    default = Opengrade(settings=Settings(tracking_uri="http://default", project_id="proj-default"))
+    default._runtime.client = opengrade.Client(
         "http://default",
         transport=_mock_transport(cap_default, "default"),
         project_id="proj-default",
@@ -88,7 +91,7 @@ def test_set_project_inside_activate_targets_active_instance() -> None:
     )
 
     with active.activate():
-        opengrade.set_project("ActiveProject")
+        active.set_project("ActiveProject")
 
     assert cap_active and not cap_default
     assert active._runtime.settings.project_id == "proj-active"
@@ -96,12 +99,12 @@ def test_set_project_inside_activate_targets_active_instance() -> None:
     assert active._runtime.active_project.name == "ActiveProject"
 
 
-def test_module_get_client_uses_current_in_activate() -> None:
+def test_client_uses_active_instance_in_activate() -> None:
     seen: list[str] = []
 
     @opengrade.trace
     def work() -> None:
-        seen.append(opengrade.get_client().base_url)
+        seen.append(current().client.base_url)
 
     active = Opengrade(settings=Settings(tracking_uri="http://trace-host"))
     active._runtime.client = opengrade.Client("http://trace-host", project_id="p1")

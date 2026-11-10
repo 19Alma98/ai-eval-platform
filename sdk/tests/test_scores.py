@@ -7,6 +7,7 @@ from typing import Any
 
 import httpx2
 import pytest
+from tests.support.instance import activated, init_og
 
 from opengrade import Client
 from opengrade import _scores as scores_module
@@ -158,18 +159,22 @@ def test_at_exit_never_raises(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 def test_after_fork_hook_resets_shared_sender() -> None:
-    post = Recorder()
-    parent = scores_module._reset_for_tests(post, interval=60.0)
-    assert parent is not None
-    parent.enqueue("p1", _score(0))
-    scores_module._after_fork_in_child()
-    assert scores_module._SENDER is None
-    child = scores_module.sender()
-    assert child is not parent
-    assert child._thread is None
-    assert not child._queue
-    assert child._in_flight == 0
-    scores_module._reset_for_tests()
+    og = init_og(project_id="p1", instrument=False)
+    with activated(og):
+        post = Recorder()
+        from tests.support.reset import reset_scores
+
+        parent = reset_scores(post, interval=60.0)
+        assert parent is not None
+        parent.enqueue("p1", _score(0))
+        scores_module._after_fork_in_child()
+        assert og._runtime.score_sender is None
+        child = scores_module.sender(og._runtime)
+        assert child is not parent
+        assert child._thread is None
+        assert not child._queue
+        assert child._in_flight == 0
+        reset_scores()
 
 
 def test_client_error_in_batch_resends_items_individually(

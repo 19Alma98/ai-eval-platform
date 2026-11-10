@@ -1,9 +1,9 @@
 """Register the gold test sets on the platform under a readable name.
 
-``opengrade.evaluate(dataset="data/gold_rag.jsonl", ...)`` would also work (the file is
+``og.evaluate(dataset="data/gold_rag.jsonl", ...)`` would also work (the file is
 uploaded and named after a hash of its rows). Registering it once under a name such as
 ``nimbus-rag-gold-v1`` makes it easy to find in the UI (Datasets) and to reuse from any
-script, notebook or CI job: ``evaluate(dataset="nimbus-rag-gold-v1", ...)``.
+script, notebook or CI job: ``og.evaluate(dataset="nimbus-rag-gold-v1", ...)``.
 
 Change the questions? Bump the version in the name: experiments are only comparable when
 they ran on the same test set.
@@ -13,8 +13,6 @@ from __future__ import annotations
 
 import json
 from typing import Any
-
-import opengrade
 
 from nimbus_apps.settings import DATA_DIR
 
@@ -34,7 +32,9 @@ def read_jsonl(filename: str) -> list[dict[str, Any]]:
 
 def ensure_dataset(name: str) -> str:
     """Return the dataset id, creating the dataset from ``data/`` the first time."""
-    client = opengrade.get_client()
+    from opengrade import current
+
+    client = current().client
     existing = [d for d in client.datasets.list() if d.name == name]
     if existing:
         return max(existing, key=lambda d: d.version).id

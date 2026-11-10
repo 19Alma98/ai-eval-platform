@@ -65,9 +65,19 @@ def in_metric() -> bool:
 _Job = Callable[[], None]
 
 
-def _warn(key: str, message: str, *args: Any) -> None:
+def _rt(runtime: _state._Runtime | None = None) -> _state._Runtime:
+    if runtime is not None:
+        return runtime
+    return _state.active_runtime()
+
+
+def _warn(key: str, message: str, *args: Any, runtime: _state._Runtime | None = None) -> None:
     """WARNING at most once a minute per ``key``, DEBUG otherwise."""
-    rt = _state._default()
+    try:
+        rt = _rt(runtime)
+    except RuntimeError:
+        logger.warning(message, *args)
+        return
     now = time.monotonic()
     with rt.production_warn_lock:
         last = rt.production_warned.get(key)
@@ -167,9 +177,12 @@ def parse_workers(value: object) -> int:
     return n
 
 
-def resolve_workers() -> int:
-    """``init(metrics_workers=...)`` > ``OPENGRADE_METRICS_WORKERS`` > ``MAX_WORKERS``."""
-    workers = _state._default().metrics_workers
+def resolve_workers(runtime: _state._Runtime | None = None) -> int:
+    """``init_tracing(metrics_workers=...)`` > ``OPENGRADE_METRICS_WORKERS`` > ``MAX_WORKERS``."""
+    try:
+        workers = _rt(runtime).metrics_workers
+    except RuntimeError:
+        workers = None
     if workers is not None:
         return workers
     raw = os.getenv("OPENGRADE_METRICS_WORKERS", "").strip()
@@ -184,17 +197,17 @@ def resolve_workers() -> int:
         return MAX_WORKERS
 
 
-def configure(*, workers: int | None = None) -> None:
-    """Set pool size from ``init()``; None falls back to the env var / default.
+def configure(*, workers: int | None = None, runtime: _state._Runtime | None = None) -> None:
+    """Set pool size from ``init_tracing()``; None falls back to the env var / default.
 
     If a pool already exists with a different worker count it is closed and rebuilt
     lazily on the next submit.
     """
-    rt = _state._default()
+    rt = _rt(runtime)
     if workers is not None:
         workers = parse_workers(workers)
     rt.metrics_workers = workers
-    resolved = resolve_workers()
+    resolved = resolve_workers(rt)
     new_size = (resolved, MAX_QUEUE)
     with rt.production_pool_lock:
         old = None
@@ -367,10 +380,14 @@ def after_call(
             return
         try:
             from opengrade._config import resolve_project_id
-            from opengrade._context import get_client
+            from opengrade._opengrade import current
 
-            project_id = resolve_project_id(get_client()._project_id)
-        except ValueError as exc:
+            og = current()
+            runtime = og._runtime
+            project_id = resolve_project_id(
+                og.client._project_id, runtime=runtime, client=og.client
+            )
+        except (ValueError, RuntimeError) as exc:
             _warn("project", "opengrade: production metrics skipped: %s", exc)
             return
         try:
@@ -399,13 +416,13 @@ def after_call(
                 MAX_METRIC_SAMPLE_BYTES,
             )
             return
-        _submit(metrics, sample, project_id)
+        _submit(metrics, sample, project_id, runtime)
     except Exception as exc:  # noqa: BLE001 — scoring must never break the traced call
         _warn("schedule", "opengrade: production metrics skipped: %s", feedback._describe(exc))
 
 
-def _pool() -> _MetricPool:
-    rt = _state._default()
+def _pool(runtime: _state._Runtime | None = None) -> _MetricPool:
+    rt = _rt(runtime)
     pool_size = rt.pool_size or (MAX_WORKERS, MAX_QUEUE)
     with rt.production_pool_lock:
         if rt.pool is None:
@@ -416,22 +433,34 @@ def _pool() -> _MetricPool:
         return rt.pool
 
 
-def _submit(metrics: tuple[LocalMetric, ...], sample: Sample, project_id: str) -> bool:
-    return _pool().submit(functools.partial(_run, metrics, sample, project_id))
+def _submit(
+    metrics: tuple[LocalMetric, ...],
+    sample: Sample,
+    project_id: str,
+    runtime: _state._Runtime,
+) -> bool:
+    return _pool(runtime).submit(functools.partial(_run, metrics, sample, project_id, runtime))
 
 
-def _run(metrics: tuple[LocalMetric, ...], sample: Sample, project_id: str) -> None:
+def _run(
+    metrics: tuple[LocalMetric, ...],
+    sample: Sample,
+    project_id: str,
+    runtime: _state._Runtime,
+) -> None:
     """Run a job isolated from tracing (see the module docstring)."""
     otel_token = otel_context.attach(otel_context.set_value(_SUPPRESS_KEY, True))
     metric_token = _IN_METRIC.set(True)
     try:
-        _run_metrics(metrics, sample, project_id)
+        _run_metrics(metrics, sample, project_id, runtime)
     finally:
         _IN_METRIC.reset(metric_token)
         otel_context.detach(otel_token)
 
 
-def _run_metrics(metrics: tuple[LocalMetric, ...], sample: Sample, project_id: str) -> None:
+def _run_metrics(
+    metrics: tuple[LocalMetric, ...], sample: Sample, project_id: str, runtime: _state._Runtime
+) -> None:
     trace_id = sample.trace_id or ""
     for spec in metrics:
         missing = missing_requirement(sample, spec.requires)
@@ -450,8 +479,11 @@ def _run_metrics(metrics: tuple[LocalMetric, ...], sample: Sample, project_id: s
                 trace_id,
                 METRIC_TIMEOUT_S,
                 feedback._describe(exc),
+                runtime=runtime,
             )
-            feedback.queue_metric_score(project_id, trace_id, spec, feedback.error_score(exc))
+            feedback.queue_metric_score(
+                project_id, trace_id, spec, feedback.error_score(exc), runtime=runtime
+            )
             continue
         except Exception as exc:  # noqa: BLE001 — one broken metric must not stop the others
             _warn(
@@ -460,22 +492,32 @@ def _run_metrics(metrics: tuple[LocalMetric, ...], sample: Sample, project_id: s
                 spec.name,
                 trace_id,
                 feedback._describe(exc),
+                runtime=runtime,
             )
-            feedback.queue_metric_score(project_id, trace_id, spec, feedback.error_score(exc))
+            feedback.queue_metric_score(
+                project_id, trace_id, spec, feedback.error_score(exc), runtime=runtime
+            )
             continue
-        feedback.queue_metric_score(project_id, trace_id, spec, result)
+        feedback.queue_metric_score(project_id, trace_id, spec, result, runtime=runtime)
 
 
-def drain(timeout: float) -> bool:
+def drain(timeout: float, *, runtime: _state._Runtime | None = None) -> bool:
     """Wait for scheduled metrics to finish (bounded); False on timeout."""
-    current = _state._default().pool
-    return True if current is None else current.drain(timeout)
+    runtimes = [runtime] if runtime is not None else _state.iter_runtimes()
+    ok = True
+    for rt in runtimes:
+        current = rt.pool
+        if current is not None:
+            ok = current.drain(timeout) and ok
+    return ok
 
 
-def dropped() -> int:
+def dropped(runtime: _state._Runtime | None = None) -> int:
     """Calls not scored because the job queue was full."""
-    current = _state._default().pool
-    return 0 if current is None else current.dropped
+    if runtime is not None:
+        current = runtime.pool
+        return 0 if current is None else current.dropped
+    return sum(0 if rt.pool is None else rt.pool.dropped for rt in _state.iter_runtimes())
 
 
 def _at_exit() -> None:
@@ -487,38 +529,30 @@ def _at_exit() -> None:
         logger.debug("opengrade: production metrics drain at exit failed", exc_info=True)
 
 
-def _reset_for_tests(*, workers: int = MAX_WORKERS, max_queue: int = MAX_QUEUE) -> None:
-    """Drop the shared pool (rebuilt lazily with this size) and the warning limiter."""
-    rt = _state._default()
-    with rt.production_pool_lock:
-        old, rt.pool = rt.pool, None
-        rt.metrics_workers = None
-        rt.pool_size = (workers, max_queue)
-    if old is not None:
-        old.close()
-    with rt.production_warn_lock:
-        rt.production_warned.clear()
-
-
 def _after_fork_in_child() -> None:
     """The child inherits the parent's locks (possibly held) and no worker threads:
     drop the pool so the child lazily builds a fresh one."""
-    rt = _state._default()
-    rt.pool = None
-    rt.production_pool_lock = threading.Lock()
-    rt.production_warn_lock = threading.Lock()
+    for rt in _state.iter_runtimes():
+        rt.pool = None
+        rt.production_pool_lock = threading.Lock()
+        rt.production_warn_lock = threading.Lock()
 
 
 def __getattr__(name: str) -> Any:
-    rt = _state._default()
+    try:
+        rt = _state.active_runtime()
+    except RuntimeError:
+        rt = None
     if name == "_POOL":
-        return rt.pool
+        return None if rt is None else rt.pool
     if name == "_POOL_SIZE":
-        return rt.pool_size or (MAX_WORKERS, MAX_QUEUE)
+        return (
+            (MAX_WORKERS, MAX_QUEUE) if rt is None else (rt.pool_size or (MAX_WORKERS, MAX_QUEUE))
+        )
     if name == "_WORKERS":
-        return rt.metrics_workers
+        return None if rt is None else rt.metrics_workers
     if name == "_LOCK":
-        return rt.production_pool_lock
+        return None if rt is None else rt.production_pool_lock
     if name == "_ATEXIT_REGISTERED":
-        return rt.production_atexit_registered
+        return False if rt is None else rt.production_atexit_registered
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

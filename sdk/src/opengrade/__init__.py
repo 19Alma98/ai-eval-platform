@@ -7,14 +7,6 @@ from importlib.metadata import PackageNotFoundError
 from importlib.metadata import version as _version
 from typing import Any
 
-from opengrade._config import (
-    configure_capture,
-    get_api_key,
-    get_tracking_uri,
-    set_api_key,
-    set_tracking_uri,
-)
-from opengrade._otel import flush, init
 from opengrade._trace import (
     current_trace_id,
     set_attribute,
@@ -32,7 +24,6 @@ from opengrade._trace_attrs import (
     set_user,
     using_attributes,
 )
-from opengrade.feedback import log_feedback, log_score, score_trace
 from opengrade.metrics import LocalMetric, Sample, Score, metric
 
 # Heavy modules (httpx2, pydantic, experiment stack) load on first attribute access.
@@ -52,24 +43,13 @@ _LAZY: dict[str, tuple[str, str]] = {
     "SweepRun": ("opengrade.sweeps", "SweepRun"),
     "Opengrade": ("opengrade._opengrade", "Opengrade"),
     "Settings": ("opengrade._state", "Settings"),
-    "aset_project": ("opengrade._context", "aset_project"),
     "current": ("opengrade._opengrade", "current"),
     "bind_evaluation": ("opengrade._eval_run", "bind_evaluation"),
-    "evaluate": ("opengrade.experiment", "evaluate"),
-    "evaluate_retrieval": ("opengrade.retrieval", "evaluate_retrieval"),
-    "get_async_client": ("opengrade._context", "get_async_client"),
-    "get_client": ("opengrade._context", "get_client"),
-    "get_project": ("opengrade._context", "get_project"),
-    "log_metrics": ("opengrade.experiment", "log_metrics"),
-    "log_params": ("opengrade.experiment", "log_params"),
-    "set_project": ("opengrade._context", "set_project"),
     "ChatTurn": ("opengrade.chat", "ChatTurn"),
     "RagChatInput": ("opengrade.chat", "RagChatInput"),
     "chat_input": ("opengrade.chat", "chat_input"),
     "set_retrieval_documents": ("opengrade._eval_run", "set_retrieval_documents"),
     "set_search_query": ("opengrade._eval_run", "set_search_query"),
-    "start_experiment": ("opengrade.experiment", "start_experiment"),
-    "sweep": ("opengrade.sweeps", "sweep"),
 }
 
 __all__ = [
@@ -93,45 +73,24 @@ __all__ = [
     "LocalMetric",
     "Sample",
     "Score",
-    "aset_project",
     "bind_evaluation",
     "ChatTurn",
     "RagChatInput",
     "chat_input",
-    "configure_capture",
     "current_trace_id",
-    "evaluate",
-    "evaluate_retrieval",
-    "flush",
-    "get_async_client",
-    "get_client",
-    "get_project",
-    "get_api_key",
-    "get_tracking_uri",
-    "init",
-    "log_feedback",
-    "log_metrics",
-    "log_params",
-    "log_score",
     "metric",
-    "score_trace",
     "set_attribute",
     "set_attributes",
     "set_error",
     "set_input",
     "set_metadata",
     "set_output",
-    "set_project",
     "set_retrieval_documents",
     "set_search_query",
     "set_session",
     "set_tags",
-    "set_api_key",
-    "set_tracking_uri",
     "set_user",
     "span",
-    "start_experiment",
-    "sweep",
     "trace",
     "using_attributes",
 ]
@@ -148,10 +107,10 @@ def __getattr__(name: str) -> Any:
 
 
 def __dir__() -> list[str]:
-    return sorted(__all__)
+    return sorted(set(__all__) | set(globals()) | set(_LAZY))
 
 
 try:
-    __version__ = _version("opengrade-ai")
-except PackageNotFoundError:  # running from a source tree without install
+    __version__ = _version("opengrade")
+except PackageNotFoundError:  # pragma: no cover
     __version__ = "0.0.0"

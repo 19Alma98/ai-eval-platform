@@ -6,7 +6,7 @@ score: ``opengrade.Score``, a float in [0, 1], a bool or ``None`` (= skipped).
 
 The same functions are used in two places, so tests and production measure the same thing:
 
-- in experiments, ``opengrade.evaluate(..., metrics=[cites_retrieved_source])``
+- in experiments, ``og.evaluate(..., metrics=[cites_retrieved_source])``
   (scripts 02 and 03): ``Sample.expected`` and ``Sample.metadata`` come from the dataset;
 - in production, ``@opengrade.trace(metrics=[cites_retrieved_source])`` (script 04):
   there is no expected answer, so metrics that ``requires=("expected",)`` are skipped.

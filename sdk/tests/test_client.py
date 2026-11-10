@@ -425,26 +425,32 @@ def test_live_interaction_exposes_trace_scores() -> None:
 
 
 def test_bound_client_ignores_global_active_project() -> None:
-    from opengrade import _context, _state
+    from tests.support.instance import activated, make_og
+    from tests.support.reset import reset_sdk
 
-    _context._reset_for_tests()
-    _state._set_active_project(project_id="global-p", project_slug="global")
-    seen: list[str] = []
+    from opengrade import _state
 
-    def handler(request: httpx2.Request) -> httpx2.Response:
-        seen.append(request.url.path)
-        return httpx2.Response(200, json=[])
+    reset_sdk(otel=False)
+    try:
+        seen: list[str] = []
 
-    client = Client("http://test", project_id="bound-p", transport=httpx2.MockTransport(handler))
-    client.datasets.list()
-    assert seen == ["/api/v1/projects/bound-p/datasets"]
-    _context._reset_for_tests()
+        def handler(request: httpx2.Request) -> httpx2.Response:
+            seen.append(request.url.path)
+            return httpx2.Response(200, json=[])
+
+        og = make_og(project_id="global-p")
+        with activated(og):
+            _state.set_active_project(og._runtime, project_id="global-p", project_slug="global")
+            client = Client(
+                "http://test", project_id="bound-p", transport=httpx2.MockTransport(handler)
+            )
+            client.datasets.list()
+        assert seen == ["/api/v1/projects/bound-p/datasets"]
+    finally:
+        reset_sdk(otel=False)
 
 
 def test_two_clients_use_distinct_bound_projects() -> None:
-    from opengrade import _context
-
-    _context._reset_for_tests()
     seen: dict[str, list[str]] = {"a": [], "b": []}
 
     def handler_a(request: httpx2.Request) -> httpx2.Response:
@@ -461,13 +467,13 @@ def test_two_clients_use_distinct_bound_projects() -> None:
     client_b.experiments.list()
     assert seen["a"] == ["/api/v1/projects/proj-a/experiments"]
     assert seen["b"] == ["/api/v1/projects/proj-b/experiments"]
-    _context._reset_for_tests()
 
 
 def test_set_project_refreshes_shared_client_bound_project() -> None:
-    from opengrade import _context
+    from tests.support.instance import activated, make_og
+    from tests.support.reset import reset_sdk
 
-    _context._reset_for_tests()
+    reset_sdk(otel=False)
     seen: list[str] = []
 
     def handler(request: httpx2.Request) -> httpx2.Response:
@@ -488,25 +494,24 @@ def test_set_project_refreshes_shared_client_bound_project() -> None:
         return httpx2.Response(200, json=[])
 
     transport = httpx2.MockTransport(handler)
-    _context._CLIENT = Client("http://test", transport=transport)
-    opengrade.set_project("shared")
-    client = opengrade.get_client()
-    assert client is _context._CLIENT
-    assert client._project_id == "p-shared"
-    client.datasets.list()
-    assert seen[-1] == "/api/v1/projects/p-shared/datasets"
-    _context._reset_for_tests()
+    og = make_og(tracking_uri="http://test")
+    og._runtime.client = Client("http://test", transport=transport)
+    try:
+        with activated(og):
+            og.set_project("shared")
+            client = og.client
+            assert client is og._runtime.client
+            assert client._project_id == "p-shared"
+            client.datasets.list()
+        assert seen[-1] == "/api/v1/projects/p-shared/datasets"
+    finally:
+        reset_sdk(otel=False)
 
 
 def test_client_without_project_id_raises() -> None:
-    from opengrade import _context
-
-    _context._reset_for_tests()
-
     def handler(request: httpx2.Request) -> httpx2.Response:
         return httpx2.Response(200, json=[])
 
     client = Client("http://test", transport=httpx2.MockTransport(handler))
     with pytest.raises(ValueError, match="project_id is required"):
         client.experiments.list()
-    _context._reset_for_tests()

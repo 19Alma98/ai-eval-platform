@@ -10,34 +10,43 @@ from opentelemetry.sdk.trace import ReadableSpan, TracerProvider
 from opentelemetry.sdk.trace.export import SimpleSpanProcessor
 from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
 from opentelemetry.trace import StatusCode
+from tests.support.instance import activated, init_og
+from tests.support.reset import reset_sdk
 
 import opengrade
-from opengrade import _otel
+from opengrade import Opengrade
 
+_og: Opengrade | None = None
 _exporter: InMemorySpanExporter | None = None
 
 
 @pytest.fixture(scope="module", autouse=True)
 def _reset_otel() -> Iterator[None]:
-    global _exporter
-    _otel._reset_for_tests()
+    global _og, _exporter
+    reset_sdk(otel=True)
+    _og = None
     _exporter = None
     yield
+    _og = None
     _exporter = None
-    _otel._reset_for_tests()
+    reset_sdk(otel=True)
 
 
 @pytest.fixture
-def spans() -> InMemorySpanExporter:
-    global _exporter
+def spans(monkeypatch: pytest.MonkeyPatch) -> Iterator[InMemorySpanExporter]:
+    global _og, _exporter
     if _exporter is None:
         _exporter = InMemorySpanExporter()
         provider = TracerProvider()
         provider.add_span_processor(SimpleSpanProcessor(_exporter))
         trace.set_tracer_provider(provider)
+        monkeypatch.setenv("OPENGRADE_PROJECT_ID", "p-span-attrs")
+        _og = init_og(project_id="p-span-attrs", instrument=False, _span_exporter=_exporter)
     else:
         _exporter.clear()
-    return _exporter
+    assert _og is not None
+    with activated(_og):
+        yield _exporter
 
 
 def _by_name(exporter: InMemorySpanExporter) -> dict[str, ReadableSpan]:

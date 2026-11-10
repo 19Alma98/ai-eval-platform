@@ -121,8 +121,9 @@ def mock_transport(captured_requests: list[httpx2.Request]) -> httpx2.MockTransp
 
 def test_public_exports() -> None:
     assert "AsyncClient" in opengrade.__all__
-    assert "get_async_client" in opengrade.__all__
-    assert "aset_project" in opengrade.__all__
+    assert "Opengrade" in opengrade.__all__
+    assert hasattr(opengrade.Opengrade, "async_client")
+    assert hasattr(opengrade.Opengrade, "aset_project")
 
 
 def test_async_transport_request_and_error() -> None:

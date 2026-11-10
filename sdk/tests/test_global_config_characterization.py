@@ -1,169 +1,90 @@
-"""Characterization tests for process-wide opengrade config (global state).
-
-Locks precedence and cross-subsystem behavior before refactors remove module globals.
-"""
+"""Instance isolation: settings and clients do not leak across ``Opengrade`` handles."""
 
 from __future__ import annotations
 
-from collections.abc import Iterator
 from typing import Any
 
 import httpx2
 import pytest
+from tests.support.instance import activated, make_og
 
 import opengrade
-from opengrade import _config, _context, _otel
-from opengrade._config import resolve_config, resolve_project_id
-
-
-@pytest.fixture(autouse=True)
-def reset_globals(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
-    for name in (
-        "OPENGRADE_API_KEY",
-        "OPENGRADE_PROJECT_ID",
-        "OPENGRADE_PROJECT_SLUG",
-        "OPENGRADE_OTLP_ENDPOINT",
-        "OPENGRADE_SERVICE_NAME",
-        "OPENGRADE_TRACKING_URI",
-    ):
-        monkeypatch.delenv(name, raising=False)
-    _config._reset_for_tests()
-    _context._reset_for_tests()
-    _otel._reset_for_tests()
-    yield
-    _config._reset_for_tests()
-    _context._reset_for_tests()
-    _otel._reset_for_tests()
+from opengrade import Opengrade, Settings, current
 
 
 def _project(pid: str, name: str, slug: str) -> dict[str, Any]:
     return {"id": pid, "name": name, "slug": slug, "created_at": "2026-01-01T00:00:00+00:00"}
 
 
-class FakeServer:
-    def __init__(self, projects: list[dict[str, Any]] | None = None) -> None:
-        self.projects = list(projects or [])
-
-    def handler(self, request: httpx2.Request) -> httpx2.Response:
-        path = request.url.path.rstrip("/")
-        if request.method == "GET" and path.startswith("/api/v1/projects/by-slug/"):
-            slug = path.removeprefix("/api/v1/projects/by-slug/")
-            for p in self.projects:
-                if p["slug"] == slug:
-                    return httpx2.Response(200, json=p)
-            return httpx2.Response(404, json={"detail": "not found"})
-        if request.method == "GET" and path == "/api/v1/projects":
-            projects = self.projects
-            slug = request.url.params.get("slug")
-            if slug is not None:
-                projects = [p for p in projects if p["slug"] == slug]
-            return httpx2.Response(200, json=projects)
-        if request.method == "GET" and path == "/health":
+def _mock_transport(captured: list[httpx2.Request], host: str) -> httpx2.MockTransport:
+    def handler(request: httpx2.Request) -> httpx2.Response:
+        captured.append(request)
+        if request.url.path.rstrip("/") == "/health":
             return httpx2.Response(200, json={"status": "ok"})
-        return httpx2.Response(404, json={"detail": "not found"})
+        return httpx2.Response(200, json=[])
 
-    def install(self) -> None:
-        transport = httpx2.MockTransport(self.handler)
-        _context._CLIENT = opengrade.Client("http://test", transport=transport)
+    return httpx2.MockTransport(handler)
 
 
-def _project_headers_from_otlp_captures(
-    captures: list[dict[str, str]],
-) -> dict[str, str]:
-    headers = captures[-1]
-    return {k: v for k, v in headers.items() if k.lower().startswith("x-project")}
+def test_tracking_uri_from_settings_not_shared() -> None:
+    a = make_og(tracking_uri="http://host-a:1", project_id="pa")
+    b = make_og(tracking_uri="http://host-b:2", project_id="pb")
+    assert a.client.base_url == "http://host-a:1"
+    assert b.client.base_url == "http://host-b:2"
 
 
-def test_tracking_uri_precedence_explicit_over_env_over_default(
+def test_resolve_project_id_isolated_per_instance(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    assert opengrade.get_tracking_uri() == "http://localhost:8000"
-    monkeypatch.setenv("OPENGRADE_TRACKING_URI", "http://from-env:1")
-    assert opengrade.get_tracking_uri() == "http://from-env:1"
-    opengrade.set_tracking_uri("http://from-setter:2")
-    assert opengrade.get_tracking_uri() == "http://from-setter:2"
-
-
-def test_resolve_config_vs_resolve_project_id_when_only_env_slug(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    monkeypatch.setenv("OPENGRADE_PROJECT_SLUG", "demo-slug")
-    FakeServer([_project("resolved-id", "Demo", "demo-slug")]).install()
-
-    cfg = resolve_config()
-    assert cfg.project_slug == "demo-slug"
-    assert cfg.project_id is None
-
-    assert resolve_project_id() == "resolved-id"
-
-
-def test_resolve_config_id_wins_over_slug_when_both_in_env(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    monkeypatch.setenv("OPENGRADE_PROJECT_ID", "pid-env")
-    monkeypatch.setenv("OPENGRADE_PROJECT_SLUG", "slug-env")
-    cfg = resolve_config()
-    assert cfg.project_id == "pid-env"
-    assert cfg.project_slug is None
-    assert resolve_project_id() == "pid-env"
-
-
-def test_get_client_rebuilt_after_set_api_key(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("OPENGRADE_API_KEY", "first-key")
-    seen: list[str] = []
-    RealClient = _context.Client
+    monkeypatch.delenv("OPENGRADE_PROJECT_ID", raising=False)
+    monkeypatch.delenv("OPENGRADE_PROJECT_SLUG", raising=False)
 
     def handler(request: httpx2.Request) -> httpx2.Response:
-        seen.append(request.headers.get("authorization", ""))
-        return httpx2.Response(200, json={"status": "ok"})
+        if request.url.path.endswith("/by-slug/slug-b"):
+            return httpx2.Response(200, json=_project("id-b", "B", "slug-b"))
+        return httpx2.Response(404)
 
-    def client_with_mock(*args: Any, **kwargs: Any) -> opengrade.Client:
-        kwargs.setdefault("transport", httpx2.MockTransport(handler))
-        return RealClient(*args, **kwargs)
+    transport = httpx2.MockTransport(handler)
+    a = make_og(project_id="id-a")
+    b = make_og(project_slug="slug-b")
+    b._runtime.client = opengrade.Client("http://test", transport=transport, project_id="id-b")
 
-    monkeypatch.setattr(_context, "Client", client_with_mock)
+    from opengrade._config import resolve_project_id
 
-    first = opengrade.get_client()
-    first.health()
-    assert seen[-1] == "Bearer first-key"
-
-    opengrade.set_api_key("second-key")
-    second = opengrade.get_client()
-    assert second is not first
-    second.health()
-    assert seen[-1] == "Bearer second-key"
+    with activated(a):
+        assert resolve_project_id() == "id-a"
+    with activated(b):
+        assert resolve_project_id() == "id-b"
 
 
-def test_set_project_after_init_updates_control_plane_not_otlp_until_force(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    from opentelemetry.exporter.otlp.proto.http import trace_exporter
+def test_clients_do_not_cross_instances() -> None:
+    cap_a: list[httpx2.Request] = []
+    cap_b: list[httpx2.Request] = []
+    a = make_og(tracking_uri="http://a", project_id="pa")
+    b = make_og(tracking_uri="http://b", project_id="pb")
+    a._runtime.client = opengrade.Client(
+        "http://a", transport=_mock_transport(cap_a, "a"), project_id="pa"
+    )
+    b._runtime.client = opengrade.Client(
+        "http://b", transport=_mock_transport(cap_b, "b"), project_id="pb"
+    )
 
-    otlp_headers_captures: list[dict[str, str]] = []
-    real_exporter = trace_exporter.OTLPSpanExporter
+    with activated(a):
+        a.client.health()
+    with activated(b):
+        b.client.health()
 
-    def recording_exporter(**kwargs: Any) -> Any:
-        headers = dict(kwargs.get("headers") or {})
-        otlp_headers_captures.append(headers)
-        return real_exporter(**kwargs)
+    assert cap_a and cap_b
+    assert all(r.url.host == "a" for r in cap_a)
+    assert all(r.url.host == "b" for r in cap_b)
+    assert a.client is not b.client
 
-    monkeypatch.setattr(trace_exporter, "OTLPSpanExporter", recording_exporter)
 
-    FakeServer([_project("p-1", "a", "a"), _project("p-2", "b", "b")]).install()
-    opengrade.set_project("a")
-    opengrade.init(instrument=False)
-    assert _project_headers_from_otlp_captures(otlp_headers_captures) == {"X-Project-Id": "p-1"}
-    assert resolve_project_id() == "p-1"
-
-    opengrade.set_project("b")
-    assert opengrade.get_project() is not None
-    assert opengrade.get_project().id == "p-2"
-    assert resolve_project_id() == "p-2"
-    # OTLP exporter headers are fixed at init time.
-    assert len(otlp_headers_captures) == 1
-    assert _project_headers_from_otlp_captures(otlp_headers_captures) == {"X-Project-Id": "p-1"}
-
-    opengrade.init(force=True, instrument=False)
-    assert len(otlp_headers_captures) == 2
-    assert _project_headers_from_otlp_captures(otlp_headers_captures) == {"X-Project-Id": "p-2"}
-    assert resolve_project_id() == "p-2"
+def test_api_key_change_rebuilds_only_that_client(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("OPENGRADE_API_KEY", "env-key")
+    og = Opengrade(Settings.from_env(project_id="p1"))
+    first = og.client
+    og2 = Opengrade(Settings(tracking_uri=og.client.base_url, api_key="other-key", project_id="p2"))
+    assert og2.client is not first
+    with activated(og2):
+        assert current() is og2

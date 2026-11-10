@@ -72,7 +72,7 @@ Broken answers show up in the CLI under "Test cases worse than baseline".
 In this example tracing is enough for the metrics and judges to see what the model saw; it is not a full `retrieve → generate`
 span tree. For that pattern see [`sdk_tour/nimbus_apps/rag.py`](../sdk_tour/nimbus_apps/rag.py).
 
-With `evaluate.init: true`, the CLI calls `opengrade.init(..., instrument="auto")`. For each gold-set item (and each `repeat`), `opengrade.evaluate` opens **one root `CHAIN` span**. What lands on that tree:
+With `evaluate.init: true`, the CLI enables tracing with `init_tracing(..., instrument="auto")` on an `Opengrade` instance. For each gold-set item (and each `repeat`), the evaluate step opens **one root `CHAIN` span**. What lands on that tree:
 
 | Source | What you see | Role |
 |--------|--------------|------|

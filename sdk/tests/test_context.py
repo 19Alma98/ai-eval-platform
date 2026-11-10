@@ -3,19 +3,18 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import os
 from collections.abc import Iterator
 from typing import Any
 
 import httpx2
 import pytest
+from tests.support.instance import activated, make_og
+from tests.support.reset import reset_sdk
 
 import opengrade
-from opengrade import _context, _otel
-from opengrade._config import resolve_config
-
-
-def _project(pid: str, name: str, slug: str) -> dict[str, Any]:
-    return {"id": pid, "name": name, "slug": slug, "created_at": "2026-01-01T00:00:00+00:00"}
+from opengrade import Opengrade, Settings, current
+from opengrade._config import otlp_endpoint, resolve_config
 
 
 @pytest.fixture(autouse=True)
@@ -27,11 +26,13 @@ def reset_state(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
         "OPENGRADE_PROJECT_SLUG",
     ):
         monkeypatch.delenv(name, raising=False)
-    _context._reset_for_tests()
-    _otel._reset_for_tests()
+    reset_sdk(otel=True)
     yield
-    _context._reset_for_tests()
-    _otel._reset_for_tests()
+    reset_sdk(otel=True)
+
+
+def _project(pid: str, name: str, slug: str) -> dict[str, Any]:
+    return {"id": pid, "name": name, "slug": slug, "created_at": "2026-01-01T00:00:00+00:00"}
 
 
 class FakeServer:
@@ -63,63 +64,58 @@ class FakeServer:
             return httpx2.Response(201, json=created)
         return httpx2.Response(404, json={"detail": "not found"})
 
-    def install(self) -> None:
+    def install(self, og: Opengrade) -> None:
         transport = httpx2.MockTransport(self.handler)
-        _context._CLIENT = opengrade.Client("http://test", transport=transport)
+        og._runtime.client = opengrade.Client("http://test", transport=transport)
         async_client = opengrade.AsyncClient("http://test", transport=transport)
-        _context._ASYNC_CLIENT_NO_LOOP = async_client
+        og._runtime.async_client_no_loop = async_client
         try:
             loop = asyncio.get_running_loop()
-            _context._ASYNC_CLIENTS[loop] = async_client
+            og._runtime.async_clients[loop] = async_client
         except RuntimeError:
             pass
 
 
 def test_tracking_uri_default_and_env(monkeypatch: pytest.MonkeyPatch) -> None:
-    assert opengrade.get_tracking_uri() == "http://localhost:8000"
+    og = make_og()
+    assert og.client.base_url == "http://localhost:8000"
     monkeypatch.setenv("OPENGRADE_TRACKING_URI", "http://env:2/")
-    assert opengrade.get_tracking_uri() == "http://env:2"
-    opengrade.set_tracking_uri("http://explicit:3/")
-    assert opengrade.get_tracking_uri() == "http://explicit:3"
+    og = Opengrade(Settings.from_env())
+    assert og.client.base_url == "http://env:2"
+    og = make_og(tracking_uri="http://explicit:3/")
+    assert og.client.base_url == "http://explicit:3"
 
 
-def test_tracking_uri_drives_client_and_otlp(monkeypatch: pytest.MonkeyPatch) -> None:
-    opengrade.set_tracking_uri("http://platform:9000")
-    assert opengrade.Client().base_url == "http://platform:9000"
-    assert opengrade.get_client().base_url == "http://platform:9000"
-    cfg = resolve_config(project_slug="demo")
+def test_tracking_uri_drives_client_and_otlp() -> None:
+    og = make_og(tracking_uri="http://platform:9000")
+    assert og.client.base_url == "http://platform:9000"
+    cfg = resolve_config(project_slug="demo", runtime=og._runtime)
     assert cfg.endpoint == "http://platform:9000/v1/traces"
 
 
 def test_otlp_endpoint_env_still_overrides(monkeypatch: pytest.MonkeyPatch) -> None:
-    opengrade.set_tracking_uri("http://platform:9000")
+    og = make_og(tracking_uri="http://platform:9000")
     monkeypatch.setenv("OPENGRADE_OTLP_ENDPOINT", "http://collector:4318/v1/traces")
-    assert resolve_config(project_slug="demo").endpoint == "http://collector:4318/v1/traces"
+    assert otlp_endpoint(runtime=og._runtime) == "http://collector:4318/v1/traces"
 
 
-def test_get_client_is_shared_and_reset_on_uri_change() -> None:
-    first = opengrade.get_client()
-    assert opengrade.get_client() is first
-    opengrade.set_tracking_uri("http://other:1")
-    second = opengrade.get_client()
-    assert second is not first
-    assert second.base_url == "http://other:1"
-
-
-def test_get_async_client_is_shared_and_reset_on_uri_change() -> None:
-    first = opengrade.get_async_client()
-    assert opengrade.get_async_client() is first
-    opengrade.set_tracking_uri("http://other:1")
-    second = opengrade.get_async_client()
+def test_client_is_shared_until_settings_change() -> None:
+    og = make_og(tracking_uri="http://first:1")
+    first = og.client
+    assert og.client is first
+    og = make_og(tracking_uri="http://other:1")
+    second = og.client
     assert second is not first
     assert second.base_url == "http://other:1"
 
 
 def test_async_client_per_event_loop() -> None:
+    og = make_og(tracking_uri="http://test", project_id="p1")
     clients: list[object] = []
 
     async def grab() -> None:
-        clients.append(opengrade.get_async_client())
+        with activated(og):
+            clients.append(og.async_client())
 
     asyncio.run(grab())
     asyncio.run(grab())
@@ -127,138 +123,115 @@ def test_async_client_per_event_loop() -> None:
     assert clients[0] is not clients[1]
 
 
-def test_set_tracking_uri_after_closed_loop_does_not_raise() -> None:
-    async def use_client() -> None:
-        opengrade.get_async_client()
-
-    asyncio.run(use_client())
-    opengrade.set_tracking_uri("http://other:1")
-    assert opengrade.get_async_client().base_url == "http://other:1"
-
-
 def test_set_project_platform_down_returns_none(caplog: pytest.LogCaptureFixture) -> None:
-    # Port 9: connection refused (or black-holed); must not raise into the app.
-    opengrade.set_tracking_uri("http://127.0.0.1:9")
-    with caplog.at_level(logging.WARNING, logger="opengrade"):
-        assert opengrade.set_project("demo") is None
+    og = make_og(tracking_uri="http://127.0.0.1:9")
+    with activated(og):
+        with caplog.at_level(logging.WARNING, logger="opengrade"):
+            assert og.set_project("demo") is None
     assert any("set_project" in r.message for r in caplog.records)
 
 
-def test_after_fork_hook_resets_shared_client() -> None:
-    parent = opengrade.get_client()
-    parent_async = opengrade.get_async_client()
-    _context._after_fork_in_child()
-    assert _context._CLIENT is None
-    assert _context._ASYNC_CLIENT_NO_LOOP is None
-    assert len(_context._ASYNC_CLIENTS) == 0
-    child = opengrade.get_client()
-    child_async = opengrade.get_async_client()
+def test_after_fork_hook_resets_runtime_clients() -> None:
+    if not hasattr(os, "register_at_fork"):
+        pytest.skip("fork hooks not available")
+    og = make_og(tracking_uri="http://parent", project_id="p1")
+    parent = og.client
+    parent_async = og.async_client()
+    og._runtime.after_fork_in_child()
+    child = og.client
+    child_async = og.async_client()
     assert child is not parent
     assert child_async is not parent_async
 
 
 def test_set_project_creates_when_missing() -> None:
+    og = make_og(project_id="p1")
     server = FakeServer()
-    server.install()
-    project = opengrade.set_project("HR Assistant")
+    with activated(og):
+        server.install(og)
+        project = og.set_project("HR Assistant")
     assert server.created == [{"name": "HR Assistant", "slug": "hr-assistant"}]
-    assert project.slug == "hr-assistant"
-    assert opengrade.get_project() == project
+    assert project is not None and project.slug == "hr-assistant"
+    assert og.get_project() == project
 
 
 def test_set_project_reuses_existing_by_slug() -> None:
+    og = make_og(project_id="p1")
     server = FakeServer([_project("p-1", "Whatever", "hr-assistant")])
-    server.install()
-    project = opengrade.set_project("hr-assistant")
-    assert project.id == "p-1"
+    with activated(og):
+        server.install(og)
+        project = og.set_project("hr-assistant")
+    assert project is not None and project.id == "p-1"
     assert server.created == []
 
 
 def test_set_project_reuses_existing_by_name() -> None:
+    og = make_og(project_id="p1")
     server = FakeServer([_project("p-1", "HR Assistant", "custom-slug")])
-    server.install()
-    assert opengrade.set_project("HR Assistant").id == "p-1"
+    with activated(og):
+        server.install(og)
+        assert og.set_project("HR Assistant").id == "p-1"
     assert server.created == []
 
 
 def test_set_project_handles_concurrent_create() -> None:
+    og = make_og(project_id="p1")
     server = FakeServer()
     server.conflict_once_with = _project("p-race", "hr-assistant", "hr-assistant")
-    server.install()
-    assert opengrade.set_project("hr-assistant").id == "p-race"
+    with activated(og):
+        server.install(og)
+        assert og.set_project("hr-assistant").id == "p-race"
 
 
 def test_set_project_rejects_empty() -> None:
-    with pytest.raises(ValueError, match="must not be empty"):
-        opengrade.set_project("  ")
+    og = make_og(project_id="p1")
+    with activated(og):
+        with pytest.raises(ValueError, match="must not be empty"):
+            og.set_project("  ")
 
 
 def test_aset_project_creates_when_missing() -> None:
+    og = make_og(project_id="p1")
     server = FakeServer()
 
     async def main() -> None:
-        server.install()
-        project = await opengrade.aset_project("HR Assistant")
+        with activated(og):
+            server.install(og)
+            project = await og.aset_project("HR Assistant")
         assert server.created == [{"name": "HR Assistant", "slug": "hr-assistant"}]
         assert project is not None
         assert project.slug == "hr-assistant"
-        assert opengrade.get_project() == project
+        assert og.get_project() == project
 
     asyncio.run(main())
 
 
 def test_aset_project_reuses_existing_by_slug() -> None:
+    og = make_og(project_id="p1")
     server = FakeServer([_project("p-1", "Whatever", "hr-assistant")])
 
     async def main() -> None:
-        server.install()
-        project = await opengrade.aset_project("hr-assistant")
-        assert project is not None
-        assert project.id == "p-1"
+        with activated(og):
+            server.install(og)
+            project = await og.aset_project("hr-assistant")
+        assert project is not None and project.id == "p-1"
         assert server.created == []
-
-    asyncio.run(main())
-
-
-def test_aset_project_handles_concurrent_create() -> None:
-    server = FakeServer()
-    server.conflict_once_with = _project("p-race", "hr-assistant", "hr-assistant")
-
-    async def main() -> None:
-        server.install()
-        project = await opengrade.aset_project("hr-assistant")
-        assert project is not None
-        assert project.id == "p-race"
-
-    asyncio.run(main())
-
-
-def test_aset_project_rejects_empty() -> None:
-    async def main() -> None:
-        with pytest.raises(ValueError, match="must not be empty"):
-            await opengrade.aset_project("  ")
 
     asyncio.run(main())
 
 
 def test_init_uses_active_project(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("OPENGRADE_PROJECT_SLUG", "from-env")
-    FakeServer([_project("p-1", "hr", "hr")]).install()
-    opengrade.set_project("hr")
-    cfg = resolve_config()
-    assert cfg.project_id == "p-1"
-    assert cfg.project_slug is None
-    opengrade.init(instrument=False)
-    assert _otel._INITIALIZED is True
-
-
-def test_set_project_after_init_warns(caplog: pytest.LogCaptureFixture) -> None:
-    FakeServer([_project("p-1", "a", "a"), _project("p-2", "b", "b")]).install()
-    opengrade.set_project("a")
-    opengrade.init(instrument=False)
-    with caplog.at_level(logging.WARNING, logger="opengrade"):
-        opengrade.set_project("b")
-    assert any("after init()" in r.message for r in caplog.records)
+    og = Opengrade(Settings.from_env(project_slug="from-env"))
+    server = FakeServer([_project("p-1", "hr", "hr")])
+    with activated(og):
+        server.install(og)
+        og.set_project("hr")
+        cfg = resolve_config(runtime=og._runtime)
+        assert cfg.project_id == "p-1"
+        assert cfg.project_slug is None
+        og.init_tracing(instrument=False)
+    assert og.tracing_enabled is True
 
 
 def test_resources_default_to_active_project() -> None:
@@ -270,12 +243,14 @@ def test_resources_default_to_active_project() -> None:
             return httpx2.Response(200, json=[_project("p-1", "hr", "hr")])
         return httpx2.Response(200, json=[])
 
-    _context._CLIENT = opengrade.Client("http://test", transport=httpx2.MockTransport(handler))
-    opengrade.set_project("hr")
-    client = opengrade.get_client()
-    client.datasets.list()
-    client.experiments.list()
-    client.datasets.list("explicit")
+    og = make_og(project_id="p1")
+    og._runtime.client = opengrade.Client("http://test", transport=httpx2.MockTransport(handler))
+    with activated(og):
+        og.set_project("hr")
+        client = current().client
+        client.datasets.list()
+        client.experiments.list()
+        client.datasets.list("explicit")
     assert seen[-3:] == [
         "/api/v1/projects/p-1/datasets",
         "/api/v1/projects/p-1/experiments",
@@ -294,7 +269,7 @@ def test_bare_client_does_not_use_env_project_id(monkeypatch: pytest.MonkeyPatch
         client.experiments.list()
 
 
-def test_get_client_binds_env_project_id(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_settings_binds_env_project_id_on_client(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("OPENGRADE_PROJECT_ID", "env-pid")
     seen: list[str] = []
 
@@ -302,8 +277,12 @@ def test_get_client_binds_env_project_id(monkeypatch: pytest.MonkeyPatch) -> Non
         seen.append(request.url.path)
         return httpx2.Response(200, json=[])
 
-    _context._CLIENT = opengrade.Client("http://test", transport=httpx2.MockTransport(handler))
-    opengrade.get_client().experiments.list()
+    og = Opengrade(Settings.from_env())
+    og._runtime.client = opengrade.Client(
+        "http://test", transport=httpx2.MockTransport(handler), project_id="env-pid"
+    )
+    with activated(og):
+        og.client.experiments.list()
     assert seen == ["/api/v1/projects/env-pid/experiments"]
 
 

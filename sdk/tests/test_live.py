@@ -8,44 +8,53 @@ from opentelemetry import trace
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import SimpleSpanProcessor
 from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
+from tests.support.instance import activated, init_og, make_og
+from tests.support.reset import reset_sdk
 
 import opengrade
-from opengrade import _live, _otel
+from opengrade import Opengrade, _live
 from opengrade._run_context import ACTIVE_RUN
 
+_og: Opengrade | None = None
 _shared_exporter: InMemorySpanExporter | None = None
 
 
 @pytest.fixture(scope="module", autouse=True)
 def _reset_otel() -> Iterator[None]:
-    global _shared_exporter
-    _otel._reset_for_tests()
+    global _og, _shared_exporter
+    reset_sdk(otel=True)
+    _og = None
     _shared_exporter = None
     yield
+    _og = None
     _shared_exporter = None
-    _otel._reset_for_tests()
+    reset_sdk(otel=True)
 
 
 @pytest.fixture(autouse=True)
 def _reset_live(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
     monkeypatch.delenv("OPENGRADE_LIVE", raising=False)
     monkeypatch.delenv("OPENGRADE_LIVE_SAMPLE_RATE", raising=False)
-    _live._reset_for_tests()
+    reset_sdk(otel=False)
     yield
-    _live._reset_for_tests()
+    reset_sdk(otel=False)
 
 
 @pytest.fixture
-def spans() -> InMemorySpanExporter:
-    global _shared_exporter
+def spans(monkeypatch: pytest.MonkeyPatch) -> Iterator[InMemorySpanExporter]:
+    global _og, _shared_exporter
     if _shared_exporter is None:
         _shared_exporter = InMemorySpanExporter()
         provider = TracerProvider()
         provider.add_span_processor(SimpleSpanProcessor(_shared_exporter))
         trace.set_tracer_provider(provider)
+        monkeypatch.setenv("OPENGRADE_PROJECT_ID", "p-live")
+        _og = init_og(project_id="p-live", instrument=False, _span_exporter=_shared_exporter)
     else:
         _shared_exporter.clear()
-    return _shared_exporter
+    assert _og is not None
+    with activated(_og):
+        yield _shared_exporter
 
 
 def _by_name(exporter: InMemorySpanExporter) -> dict[str, dict[str, object]]:
@@ -192,13 +201,18 @@ def test_should_judge_is_deterministic_and_proportional() -> None:
 
 
 def test_configure_rejects_out_of_range_rate() -> None:
+    og = make_og(project_id="p")
     with pytest.raises(ValueError):
-        _live.configure(enabled=True, sample_rate=1.5)
+        with activated(og):
+            _live.configure(enabled=True, sample_rate=1.5)
 
 
 def test_init_with_bad_rate_disables_live_without_raising() -> None:
-    opengrade.init(project_id="p", live=True, live_sample_rate=2.0, instrument=False, force=True)
-    try:
-        assert _live.is_enabled() is False
-    finally:
-        _otel._reset_for_tests()
+    og = init_og(
+        project_id="p",
+        live=True,
+        live_sample_rate=2.0,
+        instrument=False,
+        force=True,
+    )
+    assert _live.is_enabled(runtime=og._runtime) is False

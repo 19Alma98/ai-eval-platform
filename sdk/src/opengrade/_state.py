@@ -1,4 +1,4 @@
-"""Process-wide default runtime: settings overrides, clients, tracing, metrics, scores."""
+"""Per-instance runtime: settings, clients, tracing, metrics, scores."""
 
 from __future__ import annotations
 
@@ -7,7 +7,7 @@ import os
 import threading
 import weakref
 from dataclasses import dataclass, field, replace
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from opentelemetry.sdk.trace import SpanProcessor, TracerProvider
@@ -34,8 +34,46 @@ class Settings:
 
     @classmethod
     def from_env(cls, **overrides: Any) -> Settings:
+        """Build settings from ``OPENGRADE_*`` env vars, then apply ``overrides``."""
         fields = cls.__dataclass_fields__
-        kwargs = {k: v for k, v in overrides.items() if k in fields}
+        kwargs: dict[str, Any] = {}
+        env_map = {
+            "tracking_uri": "OPENGRADE_TRACKING_URI",
+            "api_key": "OPENGRADE_API_KEY",
+            "project_id": "OPENGRADE_PROJECT_ID",
+            "project_slug": "OPENGRADE_PROJECT_SLUG",
+            "service_name": "OPENGRADE_SERVICE_NAME",
+            "version": "OPENGRADE_VERSION",
+            "environment": "OPENGRADE_ENVIRONMENT",
+        }
+        for field_name, env_name in env_map.items():
+            raw = os.getenv(env_name)
+            if raw is not None and raw.strip():
+                kwargs[field_name] = raw.strip()
+        live_raw = os.getenv("OPENGRADE_LIVE", "").strip().lower()
+        if live_raw in {"1", "true", "yes", "on"}:
+            kwargs["live"] = True
+        elif live_raw in {"0", "false", "no", "off"}:
+            kwargs["live"] = False
+        rate_raw = os.getenv("OPENGRADE_LIVE_SAMPLE_RATE", "").strip()
+        if rate_raw:
+            try:
+                kwargs["live_sample_rate"] = float(rate_raw)
+            except ValueError:
+                pass
+        workers_raw = os.getenv("OPENGRADE_METRICS_WORKERS", "").strip()
+        if workers_raw:
+            try:
+                kwargs["metrics_workers"] = int(workers_raw, 10)
+            except ValueError:
+                pass
+        cap_raw = os.getenv("OPENGRADE_MAX_CAPTURE_BYTES", "").strip()
+        if cap_raw:
+            try:
+                kwargs["max_capture_bytes"] = int(cap_raw, 10)
+            except ValueError:
+                pass
+        kwargs.update({k: v for k, v in overrides.items() if k in fields})
         return cls(**kwargs)
 
     def with_updates(self, **kwargs: Any) -> Settings:
@@ -44,7 +82,7 @@ class Settings:
         return replace(self, **clean)
 
 
-@dataclass
+@dataclass(eq=False)
 class _Runtime:
     settings: Settings = field(default_factory=Settings)
 
@@ -120,14 +158,31 @@ class _Runtime:
 
 _MISSING = object()
 
-_DEFAULT: _Runtime | None = None
-_DEFAULT_LOCK = threading.Lock()
+# Weak registry of live runtimes (for fork / optional test sweeps).
+_RUNTIMES: weakref.WeakSet[_Runtime] = weakref.WeakSet()
+_RUNTIMES_LOCK = threading.Lock()
+
+
+def register_runtime(rt: _Runtime) -> None:
+    with _RUNTIMES_LOCK:
+        _RUNTIMES.add(rt)
+
+
+def iter_runtimes() -> list[_Runtime]:
+    with _RUNTIMES_LOCK:
+        return list(_RUNTIMES)
+
+
+def active_runtime() -> _Runtime:
+    """Runtime for the activated ``Opengrade``; raises if none is active."""
+    from opengrade._opengrade import current
+
+    return current()._runtime
 
 
 def _module_override(module: str, name: str) -> Any:
     """Pytest contract: ``monkeypatch.setattr(mod, NAME, …)`` writes into
-    ``sys.modules[mod].__dict__``. Prefer that shadow over ``_Runtime`` so
-    existing tests keep working without rewriting every fixture."""
+    ``sys.modules[mod].__dict__``."""
     import sys
 
     mod = sys.modules.get(module)
@@ -136,75 +191,29 @@ def _module_override(module: str, name: str) -> Any:
     return _MISSING
 
 
-def _default() -> _Runtime:
-    global _DEFAULT
-    with _DEFAULT_LOCK:
-        if _DEFAULT is None:
-            _DEFAULT = _Runtime.fresh()
-        return _DEFAULT
-
-
-def _set_default(runtime: _Runtime) -> None:
-    global _DEFAULT
-    with _DEFAULT_LOCK:
-        _DEFAULT = runtime
-
-
-def _reset_default_for_tests() -> _Runtime:
-    global _DEFAULT
-    with _DEFAULT_LOCK:
-        _DEFAULT = _Runtime.fresh()
-        return _DEFAULT
-
-
 def _after_fork_in_child() -> None:
-    _default().after_fork_in_child()
+    for rt in iter_runtimes():
+        rt.after_fork_in_child()
 
 
-def _tracking_uri_override() -> str | None:
-    value = _module_override("opengrade._config", "_TRACKING_URI")
-    if value is not _MISSING:
-        return cast(str | None, value)
-    return _default().settings.tracking_uri
+def tracking_uri_for(rt: _Runtime) -> str:
+    from opengrade._config import DEFAULT_TRACKING_URI, _normalize_uri
+
+    if rt.settings.tracking_uri is not None:
+        return _normalize_uri(rt.settings.tracking_uri)
+    return DEFAULT_TRACKING_URI
 
 
-def _set_tracking_uri_override(value: str | None) -> None:
-    rt = _default()
-    rt.settings = rt.settings.with_updates(tracking_uri=value)
+def api_key_for(rt: _Runtime) -> str | None:
+    return rt.settings.api_key or None
 
 
-def _api_key_override() -> str | None:
-    value = _module_override("opengrade._config", "_API_KEY")
-    if value is not _MISSING:
-        return cast(str | None, value)
-    return _default().settings.api_key
-
-
-def _set_api_key_override(value: str | None) -> None:
-    rt = _default()
-    rt.settings = rt.settings.with_updates(api_key=value)
-
-
-def _active_project_id() -> str | None:
-    value = _module_override("opengrade._config", "_ACTIVE_PROJECT_ID")
-    if value is not _MISSING:
-        return cast(str | None, value)
-    return _default().settings.project_id
-
-
-def _active_project_slug() -> str | None:
-    value = _module_override("opengrade._config", "_ACTIVE_PROJECT_SLUG")
-    if value is not _MISSING:
-        return cast(str | None, value)
-    return _default().settings.project_slug
-
-
-def _set_active_project(
+def set_active_project(
+    rt: _Runtime,
     *,
     project_id: str | None = None,
     project_slug: str | None = None,
 ) -> None:
-    rt = _default()
     updates: dict[str, Any] = {}
     if project_id is not None:
         updates["project_id"] = project_id
@@ -215,56 +224,81 @@ def _set_active_project(
         rt.slug_not_found.clear()
 
 
+def is_slug_not_found(rt: _Runtime, slug: str) -> bool:
+    return slug in rt.slug_not_found
+
+
+def mark_slug_not_found(rt: _Runtime, slug: str) -> None:
+    rt.slug_not_found.add(slug)
+
+
+def clear_slug_not_found(rt: _Runtime) -> None:
+    rt.slug_not_found.clear()
+
+
+# --- legacy aliases used during migration / tests (cycle 2 removes test-only paths) ---
+
+
+def _set_active_project(
+    *,
+    project_id: str | None = None,
+    project_slug: str | None = None,
+) -> None:
+    set_active_project(active_runtime(), project_id=project_id, project_slug=project_slug)
+
+
 def _is_slug_not_found(slug: str) -> bool:
-    return slug in _default().slug_not_found
+    return is_slug_not_found(active_runtime(), slug)
 
 
 def _mark_slug_not_found(slug: str) -> None:
-    _default().slug_not_found.add(slug)
+    mark_slug_not_found(active_runtime(), slug)
 
 
 def _clear_slug_not_found() -> None:
-    _default().slug_not_found.clear()
+    clear_slug_not_found(active_runtime())
+
+
+def _active_project_id() -> str | None:
+    return active_runtime().settings.project_id
+
+
+def _active_project_slug() -> str | None:
+    return active_runtime().settings.project_slug
+
+
+def _warned_plaintext_key() -> bool:
+    return active_runtime().settings.warned_plaintext_key
+
+
+def _set_warned_plaintext_key(value: bool) -> None:
+    rt = active_runtime()
+    rt.settings = rt.settings.with_updates(warned_plaintext_key=value)
 
 
 def _max_capture_override() -> int | None:
-    value = _module_override("opengrade._config", "_MAX_CAPTURE_BYTES")
-    if value is not _MISSING:
-        return cast(int | None, value)
-    return _default().settings.max_capture_bytes
+    return active_runtime().settings.max_capture_bytes
 
 
 def _set_max_capture_override(value: int | None) -> None:
-    rt = _default()
+    rt = active_runtime()
     rt.settings = rt.settings.with_updates(max_capture_bytes=value)
 
 
 def _capture_redact() -> Any | None:
-    return _default().capture_redact
+    return active_runtime().capture_redact
 
 
 def _set_capture_redact(value: Any | None) -> None:
-    _default().capture_redact = value
+    active_runtime().capture_redact = value
 
 
 def _capture_redact_output() -> Any | None:
-    return _default().capture_redact_output
+    return active_runtime().capture_redact_output
 
 
 def _set_capture_redact_output(value: Any | None) -> None:
-    _default().capture_redact_output = value
-
-
-def _warned_plaintext_key() -> bool:
-    value = _module_override("opengrade._config", "_WARNED_PLAINTEXT_KEY")
-    if value is not _MISSING:
-        return cast(bool, value)
-    return _default().settings.warned_plaintext_key
-
-
-def _set_warned_plaintext_key(value: bool) -> None:
-    rt = _default()
-    rt.settings = rt.settings.with_updates(warned_plaintext_key=value)
+    active_runtime().capture_redact_output = value
 
 
 if hasattr(os, "register_at_fork"):  # not on Windows

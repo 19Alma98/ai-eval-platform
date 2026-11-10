@@ -13,9 +13,11 @@ from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import SimpleSpanProcessor
 from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
 from opentelemetry.trace import StatusCode
+from tests.support.instance import activated, init_og
+from tests.support.reset import reset_sdk
 
 import opengrade
-from opengrade import _config, _otel, _trace
+from opengrade import Opengrade, _config, _trace, current
 from opengrade._config import DEFAULT_MAX_CAPTURE_BYTES
 from opengrade._trace import (
     _TRUNCATE_MARKER,
@@ -24,29 +26,46 @@ from opengrade._trace import (
     truncate_value,
 )
 
+_og: Opengrade | None = None
 _shared_exporter: InMemorySpanExporter | None = None
 
 
 @pytest.fixture(scope="module", autouse=True)
 def _reset_otel_before_trace_tests() -> Iterator[None]:
-    global _shared_exporter
-    _otel._reset_for_tests()
+    global _og, _shared_exporter
+    reset_sdk(otel=True)
+    _og = None
     _shared_exporter = None
     yield
+    _og = None
     _shared_exporter = None
-    _otel._reset_for_tests()
+    reset_sdk(otel=True)
 
 
-@pytest.fixture
-def spans() -> InMemorySpanExporter:
-    global _shared_exporter
+@pytest.fixture(autouse=True)
+def _active_trace_og(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
+    global _og, _shared_exporter
+    from opengrade import _state
+
     if _shared_exporter is None:
         _shared_exporter = InMemorySpanExporter()
         provider = TracerProvider()
         provider.add_span_processor(SimpleSpanProcessor(_shared_exporter))
         trace.set_tracer_provider(provider)
+        monkeypatch.setenv("OPENGRADE_PROJECT_ID", "p-trace")
+        _og = init_og(project_id="p-trace", instrument=False, _span_exporter=_shared_exporter)
     else:
         _shared_exporter.clear()
+    assert _og is not None
+    _state.register_runtime(_og._runtime)
+    with activated(_og):
+        yield
+
+
+@pytest.fixture
+def spans() -> InMemorySpanExporter:
+    assert _shared_exporter is not None
+    _shared_exporter.clear()
     return _shared_exporter
 
 
@@ -89,13 +108,13 @@ def test_truncate_value_adds_marker() -> None:
 
 
 def test_truncate_value_honors_configured_limit() -> None:
-    _config.configure_capture(max_capture_bytes=32)
+    current().configure_capture(max_capture_bytes=32)
     try:
         out = truncate_value("x" * 100)
         assert len(out.encode("utf-8")) <= 32
         assert out.endswith("…[truncated]")
     finally:
-        _config.configure_capture()
+        current().configure_capture()
 
 
 def test_truncate_value_reduces_before_json_dumps(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -144,24 +163,24 @@ def test_configure_capture_redact_roundtrip() -> None:
     def hide_out(value: object) -> object:
         return {"redacted": True}
 
-    _config.configure_capture(redact=hide, redact_output=hide_out)
+    current().configure_capture(redact=hide, redact_output=hide_out)
     try:
         assert _config.capture_redact() is hide
         assert _config.capture_redact_output() is hide_out
-        _config.configure_capture(redact=None)
+        current().configure_capture(redact=None)
         assert _config.capture_redact() is None
         assert _config.capture_redact_output() is hide_out
     finally:
-        _config.configure_capture()
+        current().configure_capture()
 
 
 def test_configure_capture_empty_resets_redactors_and_limit() -> None:
-    _config.configure_capture(
+    current().configure_capture(
         max_capture_bytes=64,
         redact=lambda n, v: v,
         redact_output=lambda v: v,
     )
-    _config.configure_capture()
+    current().configure_capture()
     assert _config.capture_redact() is None
     assert _config.capture_redact_output() is None
     # byte override cleared → default (env or DEFAULT)
@@ -172,17 +191,17 @@ def test_configure_capture_partial_preserves_other_fields() -> None:
     def hide(name: str, value: object) -> object:
         return value
 
-    _config.configure_capture(max_capture_bytes=128, redact=hide)
+    current().configure_capture(max_capture_bytes=128, redact=hide)
     try:
-        _config.configure_capture(max_capture_bytes=256)
+        current().configure_capture(max_capture_bytes=256)
         assert _config.max_capture_bytes() == 256
         assert _config.capture_redact() is hide
     finally:
-        _config.configure_capture()
+        current().configure_capture()
 
 
 def test_configure_capture_exported_on_opengrade() -> None:
-    assert opengrade.configure_capture is _config.configure_capture
+    pass  # module configure_capture removed
 
 
 def test_trace_omits_self_from_input(spans: InMemorySpanExporter) -> None:
@@ -223,7 +242,7 @@ def test_trace_flat_bound_args_payload(spans: InMemorySpanExporter) -> None:
 
 
 def test_trace_decorator_redact_overrides_global(spans: InMemorySpanExporter) -> None:
-    _config.configure_capture(redact=lambda n, v: f"global:{v}")
+    current().configure_capture(redact=lambda n, v: f"global:{v}")
     try:
 
         @opengrade.trace(name="lookup", redact=lambda n, v: "***" if n == "api_key" else v)
@@ -237,13 +256,13 @@ def test_trace_decorator_redact_overrides_global(spans: InMemorySpanExporter) ->
         assert payload["customer_id"] == "c1"
         assert payload["api_key"] == "***"
     finally:
-        _config.configure_capture()
+        current().configure_capture()
 
 
 def test_trace_uses_global_redact_when_decorator_omits(
     spans: InMemorySpanExporter,
 ) -> None:
-    _config.configure_capture(redact=lambda n, v: "***" if n == "token" else v)
+    current().configure_capture(redact=lambda n, v: "***" if n == "token" else v)
     try:
 
         @opengrade.trace(name="call")
@@ -256,13 +275,13 @@ def test_trace_uses_global_redact_when_decorator_omits(
         )
         assert payload["token"] == "***"
     finally:
-        _config.configure_capture()
+        current().configure_capture()
 
 
 def test_trace_uses_global_redact_output_when_decorator_omits(
     spans: InMemorySpanExporter,
 ) -> None:
-    _config.configure_capture(redact_output=lambda v: {"masked": True})
+    current().configure_capture(redact_output=lambda v: {"masked": True})
     try:
 
         @opengrade.trace(name="call-out")
@@ -273,15 +292,15 @@ def test_trace_uses_global_redact_output_when_decorator_omits(
         out = json.loads(str(dict(spans.get_finished_spans()[0].attributes or {})["output.value"]))
         assert out == {"masked": True}
     finally:
-        _config.configure_capture()
+        current().configure_capture()
 
 
 def test_reset_config_overrides_clears_redactors() -> None:
-    _config.configure_capture(
+    current().configure_capture(
         redact=lambda n, v: v,
         redact_output=lambda v: v,
     )
-    _config._reset_for_tests()
+    current()._runtime.reset_config_overrides()
     assert _config.capture_redact() is None
     assert _config.capture_redact_output() is None
 

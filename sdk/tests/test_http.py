@@ -232,11 +232,17 @@ def test_request_multipart() -> None:
 
 
 def test_resolve_api_base_url(monkeypatch: pytest.MonkeyPatch) -> None:
+    from opengrade import Opengrade, Settings
+
     monkeypatch.delenv("OPENGRADE_TRACKING_URI", raising=False)
     assert resolve_api_base_url() == "http://localhost:8000"
     assert resolve_api_base_url("http://x/") == "http://x"
     monkeypatch.setenv("OPENGRADE_TRACKING_URI", "http://from-env/")
-    assert resolve_api_base_url() == "http://from-env"
+    # Env alone does not change the default; Settings.from_env + activate does.
+    assert resolve_api_base_url() == "http://localhost:8000"
+    og = Opengrade(Settings.from_env())
+    with og.activate():
+        assert resolve_api_base_url() == "http://from-env"
 
 
 def test_read_upload(tmp_path: Path) -> None:

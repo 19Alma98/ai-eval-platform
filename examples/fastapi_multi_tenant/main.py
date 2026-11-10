@@ -8,7 +8,7 @@ from typing import Annotated
 
 import opengrade
 from fastapi import FastAPI, Header, HTTPException
-from opengrade import Opengrade, Settings
+from opengrade import Opengrade, Settings, current
 
 TRACKING_URI = os.getenv("OPENGRADE_TRACKING_URI", "http://localhost:8000")
 TENANT_SLUGS = {
@@ -41,7 +41,7 @@ app = FastAPI(title="OpenGrade multi-tenant demo", lifespan=lifespan)
 
 @opengrade.trace(name="answer")
 def answer(question: str) -> str:
-    proj = opengrade.get_project()
+    proj = current().get_project()
     slug = proj.slug if proj is not None else "unknown"
     return f"[{slug}] {question}"
 
@@ -55,10 +55,10 @@ async def ask(
     if og is None:
         raise HTTPException(status_code=404, detail=f"unknown tenant {x_tenant!r}")
     with og.activate():
-        if opengrade.get_project() is None:
+        if og.get_project() is None:
             og.set_project(TENANT_SLUGS[x_tenant.lower()])
         text = answer(q)
-        opengrade.flush()
+        og.flush()
         return {"tenant": x_tenant, "answer": text}
 
 

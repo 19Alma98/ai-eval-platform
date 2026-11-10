@@ -10,7 +10,6 @@ from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from typing import Any
 
-from opengrade._context import get_client
 from opengrade._links import experiments_compare_url, ui_base_url
 from opengrade.client import Client
 from opengrade.experiment import (
@@ -296,7 +295,10 @@ def sweep(
     explicit_client = client is not None
     if client is None and og is not None:
         client = og.client
-    client = client or get_client()
+    if client is None:
+        from opengrade._opengrade import current
+
+        client = current().client
     project_id = _resolve_project(project, client, activate=not explicit_client)
     # Resolve (and upload, for inline rows) the test set once for every configuration.
     dataset_id = _resolve_dataset(client, project_id, dataset, task_type=task_type)

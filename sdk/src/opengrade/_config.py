@@ -8,6 +8,7 @@ from typing import Any
 from urllib.parse import urlsplit
 
 from opengrade import _state
+from opengrade._state import Settings, _Runtime
 
 DEFAULT_TRACKING_URI = "http://localhost:8000"
 OTLP_TRACES_PATH = "/v1/traces"
@@ -27,71 +28,34 @@ def _normalize_uri(uri: str) -> str:
     return uri.strip().rstrip("/")
 
 
-def set_tracking_uri(uri: str) -> None:
-    """Set the platform URI used by both ``Client()`` and OTLP export."""
-    normalized = _normalize_uri(uri)
-    if not normalized:
-        raise ValueError("tracking URI must not be empty")
-    if normalized != _state._tracking_uri_override():
-        _state._set_tracking_uri_override(normalized)
-        from opengrade._context import _reset_client
-
-        _reset_client()
-
-
-def get_tracking_uri() -> str:
-    """Resolve the platform URI.
-
-    Order: ``set_tracking_uri()`` > ``OPENGRADE_TRACKING_URI`` > ``http://localhost:8000``.
-    """
-    override = _state._tracking_uri_override()
-    if override is not None:
-        return override
-    value = os.getenv("OPENGRADE_TRACKING_URI")
-    if value and value.strip():
-        return _normalize_uri(value)
-    return DEFAULT_TRACKING_URI
-
-
-def set_api_key(key: str | None) -> None:
-    """Set the platform API key used by ``Client()`` and OTLP export (``None`` clears it)."""
-    normalized = key.strip() if key is not None else None
-    new_key = normalized or None
-    if new_key != _state._api_key_override():
-        _state._set_api_key_override(new_key)
-        from opengrade._context import _reset_client
-
-        _reset_client()
-
-
-def get_api_key() -> str | None:
-    """Resolve the platform API key: ``set_api_key()`` > ``OPENGRADE_API_KEY`` > none."""
-    override = _state._api_key_override()
-    if override is not None:
-        return override
-    value = (os.getenv("OPENGRADE_API_KEY") or "").strip()
-    return value or None
-
-
 def _is_loopback_host(host: str) -> bool:
     return host in {"localhost", "127.0.0.1", "::1"} or host.endswith(".localhost")
 
 
-def auth_headers(url: str, api_key: str | None = None) -> dict[str, str]:
+def auth_headers(
+    url: str, api_key: str | None = None, *, runtime: _Runtime | None = None
+) -> dict[str, str]:
     """``Authorization: Bearer`` header for ``url`` when a key is configured.
 
     Warns once when the key would travel over plain HTTP to a non-loopback host.
     """
-    key = api_key if api_key is not None else get_api_key()
+    key = api_key
+    rt = runtime
+    if key is None and rt is not None:
+        key = _state.api_key_for(rt)
+    if key is None:
+        key = (os.getenv("OPENGRADE_API_KEY") or "").strip() or None
     if not key:
         return {}
     parsed = urlsplit(url)
+    warn_rt = rt
     if (
         parsed.scheme == "http"
         and not _is_loopback_host(parsed.hostname or "")
-        and not _state._warned_plaintext_key()
+        and warn_rt is not None
+        and not warn_rt.settings.warned_plaintext_key
     ):
-        _state._set_warned_plaintext_key(True)
+        warn_rt.settings = warn_rt.settings.with_updates(warned_plaintext_key=True)
         logger.warning(
             "opengrade: sending the API key over plain HTTP to %s; use https:// so it "
             "cannot be read on the network",
@@ -100,28 +64,37 @@ def auth_headers(url: str, api_key: str | None = None) -> dict[str, str]:
     return {"Authorization": f"Bearer {key}"}
 
 
-def otlp_endpoint() -> str:
+def otlp_endpoint(*, tracking_uri: str | None = None, runtime: _Runtime | None = None) -> str:
     """OTLP traces URL: ``OPENGRADE_OTLP_ENDPOINT`` override, else ``<tracking_uri>/v1/traces``."""
     override = os.getenv("OPENGRADE_OTLP_ENDPOINT")
     if override and override.strip():
         return override.strip()
-    return get_tracking_uri() + OTLP_TRACES_PATH
+    if tracking_uri is not None:
+        base = _normalize_uri(tracking_uri)
+    elif runtime is not None:
+        base = _state.tracking_uri_for(runtime)
+    else:
+        base = DEFAULT_TRACKING_URI
+    return base + OTLP_TRACES_PATH
 
 
-def _lazy_resolve_slug(slug: str) -> str | None:
+def _lazy_resolve_slug(rt: _Runtime, slug: str, *, client: Any | None = None) -> str | None:
     """Resolve a project slug to an id via by-slug lookup; cache success and 404."""
-    if _state._is_slug_not_found(slug):
+    if _state.is_slug_not_found(rt, slug):
         return None
     try:
-        from opengrade._context import get_client
         from opengrade._errors import OpengradeAPIError
 
-        project = get_client().projects.get_by_slug(slug)
-        _state._set_active_project(project_id=project.id, project_slug=project.slug)
+        if client is None:
+            from opengrade._opengrade import current
+
+            client = current().client
+        project = client.projects.get_by_slug(slug)
+        _state.set_active_project(rt, project_id=project.id, project_slug=project.slug)
         return project.id
     except OpengradeAPIError as exc:
         if exc.status == 404:
-            _state._mark_slug_not_found(slug)
+            _state.mark_slug_not_found(rt, slug)
             logger.warning("opengrade: project slug %r not found", slug)
             return None
         logger.warning("opengrade: could not resolve project slug %r: %s", slug, exc)
@@ -131,141 +104,75 @@ def _lazy_resolve_slug(slug: str) -> str | None:
         return None
 
 
-def resolve_project_id(project_id: str | None = None) -> str:
-    """Project id for control-plane calls.
-
-    Precedence: argument > ``init``/``set_project`` id > ``OPENGRADE_PROJECT_ID`` >
-    lazy slug resolve (``init``/``set_project`` slug / ``OPENGRADE_PROJECT_SLUG``).
-    """
+def resolve_project_id(
+    project_id: str | None = None,
+    *,
+    runtime: _Runtime | None = None,
+    client: Any | None = None,
+) -> str:
+    """Project id for control-plane calls on ``runtime`` (default: active)."""
     if project_id:
         return project_id
-    active_id = _state._active_project_id()
-    if active_id:
-        return active_id
-    env_id = os.getenv("OPENGRADE_PROJECT_ID")
-    if env_id and env_id.strip():
-        return env_id.strip()
-    slug = (
-        _state._active_project_slug() or (os.getenv("OPENGRADE_PROJECT_SLUG") or "").strip() or None
-    )
+    rt = runtime if runtime is not None else _state.active_runtime()
+    if rt.settings.project_id:
+        return rt.settings.project_id
+    slug = rt.settings.project_slug
     if slug:
-        resolved = _lazy_resolve_slug(slug)
+        resolved = _lazy_resolve_slug(rt, slug, client=client)
         if resolved:
             return resolved
     raise ValueError(
-        "No project: pass project_id, call opengrade.set_project() / init(project_…), "
-        "or set OPENGRADE_PROJECT_ID / OPENGRADE_PROJECT_SLUG"
+        "No project: pass project_id, call Opengrade.set_project() / Settings(project_…), "
+        "or set OPENGRADE_PROJECT_ID / OPENGRADE_PROJECT_SLUG when constructing Settings"
     )
 
 
-def _set_active_project(
-    *,
-    project_id: str | None = None,
-    project_slug: str | None = None,
-) -> None:
-    _state._set_active_project(project_id=project_id, project_slug=project_slug)
-
-
 def configure_capture(
+    rt: _Runtime,
     *,
     max_capture_bytes: int | None | Any = _UNSET,
     redact: RedactFn | None | Any = _UNSET,
     redact_output: RedactOutputFn | None | Any = _UNSET,
 ) -> None:
-    """Configure capture limit and optional redactors.
-
-    Omitted kwargs are left unchanged. ``configure_capture()`` with no arguments
-    resets the byte override and both redactors. Pass ``redact=None`` /
-    ``redact_output=None`` to clear that redactor only. Pass
-    ``max_capture_bytes=None`` to clear the byte override only.
-    """
+    """Configure capture limit and optional redactors on ``rt``."""
     if max_capture_bytes is _UNSET and redact is _UNSET and redact_output is _UNSET:
-        _state._set_max_capture_override(None)
-        _state._set_capture_redact(None)
-        _state._set_capture_redact_output(None)
+        rt.settings = rt.settings.with_updates(max_capture_bytes=None)
+        rt.capture_redact = None
+        rt.capture_redact_output = None
         return
     if max_capture_bytes is not _UNSET:
         if max_capture_bytes is None:
-            _state._set_max_capture_override(None)
+            rt.settings = rt.settings.with_updates(max_capture_bytes=None)
         else:
             value = int(max_capture_bytes)
             if value < 1:
                 raise ValueError(f"max_capture_bytes must be >= 1, got {value}")
-            _state._set_max_capture_override(value)
+            rt.settings = rt.settings.with_updates(max_capture_bytes=value)
     if redact is not _UNSET:
-        _state._set_capture_redact(redact)
+        rt.capture_redact = redact
     if redact_output is not _UNSET:
-        _state._set_capture_redact_output(redact_output)
+        rt.capture_redact_output = redact_output
 
 
-def capture_redact() -> RedactFn | None:
-    return _state._capture_redact()
+def capture_redact(runtime: _Runtime | None = None) -> RedactFn | None:
+    rt = runtime if runtime is not None else _state.active_runtime()
+    return rt.capture_redact
 
 
-def capture_redact_output() -> RedactOutputFn | None:
-    return _state._capture_redact_output()
+def capture_redact_output(runtime: _Runtime | None = None) -> RedactOutputFn | None:
+    rt = runtime if runtime is not None else _state.active_runtime()
+    return rt.capture_redact_output
 
 
-def max_capture_bytes() -> int:
-    """``init(max_capture_bytes=...)`` > ``OPENGRADE_MAX_CAPTURE_BYTES`` > 32768."""
-    override = _state._max_capture_override()
+def max_capture_bytes(runtime: _Runtime | None = None) -> int:
+    """Settings override > 32768 (env already applied in ``Settings.from_env``)."""
+    rt = runtime if runtime is not None else _state.active_runtime()
+    override = rt.settings.max_capture_bytes
     if override is not None:
+        if override < 1:
+            return DEFAULT_MAX_CAPTURE_BYTES
         return override
-    raw = os.getenv("OPENGRADE_MAX_CAPTURE_BYTES", "").strip()
-    if not raw:
-        return DEFAULT_MAX_CAPTURE_BYTES
-    try:
-        value = int(raw)
-        if value < 1:
-            raise ValueError
-        return value
-    except ValueError:
-        logger.warning(
-            "opengrade: invalid OPENGRADE_MAX_CAPTURE_BYTES=%r; using %d",
-            raw,
-            DEFAULT_MAX_CAPTURE_BYTES,
-        )
-        return DEFAULT_MAX_CAPTURE_BYTES
-
-
-_CONFIG_MODULE_STATE_KEYS = (
-    "_TRACKING_URI",
-    "_API_KEY",
-    "_ACTIVE_PROJECT_ID",
-    "_ACTIVE_PROJECT_SLUG",
-    "_WARNED_PLAINTEXT_KEY",
-    "_MAX_CAPTURE_BYTES",
-)
-
-
-def _clear_module_state_keys() -> None:
-    import sys
-
-    mod = sys.modules[__name__]
-    for key in _CONFIG_MODULE_STATE_KEYS:
-        mod.__dict__.pop(key, None)
-
-
-def _reset_for_tests() -> None:
-    _clear_module_state_keys()
-    rt = _state._default()
-    rt.reset_config_overrides()
-
-
-def __getattr__(name: str) -> Any:
-    if name == "_TRACKING_URI":
-        return _state._tracking_uri_override()
-    if name == "_API_KEY":
-        return _state._api_key_override()
-    if name == "_ACTIVE_PROJECT_ID":
-        return _state._active_project_id()
-    if name == "_ACTIVE_PROJECT_SLUG":
-        return _state._active_project_slug()
-    if name == "_WARNED_PLAINTEXT_KEY":
-        return _state._warned_plaintext_key()
-    if name == "_MAX_CAPTURE_BYTES":
-        return _state._max_capture_override()
-    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+    return DEFAULT_MAX_CAPTURE_BYTES
 
 
 @dataclass(frozen=True, slots=True)
@@ -280,6 +187,8 @@ class ResolvedConfig:
 
 def resolve_config(
     *,
+    runtime: _Runtime | None = None,
+    settings: Settings | None = None,
     project_id: str | None = None,
     project_slug: str | None = None,
     endpoint: str | None = None,
@@ -291,42 +200,40 @@ def resolve_config(
     if explicit_both:
         raise ValueError(
             "Provide exactly one of project_id / project_slug "
-            "(arguments, opengrade.set_project(), or OPENGRADE_PROJECT_ID / OPENGRADE_PROJECT_SLUG)"
+            "(arguments or Settings.project_id / Settings.project_slug)"
         )
+
+    rt = runtime
+    s = settings
+    if s is None and rt is not None:
+        s = rt.settings
+    if s is None:
+        s = Settings()
 
     pid = project_id
     pslug = project_slug
     if pid is None and pslug is None:
-        if _state._active_project_id() is not None:
-            # set_project() / init(project_id=…) wins over env.
-            pid = _state._active_project_id()
-        elif _state._active_project_slug() is not None:
-            pslug = _state._active_project_slug()
-        else:
-            pid = os.getenv("OPENGRADE_PROJECT_ID")
-            pslug = os.getenv("OPENGRADE_PROJECT_SLUG")
-    # Treat empty strings as unset
+        pid = s.project_id
+        pslug = s.project_slug
     pid = pid or None
     pslug = pslug or None
 
-    # Dual env (or active id+slug): id wins over slug for OTLP headers.
     if pid is not None and pslug is not None:
         pslug = None
 
     if pid is None and pslug is None:
         raise ValueError(
             "Provide project_id or project_slug "
-            "(arguments, opengrade.set_project() / init(), or "
-            "OPENGRADE_PROJECT_ID / OPENGRADE_PROJECT_SLUG)"
+            "(arguments or Settings.project_id / Settings.project_slug)"
         )
 
     return ResolvedConfig(
-        endpoint=endpoint or otlp_endpoint(),
-        service_name=service_name or os.getenv("OPENGRADE_SERVICE_NAME") or DEFAULT_SERVICE_NAME,
+        endpoint=endpoint or otlp_endpoint(tracking_uri=s.tracking_uri, runtime=rt),
+        service_name=service_name or s.service_name or DEFAULT_SERVICE_NAME,
         project_id=pid,
         project_slug=pslug,
-        version=version or os.getenv("OPENGRADE_VERSION") or None,
-        environment=environment or os.getenv("OPENGRADE_ENVIRONMENT") or None,
+        version=version or s.version or None,
+        environment=environment or s.environment or None,
     )
 
 
