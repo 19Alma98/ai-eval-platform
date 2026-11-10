@@ -342,3 +342,45 @@ def test_read_upload(tmp_path: Path) -> None:
         read_upload(path, file=("x.csv", b"z"))
     with pytest.raises(ValueError):
         read_upload()
+
+
+@pytest.mark.parametrize(
+    "exc_type", [httpx2.ReadTimeout, httpx2.RemoteProtocolError, httpx2.ReadError]
+)
+def test_post_not_retried_when_request_may_have_been_processed(
+    monkeypatch: pytest.MonkeyPatch, exc_type: type[httpx2.HTTPError]
+) -> None:
+    monkeypatch.setattr(http_mod.time, "sleep", lambda _s: None)
+    calls = {"n": 0}
+
+    def handler(request: httpx2.Request) -> httpx2.Response:
+        calls["n"] += 1
+        raise exc_type("mid-response", request=request)
+
+    transport = _HttpTransport("http://localhost:8000", transport=httpx2.MockTransport(handler))
+    with pytest.raises(OpengradeConnectionError):
+        transport.request("POST", "/api/v1/projects", body={"name": "x"})
+    assert calls["n"] == 1  # a retry could create the project twice
+    transport.close()
+
+
+def test_get_still_retried_after_read_timeout(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(http_mod.time, "sleep", lambda _s: None)
+    calls = {"n": 0}
+
+    def handler(request: httpx2.Request) -> httpx2.Response:
+        calls["n"] += 1
+        if calls["n"] == 1:
+            raise httpx2.ReadTimeout("slow", request=request)
+        return httpx2.Response(200, json=[])
+
+    transport = _HttpTransport("http://localhost:8000", transport=httpx2.MockTransport(handler))
+    assert transport.request("GET", "/api/v1/projects") == []
+    assert calls["n"] == 2
+    transport.close()
+
+
+def test_retry_decision_request_sent() -> None:
+    assert _retry_decision("POST", attempt=0, transport_error=True, request_sent=True)[0] is False
+    assert _retry_decision("PUT", attempt=0, transport_error=True, request_sent=True)[0] is True
+    assert _retry_decision("POST", attempt=0, transport_error=True, request_sent=False)[0] is True
