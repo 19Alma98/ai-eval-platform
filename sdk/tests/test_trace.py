@@ -513,6 +513,34 @@ def test_trace_sync_generator_close_finishes_span(spans: InMemorySpanExporter) -
     assert dict(finished[0].attributes or {})["output.value"] == "a"
 
 
+def test_trace_sync_generator_error_skips_output_and_after_call(
+    spans: InMemorySpanExporter, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    after_calls: list[object] = []
+    real_after = _trace._production.after_call
+
+    def spy_after(*args: object, **kwargs: object) -> None:
+        after_calls.append(args)
+        return real_after(*args, **kwargs)
+
+    monkeypatch.setattr(_trace._production, "after_call", spy_after)
+
+    @opengrade.trace(name="stream-boom")
+    def tokens() -> Iterator[str]:
+        yield "a"
+        raise RuntimeError("stream-fail")
+
+    with pytest.raises(RuntimeError, match="stream-fail"):
+        list(tokens())
+
+    finished = spans.get_finished_spans()
+    assert len(finished) == 1
+    span = finished[0]
+    assert span.status.status_code == StatusCode.ERROR
+    assert "output.value" not in dict(span.attributes or {})
+    assert after_calls == []
+
+
 def test_trace_sync_generator_span_not_current_between_yields(
     spans: InMemorySpanExporter,
 ) -> None:
@@ -635,6 +663,38 @@ def test_trace_async_generator_aclose_finishes_span(spans: InMemorySpanExporter)
     finished = spans.get_finished_spans()
     assert len(finished) == 1
     assert dict(finished[0].attributes or {})["output.value"] == "x"
+
+
+def test_trace_async_generator_error_skips_output_and_after_call(
+    spans: InMemorySpanExporter, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    after_calls: list[object] = []
+    real_after = _trace._production.after_call
+
+    def spy_after(*args: object, **kwargs: object) -> None:
+        after_calls.append(args)
+        return real_after(*args, **kwargs)
+
+    monkeypatch.setattr(_trace._production, "after_call", spy_after)
+
+    @opengrade.trace(name="astream-boom")
+    async def tokens() -> AsyncIterator[str]:
+        yield "x"
+        raise RuntimeError("astream-fail")
+
+    async def main() -> None:
+        async for _ in tokens():
+            pass
+
+    with pytest.raises(RuntimeError, match="astream-fail"):
+        asyncio.run(main())
+
+    finished = spans.get_finished_spans()
+    assert len(finished) == 1
+    span = finished[0]
+    assert span.status.status_code == StatusCode.ERROR
+    assert "output.value" not in dict(span.attributes or {})
+    assert after_calls == []
 
 
 def test_trace_async_generator_span_not_current_between_yields(

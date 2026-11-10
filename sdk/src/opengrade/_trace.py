@@ -502,6 +502,7 @@ def _wrap_sync_gen[**P, R](
         acc: Any = None
         join_failed = False
         finished = False
+        failed = False
         gen: Iterator[Any] | None = None
 
         def finish(result: Any) -> None:
@@ -524,6 +525,15 @@ def _wrap_sync_gen[**P, R](
             )
             span.end()
 
+        def abort() -> None:
+            nonlocal finished
+            if finished:
+                return
+            finished = True
+            _live.unmark(live_token)
+            _production.stop(capture_token)
+            span.end()
+
         try:
             gen = cast(Iterator[Any], fn(*args, **kwargs))
             while True:
@@ -542,9 +552,13 @@ def _wrap_sync_gen[**P, R](
         except BaseException as exc:
             if not isinstance(exc, GeneratorExit):
                 _record_error(span, exc)
+                failed = True
             raise
         finally:
-            finish(acc if capture_output else None)
+            if failed:
+                abort()
+            else:
+                finish(acc if capture_output else None)
             if gen is not None:
                 close = getattr(gen, "close", None)
                 if close is not None:
@@ -589,6 +603,7 @@ def _wrap_async_gen[**P, R](
         acc: Any = None
         join_failed = False
         finished = False
+        failed = False
         gen: AsyncIterator[Any] | None = None
 
         def finish(result: Any) -> None:
@@ -611,6 +626,15 @@ def _wrap_async_gen[**P, R](
             )
             span.end()
 
+        def abort() -> None:
+            nonlocal finished
+            if finished:
+                return
+            finished = True
+            _live.unmark(live_token)
+            _production.stop(capture_token)
+            span.end()
+
         try:
             gen = cast(AsyncIterator[Any], fn(*args, **kwargs))
             while True:
@@ -629,9 +653,13 @@ def _wrap_async_gen[**P, R](
         except BaseException as exc:
             if not isinstance(exc, GeneratorExit):
                 _record_error(span, exc)
+                failed = True
             raise
         finally:
-            finish(acc if capture_output else None)
+            if failed:
+                abort()
+            else:
+                finish(acc if capture_output else None)
             if gen is not None:
                 aclose = getattr(gen, "aclose", None)
                 if aclose is not None:
