@@ -2,23 +2,25 @@
 
 Where the SDK sends data, with which credentials, and for which project.
 
-::: opengrade._config.set_tracking_uri
+Configuration is scoped to an `Opengrade` instance (`Settings`, or `OPENGRADE_*` env vars at construction). Activate an instance for ambient helpers via `current()`.
 
-::: opengrade._config.get_tracking_uri
+::: opengrade._state.Settings
 
-::: opengrade._config.set_api_key
+::: opengrade._opengrade.Opengrade
+    options:
+      members:
+        - __init__
+        - settings
+        - client
+        - async_client
+        - set_project
+        - aset_project
+        - get_project
+        - configure_capture
+        - activate
+        - close
 
-::: opengrade._config.get_api_key
-
-::: opengrade._context.set_project
-
-::: opengrade._context.aset_project
-
-::: opengrade._context.get_project
-
-::: opengrade._context.get_client
-
-::: opengrade._context.get_async_client
+::: opengrade._opengrade.current
 
 ::: opengrade._errors.OpengradeError
 

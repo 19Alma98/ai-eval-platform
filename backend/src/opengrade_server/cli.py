@@ -625,6 +625,7 @@ def evaluate_cmd(
         raise typer.Exit(EXIT_CONFIG)
 
     embedded: EmbeddedServer | None = None
+    og: Any = None
     try:
         raw = load_policy_file(config_path)
         cfg = resolve_evaluate_config(
@@ -661,9 +662,9 @@ def evaluate_cmd(
 
         import opengrade
 
-        opengrade.set_tracking_uri(tracking_uri)
+        og = opengrade.Opengrade(tracking_uri=tracking_uri)
         project_name = cfg.project or "demo"
-        project_resp = opengrade.set_project(project_name)
+        project_resp = og.set_project(project_name)
         if project_resp is None:
             raise RuntimeError(
                 f"could not resolve or create project {project_name!r} at {tracking_uri}"
@@ -671,9 +672,9 @@ def evaluate_cmd(
         project_id = project_resp.id
 
         if cfg.init_tracing:
-            opengrade.init(service_name=cfg.name or "opengrade-evaluate")
+            og.init_tracing(service_name=cfg.name or "opengrade-evaluate")
 
-        client = opengrade.get_client()
+        client = og.client
         metrics_set_id: str | None = None
         dataset_arg: Any = cfg.dataset
         baseline_arg = cfg.baseline
@@ -730,7 +731,7 @@ def evaluate_cmd(
 
         assert dataset_arg is not None
 
-        result = opengrade.evaluate(
+        result = og.evaluate(
             dataset=dataset_arg,
             task=task_fn,
             metrics=metrics_arg,
@@ -936,6 +937,8 @@ def evaluate_cmd(
         console.print(f"[red]Infrastructure error:[/red] {exc}")
         raise typer.Exit(EXIT_INFRA) from exc
     finally:
+        if og is not None:
+            og.close()
         if embedded is not None:
             embedded.stop()
 

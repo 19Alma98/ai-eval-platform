@@ -2,7 +2,7 @@
 
 Export OTLP spans to OpenGrade and annotate them.
 
-::: opengrade._otel.init
+::: opengrade._opengrade.Opengrade.init_tracing
 
 ::: opengrade._otel.flush
 

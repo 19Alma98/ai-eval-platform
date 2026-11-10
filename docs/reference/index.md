@@ -7,15 +7,17 @@ Everything documented here is importable from the top-level package, whatever mo
 ```python
 import opengrade
 
-opengrade.init(instrument="auto")
-result = opengrade.evaluate(dataset="rag_qa", task=answer, metrics=[...])
+og = opengrade.Opengrade(tracking_uri="http://127.0.0.1:8000")
+og.init_tracing(instrument="auto")
+with og:
+    result = og.evaluate(dataset="rag_qa", task=answer, metrics=[...])
 ```
 
 | Page | Contents |
 |---|---|
-| [Tracing](tracing.md) | `init`, `flush`, `@trace`, `span`, span attributes, users / sessions / tags |
+| [Tracing](tracing.md) | `init_tracing`, `flush`, `@trace`, `span`, span attributes, users / sessions / tags |
 | [Experiments](experiments.md) | `evaluate`, `start_experiment`, `Experiment`, `ExperimentResult`, `sweep`, `evaluate_retrieval` |
 | [Metrics and judges](metrics.md) | `metric`, `LocalMetric`, `Sample`, `Score`, `LlmJudge` |
 | [Production scores and feedback](feedback.md) | `score_trace`, `log_score`, `log_feedback` |
 | [Control plane client](client.md) | `Client`, `AsyncClient`, `AppConfigClient` |
-| [Configuration and errors](config.md) | tracking URI, API key, active project, exceptions |
+| [Configuration and errors](config.md) | `Opengrade`, `Settings`, active project, exceptions |
