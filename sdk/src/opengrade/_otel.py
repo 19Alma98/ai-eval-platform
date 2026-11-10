@@ -7,7 +7,7 @@ import sys
 import threading
 import time
 import weakref
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from typing import TYPE_CHECKING, Any, Literal, cast
 
 if TYPE_CHECKING:
@@ -547,7 +547,8 @@ def init_for_instance(
 
     span_exporter: SpanExporter | None = kwargs.pop("_span_exporter", None)
     if kwargs:
-        logger.debug("opengrade: ignoring unknown init_tracing kwargs: %s", sorted(kwargs))
+        # A typo (``servce_name=``) must not silently fall back to defaults.
+        raise TypeError(f"init_tracing() got unexpected keyword argument(s): {sorted(kwargs)}")
 
     rt = og._runtime
 
@@ -708,6 +709,55 @@ def init_for_instance(
         _mark_atexit_registered()
 
 
+def _run_with_deadline(fn: Callable[[], object], timeout_s: float) -> bool:
+    """Run ``fn`` on a daemon thread; False if it raises, returns falsy or overruns.
+
+    ``BatchSpanProcessor.force_flush`` ignores its timeout and blocks on the export
+    (which retries for up to ``EXPORT_TIMEOUT_S``), so the budget is enforced here. An
+    overrunning export keeps going in the background and may still deliver.
+    """
+    outcome: list[bool] = [False]
+
+    def run() -> None:
+        try:
+            outcome[0] = bool(fn())
+        except Exception:  # noqa: BLE001
+            logger.debug("opengrade: flush raised", exc_info=True)
+
+    worker = threading.Thread(target=run, name="opengrade-flush", daemon=True)
+    worker.start()
+    worker.join(max(0.0, timeout_s))
+    return outcome[0] and not worker.is_alive()
+
+
+def _dropped_spans(runtimes: Sequence[_state._Runtime]) -> int:
+    return sum(int(getattr(rt.exporter, "dropped_spans", 0) or 0) for rt in runtimes)
+
+
+def _flush_spans(timeout_s: float, runtime: _state._Runtime | None) -> bool:
+    """Flush spans of ``runtime`` (or every instance) and report whether they were delivered.
+
+    ``force_flush`` returns True even when the exporter dropped the batch, so delivery
+    is judged from the exporter's drop counter.
+    """
+    if runtime is not None:
+        processor = runtime.processor
+        if processor is None:
+            return True
+        runtimes: list[_state._Runtime] = [runtime]
+        force_flush: Callable[[int], object] = processor.force_flush
+    else:
+        provider = _current_provider()
+        if provider is None:
+            return True
+        runtimes = [og._runtime for og in _all_tracing_instances()]
+        force_flush = provider.force_flush
+    timeout_millis = int(timeout_s * 1000)
+    dropped_before = _dropped_spans(runtimes)
+    flushed = _run_with_deadline(lambda: force_flush(timeout_millis), timeout_s)
+    return flushed and _dropped_spans(runtimes) == dropped_before
+
+
 def flush(timeout_millis: int = 5000, *, runtime: _state._Runtime | None = None) -> bool:
     """Flush spans, then production metrics, then queued trace scores.
 
@@ -715,14 +765,7 @@ def flush(timeout_millis: int = 5000, *, runtime: _state._Runtime | None = None)
     Metrics are drained before scores are flushed because they produce scores.
     """
     deadline = time.monotonic() + timeout_millis / 1000
-    ok = True
-    provider = _current_provider()
-    if provider is not None:
-        try:
-            ok = bool(provider.force_flush(timeout_millis))
-        except Exception:  # noqa: BLE001
-            logger.debug("opengrade: flush raised", exc_info=True)
-            ok = False
+    ok = _flush_spans(timeout_millis / 1000, runtime)
     from opengrade import (
         _production,
         _scores,

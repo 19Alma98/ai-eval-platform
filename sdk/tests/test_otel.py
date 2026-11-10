@@ -268,7 +268,7 @@ def test_init_attaches_to_existing_host_provider() -> None:
     host.add_span_processor(_otel.BatchSpanProcessor(host_exporter))
     trace.set_tracer_provider(host)
 
-    og = init_og(project_slug="demo", instrument=False)
+    og = init_og(project_slug="demo", instrument=False, _span_exporter=_RecordingExporter())
 
     assert _otel._OWNS_PROVIDER is False
     assert _otel._PROVIDER is host
@@ -277,6 +277,8 @@ def test_init_attaches_to_existing_host_provider() -> None:
     with opengrade_span():
         pass
     assert og.flush() is True
+    # og.flush() only flushes this instance's processor; the host flushes its own.
+    host.force_flush()
     # Spans go through the shared host provider (host + opengrade processors).
     assert any(s.name == "s" for s in host_exporter.spans)
 
@@ -443,3 +445,70 @@ def test_init_max_capture_bytes(monkeypatch: pytest.MonkeyPatch) -> None:
 def test_resolve_trace_sample_rate_rejects_out_of_range() -> None:
     with pytest.raises(ValueError, match="trace_sample_rate"):
         _otel.resolve_trace_sample_rate(1.5)
+
+
+# --- typos are errors -------------------------------------------------------------------
+
+
+def test_unknown_opengrade_setting_raises_with_hint() -> None:
+    with pytest.raises(TypeError, match=r"'projet_slug' \(did you mean 'project_slug'\?\)"):
+        Opengrade(projet_slug="demo")
+    with pytest.raises(TypeError, match="nope"):
+        Opengrade(Settings(), nope=1)
+    with pytest.raises(TypeError):
+        Settings.from_env(tracking_url="http://x")
+
+
+def test_unknown_init_tracing_kwarg_raises() -> None:
+    og = make_og(project_slug="demo")
+    with pytest.raises(TypeError, match="servce_name"):
+        og.init_tracing(instrument=False, servce_name="x")
+
+
+# --- flush reports delivery and honours its timeout --------------------------------------
+
+
+class _SlowExporter(SpanExporter):
+    def export(self, spans: Sequence[ReadableSpan]) -> SpanExportResult:
+        time.sleep(2.0)
+        return SpanExportResult.SUCCESS
+
+    def shutdown(self) -> None:
+        pass
+
+
+class _RejectingExporter(SpanExporter):
+    def export(self, spans: Sequence[ReadableSpan]) -> SpanExportResult:
+        return SpanExportResult.FAILURE
+
+    def shutdown(self) -> None:
+        pass
+
+
+def _emit_span(og: Opengrade) -> None:
+    with og.activate():
+
+        @opengrade.trace
+        def work() -> int:
+            return 1
+
+        work()
+
+
+def test_flush_honours_timeout() -> None:
+    og = init_og(project_slug="demo", instrument=False, _span_exporter=_SlowExporter())
+    _emit_span(og)
+    started = time.monotonic()
+    assert og.flush(timeout_millis=200) is False
+    assert time.monotonic() - started < 1.0
+
+
+def test_flush_reports_dropped_spans() -> None:
+    og = init_og(project_slug="demo", instrument=False)
+    exporter = og._runtime.exporter
+    assert isinstance(exporter, _otel._SafeSpanExporter)
+    exporter._inner = _RejectingExporter()  # platform rejects / unreachable
+    _emit_span(og)
+    assert og.flush(timeout_millis=2000) is False
+    _emit_span(og)  # cooldown: dropped without a network call, still reported
+    assert og.flush(timeout_millis=2000) is False

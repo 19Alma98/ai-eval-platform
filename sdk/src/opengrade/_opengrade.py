@@ -92,11 +92,11 @@ class Opengrade:
     __slots__ = ("_runtime", "tracing_enabled", "_activate_token", "_instance_id", "__weakref__")
 
     def __init__(self, settings: _state.Settings | None = None, **kwargs: Any) -> None:
-        fields = _state.Settings.__dataclass_fields__
+        _state.check_setting_names(kwargs, where="Opengrade()")
         if settings is None:
-            settings = _state.Settings.from_env(**{k: v for k, v in kwargs.items() if k in fields})
+            settings = _state.Settings.from_env(**kwargs)
         elif kwargs:
-            settings = settings.with_updates(**{k: v for k, v in kwargs.items() if k in fields})
+            settings = settings.with_updates(**kwargs)
         from opengrade import _otel
 
         self._runtime = _state._Runtime.fresh()
