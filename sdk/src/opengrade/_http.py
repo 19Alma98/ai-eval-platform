@@ -72,18 +72,37 @@ def _retry_decision(
     status: int | None = None,
     retry_after: str | None = None,
     transport_error: bool = False,
+    request_sent: bool = False,
 ) -> tuple[bool, float]:
+    """Decide whether to retry and after how long.
+
+    ``request_sent`` marks a transport error raised after the request may have reached the
+    server (read timeout, dropped connection mid-response): retrying a non-idempotent
+    method there could apply it twice (duplicate experiment, score, dataset item).
+    """
     if attempt + 1 >= _MAX_ATTEMPTS:
         return False, 0.0
     if transport_error:
-        # Request never completed; safe to retry any method.
-        pass
+        if request_sent and method.upper() not in _IDEMPOTENT_METHODS:
+            return False, 0.0
     elif method.upper() not in _IDEMPOTENT_METHODS or status not in _RETRY_STATUSES:
         return False, 0.0
     parsed = _parse_retry_after(retry_after)
     if parsed is not None:
         return True, min(parsed, _RETRY_AFTER_CAP_S)
     return True, random.uniform(0.0, _BACKOFF_BASE_S * (2**attempt))
+
+
+# Raised before any byte of the request reached the server: safe to retry any method.
+_NOT_SENT_ERRORS: tuple[type[httpx2.HTTPError], ...] = (
+    httpx2.ConnectError,
+    httpx2.ConnectTimeout,
+    httpx2.PoolTimeout,
+)
+
+
+def _request_sent(exc: httpx2.HTTPError) -> bool:
+    return not isinstance(exc, _NOT_SENT_ERRORS)
 
 
 def _call_with_retry(method: str, call: Callable[[], httpx2.Response]) -> httpx2.Response:
@@ -109,7 +128,9 @@ def _run_with_retry(
             response = call()
         except httpx2.HTTPError as exc:
             last_exc = exc
-            should, delay = _retry_decision(method, attempt=attempt, transport_error=True)
+            should, delay = _retry_decision(
+                method, attempt=attempt, transport_error=True, request_sent=_request_sent(exc)
+            )
             if not should:
                 raise _wrap_http_error(exc) from exc
             sleep(delay)
@@ -142,7 +163,9 @@ async def _arun_with_retry(
             response = await call()
         except httpx2.HTTPError as exc:
             last_exc = exc
-            should, delay = _retry_decision(method, attempt=attempt, transport_error=True)
+            should, delay = _retry_decision(
+                method, attempt=attempt, transport_error=True, request_sent=_request_sent(exc)
+            )
             if not should:
                 raise _wrap_http_error(exc) from exc
             await sleep(delay)

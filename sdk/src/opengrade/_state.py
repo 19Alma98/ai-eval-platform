@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import difflib
 import os
 import threading
 import weakref
@@ -35,7 +36,6 @@ class Settings:
     @classmethod
     def from_env(cls, **overrides: Any) -> Settings:
         """Build settings from ``OPENGRADE_*`` env vars, then apply ``overrides``."""
-        fields = cls.__dataclass_fields__
         kwargs: dict[str, Any] = {}
         env_map = {
             "tracking_uri": "OPENGRADE_TRACKING_URI",
@@ -73,13 +73,26 @@ class Settings:
                 kwargs["max_capture_bytes"] = int(cap_raw, 10)
             except ValueError:
                 pass
-        kwargs.update({k: v for k, v in overrides.items() if k in fields})
+        check_setting_names(overrides, where="Settings.from_env()")
+        kwargs.update(overrides)
         return cls(**kwargs)
 
     def with_updates(self, **kwargs: Any) -> Settings:
-        fields = self.__class__.__dataclass_fields__
-        clean = {k: v for k, v in kwargs.items() if k in fields}
-        return replace(self, **clean)
+        check_setting_names(kwargs, where="Settings.with_updates()")
+        return replace(self, **kwargs)
+
+
+def check_setting_names(names: Any, *, where: str) -> None:
+    """Raise ``TypeError`` for keys that are not ``Settings`` fields (catches typos)."""
+    fields = Settings.__dataclass_fields__
+    unknown = sorted(k for k in names if k not in fields)
+    if not unknown:
+        return
+    hints = []
+    for name in unknown:
+        close = difflib.get_close_matches(name, list(fields), n=1)
+        hints.append(f"{name!r}" + (f" (did you mean {close[0]!r}?)" if close else ""))
+    raise TypeError(f"{where} got unexpected setting(s): {', '.join(hints)}")
 
 
 @dataclass(eq=False)
@@ -178,6 +191,18 @@ def active_runtime() -> _Runtime:
     from opengrade._opengrade import current
 
     return current()._runtime
+
+
+def active_runtime_or_none() -> _Runtime | None:
+    """Runtime tracing should use: the activated ``Opengrade``, else the only traced one.
+
+    See ``opengrade._opengrade.ambient``. None when nothing is active and the process
+    has zero or several traced instances.
+    """
+    from opengrade._opengrade import ambient
+
+    og = ambient()
+    return None if og is None else og._runtime
 
 
 def _module_override(module: str, name: str) -> Any:

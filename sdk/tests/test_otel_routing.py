@@ -122,3 +122,125 @@ def test_second_instance_instrument_warning(
     with caplog.at_level("WARNING", logger="opengrade"):
         second.init_tracing(instrument=["openai"], _span_exporter=InMemorySpanExporter())
     assert any("process-global" in r.message for r in caplog.records)
+
+
+def _in_plain_thread(fn: object) -> None:
+    """Run ``fn`` in a thread that does not inherit ContextVars (no copy_context)."""
+    import threading
+
+    errors: list[BaseException] = []
+
+    def run() -> None:
+        try:
+            fn()  # type: ignore[operator]
+        except BaseException as exc:  # noqa: BLE001
+            errors.append(exc)
+
+    thread = threading.Thread(target=run)
+    thread.start()
+    thread.join()
+    assert not errors, errors
+
+
+def test_child_span_follows_parent_instance() -> None:
+    exp_a = InMemorySpanExporter()
+    exp_b = InMemorySpanExporter()
+    a = Opengrade(project_slug="a")
+    b = Opengrade(project_slug="b")
+    a.init_tracing(instrument=False, _span_exporter=exp_a)
+    b.init_tracing(instrument=False, _span_exporter=exp_b)
+
+    with a.activate():
+        with _span("root"):
+            with b.activate():  # e.g. a library activating its own instance mid-request
+                with _span("child"):
+                    pass
+    _flush_instance(a)
+    _flush_instance(b)
+
+    assert {s.name for s in exp_a.get_finished_spans()} == {"root", "child"}
+    assert exp_b.get_finished_spans() == ()
+
+
+def test_plain_thread_uses_the_only_traced_instance() -> None:
+    import opengrade
+
+    exp = InMemorySpanExporter()
+    og = Opengrade(project_slug="solo")
+    og.init_tracing(instrument=False, _span_exporter=exp)
+
+    @opengrade.trace
+    def traced() -> int:
+        with _span("provider-call"):  # stands in for an auto-instrumented LLM call
+            return 1
+
+    _in_plain_thread(traced)
+    _flush_instance(og)
+
+    names = {s.name for s in exp.get_finished_spans()}
+    assert "provider-call" in names
+    assert any(n.endswith("traced") for n in names)
+
+
+def test_plain_thread_with_several_instances_guesses_nothing() -> None:
+    import opengrade
+
+    exp_a = InMemorySpanExporter()
+    exp_b = InMemorySpanExporter()
+    a = Opengrade(project_slug="a")
+    b = Opengrade(project_slug="b")
+    a.init_tracing(instrument=False, _span_exporter=exp_a)
+    b.init_tracing(instrument=False, _span_exporter=exp_b)
+
+    @opengrade.trace
+    def traced() -> int:
+        with _span("orphan"):
+            return 1
+
+    _in_plain_thread(traced)  # must not raise
+    _flush_instance(a)
+    _flush_instance(b)
+    assert exp_a.get_finished_spans() == ()
+    assert exp_b.get_finished_spans() == ()
+
+
+def test_each_instance_exports_its_own_service_name() -> None:
+    exp_a = InMemorySpanExporter()
+    exp_b = InMemorySpanExporter()
+    a = Opengrade(project_slug="a")
+    b = Opengrade(project_slug="b")
+    a.init_tracing(service_name="worker-acme", instrument=False, _span_exporter=exp_a)
+    b.init_tracing(
+        service_name="worker-contoso",
+        version="1.2.3",
+        instrument=False,
+        _span_exporter=exp_b,
+    )
+
+    with a.activate(), _span("a"):
+        pass
+    with b.activate(), _span("b"):
+        pass
+    _flush_instance(a)
+    _flush_instance(b)
+
+    (span_a,) = exp_a.get_finished_spans()
+    (span_b,) = exp_b.get_finished_spans()
+    assert span_a.resource.attributes["service.name"] == "worker-acme"
+    assert span_b.resource.attributes["service.name"] == "worker-contoso"
+    assert span_b.resource.attributes["service.version"] == "1.2.3"
+
+
+def test_router_attached_once_with_several_instances() -> None:
+    exp_a = InMemorySpanExporter()
+    a = Opengrade(project_slug="a")
+    b = Opengrade(project_slug="b")
+    c = Opengrade(project_slug="c")
+    a.init_tracing(instrument=False, _span_exporter=exp_a)
+    b.init_tracing(instrument=False, _span_exporter=InMemorySpanExporter())
+    c.init_tracing(instrument=False, _span_exporter=InMemorySpanExporter())
+
+    with a.activate(), _span("once"):
+        pass
+    _flush_instance(a)
+    assert [s.name for s in exp_a.get_finished_spans()] == ["once"]

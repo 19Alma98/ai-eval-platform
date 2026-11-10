@@ -155,18 +155,20 @@ def configure_capture(
 
 
 def capture_redact(runtime: _Runtime | None = None) -> RedactFn | None:
-    rt = runtime if runtime is not None else _state.active_runtime()
-    return rt.capture_redact
+    rt = runtime if runtime is not None else _state.active_runtime_or_none()
+    return None if rt is None else rt.capture_redact
 
 
 def capture_redact_output(runtime: _Runtime | None = None) -> RedactOutputFn | None:
-    rt = runtime if runtime is not None else _state.active_runtime()
-    return rt.capture_redact_output
+    rt = runtime if runtime is not None else _state.active_runtime_or_none()
+    return None if rt is None else rt.capture_redact_output
 
 
 def max_capture_bytes(runtime: _Runtime | None = None) -> int:
     """Settings override > 32768 (env already applied in ``Settings.from_env``)."""
-    rt = runtime if runtime is not None else _state.active_runtime()
+    rt = runtime if runtime is not None else _state.active_runtime_or_none()
+    if rt is None:
+        return DEFAULT_MAX_CAPTURE_BYTES
     override = rt.settings.max_capture_bytes
     if override is not None:
         if override < 1:

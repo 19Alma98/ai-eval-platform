@@ -7,7 +7,7 @@ import sys
 import threading
 import time
 import weakref
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from typing import TYPE_CHECKING, Any, Literal, cast
 
 if TYPE_CHECKING:
@@ -15,6 +15,7 @@ if TYPE_CHECKING:
 
 from opentelemetry import trace
 from opentelemetry.context import Context
+from opentelemetry.sdk.resources import Resource
 from opentelemetry.sdk.trace import ReadableSpan, Span, SpanProcessor, TracerProvider
 from opentelemetry.sdk.trace.export import BatchSpanProcessor, SpanExporter, SpanExportResult
 from opentelemetry.util._once import Once
@@ -123,11 +124,16 @@ _OTLP_LOG_FILTER = _DropOtlpExporterLogs()
 
 
 class _SpanWithoutInstanceAttr:
-    """``ReadableSpan`` view that omits the internal routing attribute."""
+    """``ReadableSpan`` view for one instance's exporter.
 
-    __slots__ = ("_span", "_attributes")
+    Omits the internal routing attribute and, when the instance has its own resource
+    (``service.name``, release attributes), reports it merged over the provider's: the
+    ``TracerProvider`` is shared, so its resource only reflects the first instance.
+    """
 
-    def __init__(self, span: ReadableSpan) -> None:
+    __slots__ = ("_span", "_attributes", "_resource")
+
+    def __init__(self, span: ReadableSpan, resource: Resource | None = None) -> None:
         self._span = span
         attrs = span.attributes
         if attrs and _INSTANCE_ATTR in attrs:
@@ -135,6 +141,7 @@ class _SpanWithoutInstanceAttr:
         else:
             attributes = attrs
         self._attributes = attributes
+        self._resource = resource
 
     def __getattr__(self, name: str) -> Any:
         return getattr(self._span, name)
@@ -142,6 +149,13 @@ class _SpanWithoutInstanceAttr:
     @property
     def attributes(self) -> Any:
         return self._attributes
+
+    @property
+    def resource(self) -> Any:
+        base = self._span.resource
+        if self._resource is None:
+            return base
+        return base.merge(self._resource) if base is not None else self._resource
 
 
 class _RoutingSpanProcessor(SpanProcessor):
@@ -151,6 +165,7 @@ class _RoutingSpanProcessor(SpanProcessor):
         self._lock = threading.Lock()
         self._processors: dict[int, SpanProcessor] = {}
         self._release_attrs: dict[int, dict[str, str]] = {}
+        self._resources: dict[int, Resource] = {}
 
     def register(self, instance_id: int, processor: SpanProcessor) -> None:
         with self._lock:
@@ -160,22 +175,53 @@ class _RoutingSpanProcessor(SpanProcessor):
         with self._lock:
             self._release_attrs[instance_id] = attributes
 
+    def register_resource(self, instance_id: int, resource: Resource) -> None:
+        with self._lock:
+            self._resources[instance_id] = resource
+
     def unregister(self, instance_id: int) -> None:
         with self._lock:
             self._processors.pop(instance_id, None)
             self._release_attrs.pop(instance_id, None)
+            self._resources.pop(instance_id, None)
+
+    def _owner_id(self, parent_context: Context | None) -> int | None:
+        """Instance that owns a new span.
+
+        A child joins its parent's instance, so a trace is never split across projects
+        (and a child started where ``current()`` is unset or different still follows
+        its trace). A root span goes to the active instance, or — when nothing is
+        activated in this context, e.g. a plain worker thread — to the only instance
+        with tracing enabled, if there is exactly one.
+        """
+        parent = trace.get_current_span(parent_context)
+        parent_attrs = getattr(parent, "attributes", None)
+        if parent.get_span_context().is_valid and parent_attrs:
+            raw = parent_attrs.get(_INSTANCE_ATTR)
+            if raw is not None:
+                try:
+                    return int(raw)
+                except (TypeError, ValueError):
+                    pass
+        from opengrade._opengrade import ambient
+
+        og = ambient()
+        if og is None or not og.tracing_enabled:
+            return None
+        return og._instance_id
 
     def on_start(self, span: Span, parent_context: Context | None = None) -> None:
         try:
-            from opengrade._opengrade import current
-
-            og = current()
-            if og.tracing_enabled:
-                span.set_attribute(_INSTANCE_ATTR, og._instance_id)
-                with self._lock:
-                    release = self._release_attrs.get(og._instance_id)
-                if release:
-                    span.set_attributes(release)
+            instance_id = self._owner_id(parent_context)
+            if instance_id is None:
+                return
+            with self._lock:
+                if instance_id not in self._processors:
+                    return
+                release = self._release_attrs.get(instance_id)
+            span.set_attribute(_INSTANCE_ATTR, instance_id)
+            if release:
+                span.set_attributes(release)
         except Exception:  # noqa: BLE001
             logger.debug("opengrade: routing on_start failed", exc_info=True)
 
@@ -190,9 +236,10 @@ class _RoutingSpanProcessor(SpanProcessor):
             return
         with self._lock:
             processor = self._processors.get(instance_id)
+            resource = self._resources.get(instance_id)
         if processor is None:
             return
-        processor.on_end(_SpanWithoutInstanceAttr(span))
+        processor.on_end(_SpanWithoutInstanceAttr(span, resource))
 
     def shutdown(self) -> None:
         with self._lock:
@@ -224,11 +271,20 @@ def _get_or_create_router() -> _RoutingSpanProcessor:
 
 
 def _provider_has_router(provider: TracerProvider, router: _RoutingSpanProcessor) -> bool:
-    # SDK stores processors on the provider; tolerate missing attr in stubs.
-    processors = getattr(provider, "_span_processors", None)
+    """True when ``router`` is already attached to ``provider``.
+
+    The SDK keeps processors on ``provider._active_span_processor._span_processors``
+    (the old lookup of ``provider._span_processors`` never matched, so every
+    ``init_tracing`` on a shared provider added the router again and each span was
+    exported once per extra instance).
+    """
+    active = getattr(provider, "_active_span_processor", None)
+    processors = getattr(active, "_span_processors", None)
+    if processors is None:
+        processors = getattr(provider, "_span_processors", None)
     if processors is None:
         return False
-    return router in processors
+    return any(p is router for p in processors)
 
 
 # HTTP statuses where splitting the batch may salvage part of it (body too large /
@@ -547,7 +603,8 @@ def init_for_instance(
 
     span_exporter: SpanExporter | None = kwargs.pop("_span_exporter", None)
     if kwargs:
-        logger.debug("opengrade: ignoring unknown init_tracing kwargs: %s", sorted(kwargs))
+        # A typo (``servce_name=``) must not silently fall back to defaults.
+        raise TypeError(f"init_tracing() got unexpected keyword argument(s): {sorted(kwargs)}")
 
     rt = og._runtime
 
@@ -663,6 +720,8 @@ def init_for_instance(
         router.register(og._instance_id, processor)
         if release_span_attrs:
             router.register_release_attrs(og._instance_id, release_span_attrs)
+        # Per-instance service.name / release resource, even on a shared provider.
+        router.register_resource(og._instance_id, resource)
     except Exception as exc:  # noqa: BLE001 — init must never break the host app
         logger.warning("opengrade: tracing disabled, init failed: %s", exc)
         return
@@ -708,6 +767,55 @@ def init_for_instance(
         _mark_atexit_registered()
 
 
+def _run_with_deadline(fn: Callable[[], object], timeout_s: float) -> bool:
+    """Run ``fn`` on a daemon thread; False if it raises, returns falsy or overruns.
+
+    ``BatchSpanProcessor.force_flush`` ignores its timeout and blocks on the export
+    (which retries for up to ``EXPORT_TIMEOUT_S``), so the budget is enforced here. An
+    overrunning export keeps going in the background and may still deliver.
+    """
+    outcome: list[bool] = [False]
+
+    def run() -> None:
+        try:
+            outcome[0] = bool(fn())
+        except Exception:  # noqa: BLE001
+            logger.debug("opengrade: flush raised", exc_info=True)
+
+    worker = threading.Thread(target=run, name="opengrade-flush", daemon=True)
+    worker.start()
+    worker.join(max(0.0, timeout_s))
+    return outcome[0] and not worker.is_alive()
+
+
+def _dropped_spans(runtimes: Sequence[_state._Runtime]) -> int:
+    return sum(int(getattr(rt.exporter, "dropped_spans", 0) or 0) for rt in runtimes)
+
+
+def _flush_spans(timeout_s: float, runtime: _state._Runtime | None) -> bool:
+    """Flush spans of ``runtime`` (or every instance) and report whether they were delivered.
+
+    ``force_flush`` returns True even when the exporter dropped the batch, so delivery
+    is judged from the exporter's drop counter.
+    """
+    if runtime is not None:
+        processor = runtime.processor
+        if processor is None:
+            return True
+        runtimes: list[_state._Runtime] = [runtime]
+        force_flush: Callable[[int], object] = processor.force_flush
+    else:
+        provider = _current_provider()
+        if provider is None:
+            return True
+        runtimes = [og._runtime for og in _all_tracing_instances()]
+        force_flush = provider.force_flush
+    timeout_millis = int(timeout_s * 1000)
+    dropped_before = _dropped_spans(runtimes)
+    flushed = _run_with_deadline(lambda: force_flush(timeout_millis), timeout_s)
+    return flushed and _dropped_spans(runtimes) == dropped_before
+
+
 def flush(timeout_millis: int = 5000, *, runtime: _state._Runtime | None = None) -> bool:
     """Flush spans, then production metrics, then queued trace scores.
 
@@ -715,14 +823,7 @@ def flush(timeout_millis: int = 5000, *, runtime: _state._Runtime | None = None)
     Metrics are drained before scores are flushed because they produce scores.
     """
     deadline = time.monotonic() + timeout_millis / 1000
-    ok = True
-    provider = _current_provider()
-    if provider is not None:
-        try:
-            ok = bool(provider.force_flush(timeout_millis))
-        except Exception:  # noqa: BLE001
-            logger.debug("opengrade: flush raised", exc_info=True)
-            ok = False
+    ok = _flush_spans(timeout_millis / 1000, runtime)
     from opengrade import (
         _production,
         _scores,

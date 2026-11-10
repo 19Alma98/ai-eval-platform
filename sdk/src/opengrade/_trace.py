@@ -5,16 +5,18 @@ import inspect
 import json
 import logging
 from collections.abc import AsyncIterator, Callable, Iterator, Sequence
-from contextlib import contextmanager
+from contextlib import ExitStack, contextmanager
 from typing import Any, cast, overload
 
 from opentelemetry import trace as otel_trace
 from opentelemetry.trace import Span, Status, StatusCode
 
-from opengrade import _live, _production, _trace_attrs
+from opengrade import _live, _production, _state, _trace_attrs
 from opengrade._config import capture_redact, capture_redact_output, max_capture_bytes
 from opengrade._run_context import record_input, record_output
 from opengrade.metrics import LocalMetric
+
+logger = logging.getLogger("opengrade")
 
 _TRACER_NAME = "opengrade"
 _TRUNCATE_MARKER = "…[truncated]"
@@ -358,6 +360,134 @@ def _record_error(span: Span, exc: BaseException) -> None:
     span.set_status(Status(StatusCode.ERROR, str(exc)))
 
 
+_FAILURES_WARNED: set[str] = set()
+
+
+def _instrumentation_failed(stage: str) -> None:
+    """Log an internal tracing failure: WARNING once per stage, DEBUG afterwards."""
+    if stage in _FAILURES_WARNED:
+        logger.debug("opengrade: tracing %s failed", stage, exc_info=True)
+        return
+    _FAILURES_WARNED.add(stage)
+    logger.warning(
+        "opengrade: tracing %s failed; the traced call is unaffected "
+        "(further failures logged at DEBUG)",
+        stage,
+        exc_info=True,
+    )
+
+
+def _tracing_active() -> bool:
+    """True when an ``Opengrade`` instance is active and metrics are not running.
+
+    Without an active instance ``@trace`` is a transparent pass-through: tracing must
+    never change what the decorated function does.
+    """
+    if _production.in_metric():
+        return False
+    return _state.active_runtime_or_none() is not None
+
+
+def _open_session(
+    stack: ExitStack,
+    span_name: str,
+    *,
+    kind: str,
+    capture_input: bool,
+    live: bool | None,
+    production: tuple[LocalMetric, ...],
+    fn: Callable[..., Any],
+    args: tuple[Any, ...],
+    kwargs: dict[str, Any],
+    redact: Callable[[str, Any], Any] | None,
+) -> tuple[Span, Any] | None:
+    """Enter ``_span_session`` on ``stack``; None (stack closed) if setup fails."""
+    try:
+        return stack.enter_context(
+            _span_session(
+                span_name,
+                kind=kind,
+                capture_input=capture_input,
+                live=live,
+                production=production,
+                fn=fn,
+                args=args,
+                kwargs=kwargs,
+                redact=redact,
+            )
+        )
+    except Exception:  # noqa: BLE001 — tracing must never break the host app
+        _instrumentation_failed("span start")
+        _close_session(stack)
+        return None
+
+
+def _close_session(stack: ExitStack) -> None:
+    try:
+        stack.close()
+    except Exception:  # noqa: BLE001
+        _instrumentation_failed("span end")
+
+
+def _session_failed(span: Span, capture_token: Any, exc: BaseException) -> None:
+    try:
+        _record_error(span, exc)
+    except Exception:  # noqa: BLE001
+        _instrumentation_failed("error recording")
+    try:
+        _production.stop(capture_token)
+    except Exception:  # noqa: BLE001
+        _instrumentation_failed("metrics capture")
+
+
+def _session_succeeded(span: Span, capture_token: Any, **finish: Any) -> None:
+    try:
+        _finish_span(span, capture_token=capture_token, **finish)
+    except Exception:  # noqa: BLE001
+        _instrumentation_failed("output capture")
+
+
+def _guarded(stage: str, fn: Callable[..., Any], *args: Any) -> None:
+    try:
+        fn(*args)
+    except Exception:  # noqa: BLE001 — tracing must never break the host app
+        _instrumentation_failed(stage)
+
+
+def _start_gen_span(
+    span_name: str,
+    *,
+    kind: str,
+    capture_input: bool,
+    live: bool | None,
+    production: tuple[LocalMetric, ...],
+    fn: Callable[..., Any],
+    args: tuple[Any, ...],
+    kwargs: dict[str, Any],
+    redact: Callable[[str, Any], Any] | None,
+) -> tuple[Span, Any, Any] | None:
+    """Start a (not current) span for a generator; None if setup fails."""
+    span: Span | None = None
+    try:
+        tracer = otel_trace.get_tracer(_TRACER_NAME)
+        span = tracer.start_span(span_name, record_exception=False, set_status_on_exception=False)
+        _start_attributes(span, kind)
+        if capture_input and span.is_recording():
+            span.set_attribute("input.value", _serialize_args(fn, args, kwargs, redact=redact))
+        live_token = _live.mark_if_live(span, live)
+        try:
+            capture_token = _production.start(production, span)
+        except Exception:
+            _live.unmark(live_token)
+            raise
+    except Exception:  # noqa: BLE001
+        _instrumentation_failed("span start")
+        if span is not None:
+            _guarded("span end", span.end)
+        return None
+    return span, live_token, capture_token
+
+
 def _wrap_sync[**P, R](
     fn: Callable[P, R],
     *,
@@ -373,9 +503,11 @@ def _wrap_sync[**P, R](
 ) -> Callable[P, R]:
     @functools.wraps(fn)
     def wrapper(*args: P.args, **kwargs: P.kwargs) -> R:
-        if _production.in_metric():
+        if not _tracing_active():
             return fn(*args, **kwargs)
-        with _span_session(
+        stack = ExitStack()
+        session = _open_session(
+            stack,
             span_name,
             kind=kind,
             capture_input=capture_input,
@@ -385,31 +517,30 @@ def _wrap_sync[**P, R](
             args=args,
             kwargs=kwargs,
             redact=redact,
-        ) as (span, capture_token):
-            succeeded = False
-            try:
-                result = fn(*args, **kwargs)
-                succeeded = True
-            except BaseException as exc:
-                _record_error(span, exc)
-                raise
-            finally:
-                if succeeded:
-                    _finish_span(
-                        span,
-                        capture_token=capture_token,
-                        capture_output=capture_output,
-                        production=production,
-                        rate=rate,
-                        args=args,
-                        kwargs=kwargs,
-                        result=result,
-                        fn=fn,
-                        redact_output=redact_output,
-                    )
-                else:
-                    _production.stop(capture_token)
-            return result
+        )
+        if session is None:
+            return fn(*args, **kwargs)
+        span, capture_token = session
+        try:
+            result = fn(*args, **kwargs)
+        except BaseException as exc:
+            _session_failed(span, capture_token, exc)
+            _close_session(stack)
+            raise
+        _session_succeeded(
+            span,
+            capture_token,
+            capture_output=capture_output,
+            production=production,
+            rate=rate,
+            args=args,
+            kwargs=kwargs,
+            result=result,
+            fn=fn,
+            redact_output=redact_output,
+        )
+        _close_session(stack)
+        return result
 
     return wrapper
 
@@ -429,9 +560,11 @@ def _wrap_async[**P, R](
 ) -> Callable[P, R]:
     @functools.wraps(fn)
     async def wrapper(*args: P.args, **kwargs: P.kwargs) -> R:
-        if _production.in_metric():
+        if not _tracing_active():
             return cast(R, await fn(*args, **kwargs))  # type: ignore[misc]
-        with _span_session(
+        stack = ExitStack()
+        session = _open_session(
+            stack,
             span_name,
             kind=kind,
             capture_input=capture_input,
@@ -441,31 +574,30 @@ def _wrap_async[**P, R](
             args=args,
             kwargs=kwargs,
             redact=redact,
-        ) as (span, capture_token):
-            succeeded = False
-            try:
-                result = cast(R, await fn(*args, **kwargs))  # type: ignore[misc]
-                succeeded = True
-            except BaseException as exc:
-                _record_error(span, exc)
-                raise
-            finally:
-                if succeeded:
-                    _finish_span(
-                        span,
-                        capture_token=capture_token,
-                        capture_output=capture_output,
-                        production=production,
-                        rate=rate,
-                        args=args,
-                        kwargs=kwargs,
-                        result=result,
-                        fn=fn,
-                        redact_output=redact_output,
-                    )
-                else:
-                    _production.stop(capture_token)
-            return result
+        )
+        if session is None:
+            return cast(R, await fn(*args, **kwargs))  # type: ignore[misc]
+        span, capture_token = session
+        try:
+            result = cast(R, await fn(*args, **kwargs))  # type: ignore[misc]
+        except BaseException as exc:
+            _session_failed(span, capture_token, exc)
+            _close_session(stack)
+            raise
+        _session_succeeded(
+            span,
+            capture_token,
+            capture_output=capture_output,
+            production=production,
+            rate=rate,
+            args=args,
+            kwargs=kwargs,
+            result=result,
+            fn=fn,
+            redact_output=redact_output,
+        )
+        _close_session(stack)
+        return result
 
     return cast(Callable[P, R], wrapper)
 
@@ -488,17 +620,25 @@ def _wrap_sync_gen[**P, R](
 
     @functools.wraps(fn)
     def wrapper(*args: P.args, **kwargs: P.kwargs) -> Any:
-        if _production.in_metric():
+        started = (
+            _start_gen_span(
+                span_name,
+                kind=kind,
+                capture_input=capture_input,
+                live=live,
+                production=production,
+                fn=fn,
+                args=args,
+                kwargs=kwargs,
+                redact=redact,
+            )
+            if _tracing_active()
+            else None
+        )
+        if started is None:
             yield from cast(Iterator[Any], fn(*args, **kwargs))
             return
-
-        tracer = otel_trace.get_tracer(_TRACER_NAME)
-        span = tracer.start_span(span_name, record_exception=False, set_status_on_exception=False)
-        _start_attributes(span, kind)
-        if capture_input and span.is_recording():
-            span.set_attribute("input.value", _serialize_args(fn, args, kwargs, redact=redact))
-        live_token = _live.mark_if_live(span, live)
-        capture_token = _production.start(production, span)
+        span, live_token, capture_token = started
         acc: Any = None
         join_failed = False
         finished = False
@@ -510,10 +650,10 @@ def _wrap_sync_gen[**P, R](
             if finished:
                 return
             finished = True
-            _live.unmark(live_token)
-            _finish_span(
+            _guarded("live capture", _live.unmark, live_token)
+            _session_succeeded(
                 span,
-                capture_token=capture_token,
+                capture_token,
                 capture_output=capture_output,
                 production=production,
                 rate=rate,
@@ -523,16 +663,16 @@ def _wrap_sync_gen[**P, R](
                 fn=fn,
                 redact_output=redact_output,
             )
-            span.end()
+            _guarded("span end", span.end)
 
         def abort() -> None:
             nonlocal finished
             if finished:
                 return
             finished = True
-            _live.unmark(live_token)
-            _production.stop(capture_token)
-            span.end()
+            _guarded("live capture", _live.unmark, live_token)
+            _guarded("metrics capture", _production.stop, capture_token)
+            _guarded("span end", span.end)
 
         try:
             gen = cast(Iterator[Any], fn(*args, **kwargs))
@@ -551,7 +691,7 @@ def _wrap_sync_gen[**P, R](
                 yield item
         except BaseException as exc:
             if not isinstance(exc, GeneratorExit):
-                _record_error(span, exc)
+                _guarded("error recording", _record_error, span, exc)
                 failed = True
             raise
         finally:
@@ -588,18 +728,26 @@ def _wrap_async_gen[**P, R](
 
     @functools.wraps(fn)
     async def wrapper(*args: P.args, **kwargs: P.kwargs) -> Any:
-        if _production.in_metric():
+        started = (
+            _start_gen_span(
+                span_name,
+                kind=kind,
+                capture_input=capture_input,
+                live=live,
+                production=production,
+                fn=fn,
+                args=args,
+                kwargs=kwargs,
+                redact=redact,
+            )
+            if _tracing_active()
+            else None
+        )
+        if started is None:
             async for item in cast(AsyncIterator[Any], fn(*args, **kwargs)):
                 yield item
             return
-
-        tracer = otel_trace.get_tracer(_TRACER_NAME)
-        span = tracer.start_span(span_name, record_exception=False, set_status_on_exception=False)
-        _start_attributes(span, kind)
-        if capture_input and span.is_recording():
-            span.set_attribute("input.value", _serialize_args(fn, args, kwargs, redact=redact))
-        live_token = _live.mark_if_live(span, live)
-        capture_token = _production.start(production, span)
+        span, live_token, capture_token = started
         acc: Any = None
         join_failed = False
         finished = False
@@ -611,10 +759,10 @@ def _wrap_async_gen[**P, R](
             if finished:
                 return
             finished = True
-            _live.unmark(live_token)
-            _finish_span(
+            _guarded("live capture", _live.unmark, live_token)
+            _session_succeeded(
                 span,
-                capture_token=capture_token,
+                capture_token,
                 capture_output=capture_output,
                 production=production,
                 rate=rate,
@@ -624,16 +772,16 @@ def _wrap_async_gen[**P, R](
                 fn=fn,
                 redact_output=redact_output,
             )
-            span.end()
+            _guarded("span end", span.end)
 
         def abort() -> None:
             nonlocal finished
             if finished:
                 return
             finished = True
-            _live.unmark(live_token)
-            _production.stop(capture_token)
-            span.end()
+            _guarded("live capture", _live.unmark, live_token)
+            _guarded("metrics capture", _production.stop, capture_token)
+            _guarded("span end", span.end)
 
         try:
             gen = cast(AsyncIterator[Any], fn(*args, **kwargs))
@@ -652,7 +800,7 @@ def _wrap_async_gen[**P, R](
                 yield item
         except BaseException as exc:
             if not isinstance(exc, GeneratorExit):
-                _record_error(span, exc)
+                _guarded("error recording", _record_error, span, exc)
                 failed = True
             raise
         finally:
@@ -955,33 +1103,45 @@ class span:  # noqa: N801 — used like a function: ``with opengrade.span(...)``
     def __enter__(self) -> SpanHandle:
         if self._cm is not None:
             raise RuntimeError("opengrade.span(...) is not reentrant; create a new one")
-        if _production.in_metric():
-            return SpanHandle(None)  # metrics run with instrumentation suppressed
-        tracer = otel_trace.get_tracer(_TRACER_NAME)
-        self._cm = tracer.start_as_current_span(
-            self._name, record_exception=False, set_status_on_exception=False
-        )
-        current = self._cm.__enter__()
-        self._span = current
-        handle = SpanHandle(current)
-        _start_attributes(current, self._kind)
-        if self._input is not None:
-            handle.set_input(self._input)
-        if self._attributes:
-            handle.set_attributes(self._attributes)
-        self._live_token = _live.mark_if_live(current, self._live)
+        # Metrics run with instrumentation suppressed; without an active Opengrade the
+        # block runs untraced (a no-op handle) instead of raising.
+        if not _tracing_active():
+            return SpanHandle(None)
+        try:
+            tracer = otel_trace.get_tracer(_TRACER_NAME)
+            self._cm = tracer.start_as_current_span(
+                self._name, record_exception=False, set_status_on_exception=False
+            )
+            current = self._cm.__enter__()
+            self._span = current
+            handle = SpanHandle(current)
+            _start_attributes(current, self._kind)
+            if self._input is not None:
+                handle.set_input(self._input)
+            if self._attributes:
+                handle.set_attributes(self._attributes)
+            self._live_token = _live.mark_if_live(current, self._live)
+        except Exception:  # noqa: BLE001 — tracing must never break the host app
+            _instrumentation_failed("span start")
+            self._exit_quietly(None, None, None)
+            return SpanHandle(None)
         return handle
 
     def __exit__(self, exc_type: Any, exc: BaseException | None, tb: Any) -> None:
-        cm, current = self._cm, self._span
-        self._cm = self._span = None
-        if cm is None or current is None:
-            return
-        _live.unmark(self._live_token)
-        self._live_token = None
-        if isinstance(exc, Exception):
-            _record_error(current, exc)
-        cm.__exit__(exc_type, exc, tb)
+        if isinstance(exc, Exception) and self._span is not None:
+            _guarded("error recording", _record_error, self._span, exc)
+        self._exit_quietly(exc_type, exc, tb)
+
+    def _exit_quietly(self, exc_type: Any, exc: BaseException | None, tb: Any) -> None:
+        cm, live_token = self._cm, self._live_token
+        self._cm = self._span = self._live_token = None
+        if live_token is not None:
+            _guarded("live capture", _live.unmark, live_token)
+        if cm is not None:
+            try:
+                cm.__exit__(exc_type, exc, tb)
+            except Exception:  # noqa: BLE001
+                _instrumentation_failed("span end")
 
     async def __aenter__(self) -> SpanHandle:
         return self.__enter__()
