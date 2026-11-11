@@ -57,6 +57,12 @@ breaking changes; they are listed under **Changed** with a migration note.
 ### Added
 
 - Datasets: task type `generic` (plain input → output, no RAG fields required).
+- UI fix: the conversation detail page (`/conversations/<session id>`) returned 404 from the
+  packaged UI (`opengrade ui`); the dynamic route was missing from the static-export rewrites.
+- SDK fix: pydantic models and dataclasses are captured as JSON in `input.value` /
+  `output.value` (a `rag_chat` item used to show as `history=[ChatTurn(...)] question=...`).
+- SDK: `ExperimentResult.summary()` shows `-` and a note for a metric that could not run on any
+  item (e.g. no judge model on the server) instead of a mean of `0.000`.
 - SDK fix: scores from `log_score`, `log_feedback` and `@trace(metrics=...)` were dropped by the
   background sender with "No active Opengrade instance"; it now posts through its own instance.
 - API/SDK: `GET /api/v1/experiments/{id}/outputs?key={dataset_item_id}:{repeat}` filters rows; SDK `list_outputs(..., keys=...)` and the experiment bind poller use it for pending keys only.

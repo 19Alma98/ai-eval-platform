@@ -314,6 +314,59 @@ og.evaluate(
 
 Both run on live traffic too (enable them in the project's metrics set; they ship disabled).
 
+### Conversations (multi-turn RAG)
+
+When the unit under test is a chat, each test case is the history plus the last user question; the reference answer and gold documents are those of the last turn:
+
+```python
+import opengrade
+
+rows = [
+    {
+        "input": {
+            "history": [
+                {"role": "user", "content": "Do you have a Pro plan?"},
+                {"role": "assistant", "content": "Yes, we offer a Pro plan."},
+            ],
+            "question": "How much does it cost?",
+        },
+        "expected_output": "The Pro plan costs 8 dollars per user per month.",
+        "expected_doc_ids": ["plans"],
+        "must_contain": ["8 dollars"],
+    },
+]
+
+
+@og.trace
+def chat(history: list[dict], question: str) -> str:
+    query = rewrite(history, question)  # "How much does the Pro plan cost?"
+    og.set_search_query(query)          # what you searched for → query_rewrite_faithfulness
+    docs = retriever.search(query)
+    og.set_retrieval_documents(docs)
+    return llm.generate(history, question, docs)
+
+
+def task(item):
+    turn = opengrade.chat_input(item)  # .history (list of turns), .question
+    return chat([t.model_dump() for t in turn.history], turn.question)
+
+
+result = og.evaluate(
+    dataset=rows,  # chat-shaped inputs → task_type "rag_chat"
+    task=task,
+    metrics=[
+        "hit_at_k", "must_contain",                 # deterministic, last turn
+        "groundedness",                             # judges that score the last turn
+        "query_rewrite_faithfulness",               # is the search query faithful to the conversation?
+        "conversation_consistency",                 # does the answer contradict earlier turns?
+        "resolution",                               # was the user's need resolved?
+    ],
+)
+```
+
+- The judges need a judge model on the server (`LLM_MODEL`); without one they are reported as "could not run", not as a score of 0. `hit_at_k`, `recall_at_k`, `mrr` and `must_contain` need none.
+- In production, call `og.set_session(conversation_id)` in the traced handler: Production → Conversations groups the turns into a timeline, runs the session judges and lets you promote a conversation to a `rag_chat` test case.
+
 ### Custom metrics
 
 ```python
