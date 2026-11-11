@@ -13,6 +13,7 @@ import {
 import type { ItemComparisonRow, ItemSide } from "@/lib/api/types";
 import { formatScore } from "@/lib/format";
 import { CompareStatusCell } from "./compare-table";
+import { chatTurns, isChatInput } from "@/features/datasets/rag-qa";
 
 function asText(value: unknown): string {
   if (value === null || value === undefined) return "";
@@ -22,6 +23,33 @@ function asText(value: unknown): string {
   } catch {
     return String(value);
   }
+}
+
+function roleLabel(role: string): string {
+  const normalized = role.trim().toLowerCase();
+  if (normalized === "user") return "User";
+  if (normalized === "assistant") return "Assistant";
+  if (normalized === "system") return "System";
+  return role;
+}
+
+function QuestionBlock({ input }: { input: unknown }) {
+  const turns = isChatInput(input) ? chatTurns(input) : [];
+  if (turns.length === 0) {
+    return <>{asText(input) || "—"}</>;
+  }
+  return (
+    <div className="flex flex-col gap-2">
+      {turns.map((turn, index) => (
+        <div key={`${turn.role}-${index}`}>
+          <span className="font-medium text-muted-foreground">
+            {roleLabel(turn.role)}:{" "}
+          </span>
+          <span className="whitespace-pre-wrap break-words">{turn.content}</span>
+        </div>
+      ))}
+    </div>
+  );
 }
 
 function Block({ title, children }: { title: string; children: ReactNode }) {
@@ -95,7 +123,9 @@ export function CompareItemDetail({
         </DialogHeader>
         {row ? (
           <div className="flex flex-col gap-4">
-              <Block title="Question">{asText(row.input) || "—"}</Block>
+              <Block title="Question">
+                <QuestionBlock input={row.input} />
+              </Block>
               <Block title="Expected answer">{asText(row.expected_output) || "—"}</Block>
               <div className="grid gap-4 md:grid-cols-2">
                 <SideColumn title={`Baseline · ${baselineLabel}`} side={row.baseline} />

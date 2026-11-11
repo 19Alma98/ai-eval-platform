@@ -19,12 +19,14 @@ import {
   experimentCompareItemsQueryOptions,
   useEvaluators,
 } from "./use-experiments";
+import { formatChatQuestion, isChatInput } from "@/features/datasets/rag-qa";
 
 const PREVIEW_MAX = 96;
 
 function valuePreview(value: unknown): string {
   if (value === null || value === undefined) return "—";
   if (typeof value === "string") return value;
+  if (isChatInput(value)) return formatChatQuestion(value);
   try {
     return JSON.stringify(value);
   } catch {

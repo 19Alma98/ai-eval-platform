@@ -48,6 +48,7 @@ from opengrade_server.tracing.live_binding import (
 from opengrade_server.tracing.otel import OtlpDecodeError
 from opengrade_server.tracing.run_binding import (
     BindOtlpTracesToExperimentOutputs,
+    is_experiment_bound,
     traces_for_output_binding,
 )
 
@@ -146,12 +147,20 @@ async def export_traces(
             for interaction_id in to_score:
                 enqueue_live_score(interaction_id)
 
+            payload_by_id = {t.trace_id: t for t in traces}
             sessions = {
                 (t.project_id, t.session_id)
                 for t in saved
                 if t.session_id and str(t.session_id).strip()
             }
             for project_id_ref, session_id in sessions:
+                batch = [
+                    payload_by_id.get(t.trace_id, t)
+                    for t in saved
+                    if t.project_id == project_id_ref and t.session_id == session_id
+                ]
+                if batch and all(is_experiment_bound(t) for t in batch):
+                    continue
                 try:
                     await refresh_conversation_from_trace(
                         conversations, traces_repo, project_id_ref, session_id

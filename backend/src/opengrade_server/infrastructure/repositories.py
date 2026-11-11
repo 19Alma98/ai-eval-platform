@@ -548,6 +548,25 @@ class SqlAlchemyTraceRepository:
         )
         return [_trace_to_domain(row) for row in result.scalars().all()]
 
+    async def list_by_session_with_spans(
+        self,
+        project_id: uuid.UUID,
+        session_id: str,
+        *,
+        limit: int = 200,
+    ) -> list[Trace]:
+        result = await self._session.execute(
+            select(TraceModel)
+            .where(
+                TraceModel.project_id == project_id,
+                TraceModel.session_id == session_id,
+            )
+            .options(selectinload(TraceModel.spans))
+            .order_by(TraceModel.start_time.asc(), TraceModel.id.asc())
+            .limit(max(1, min(limit, 500)))
+        )
+        return [_trace_to_domain(row) for row in result.scalars().all()]
+
     async def release_facets(
         self, project_id: uuid.UUID, *, since: datetime, until: datetime
     ) -> dict[str, list[tuple[str, int]]]:

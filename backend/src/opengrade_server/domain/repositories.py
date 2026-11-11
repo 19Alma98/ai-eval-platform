@@ -87,6 +87,14 @@ class TraceRepository(Protocol):
         version: str | None = None,
     ) -> list[Trace]: ...
 
+    async def list_by_session_with_spans(
+        self,
+        project_id: uuid.UUID,
+        session_id: str,
+        *,
+        limit: int = 200,
+    ) -> list[Trace]: ...
+
     async def release_facets(
         self, project_id: uuid.UUID, *, since: datetime, until: datetime
     ) -> dict[str, list[tuple[str, int]]]: ...

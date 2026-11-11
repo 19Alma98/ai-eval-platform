@@ -21,6 +21,7 @@ import {
   type Outcome,
 } from "./case-results";
 import { RunItemTimeline } from "./run-item-timeline";
+import { chatTurns, RAG_CHAT_TASK } from "@/features/datasets/rag-qa";
 
 async function copyItemLink(href: string) {
   try {
@@ -204,18 +205,28 @@ function DocumentCard({
   );
 }
 
+function roleLabel(role: string): string {
+  const normalized = role.trim().toLowerCase();
+  if (normalized === "user") return "User";
+  if (normalized === "assistant") return "Assistant";
+  if (normalized === "system") return "System";
+  return role;
+}
+
 export function CaseDetail({
   projectId,
   experimentId,
   item,
   position,
   total,
+  taskType,
 }: {
   projectId: string;
   experimentId: string;
   item: CaseView;
   position: number;
   total: number;
+  taskType?: string | null;
 }) {
   const [showTrace, setShowTrace] = useState(false);
   const [showRaw, setShowRaw] = useState(false);
@@ -225,6 +236,7 @@ export function CaseDetail({
   const missing = item.expectedDocIds.filter((id) => !retrievedIds.has(id));
   const stats = contextStats(item.context);
   const answer = asText(item.actualOutput);
+  const turns = taskType === RAG_CHAT_TASK ? chatTurns(item.question) : [];
 
   return (
     <div className="flex flex-col gap-5">
@@ -249,8 +261,23 @@ export function CaseDetail({
         ) : null}
       </div>
 
-      <Section title="Question">
-        <TextBox>{asText(item.question) || "—"}</TextBox>
+      <Section title={turns.length > 0 ? "Conversation" : "Question"}>
+        {turns.length > 0 ? (
+          <div className="flex flex-col gap-2 rounded-md border border-border bg-surface px-3 py-2">
+            {turns.map((turn, index) => (
+              <div key={`${turn.role}-${index}`} className="text-sm">
+                <span className="font-medium text-muted-foreground">
+                  {roleLabel(turn.role)}:{" "}
+                </span>
+                <span className="whitespace-pre-wrap break-words text-foreground">
+                  {turn.content}
+                </span>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <TextBox>{asText(item.question) || "—"}</TextBox>
+        )}
       </Section>
 
       <div className="grid gap-4 xl:grid-cols-2">

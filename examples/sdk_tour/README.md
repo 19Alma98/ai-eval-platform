@@ -11,7 +11,7 @@ Two AI applications are considered:
 
 **Everything runs offline.** The default models `fake-small` and `fake-large` are deterministic stand-ins (no GPU, no API key), so the results below are reproducible. Swap in a real model (Ollama, OpenAI…) with one environment variable when you are ready, see [Real models and LLM judges](#real-models-and-llm-judges).
 
-## The five use cases
+## The use cases
 
 | # | Question you have | Script | SDK features | Where to look in the UI |
 |---|---|---|---|---|
@@ -20,8 +20,9 @@ Two AI applications are considered:
 | 3 | *Which architecture / model is best?* | [`03_compare_architectures.py`](03_compare_architectures.py) | `sweep` (grid of configurations), leaderboard, baseline comparison | Experiments → Compare |
 | 4 | *How do I monitor it live with metrics made for my product?* | [`04_custom_metrics_and_monitoring.py`](04_custom_metrics_and_monitoring.py) | `@opengrade.metric`, `@trace(metrics=...)`, `log_score`, `log_feedback`, `LlmJudge`, alerts as code | Production → Health, Live, Alerts |
 | 5 | *Which system prompt is better (same model)?* | [`05_prompt_ab.py`](05_prompt_ab.py) | App Config versions, `app_config_id` on `start_experiment`, snapshot on the run, `experiments.compare` | Experiments → App config snapshot |
+| 6 | *Does my multi-turn chat stay consistent and resolve the need?* | [`06_verify_rag_chat.py`](06_verify_rag_chat.py) | `rag_chat` gold set, `chat_input`, `set_search_query`, conversation judges | Datasets, Experiments |
 
-Run them in this order: each one builds on the previous (you trace the app, then you test it, then you compare versions of it, then you watch it in production, then you A/B the prompt).
+Run them in this order: each one builds on the previous (you trace the app, then you test it, then you compare versions of it, then you watch it in production, then you A/B the prompt, then you verify multi-turn chat).
 
 ## Setup
 
@@ -50,6 +51,7 @@ uv run python 02_verify_rag.py
 uv run python 03_compare_architectures.py
 uv run python 04_custom_metrics_and_monitoring.py
 uv run python 05_prompt_ab.py
+uv run python 06_verify_rag_chat.py
 ```
 
 Everything lands in the project **nimbus-support** (created on the first run).
@@ -63,6 +65,7 @@ sdk_tour/
 ├── 03_compare_architectures.py         use case 3: sweeps and leaderboards
 ├── 04_custom_metrics_and_monitoring.py use case 4: production metrics, feedback, alerts
 ├── 05_prompt_ab.py                     use case 5: App Config prompt A/B
+├── 06_verify_rag_chat.py               use case 6: multi-turn rag_chat + conversation judges
 ├── nimbus_apps/                        "your" code: the apps under test
 │   ├── telemetry.py     the one OpenGrade handle: og = Opengrade(project=...)
 │   ├── rag.py           RAG pipeline + its tracing (read this one first)
@@ -75,6 +78,7 @@ sdk_tour/
 ├── data/
 │   ├── knowledge_base.json   13 help-center articles
 │   ├── gold_rag.jsonl        18 questions with reference answer, gold documents, facts
+│   ├── gold_rag_chat.jsonl   2 multi-turn chat items (history + last question)
 │   └── gold_tickets.jsonl    16 tickets with the expected queue
 └── tests/test_apps.py   offline unit tests of the apps and metrics (uv run pytest)
 ```
@@ -311,7 +315,7 @@ TOUR_COMPARE_MODELS=gemma4:e2b,llama3.2 uv run python 03_compare_architectures.p
 
 For OpenAI set `LLM_BASE_URL=https://api.openai.com/v1`, `LLM_API_KEY=sk-...` and `TOUR_MODEL=gpt-4o-mini`. With real (non-deterministic) models, consider `repeats=3` in `evaluate` / `sweep` so that noise is not taken for a difference.
 
-**LLM judges.** Deterministic metrics check facts and documents; LLM judges check what only a reader can (is every claim supported by the documents? does the answer match the reference?). Configure a judge model on the platform (`LLM_MODEL`, `LLM_API_KEY` in `backend/.env`, see the root README), then set `TOUR_LLM_JUDGES=1`: script 2 adds `groundedness`, `correctness`, `answer_relevance` and `citation_accuracy`, script 3 adds `groundedness` and `correctness` to the sweep, and script 4 registers the custom `support_tone` judge and lets the platform judges grade live traffic.
+**LLM judges.** Deterministic metrics check facts and documents; LLM judges check what only a reader can (is every claim supported by the documents? does the answer match the reference?). Configure a judge model on the platform (`LLM_MODEL`, `LLM_API_KEY` in `backend/.env`, see the root README), then set `TOUR_LLM_JUDGES=1`: script 2 adds `groundedness`, `correctness`, `answer_relevance` and `citation_accuracy`, script 3 adds `groundedness` and `correctness` to the sweep, and script 4 registers the custom `support_tone` judge and lets the platform judges grade live traffic. Script 6 always requests the conversational judges (`query_rewrite_faithfulness`, `conversation_consistency`, `resolution`); without a platform judge model they show as ERROR while `hit_at_k` / `must_contain` still gate the run.
 
 ## Apply it to your own application
 
@@ -346,6 +350,18 @@ TOUR_MODEL=gemma4:e2b uv run python 05_prompt_ab.py   # real model: quality delt
 ```
 
 **In the UI:** open each run’s **App config snapshot** to see the frozen prompts side by side with the scores.
+
+## 6. Multi-turn RAG chat
+
+**Question:** the assistant is a conversation — does the rewritten search query stay faithful, does the answer contradict earlier turns, and was the user’s need resolved?
+
+Script [`06_verify_rag_chat.py`](06_verify_rag_chat.py) registers `data/gold_rag_chat.jsonl` as a `rag_chat` dataset, runs `answer_chat` (rewrite → `set_search_query` → retrieve → generate) via `opengrade.chat_input`, and scores `hit_at_k`, `must_contain`, plus the three conversational judges.
+
+```bash
+uv run python 06_verify_rag_chat.py
+```
+
+**In the UI:** Datasets shows history + last question; Experiments shows the same in the case table and a readable conversation in the detail panel. Eval traces that call `set_session` are filtered out of Production → Conversations on the server.
 
 ## Next steps
 

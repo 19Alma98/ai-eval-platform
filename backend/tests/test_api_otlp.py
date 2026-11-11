@@ -62,6 +62,21 @@ class InMemoryTraceRepository:
     async def get_by_trace_id(self, project_id: uuid.UUID, trace_id: str) -> Trace | None:
         return self._traces.get((project_id, trace_id))
 
+    async def list_by_session_with_spans(
+        self,
+        project_id: uuid.UUID,
+        session_id: str,
+        *,
+        limit: int = 200,
+    ) -> list[Trace]:
+        items = [
+            t
+            for (pid, _), t in self._traces.items()
+            if pid == project_id and t.session_id == session_id
+        ]
+        items.sort(key=lambda t: (t.start_time, t.id))
+        return items[:limit]
+
     async def list_by_project(
         self,
         project_id: uuid.UUID,

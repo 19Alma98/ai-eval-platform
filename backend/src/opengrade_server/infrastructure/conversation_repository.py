@@ -2,8 +2,9 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime
+from typing import Any
 
-from sqlalchemy import func, select
+from sqlalchemy import exists, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -15,8 +16,19 @@ from opengrade_server.domain.conversation import (
 from opengrade_server.infrastructure.models import (
     ConversationModel,
     ConversationScoreModel,
+    SpanModel,
     TraceModel,
 )
+
+_EXPERIMENT_ID_ATTR = "opengrade.experiment_id"
+
+
+def _experiment_bound_trace_exists() -> Any:
+    return exists().where(
+        SpanModel.trace_pk == TraceModel.id,
+        SpanModel.attributes[_EXPERIMENT_ID_ATTR].as_string().is_not(None),
+        SpanModel.attributes[_EXPERIMENT_ID_ATTR].as_string() != "",
+    )
 
 
 def _to_domain(row: ConversationModel) -> Conversation:
@@ -240,6 +252,7 @@ class SqlAlchemyConversationRepository:
                 TraceModel.project_id == project_id,
                 TraceModel.session_id.is_not(None),
                 TraceModel.session_id != "",
+                ~_experiment_bound_trace_exists(),
             )
             .group_by(TraceModel.session_id)
         )

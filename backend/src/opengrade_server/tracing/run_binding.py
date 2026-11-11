@@ -55,6 +55,16 @@ def extract_run_binding(trace: Trace) -> tuple[uuid.UUID, uuid.UUID, int] | None
     return None
 
 
+def is_experiment_bound(trace: Trace) -> bool:
+    """True when the trace is bound to an offline experiment item run."""
+    return extract_run_binding(trace) is not None
+
+
+def production_session_traces(traces: list[Trace]) -> list[Trace]:
+    """Keep only turns that belong on the production Conversations timeline."""
+    return [t for t in traces if not is_experiment_bound(t)]
+
+
 def traces_for_output_binding(
     payload_traces: list[Trace], saved_traces: list[Trace]
 ) -> list[Trace]:

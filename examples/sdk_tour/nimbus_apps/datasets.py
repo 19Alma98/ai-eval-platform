@@ -17,10 +17,12 @@ from typing import Any
 from nimbus_apps.settings import DATA_DIR
 
 RAG_GOLD = "nimbus-rag-gold-v1"
+RAG_CHAT_GOLD = "nimbus-rag-chat-gold-v1"
 TICKETS_GOLD = "nimbus-tickets-gold-v1"
 
 _FILES = {
     RAG_GOLD: ("gold_rag.jsonl", "rag_qa"),
+    RAG_CHAT_GOLD: ("gold_rag_chat.jsonl", "rag_chat"),
     TICKETS_GOLD: ("gold_tickets.jsonl", "classification"),
 }
 

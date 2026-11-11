@@ -39,6 +39,7 @@ from opengrade_server.evaluation.protocol import EvaluationSample
 from opengrade_server.evaluation.registry import create_evaluator
 from opengrade_server.infrastructure.conversation_repository import SqlAlchemyConversationRepository
 from opengrade_server.tracing.live_binding import answer_from_output, question_from_input
+from opengrade_server.tracing.run_binding import production_session_traces
 
 logger = logging.getLogger(__name__)
 
@@ -149,7 +150,8 @@ class GetConversation:
     async def execute(self, project_id: uuid.UUID, session_id: str) -> ConversationDetail:
         if await self._projects.get_by_id(project_id) is None:
             raise ProjectNotFoundError(project_id)
-        traces = await self._traces.list_by_project(project_id, session_id=session_id, limit=200)
+        traces = await self._traces.list_by_session_with_spans(project_id, session_id, limit=200)
+        traces = production_session_traces(traces)
         if not traces:
             raise ConversationNotFoundError(session_id)
         traces = sorted(traces, key=lambda t: t.start_time)
@@ -484,7 +486,8 @@ async def refresh_conversation_from_trace(
     session_id: str,
 ) -> None:
     """Keep the open conversation projection in sync when a new trace arrives."""
-    rows = await traces.list_by_project(project_id, session_id=session_id, limit=200)
+    rows = await traces.list_by_session_with_spans(project_id, session_id, limit=200)
+    rows = production_session_traces(rows)
     if not rows:
         return
     rows = sorted(rows, key=lambda t: t.start_time)

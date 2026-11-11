@@ -6,12 +6,14 @@ import opengrade
 import pytest
 
 from nimbus_apps.classifier import classify_ticket, redact_pii
-from nimbus_apps.datasets import read_jsonl
+from nimbus_apps.datasets import RAG_CHAT_GOLD, read_jsonl
 from nimbus_apps.llm import REFUSAL, _fake_answer
 from nimbus_apps.quality import cites_retrieved_source, refusal_is_correct
+from nimbus_apps.rag import answer_chat, rewrite_search_query
 from nimbus_apps.retrieval import search
 
 RAG_GOLD = read_jsonl("gold_rag.jsonl")
+RAG_CHAT = read_jsonl("gold_rag_chat.jsonl")
 TICKETS = read_jsonl("gold_tickets.jsonl")
 
 
@@ -50,3 +52,28 @@ def test_refusal_outcomes() -> None:
     missed = opengrade.Sample(output="Sure!", metadata={"answerable": False})
     assert refusal_is_correct.fn(over).explanation == "over_refusal"
     assert refusal_is_correct.fn(missed).explanation == "missed_refusal"
+
+
+def test_rag_chat_gold_is_wired() -> None:
+    assert RAG_CHAT_GOLD == "nimbus-rag-chat-gold-v1"
+    assert len(RAG_CHAT) == 2
+    for row in RAG_CHAT:
+        assert "history" in row["input"] and "question" in row["input"]
+
+
+def test_rewrite_search_query_uses_prior_user_turn() -> None:
+    history = [
+        {"role": "user", "content": "Do you have a Pro plan?"},
+        {"role": "assistant", "content": "Yes, we offer a Pro plan."},
+    ]
+    query = rewrite_search_query(history, "How much does it cost?")
+    assert "Pro plan" in query
+    assert "How much does it cost?" in query
+
+
+def test_answer_chat_returns_string_for_gold_rows() -> None:
+    for row in RAG_CHAT:
+        history = row["input"]["history"]
+        question = row["input"]["question"]
+        answer = answer_chat(history, question)
+        assert isinstance(answer, str) and answer.strip()

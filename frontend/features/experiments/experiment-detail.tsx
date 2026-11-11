@@ -7,7 +7,11 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { ChevronDown, GitCompare, Play, ShieldCheck } from "lucide-react";
 import { toast } from "sonner";
 import { formatConfigValue } from "@/features/app-configs/format-config-value";
-import { RAG_RECOMMENDED_EVALUATOR_KINDS } from "@/features/datasets/rag-qa";
+import {
+  formatChatQuestion,
+  RAG_CHAT_TASK,
+  RAG_RECOMMENDED_EVALUATOR_KINDS,
+} from "@/features/datasets/rag-qa";
 import { useDatasets, useDataset } from "@/features/datasets/use-datasets";
 import { CreateEvaluatorDialog } from "./create-evaluator-dialog";
 import { withProjectQuery } from "@/lib/project-href";
@@ -202,12 +206,19 @@ export function ExperimentDetailView({
     [datasetDetailQuery.data?.items, outputsQuery.data, evaluators, runsById],
   );
 
+  const isRagChat = datasetDetailQuery.data?.task_type === RAG_CHAT_TASK;
+
+  const questionText = useCallback(
+    (question: unknown) => (isRagChat ? formatChatQuestion(question) : textOf(question)),
+    [isRagChat],
+  );
+
   const visibleCases = useMemo(() => {
     const q = search.trim().toLowerCase();
     return cases
       .map((c, index) => ({ c, index }))
       .filter(({ c }) => {
-        if (q && !textOf(c.question).toLowerCase().includes(q)) return false;
+        if (q && !questionText(c.question).toLowerCase().includes(q)) return false;
         const relevant = focusedRunId
           ? c.results.filter((r) => r.metric.runId === focusedRunId)
           : c.results;
@@ -216,7 +227,7 @@ export function ExperimentDetailView({
         if (caseFilter === "passing") return !failing && relevant.some((r) => r.outcome === "pass");
         return true;
       });
-  }, [cases, caseFilter, focusedRunId, search]);
+  }, [cases, caseFilter, focusedRunId, questionText, search]);
 
   const nFailingCases = cases.filter((c) => c.failed.length > 0).length;
   const nAnswered = (outputsQuery.data ?? []).length;
@@ -258,7 +269,9 @@ export function ExperimentDetailView({
         header: "Question",
         wrap: true,
         cell: (row) => (
-          <span className="line-clamp-2 text-foreground">{textOf(row.c.question)}</span>
+          <span className="line-clamp-2 text-foreground">
+            {questionText(row.c.question)}
+          </span>
         ),
       },
       {
@@ -269,7 +282,7 @@ export function ExperimentDetailView({
         cell: (row) => <CaseResultCell item={row.c} focusedRunId={focusedRunId} />,
       },
     ],
-    [focusedRunId],
+    [focusedRunId, questionText],
   );
 
   const isLoading = experimentQuery.isLoading || summaryQuery.isLoading;
@@ -665,6 +678,7 @@ export function ExperimentDetailView({
                     item={selected.c}
                     position={selected.index + 1}
                     total={cases.length}
+                    taskType={datasetDetailQuery.data?.task_type}
                   />
                 </div>
               </ScrollArea>

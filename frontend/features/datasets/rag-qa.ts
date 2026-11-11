@@ -41,6 +41,14 @@ export const RAG_RECOMMENDED_EVALUATOR_KINDS = [
   "latency",
 ] as const;
 
+export type ChatTurn = { role: string; content: string };
+
+export function isChatInput(input: unknown): boolean {
+  if (!input || typeof input !== "object") return false;
+  const question = (input as { question?: unknown }).question;
+  return typeof question === "string";
+}
+
 export function chatQuestionPreview(input: unknown): string {
   if (typeof input === "string") return input;
   if (input && typeof input === "object" && "question" in input) {
@@ -58,4 +66,32 @@ export function chatHistoryLength(input: unknown): number {
   if (!input || typeof input !== "object") return 0;
   const history = (input as { history?: unknown }).history;
   return Array.isArray(history) ? history.length : 0;
+}
+
+/** Table/search preview: optional ``[N prior]`` prefix + last user question. */
+export function formatChatQuestion(input: unknown): string {
+  const question = chatQuestionPreview(input);
+  const prior = chatHistoryLength(input);
+  return prior > 0 ? `[${prior} prior] ${question}` : question;
+}
+
+/** History turns plus the final user question, for experiment/case detail. */
+export function chatTurns(input: unknown): ChatTurn[] {
+  if (!input || typeof input !== "object") return [];
+  const raw = (input as { history?: unknown }).history;
+  const turns: ChatTurn[] = [];
+  if (Array.isArray(raw)) {
+    for (const entry of raw) {
+      if (!entry || typeof entry !== "object") continue;
+      const role = (entry as { role?: unknown }).role;
+      const content = (entry as { content?: unknown }).content;
+      if (typeof role !== "string" || typeof content !== "string") continue;
+      turns.push({ role, content });
+    }
+  }
+  const question = (input as { question?: unknown }).question;
+  if (typeof question === "string" && question.trim()) {
+    turns.push({ role: "user", content: question });
+  }
+  return turns;
 }
