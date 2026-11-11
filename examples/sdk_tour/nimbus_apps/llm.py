@@ -21,10 +21,9 @@ import time
 from functools import cache
 from typing import Any
 
-import opengrade
-
 from nimbus_apps.retrieval import tokenize
 from nimbus_apps.settings import LLM_API_KEY, LLM_BASE_URL
+from nimbus_apps.telemetry import og
 
 REFUSAL = "I don't know: the Nimbus documentation does not cover this."
 
@@ -94,7 +93,7 @@ def _fake_llm_call(model: str, prompt: str, question: str, docs: list[dict[str, 
     spec = _FAKE_MODELS.get(model)
     if spec is None:
         raise ValueError(f"unknown fake model {model!r}; choose one of {sorted(_FAKE_MODELS)}")
-    with opengrade.span("llm.chat", kind="LLM", input=prompt) as span:
+    with og.span("llm.chat", kind="LLM", input=prompt) as span:
         time.sleep(spec["latency_s"])
         answer = _fake_answer(model, question, docs)
         prompt_tokens = len(prompt.split())

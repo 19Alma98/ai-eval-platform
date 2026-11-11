@@ -21,7 +21,7 @@ from opengrade._async import run_sync
 from opengrade._eval_run import bind_evaluation
 from opengrade._http import OpengradeAPIError, OpengradeError
 from opengrade._links import experiment_item_url, experiment_url, trace_url, ui_base_url
-from opengrade._opengrade import current
+from opengrade._opengrade import Opengrade, ambient
 from opengrade._run_context import ACTIVE_RUN
 from opengrade._trace import current_trace_id, truncate_value
 from opengrade.client import Client
@@ -133,9 +133,13 @@ class Experiment:
         baseline_id: str | None,
         repeats: int = 1,
         group_by: str | None = None,
+        og: Opengrade | None = None,
     ) -> None:
         if not 1 <= repeats <= MAX_REPEATS:
             raise ValueError(f"repeats must be between 1 and {MAX_REPEATS}")
+        # The instance that started the experiment: item runs and finish() are routed
+        # to it, so a manual loop needs no ``og.activate()`` around it.
+        self._og = og
         self.repeats = repeats
         self.group_by = group_by
         self._client = client
@@ -151,6 +155,14 @@ class Experiment:
         self.result: ExperimentResult | None = None
         self._metrics_logged = False
         self._context_token: Token[Experiment | None] | None = None
+
+    @contextmanager
+    def _activated(self) -> Iterator[None]:
+        if self._og is None:
+            yield
+            return
+        with self._og.activate():
+            yield
 
     @property
     def id(self) -> str:
@@ -258,7 +270,8 @@ class Experiment:
             ACTIVE_EXPERIMENT.reset(self._context_token)
             self._context_token = None
         if exc_type is not None:
-            _otel.flush()
+            with self._activated():
+                _otel.flush()
             logger.warning("opengrade experiment %s aborted; skipping scoring", self.id)
             return
         if self.result is None:
@@ -275,6 +288,16 @@ class Experiment:
         resolved = self._resolve_item(item)
         if not 0 <= repeat < MAX_REPEATS:
             raise ValueError(f"repeat must be between 0 and {MAX_REPEATS - 1}")
+        if self._og is not None and self._og._wants_tracing:
+            # The app has ``@og.trace`` functions: start tracing before the item's root
+            # span, or the first item would not be linked to its trace.
+            self._og._ensure_tracing()
+        with self._activated():
+            with self._run(resolved, repeat) as record:
+                yield record
+
+    @contextmanager
+    def _run(self, resolved: DatasetItemResponse, repeat: int) -> Iterator[ItemRun]:
         record = ItemRun(item=resolved, repeat=repeat)
         tracer = otel_trace.get_tracer("opengrade")
         token = ACTIVE_RUN.set(record)
@@ -482,7 +505,8 @@ class Experiment:
     ) -> dict[tuple[str, int], ExperimentItemOutputResponse]:
         """Wait until OTLP-ingested traces are bound, so our PUT lands last."""
         traced = {(r.item.id, r.repeat): r.trace_id for r in records if r.trace_id}
-        if traced and current().tracing_enabled:
+        instance = self._og if self._og is not None else ambient()
+        if traced and instance is not None and instance.tracing_enabled:
             _otel.flush()
         else:
             traced = {}

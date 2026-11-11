@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-KNOWN_TASK_TYPES = frozenset({"rag_qa", "rag_chat", "classification", "agent_tools"})
+KNOWN_TASK_TYPES = frozenset({"rag_qa", "rag_chat", "classification", "agent_tools", "generic"})
 
 
 @dataclass(frozen=True, slots=True)
@@ -86,6 +86,23 @@ TASK_TYPE_CATALOG: tuple[TaskTypeInfo, ...] = (
             "actual_output: predicted label",
         ),
         recommended_evaluator_kinds=("exact_match", "contains"),
+    ),
+    TaskTypeInfo(
+        id="generic",
+        label="Generic input → output",
+        field_hints=(
+            "input: what the app receives",
+            "expected_output: reference output (optional)",
+            "metadata.must_contain: required output phrases (optional)",
+            "actual_output: what the app returned",
+        ),
+        recommended_evaluator_kinds=(
+            "exact_match",
+            "contains",
+            "must_contain",
+            "correctness",
+            "latency",
+        ),
     ),
     TaskTypeInfo(
         id="agent_tools",

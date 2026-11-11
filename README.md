@@ -64,7 +64,7 @@ With pip: `pip install 'opengrade-ai[ui]'`, then `opengrade ui`.
 **[SDK tour →](examples/sdk_tour/README.md)** — runnable offline project: tracing, verifying a
 RAG against a gold set, comparing architectures and models, custom metrics, alerts.
 
-**Multiple projects in one process** — use `Opengrade` + `activate()` (see
+**Multiple projects in one process** — one `Opengrade` per project (see
 [sdk/README.md](sdk/README.md#multiple-projects-in-one-process-opengrade) and
 [examples/fastapi_multi_tenant](examples/fastapi_multi_tenant/)).
 
@@ -74,29 +74,25 @@ RAG against a gold set, comparing architectures and models, custom metrics, aler
 Anthropic, LangChain, LlamaIndex and Bedrock calls become child spans automatically.
 
 ```python
-import opengrade
-from opengrade import Opengrade, Settings
+from opengrade import Opengrade
 
-og = Opengrade(
-    settings=Settings(tracking_uri="http://localhost:8000", project_slug="support-bot")
-)
-og.set_project("support-bot")
-og.init_tracing(instrument="auto")
+og = Opengrade(project="support-bot")  # created if missing; http://localhost:8000 by default
 
 
-@opengrade.trace
+@og.trace
 def answer(question: str) -> str:
-    with opengrade.span("retrieve", kind="RETRIEVER", input=question) as s:
+    with og.span("retrieve", kind="RETRIEVER", input=question) as s:
         docs = retriever.search(question)
         s.set_output([d.id for d in docs])
-    opengrade.set_retrieval_documents(docs)  # feeds the retrieval metrics and RAG judges
+    og.set_retrieval_documents(docs)  # feeds the retrieval metrics and RAG judges
     return llm.generate(question, docs)
 
 
-with og.activate():
-    answer("How many PTO days do I get?")
-og.flush()
+answer("How many PTO days do I get?")
 ```
+
+Two lines and a decorator: no setup call, no context manager. Tracing starts on the first
+traced call, pending spans are flushed at exit, and nothing here can raise into your app.
 
 **2. Evaluate it on a test set**, against a baseline:
 

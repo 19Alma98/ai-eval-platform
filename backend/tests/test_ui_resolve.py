@@ -107,3 +107,12 @@ def test_resolve_segment_prefetch_files(tmp_path: Path) -> None:
         resolve_ui_file(root, "traces/abc/__next.!KGFwcCk.traces.$d$traceId.__PAGE__.txt")
         == nested.resolve()
     )
+
+
+def test_resolve_ui_file_rewrites_conversation_detail(tmp_path: Path) -> None:
+    """``/conversations/<session id>`` is a dynamic route too (it used to 404)."""
+    root = tmp_path / "ui"
+    target = root / "conversations" / "_" / "index.html"
+    target.parent.mkdir(parents=True)
+    target.write_text("<html></html>", encoding="utf-8")
+    assert resolve_ui_file(root, "conversations/conv-1/") == target.resolve()

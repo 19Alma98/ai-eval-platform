@@ -181,7 +181,14 @@ class ExperimentResult:
             for ev in self.server_summary.evaluators:
                 name = ev.evaluator_name or ev.evaluator_id or "?"
                 seen.add(name)
-                row: tuple[str, ...] = (name, _fmt(ev.mean_score), _fmt(ev.pass_rate))
+                # Nothing scored (every item errored or was skipped): the server's 0.0
+                # is not a score, show it as missing.
+                unscored = ev.n_scored == 0
+                row: tuple[str, ...] = (
+                    name,
+                    "-" if unscored else _fmt(ev.mean_score),
+                    "-" if unscored else _fmt(ev.pass_rate),
+                )
                 if flaky:
                     row += (str(flaky.get(name, 0)),)
                 rows.append((*row, _fmt_delta(compared.get(name))))
@@ -201,6 +208,7 @@ class ExperimentResult:
         else:
             lines.append("  (no metrics scored)")
         lines.extend(self._skipped_lines())
+        lines.extend(self._error_lines())
         lines.extend(self._group_lines())
         lines.extend(self._experiment_metric_lines())
         lines.append(f"  view: {self.url}")
@@ -221,6 +229,23 @@ class ExperimentResult:
             total = ev.n_items if ev.n_items is not None else skipped
             hint = _SKIP_HINTS.get(name, "the test case lacks the data this metric needs")
             lines.append(f"  note: {name} skipped on {skipped}/{total} items: {hint}")
+        return lines
+
+    def _error_lines(self) -> list[str]:
+        """Say when a metric could not run: a failed judge must not read as a score of 0."""
+        if self.server_summary is None:
+            return []
+        lines: list[str] = []
+        for ev in self.server_summary.evaluators:
+            errors = ev.n_error or 0
+            if not errors:
+                continue
+            name = ev.evaluator_name or ev.evaluator_id or "?"
+            total = ev.n_items if ev.n_items is not None else errors
+            lines.append(
+                f"  note: {name} could not run on {errors}/{total} items (ERROR, not a score): "
+                "open the experiment for the reason; LLM judges need a judge model on the server"
+            )
         return lines
 
     def __str__(self) -> str:

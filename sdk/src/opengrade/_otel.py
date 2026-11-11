@@ -290,6 +290,13 @@ def _provider_has_router(provider: TracerProvider, router: _RoutingSpanProcessor
 # HTTP statuses where splitting the batch may salvage part of it (body too large /
 # per-item validation). 5xx and connection failures must not bisect.
 _SIZE_RELATED_STATUS = frozenset({400, 413})
+# Statuses that mean the configuration is wrong, with what to check.
+_REJECTED_STATUS = {
+    401: "missing or invalid API key, set OPENGRADE_API_KEY",
+    403: "this API key may not send traces to the project",
+    404: 'project not found; use Opengrade(project="name") to create it, or check '
+    "project_id / project_slug",
+}
 
 
 class _SafeSpanExporter(SpanExporter):
@@ -300,9 +307,19 @@ class _SafeSpanExporter(SpanExporter):
     cooldown after a failure are dropped without a network call.
     """
 
-    def __init__(self, inner: SpanExporter, *, cooldown_s: float = FAILURE_COOLDOWN_S) -> None:
+    def __init__(
+        self,
+        inner: SpanExporter,
+        *,
+        cooldown_s: float = FAILURE_COOLDOWN_S,
+        ensure_project: Callable[[], bool] | None = None,
+    ) -> None:
         self._inner = inner
         self._cooldown_s = cooldown_s
+        # Find-or-create the project before the first export (``Opengrade(project=...)``).
+        # Runs on the batch processor's thread, never on a traced call.
+        self._ensure_project = ensure_project
+        self._rejected_warned: set[int] = set()
         self._lock = threading.Lock()
         self._retry_after = 0.0
         self._failing = False
@@ -333,13 +350,30 @@ class _SafeSpanExporter(SpanExporter):
             self._drop(len(spans))
             return SpanExportResult.FAILURE
         batch = list(spans)
+        if self._ensure_project is not None:
+            try:
+                ensured = bool(self._ensure_project())
+            except Exception:  # noqa: BLE001 — export must never raise into the app
+                logger.debug("opengrade: project lookup raised", exc_info=True)
+                ensured = False
+            if not ensured:
+                self._on_failure(len(batch))
+                return SpanExportResult.FAILURE
+            self._ensure_project = None
         deadline = time.monotonic() + EXPORT_TIMEOUT_S
         result = self._export_split(batch, deadline)
         if result is SpanExportResult.SUCCESS:
             self._on_success()
             return result
-        # Single-span failure (often oversize): drop without silencing later batches.
-        if len(batch) <= 1:
+        status = self._last_status
+        if status is None:
+            status = getattr(self._inner, "last_export_status", None)
+        if status in _REJECTED_STATUS:
+            # Wrong project or key: every batch will fail the same way, say so once.
+            self._on_rejected(status)
+            return SpanExportResult.FAILURE
+        # Single oversize span: drop without silencing later batches.
+        if len(batch) <= 1 and self._failure_is_size_related():
             return SpanExportResult.FAILURE
         # Whole batch failed (outage, or size-split exhausted) → cooldown.
         self._on_failure(0)  # leaves already counted drops
@@ -405,6 +439,21 @@ class _SafeSpanExporter(SpanExporter):
             self._retry_after = 0.0
         if recovered:
             logger.info("opengrade: platform reachable again; span export resumed")
+
+    def _on_rejected(self, status: int) -> None:
+        with self._lock:
+            first = status not in self._rejected_warned
+            self._rejected_warned.add(status)
+            self._failing = True
+            self._retry_after = time.monotonic() + self._cooldown_s
+        if first:
+            logger.warning(
+                "opengrade: the platform rejected the traces (HTTP %d: %s); they are "
+                "being dropped (retrying in %.0fs)",
+                status,
+                _REJECTED_STATUS[status],
+                self._cooldown_s,
+            )
 
     def _on_failure(self, count: int) -> None:
         with self._lock:
@@ -688,8 +737,17 @@ def init_for_instance(
                 max_request_size=OTLP_MAX_REQUEST_BYTES,
             )
         )
+        ensure: Callable[[], bool] | None = None
+        if settings.project and not config.project_id:
+            from opengrade._context import ensure_project
+
+            def ensure() -> bool:
+                return ensure_project(rt) is not None
+
         exporter: SpanExporter = (
-            inner_exporter if span_exporter is not None else _SafeSpanExporter(inner_exporter)
+            inner_exporter
+            if span_exporter is not None
+            else _SafeSpanExporter(inner_exporter, ensure_project=ensure)
         )
         processor: SpanProcessor = BatchSpanProcessor(
             exporter, max_export_batch_size=OTLP_MAX_EXPORT_BATCH_SIZE

@@ -5,6 +5,7 @@ from collections.abc import Callable, Mapping, Sequence
 from typing import Any
 
 from opengrade._git import version_from_git
+from opengrade._opengrade import _CURRENT
 from opengrade.client import Client
 from opengrade.experiment.dataset import DatasetLike, _resolve_dataset
 from opengrade.experiment.result import ExperimentResult
@@ -57,7 +58,7 @@ def start_experiment(
     project: str | None = None,
     version: str | None = None,
     git: bool | Mapping[str, Any] = True,
-    task_type: str = "rag_qa",
+    task_type: str | None = None,
     app_config_id: str | None = None,
     app_config_alias: str | None = None,
     repeats: int = 1,
@@ -144,6 +145,7 @@ def start_experiment(
         baseline_id=baseline_id,
         repeats=repeats,
         group_by=group_by,
+        og=og if og is not None else _CURRENT.get(),
     )
     logger.info("opengrade experiment %s started: %s", experiment.name, exp.url)
     return exp
@@ -162,7 +164,7 @@ def evaluate(
     project: str | None = None,
     version: str | None = None,
     git: bool | Mapping[str, Any] = True,
-    task_type: str = "rag_qa",
+    task_type: str | None = None,
     app_config_id: str | None = None,
     app_config_alias: str | None = None,
     raise_on_error: bool = False,

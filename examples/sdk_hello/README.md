@@ -1,6 +1,6 @@
 # SDK hello (with Ollama)
 
-Minimal OpenGrade SDK example: emits one CHAIN span (`@opengrade.trace`) and an LLM child span from
+Minimal OpenGrade SDK example: emits one CHAIN span (`@og.trace`) and an LLM child span from
 `openinference-instrumentation-openai`.
 
 ## Prerequisites
@@ -24,7 +24,7 @@ Expected UI: one trace under project "**demo**", parent CHAIN + child LLM.
 |---|---|---|
 | Connection refused / timeout to `:8000` | Platform API not running | Run `uvx --from 'opengrade-ai[ui]' opengrade ui` (see [getting started](../../docs/getting-started.md)), or from repo root `docker compose up --build`; confirm `curl http://localhost:8000/health` succeeds. |
 | OTLP export errors, no traces in UI | Wrong `OPENGRADE_TRACKING_URI` | Default is local `:8000`; OTLP goes to `<uri>/v1/traces`. Project **demo** is created on first run. |
-| Empty trace list for **demo** | Export failed silently or wrong project slug | Check script env and API logs; verify `OPENGRADE_PROJECT_SLUG` is what you expect. |
+| Empty trace list for **demo** | Export rejected or wrong project | The script logs one `opengrade` warning with the HTTP status (404 project not found, 401 API key); check `OPENGRADE_PROJECT` / `OPENGRADE_TRACKING_URI`. |
 | Connection error to `:11434` | Ollama not running | Start Ollama; confirm `curl http://localhost:11434/api/tags`. |
 | Model not found / 404 from Ollama | Model not pulled | Run `ollama pull gemma4:e2b` (or point `OpenAI` client at a model you have). |
 | Script runs but UI shows spans without text | Content capture off on API | Expected when the API runs with `CONTENT_CAPTURE_ENABLED=false` (default is true); spans still appear without stored bodies. |

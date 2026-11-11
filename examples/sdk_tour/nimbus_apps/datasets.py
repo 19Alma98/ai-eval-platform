@@ -32,9 +32,9 @@ def read_jsonl(filename: str) -> list[dict[str, Any]]:
 
 def ensure_dataset(name: str) -> str:
     """Return the dataset id, creating the dataset from ``data/`` the first time."""
-    from opengrade import current
+    from nimbus_apps.telemetry import og
 
-    client = current().client
+    client = og.client
     existing = [d for d in client.datasets.list() if d.name == name]
     if existing:
         return max(existing, key=lambda d: d.version).id

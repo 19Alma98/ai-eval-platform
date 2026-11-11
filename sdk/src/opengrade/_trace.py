@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import dataclasses
 import functools
 import inspect
 import json
@@ -78,7 +79,23 @@ def _budget_reduce(value: object, budget: list[int]) -> object:
         budget[0] = max(0, budget[0] - len(text.encode("utf-8")))
         return value
 
+    plain = _plain_data(value)
+    if plain is not None:
+        return _budget_reduce(plain, budget)
     return _budget_reduce(_leaf_str(value), budget)
+
+
+def _plain_data(value: object) -> object:
+    """Dict form of a pydantic model or dataclass, so it is captured as JSON, not a repr."""
+    try:
+        dump = getattr(value, "model_dump", None)
+        if callable(dump) and not isinstance(value, type):
+            return dump(mode="json")
+        if dataclasses.is_dataclass(value) and not isinstance(value, type):
+            return dataclasses.asdict(value)
+    except Exception:  # noqa: BLE001 — capture must never raise
+        return None
+    return None
 
 
 def truncate_value(value: object, *, limit: int | None = None) -> str:

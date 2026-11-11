@@ -16,7 +16,7 @@ reference. You can still measure plenty, continuously, on real traffic:
 What this script shows, step by step:
 
   1. Turn on production mode: environment, version, live interactions.
-  2. Attach metrics to the production entry point (``@opengrade.trace(metrics=...)``).
+  2. Attach metrics to the production entry point (``@og.trace(metrics=...)``).
   3. Simulate real traffic (users, conversations), log business scores and feedback.
   4. Find the bad answers programmatically (the Live "Failing" list).
   5. Create alert rules as code (idempotent: safe to run at every deploy).
@@ -32,12 +32,12 @@ import time
 from typing import Any
 
 import opengrade
-from opengrade import Opengrade, Settings, current
 
 from nimbus_apps import settings
 from nimbus_apps.console import note, step, title
 from nimbus_apps.quality import answer_is_concise, cites_retrieved_source, is_refusal
 from nimbus_apps.rag import answer_question
+from nimbus_apps.telemetry import og
 
 # ---------------------------------------------------------------------------------------
 # Production-only metrics: no expected answer needed, only what the call itself produced.
@@ -64,7 +64,7 @@ PRODUCTION_METRICS = [cites_retrieved_source, answer_is_concise, retrieval_confi
 # ---------------------------------------------------------------------------------------
 
 
-@opengrade.trace(
+@og.trace(
     name="assistant",
     metrics=PRODUCTION_METRICS,  # run after each call, in a background thread
     metrics_sample_rate=1.0,  # score 100% of the calls (use e.g. 0.1 on heavy traffic)
@@ -75,13 +75,13 @@ def assistant(question: str) -> str:
     return answer_question(question)
 
 
-@opengrade.trace(name="support_chat")
+@og.trace(name="support_chat")
 def support_chat(question: str, *, user_id: str, conversation_id: str) -> dict[str, Any]:
     """Your HTTP handler: one call per chat message (the outermost span = the live
     interaction)."""
-    opengrade.set_user(user_id)
-    opengrade.set_session(conversation_id)
-    opengrade.set_input(question)  # what the live view shows as the question
+    og.set_user(user_id)
+    og.set_session(conversation_id)
+    og.set_input(question)  # what the live view shows as the question
 
     answer = assistant(question)
 
@@ -91,15 +91,15 @@ def support_chat(question: str, *, user_id: str, conversation_id: str) -> dict[s
     handed_over = is_refusal(answer)
     if handed_over:
         answer += " I have opened a ticket: a colleague will reply by e-mail."
-    current().log_score(
+    og.log_score(
         "resolved_by_assistant",
         not handed_over,
         explanation="no answer in the docs: ticket opened" if handed_over else "answered",
     )
-    opengrade.set_output(answer)  # what the live view shows as the answer
+    og.set_output(answer)  # what the live view shows as the answer
     # The trace id goes back to the frontend with the answer: the thumbs up/down
     # buttons send it back, to attach the feedback to this trace.
-    return {"answer": answer, "trace_id": opengrade.current_trace_id()}
+    return {"answer": answer, "trace_id": og.current_trace_id()}
 
 
 # Simulated traffic: (user, conversation, question). Some questions are not covered by
@@ -134,144 +134,142 @@ def ensure_alert(client: Any, existing: dict[str, Any], **rule: Any) -> None:
 def main() -> None:
     title("OpenGrade SDK tour - 04 Custom metrics and production monitoring")
 
-    og = Opengrade(Settings(tracking_uri=settings.TRACKING_URI, project_slug=settings.PROJECT))
-    with og.activate():
-        if og.set_project(settings.PROJECT) is None:
-            sys.exit(f"OpenGrade is not reachable at {settings.TRACKING_URI}: start it first.")
+    if og.set_project(settings.PROJECT) is None:
+        sys.exit(f"OpenGrade is not reachable at {settings.TRACKING_URI}: start it first.")
 
-        step(1, "Production mode")
-        og.init_tracing(
-            service_name="nimbus-support",
-            instrument="auto",
-            environment="prod",  # Production -> Health can be filtered per environment...
-            version=settings.APP_VERSION,  # ...and compared per release ("By version" table)
-            live=True,  # each outermost traced call becomes a "live interaction"
-            # Share of the live interactions graded by the platform's LLM judges
-            # (groundedness, answer relevance...). 0 = no judge calls, e.g. no judge model.
-            live_sample_rate=1.0 if settings.USE_LLM_JUDGES else 0.0,
-        )
-        note(
-            """live=True: every support_chat call is listed in Production -> Live with its
-            question, answer, documents and all the scores attached to it."""
-        )
+    step(1, "Production mode")
+    og.init_tracing(
+        service_name="nimbus-support",
+        instrument="auto",
+        environment="prod",  # Production -> Health can be filtered per environment...
+        version=settings.APP_VERSION,  # ...and compared per release ("By version" table)
+        live=True,  # each outermost traced call becomes a "live interaction"
+        # Share of the live interactions graded by the platform's LLM judges
+        # (groundedness, answer relevance...). 0 = no judge calls, e.g. no judge model.
+        live_sample_rate=1.0 if settings.USE_LLM_JUDGES else 0.0,
+    )
+    note(
+        """live=True: every support_chat call is listed in Production -> Live with its
+        question, answer, documents and all the scores attached to it."""
+    )
 
-        if settings.USE_LLM_JUDGES:
-            # A judge described in plain words; live=True scores production traffic too.
-            tone = opengrade.LlmJudge(
-                "support_tone",
-                criteria="The answer is polite, clear, and does not blame the customer.",
-                scale="binary",
-                live=True,
+    if settings.USE_LLM_JUDGES:
+        # A judge described in plain words; live=True scores production traffic too.
+        tone = opengrade.LlmJudge(
+            "support_tone",
+            criteria="The answer is polite, clear, and does not blame the customer.",
+            scale="binary",
+            live=True,
+        )
+        tone.register(og.client)  # once, e.g. at startup
+        print("  LLM judge 'support_tone' registered for live traffic")
+
+    step(2, "Metrics attached to the entry point")
+    for metric in PRODUCTION_METRICS:
+        summary = (metric.fn.__doc__ or "").strip().splitlines()[0]
+        print(f"  - {metric.name:<24} threshold={metric.threshold}  {summary}")
+    note(
+        """Look at @og.trace(metrics=...) above assistant(). The metrics run after
+        the call returns, off the request path: a slow or failing metric never slows down
+        or breaks the user's request."""
+    )
+
+    step(3, "Simulated traffic + business scores + user feedback")
+    for index, (user_id, conversation_id, question) in enumerate(TRAFFIC):
+        result = support_chat(question, user_id=user_id, conversation_id=conversation_id)
+        refused = "opened a ticket" in result["answer"]
+        print(f"  [{user_id}] {question}\n        -> {result['answer'][:90]}")
+        # Later, the user clicks a thumb in the chat widget. Your backend receives the
+        # trace_id it returned with the answer and forwards the click:
+        if index % 3 != 2:  # not everybody leaves feedback
+            og.log_feedback(
+                not refused,
+                trace_id=result["trace_id"],
+                user_id=user_id,
+                comment="I needed a real answer" if refused else None,
             )
-            tone.register()  # once, e.g. at startup
-            print("  LLM judge 'support_tone' registered for live traffic")
 
-        step(2, "Metrics attached to the entry point")
-        for metric in PRODUCTION_METRICS:
-            summary = (metric.fn.__doc__ or "").strip().splitlines()[0]
-            print(f"  - {metric.name:<24} threshold={metric.threshold}  {summary}")
-        note(
-            """Look at @opengrade.trace(metrics=...) above assistant(). The metrics run after
-            the call returns, off the request path: a slow or failing metric never slows down
-            or breaks the user's request."""
-        )
+    og.flush()  # send spans, pending metrics and scores now
+    time.sleep(3)  # leave the platform a moment to ingest them
 
-        step(3, "Simulated traffic + business scores + user feedback")
-        for index, (user_id, conversation_id, question) in enumerate(TRAFFIC):
-            result = support_chat(question, user_id=user_id, conversation_id=conversation_id)
-            refused = "opened a ticket" in result["answer"]
-            print(f"  [{user_id}] {question}\n        -> {result['answer'][:90]}")
-            # Later, the user clicks a thumb in the chat widget. Your backend receives the
-            # trace_id it returned with the answer and forwards the click:
-            if index % 3 != 2:  # not everybody leaves feedback
-                og.log_feedback(
-                    not refused,
-                    trace_id=result["trace_id"],
-                    user_id=user_id,
-                    comment="I needed a real answer" if refused else None,
-                )
+    step(4, "Which production answers need attention?")
+    client = og.client
+    failing = client.live_runs.list(failed_only=True, limit=20)
+    for interaction in failing.items:
+        print(f"  ! {interaction.question}")
+        # Scores from the SDK (metrics, log_score, log_feedback) are the "trace scores";
+        # verdicts of the platform's LLM judges are in interaction.scores.
+        for score in interaction.model_dump().get("trace_scores", []):
+            if score["label"] == "FAIL":
+                print(f"      {score['name']} = {score['value']}  ({score['explanation'] or '-'})")
+        for verdict in interaction.scores:
+            if verdict.label == "FAIL":
+                print(f"      judge {verdict.kind} = {verdict.score}  ({verdict.explanation})")
+    note(
+        """'Failing' = at least one score below its threshold or a thumbs-down. In the UI,
+        Production -> Live -> Failing shows the same list with every score and its
+        explanation. Good candidates for the gold set: promote them to a dataset
+        (client.live_runs.promote) with a reviewed reference answer, and script 02 will
+        test them on every change."""
+    )
 
-        og.flush()  # send spans, pending metrics and scores now
-        time.sleep(3)  # leave the platform a moment to ingest them
+    step(5, "Alert rules as code")
+    existing = {rule.name: rule for rule in client.alerts.list()}
+    common = {
+        "environment": "prod",
+        "window_minutes": 60,
+        "min_samples": 5,
+        "webhook_url": settings.ALERT_WEBHOOK_URL,
+        "webhook_format": "slack" if settings.ALERT_WEBHOOK_URL else "json",
+    }
+    ensure_alert(
+        client,
+        existing,
+        name="Invented citations",
+        metric="score_fail_rate",
+        score_name="cites_retrieved_source",
+        threshold=0.05,
+        **common,
+    )
+    ensure_alert(
+        client,
+        existing,
+        name="Too many hand-offs to humans",
+        metric="score_fail_rate",
+        score_name="resolved_by_assistant",
+        threshold=0.2,
+        **common,
+    )
+    ensure_alert(
+        client,
+        existing,
+        name="Unhappy users",
+        metric="score_fail_rate",
+        score_name="user_feedback",
+        threshold=0.3,
+        **common,
+    )
+    ensure_alert(
+        client, existing, name="Error rate above 5%", metric="error_rate", threshold=0.05, **common
+    )
+    ensure_alert(
+        client,
+        existing,
+        name="Latency anomaly",
+        metric="latency_p90_ms",
+        condition="anomaly",
+        operator="abs",
+        threshold=3,
+        **common,
+    )
+    note(
+        """The platform checks the rules every minute on the last window of production
+        data and posts to the webhook (Slack or any URL; set TOUR_ALERT_WEBHOOK_URL) when
+        one fires and when it resolves. With the traffic above (4 hand-offs out of 14)
+        'Too many hand-offs to humans' should fire within a minute: Production -> Alerts."""
+    )
 
-        step(4, "Which production answers need attention?")
-        client = og.client
-        failing = client.live_runs.list(failed_only=True, limit=20)
-        for interaction in failing.items:
-            print(f"  ! {interaction.question}")
-            # Scores from the SDK (metrics, log_score, log_feedback) are the "trace scores";
-            # verdicts of the platform's LLM judges are in interaction.scores.
-            for score in interaction.model_dump().get("trace_scores", []):
-                if score["label"] == "FAIL":
-                    print(f"      {score['name']} = {score['value']}  ({score['explanation'] or '-'})")
-            for verdict in interaction.scores:
-                if verdict.label == "FAIL":
-                    print(f"      judge {verdict.kind} = {verdict.score}  ({verdict.explanation})")
-        note(
-            """'Failing' = at least one score below its threshold or a thumbs-down. In the UI,
-            Production -> Live -> Failing shows the same list with every score and its
-            explanation. Good candidates for the gold set: promote them to a dataset
-            (client.live_runs.promote) with a reviewed reference answer, and script 02 will
-            test them on every change."""
-        )
-
-        step(5, "Alert rules as code")
-        existing = {rule.name: rule for rule in client.alerts.list()}
-        common = {
-            "environment": "prod",
-            "window_minutes": 60,
-            "min_samples": 5,
-            "webhook_url": settings.ALERT_WEBHOOK_URL,
-            "webhook_format": "slack" if settings.ALERT_WEBHOOK_URL else "json",
-        }
-        ensure_alert(
-            client,
-            existing,
-            name="Invented citations",
-            metric="score_fail_rate",
-            score_name="cites_retrieved_source",
-            threshold=0.05,
-            **common,
-        )
-        ensure_alert(
-            client,
-            existing,
-            name="Too many hand-offs to humans",
-            metric="score_fail_rate",
-            score_name="resolved_by_assistant",
-            threshold=0.2,
-            **common,
-        )
-        ensure_alert(
-            client,
-            existing,
-            name="Unhappy users",
-            metric="score_fail_rate",
-            score_name="user_feedback",
-            threshold=0.3,
-            **common,
-        )
-        ensure_alert(
-            client, existing, name="Error rate above 5%", metric="error_rate", threshold=0.05, **common
-        )
-        ensure_alert(
-            client,
-            existing,
-            name="Latency anomaly",
-            metric="latency_p90_ms",
-            condition="anomaly",
-            operator="abs",
-            threshold=3,
-            **common,
-        )
-        note(
-            """The platform checks the rules every minute on the last window of production
-            data and posts to the webhook (Slack or any URL; set TOUR_ALERT_WEBHOOK_URL) when
-            one fires and when it resolves. With the traffic above (4 hand-offs out of 14)
-            'Too many hand-offs to humans' should fire within a minute: Production -> Alerts."""
-        )
-
-        print(f"\nDone. Open {settings.TRACKING_URI} -> Production (Health, Live, Alerts).")
+    print(f"\nDone. Open {settings.TRACKING_URI} -> Production (Health, Live, Alerts).")
 
 
 if __name__ == "__main__":

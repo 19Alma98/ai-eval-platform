@@ -116,14 +116,24 @@ def resolve_project_id(
     rt = runtime if runtime is not None else _state.active_runtime()
     if rt.settings.project_id:
         return rt.settings.project_id
+    if rt.settings.project:
+        from opengrade._context import ensure_project
+
+        ensured = ensure_project(rt, client)
+        if ensured:
+            return ensured
+        raise ValueError(
+            f"Could not find or create project {rt.settings.project!r}: "
+            f"is the platform reachable at {_state.tracking_uri_for(rt)}?"
+        )
     slug = rt.settings.project_slug
     if slug:
         resolved = _lazy_resolve_slug(rt, slug, client=client)
         if resolved:
             return resolved
     raise ValueError(
-        "No project: pass project_id, call Opengrade.set_project() / Settings(project_…), "
-        "or set OPENGRADE_PROJECT_ID / OPENGRADE_PROJECT_SLUG when constructing Settings"
+        'No project: construct Opengrade(project="my-app") (created if missing), pass '
+        "project_id / project_slug of an existing project, or set OPENGRADE_PROJECT"
     )
 
 
@@ -225,8 +235,7 @@ def resolve_config(
 
     if pid is None and pslug is None:
         raise ValueError(
-            "Provide project_id or project_slug "
-            "(arguments or Settings.project_id / Settings.project_slug)"
+            'no project configured: use Opengrade(project="my-app") or set OPENGRADE_PROJECT'
         )
 
     return ResolvedConfig(

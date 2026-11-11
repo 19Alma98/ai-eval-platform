@@ -93,7 +93,7 @@ async def test_list_task_types(client: AsyncClient) -> None:
     assert res.status_code == 200
     body = res.json()
     ids = {t["id"] for t in body}
-    assert ids == {"rag_qa", "rag_chat", "classification", "agent_tools"}
+    assert ids == {"rag_qa", "rag_chat", "classification", "agent_tools", "generic"}
     rag = next(t for t in body if t["id"] == "rag_qa")
     assert "groundedness" in rag["recommended_evaluator_kinds"]
     assert "context_recall" in rag["recommended_evaluator_kinds"]
@@ -151,3 +151,22 @@ async def test_create_dataset_rejects_unknown_task_type(client: AsyncClient) -> 
         json={"name": "x", "task_type": "not_a_type"},
     )
     assert res.status_code == 400
+
+
+@pytest.mark.asyncio
+async def test_generic_dataset_items_need_no_rag_fields(client: AsyncClient) -> None:
+    """A plain input → output test set: no expected_doc_ids, unlike ``rag_qa``."""
+    project = await client.post("/api/v1/projects", json={"name": "Generic Type"})
+    project_id = project.json()["id"]
+    created = await client.post(
+        f"/api/v1/projects/{project_id}/datasets",
+        json={"name": "sums", "task_type": "generic"},
+    )
+    assert created.status_code == 201, created.text
+    assert created.json()["task_type"] == "generic"
+
+    item = await client.post(
+        f"/api/v1/datasets/{created.json()['id']}/items",
+        json={"input": "2+2", "expected_output": "4"},
+    )
+    assert item.status_code == 201, item.text

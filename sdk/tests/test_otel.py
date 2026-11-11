@@ -132,17 +132,58 @@ def test_safe_exporter_drops_and_backs_off(raises: bool, caplog: pytest.LogCaptu
     inner = _FailingExporter(raises=raises)
     safe = _otel._SafeSpanExporter(inner, cooldown_s=60)
     with caplog.at_level(logging.DEBUG, logger="opengrade"):
-        # Single-span failure: drop without cooldown (oversize / reject).
+        # 5xx / connection failure, even of a single span (low-traffic app): one
+        # warning, then cooldown. Only an oversize single span is dropped quietly.
         assert safe.export([object()]) is SpanExportResult.FAILURE  # type: ignore[list-item]
-        # Multi-span 5xx / connection failure: no bisect → cooldown immediately.
         assert safe.export([object(), object()]) is SpanExportResult.FAILURE  # type: ignore[list-item]
         assert safe.export([object()]) is SpanExportResult.FAILURE  # type: ignore[list-item]
-    # 1 single + 1 multi (no split); third export skipped during cooldown.
-    assert inner.calls == 2
-    assert inner.batch_sizes == [1, 2]
-    assert safe.dropped_spans == 4  # 1 + 2 + 1 cooldown drop
+    # Only the first export reaches the network; the others fall in the cooldown.
+    assert inner.calls == 1
+    assert inner.batch_sizes == [1]
+    assert safe.dropped_spans == 4
     warnings = [r for r in caplog.records if r.levelno == logging.WARNING]
     assert len(warnings) == 1
+
+
+def test_safe_exporter_single_oversize_span_does_not_start_cooldown() -> None:
+    inner = _FailingExporter(status=413)
+    safe = _otel._SafeSpanExporter(inner, cooldown_s=60)
+    assert safe.export([object()]) is SpanExportResult.FAILURE  # type: ignore[list-item]
+    assert safe.export([object()]) is SpanExportResult.FAILURE  # type: ignore[list-item]
+    assert inner.calls == 2
+
+
+@pytest.mark.parametrize(("status", "hint"), [(404, "project not found"), (401, "API key")])
+def test_safe_exporter_reports_rejected_traces_once(
+    status: int, hint: str, caplog: pytest.LogCaptureFixture
+) -> None:
+    """An unknown project or a bad key must not lose traces silently."""
+    inner = _FailingExporter(status=status)
+    safe = _otel._SafeSpanExporter(inner, cooldown_s=0)
+    with caplog.at_level(logging.WARNING, logger="opengrade"):
+        for _ in range(3):
+            assert safe.export([object()]) is SpanExportResult.FAILURE  # type: ignore[list-item]
+    warnings = [r.getMessage() for r in caplog.records if r.levelno == logging.WARNING]
+    assert len(warnings) == 1
+    assert f"HTTP {status}" in warnings[0] and hint in warnings[0]
+
+
+def test_safe_exporter_ensures_project_before_first_export() -> None:
+    inner = _SizeSensitiveExporter(limit=10)
+    answers = iter([False, True])
+    calls: list[int] = []
+
+    def ensure() -> bool:
+        calls.append(1)
+        return next(answers)
+
+    safe = _otel._SafeSpanExporter(inner, cooldown_s=0, ensure_project=ensure)
+    # Platform unreachable: nothing is sent, the lookup is retried on the next batch.
+    assert safe.export([object()]) is SpanExportResult.FAILURE  # type: ignore[list-item]
+    assert inner.calls == 0
+    assert safe.export([object()]) is SpanExportResult.SUCCESS  # type: ignore[list-item]
+    assert safe.export([object()]) is SpanExportResult.SUCCESS  # type: ignore[list-item]
+    assert len(calls) == 2  # not asked again once the project exists
 
 
 def test_safe_exporter_does_not_split_on_server_errors() -> None:

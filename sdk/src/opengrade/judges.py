@@ -106,9 +106,9 @@ class LlmJudge:
         is the one applied to production traffic.
         """
         if client is None:
-            from opengrade._opengrade import current
+            from opengrade._opengrade import default_instance
 
-            client = current().client
+            client = default_instance().client
         project_id = client._project(project_id)
         name = self.name.strip()
         config = self.config()
@@ -134,9 +134,9 @@ class LlmJudge:
     ) -> EvaluatorPreviewResponse:
         """Grade one sample now (nothing is stored). Returns score, explanation, prompt."""
         if client is None:
-            from opengrade._opengrade import current
+            from opengrade._opengrade import default_instance
 
-            client = current().client
+            client = default_instance().client
         return client.evaluators.preview(
             client._project(project_id),
             config=self.config(),

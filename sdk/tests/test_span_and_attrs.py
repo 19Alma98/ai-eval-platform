@@ -160,3 +160,24 @@ def test_using_attributes_applies_to_trace_decorator(spans: InMemorySpanExporter
     attrs = dict(_by_name(spans)["answer"].attributes or {})
     assert attrs["user.id"] == "u9"
     assert list(attrs["tag.tags"]) == ["scoped", "extra"]
+
+
+def test_models_and_dataclasses_are_captured_as_json() -> None:
+    """A chat input (pydantic) must not show up in the UI as a Python repr."""
+    import dataclasses
+    import json
+
+    from opengrade import chat_input
+    from opengrade._trace import truncate_value
+
+    @dataclasses.dataclass
+    class Query:
+        text: str
+        top_k: int = 3
+
+    chat = chat_input({"history": [{"role": "user", "content": "hi"}], "question": "and now?"})
+    assert json.loads(truncate_value(chat)) == {
+        "history": [{"role": "user", "content": "hi"}],
+        "question": "and now?",
+    }
+    assert json.loads(truncate_value({"q": Query("x")})) == {"q": {"text": "x", "top_k": 3}}

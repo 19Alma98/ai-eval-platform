@@ -44,7 +44,7 @@ Two consequences that are easy to miss:
 
 | Term | Meaning |
 |---|---|
-| **Project** | Workspace that holds everything else. `og.set_project("name")` creates it on first use |
+| **Project** | Workspace that holds everything else. `Opengrade(project="name")` creates it on first use |
 | **Trace** | Span tree of one request, sent over OTLP to `/v1/traces` |
 | **Dataset** (test set) | Versioned list of items: `input`, `expected_output`, `metadata` (e.g. `expected_doc_ids`, `must_contain`, `critical`). Called *test set* in the UI |
 | **Task type** | Shape of the items and default metrics: `rag_qa` (default), `classification`, `agent_tools` |
@@ -72,26 +72,19 @@ Apps and scripts find the server through `Settings(tracking_uri=...)` /
 ### 2. Trace your app
 
 ```python
-import opengrade
-from opengrade import Opengrade, Settings
+from opengrade import Opengrade
 
-og = Opengrade(
-    settings=Settings(tracking_uri="http://localhost:8000", project_slug="support-bot")
-)
-og.set_project("support-bot")
-og.init_tracing(instrument="auto")  # OpenAI, Anthropic, LangChain, LlamaIndex, Bedrock spans
+og = Opengrade(project="support-bot")  # created if missing
 
 
-@opengrade.trace
+@og.trace  # OpenAI, Anthropic, LangChain, LlamaIndex, Bedrock calls become child spans
 def answer(question: str) -> str:
     docs = retriever.search(question)
-    opengrade.set_retrieval_documents(docs)  # needed by retrieval metrics and RAG judges
+    og.set_retrieval_documents(docs)  # needed by retrieval metrics and RAG judges
     return llm.generate(question, docs)
 
 
-with og.activate():
-    answer("How many PTO days do I get?")
-og.flush()
+answer("How many PTO days do I get?")
 ```
 
 Install the extra for your provider (`opengrade-ai[openai]`, `[anthropic]`, …, or `[ai]` for all).
@@ -120,8 +113,9 @@ stored on the server. One row per test case:
 | `answerable: false` / `expected_refusal: true` | the assistant should decline: `refusal` (no gold answer or documents needed) |
 | any other column (`category`, `critical`, …) | stored in `metadata`: grouping (`group_by`, `groups`), must-pass cases (`critical`) |
 
-With the default `task_type="rag_qa"`, every answerable row needs `expected_output` and
-`expected_doc_ids`. Datasets are versioned: once a dataset has been used by an experiment,
+When you do not pass `task_type`, it is inferred from the rows: `rag_qa` when they carry
+`expected_doc_ids` (then every answerable row needs `expected_output` and `expected_doc_ids`),
+`rag_chat` for chat-shaped inputs, otherwise `generic` (plain input → output). Datasets are versioned: once a dataset has been used by an experiment,
 changing it creates a new version, so old experiments stay comparable.
 
 Grow the test set from production: a failing live interaction can be **promoted** into a dataset
@@ -222,7 +216,7 @@ og.init_tracing(
 
 - `live=True`: each top-level traced request becomes a live interaction, and a sample of them is
   scored by the gold-less judges (`groundedness`, `answer_relevance`, custom judges with `live=True`).
-- `@opengrade.trace(metrics=[...])` runs your own metrics off the request path;
+- `@og.trace(metrics=[...])` runs your own metrics off the request path;
   `og.log_score` / `og.log_feedback` (or `current().log_score` inside a traced call) attach scores and thumbs up/down.
 - `version` / `environment` let **Production → Health** compare one deploy with the previous one.
 - Alert rules (UI or `client.alerts.create`) notify Slack or a webhook on thresholds, drift or anomalies.
