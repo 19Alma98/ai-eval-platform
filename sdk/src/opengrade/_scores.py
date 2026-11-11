@@ -33,6 +33,21 @@ def _default_post(project_id: str, scores: list[dict[str, Any]]) -> None:
     current().client.trace_scores.log(project_id, scores)
 
 
+def _runtime_post(rt: _state._Runtime) -> Post:
+    """Post through ``rt``'s own client.
+
+    The sender thread has no activated instance, so ``current()`` would raise there
+    and every score would be dropped.
+    """
+
+    def post(project_id: str, scores: list[dict[str, Any]]) -> None:
+        from opengrade._opengrade import client_for_runtime  # lazy: avoids import cycles
+
+        client_for_runtime(rt).trace_scores.log(project_id, scores)
+
+    return post
+
+
 def _size(score: dict[str, Any]) -> int:
     return len(json.dumps(score, separators=(",", ":"), ensure_ascii=False).encode("utf-8"))
 
@@ -247,7 +262,7 @@ def sender(runtime: _state._Runtime | None = None) -> ScoreSender:
     rt = runtime if runtime is not None else _state.active_runtime()
     with rt.scores_lock:
         if rt.score_sender is None:
-            rt.score_sender = ScoreSender()
+            rt.score_sender = ScoreSender(_runtime_post(rt))
         if not rt.scores_atexit_registered:
             atexit.register(_at_exit)
             rt.scores_atexit_registered = True

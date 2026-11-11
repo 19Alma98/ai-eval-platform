@@ -56,6 +56,26 @@ def _ensure_client_project_id(client: Client | AsyncClient, rt: _state._Runtime)
             client._project_id = pid
 
 
+def client_for_runtime(rt: _state._Runtime) -> Client:
+    """Shared sync ``Client`` of ``rt`` (created on first use).
+
+    Background threads (score sender) use this instead of ``current().client``: a
+    ``ContextVar`` set by ``activate()`` is not visible in a thread they did not start from.
+    """
+    with rt.client_lock:
+        if rt.client is None:
+            from opengrade import _context
+
+            rt.client = _context.Client(
+                _tracking_uri_for_runtime(rt),
+                api_key=_api_key_for_runtime(rt),
+                project_id=_shared_client_project_id(rt),
+            )
+        else:
+            _ensure_client_project_id(rt.client, rt)
+        return rt.client
+
+
 def active_runtime() -> _state._Runtime:
     """Runtime backing ``current()`` (for internal subsystems at call time)."""
     return current()._runtime
@@ -129,19 +149,7 @@ class Opengrade:
 
     @property
     def client(self) -> Client:
-        rt = self._runtime
-        with rt.client_lock:
-            if rt.client is None:
-                from opengrade import _context
-
-                rt.client = _context.Client(
-                    _tracking_uri_for_runtime(rt),
-                    api_key=_api_key_for_runtime(rt),
-                    project_id=_shared_client_project_id(rt),
-                )
-            else:
-                _ensure_client_project_id(rt.client, rt)
-            return rt.client
+        return client_for_runtime(self._runtime)
 
     def async_client(self) -> AsyncClient:
         rt = self._runtime

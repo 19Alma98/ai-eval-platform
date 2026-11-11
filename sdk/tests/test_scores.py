@@ -253,3 +253,26 @@ def test_413_splits_batch_and_drops_single_oversized_item() -> None:
     assert sender.flush(5.0)
     assert sorted(delivered) == ["m0", "m1", "m2", "m4"]
     assert sender.dropped == 1
+
+
+def test_default_sender_posts_through_its_runtime_without_activation() -> None:
+    """The sender thread has no activated instance; scores must still be delivered."""
+    import httpx2
+
+    import opengrade
+
+    seen: list[httpx2.Request] = []
+
+    def handler(request: httpx2.Request) -> httpx2.Response:
+        seen.append(request)
+        return httpx2.Response(200, json={"accepted": 1})
+
+    og = init_og(project_id="p1", instrument=False)
+    og._runtime.client = opengrade.Client(
+        "http://platform", transport=httpx2.MockTransport(handler), project_id="p1"
+    )
+    assert og.log_score("quality", 1.0, trace_id=TID)
+    assert scores_module.flush(5.0, runtime=og._runtime)
+    sender = og._runtime.score_sender
+    assert sender is not None and sender.dropped == 0
+    assert [r.url.path for r in seen if r.method == "POST"]
