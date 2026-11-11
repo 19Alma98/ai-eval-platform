@@ -88,7 +88,7 @@ answer("How many PTO days do I get?")
 ```
 
 Install the extra for your provider (`opengrade-ai[openai]`, `[anthropic]`, …, or `[ai]` for all).
-Details: [Python SDK → Quickstart](../sdk/README.md#quickstart), [spans](../sdk/README.md#spans-inside-a-function-opengradespan),
+Details: [Python SDK → Quickstart](../sdk/README.md#quickstart), [spans](../sdk/README.md#spans-inside-a-function-ogspan),
 [users, sessions, tags](../sdk/README.md#users-sessions-tags-and-metadata).
 
 The same function is used in production and in experiments: write it once, evaluate it as it ships.
