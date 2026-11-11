@@ -72,6 +72,8 @@ def test_span_is_child_with_kind_io_and_attributes(spans: InMemorySpanExporter) 
     assert attrs["top_k"] == 5
     # The span's output does not leak to the enclosing traced call.
     assert dict(root.attributes or {})["output.value"] == "ok"
+    assert root.status.status_code is StatusCode.OK
+    assert rerank.status.status_code is StatusCode.OK
 
 
 def test_span_records_error_and_reraises(spans: InMemorySpanExporter) -> None:

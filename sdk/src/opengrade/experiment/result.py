@@ -164,7 +164,7 @@ class ExperimentResult:
         }
 
     def summary(self) -> str:
-        """Plain-text table: one row per metric with the baseline delta, then experiment metrics."""
+        """Metric table with baseline deltas (ANSI colors on a TTY; plain otherwise)."""
         n = len({run.item.id for run in self.items})
         repeats = self.repeats
         runs = f" x {repeats} repeats" if repeats > 1 else ""
@@ -176,6 +176,7 @@ class ExperimentResult:
         compared = self._comparison_by_name()
         flaky = self.flaky
         rows: list[tuple[str, ...]] = []
+        delta_status: list[str | None] = []
         seen: set[str] = set()
         if self.server_summary is not None:
             for ev in self.server_summary.evaluators:
@@ -191,20 +192,32 @@ class ExperimentResult:
                 )
                 if flaky:
                     row += (str(flaky.get(name, 0)),)
-                rows.append((*row, _fmt_delta(compared.get(name))))
+                cmp = compared.get(name)
+                rows.append((*row, _fmt_delta(cmp)))
+                delta_status.append(cmp.status if cmp is not None else None)
         for name, mean in self.local_metrics.items():
             if name not in seen:  # submission failed: show the in-process mean
                 local_row: tuple[str, ...] = (f"{name} (local only)", _fmt(mean), "-")
                 rows.append((*local_row, *(("-",) if flaky else ()), ""))
-        lines = [head]
+                delta_status.append(None)
+        lines = [_style(head, _BOLD)]
         if rows:
             header: tuple[str, ...] = ("metric", "mean", "pass_rate")
             if flaky:
                 header += ("flaky",)
             header += ("vs baseline" if compared else "",)
             widths = [max(len(r[i]) for r in [header, *rows]) for i in range(len(header))]
-            for row in [header, *rows]:
-                lines.append("  " + "  ".join(c.ljust(w) for c, w in zip(row, widths, strict=True)))
+            delta_col = len(header) - 1 if compared else None
+            for row_i, row in enumerate([header, *rows]):
+                cells: list[str] = []
+                for i, c in enumerate(row):
+                    cell = c.ljust(widths[i])
+                    if row_i == 0:
+                        cell = _style(cell, _DIM)
+                    elif delta_col is not None and i == delta_col:
+                        cell = _paint_delta_status(cell, delta_status[row_i - 1])
+                    cells.append(cell)
+                lines.append("  " + "  ".join(cells))
         else:
             lines.append("  (no metrics scored)")
         lines.extend(self._skipped_lines())
@@ -213,7 +226,7 @@ class ExperimentResult:
         lines.extend(self._experiment_metric_lines())
         lines.append(f"  view: {self.url}")
         for run in self.errors[:_MAX_ERROR_LINKS]:
-            lines.append(f"  error: {run.trace_url or run.url or run.item.id}")
+            lines.append(_style(f"  error: {run.trace_url or run.url or run.item.id}", _RED))
         return "\n".join(line.rstrip() for line in lines)
 
     def _skipped_lines(self) -> list[str]:
@@ -228,7 +241,9 @@ class ExperimentResult:
             name = ev.evaluator_name or ev.evaluator_id or "?"
             total = ev.n_items if ev.n_items is not None else skipped
             hint = _SKIP_HINTS.get(name, "the test case lacks the data this metric needs")
-            lines.append(f"  note: {name} skipped on {skipped}/{total} items: {hint}")
+            lines.append(
+                _style(f"  note: {name} skipped on {skipped}/{total} items: {hint}", _YELLOW)
+            )
         return lines
 
     def _error_lines(self) -> list[str]:
@@ -243,8 +258,12 @@ class ExperimentResult:
             name = ev.evaluator_name or ev.evaluator_id or "?"
             total = ev.n_items if ev.n_items is not None else errors
             lines.append(
-                f"  note: {name} could not run on {errors}/{total} items (ERROR, not a score): "
-                "open the experiment for the reason; LLM judges need a judge model on the server"
+                _style(
+                    f"  note: {name} could not run on {errors}/{total} items (ERROR, not a score): "
+                    "open the experiment for the reason; "
+                    "LLM judges need a judge model on the server",
+                    _RED,
+                )
             )
         return lines
 
@@ -281,6 +300,39 @@ _STATUS_LABELS = {
     "unchanged": "not significant",
     "insufficient_n": "insufficient n",
 }
+
+_RESET = "\033[0m"
+_BOLD = "\033[1m"
+_DIM = "\033[2m"
+_RED = "\033[31m"
+_GREEN = "\033[32m"
+_YELLOW = "\033[33m"
+
+
+def _use_color() -> bool:
+    """ANSI when stdout is a TTY and ``NO_COLOR`` is unset (https://no-color.org/)."""
+    if os.environ.get("NO_COLOR", "").strip():
+        return False
+    return sys.stdout.isatty()
+
+
+def _style(text: str, code: str) -> str:
+    if not text or not _use_color():
+        return text
+    return f"{code}{text}{_RESET}"
+
+
+def _paint_delta_status(text: str, status: str | None) -> str:
+    if not text:
+        return text
+    key = (status or "").lower()
+    if key in {"improved", "improve"}:
+        return _style(text, _GREEN)
+    if key in {"regressed", "regression", "failed"}:
+        return _style(text, _RED)
+    if key in {"unchanged", "insufficient_n"}:
+        return _style(text, _DIM)
+    return text
 
 
 def _fmt_delta(row: MetricComparisonResponse | None) -> str:

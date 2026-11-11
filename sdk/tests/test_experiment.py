@@ -1100,6 +1100,29 @@ def test_fmt_delta_labels_unchanged_as_not_significant() -> None:
     assert _fmt_delta(row_ok) == "+0.050 improved"
 
 
+def test_summary_uses_ansi_colors_when_enabled(
+    server: FakeServer, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from opengrade.experiment import result as result_mod
+
+    monkeypatch.setattr(result_mod, "_use_color", lambda: True)
+    ds_id = server.add_dataset("gold-v1", [{"input": "q1"}])
+    baseline = server.add_experiment("prod", ds_id, "2026-01-01T00:00:00Z")
+    result = current().evaluate(
+        dataset="gold-v1", task=lambda item: "x", baseline=baseline, max_concurrency=4
+    )
+    text = result.summary()
+    assert "\033[31m" in text
+    assert "\033[0m" in text
+    plain = (
+        text.replace("\033[31m", "")
+        .replace("\033[0m", "")
+        .replace("\033[1m", "")
+        .replace("\033[2m", "")
+    )
+    assert "-0.250 regressed" in plain
+
+
 def test_summary_shows_negative_experiment_metric_delta(server: FakeServer) -> None:
     base = current().evaluate(dataset=ROWS, task=_task, metrics=["hit_at_k"], name="base")
     server.experiment_metrics[base.id]["cost_usd"] = 2.5

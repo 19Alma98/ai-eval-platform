@@ -25,7 +25,12 @@ describe("statusTone", () => {
     assert.equal(statusTone("insufficient_n"), "warn");
   });
 
-  it("falls back to unset", () => {
+  it("maps unset to ok (OTEL success default)", () => {
+    assert.equal(statusTone("unset"), "ok");
+    assert.equal(statusTone("UNSET"), "ok");
+  });
+
+  it("falls back to unset tone for unknown statuses", () => {
     assert.equal(statusTone("PENDING"), "unset");
   });
 });
@@ -44,7 +49,7 @@ describe("formatStatusLabel", () => {
     assert.equal(formatStatusLabel("insufficient_n"), "Insufficient n");
     assert.equal(formatStatusLabel("pass"), "Passed");
     assert.equal(formatStatusLabel("passed"), "Passed");
-    assert.equal(formatStatusLabel("unset"), "Unset");
+    assert.equal(formatStatusLabel("unset"), "OK");
   });
 
   it("maps experiment job statuses to Finished / Eval error", () => {

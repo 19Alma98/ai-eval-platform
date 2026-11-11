@@ -52,8 +52,18 @@ class RetrievalDocument(BaseModel):
 
 
 class RagItemContext(BaseModel):
+    """Per-item eval context: retrieval plus operational fields from traces / the SDK."""
+
+    model_config = ConfigDict(extra="allow")
+
     documents: list[RetrievalDocument] = Field(default_factory=list)
     search_query: str | None = None
+    latency_ms: float | None = None
+    prompt_tokens: float | None = None
+    completion_tokens: float | None = None
+    total_tokens: float | None = None
+    cost_usd: float | None = None
+    tool_calls: list[dict[str, object]] | None = None
 
 
 class RagItemMetadata(BaseModel):
@@ -93,7 +103,7 @@ def parse_context(value: object | None) -> RagItemContext | None:
 def dump_context(value: RagItemContext | None) -> dict[str, object] | None:
     if value is None:
         return None
-    return value.model_dump(mode="json")
+    return value.model_dump(mode="json", exclude_none=True)
 
 
 def parse_metadata(value: object | None) -> RagItemMetadata:

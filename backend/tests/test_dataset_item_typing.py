@@ -47,3 +47,29 @@ def test_context_metadata_json_roundtrip() -> None:
     meta = RagItemMetadata(expected_doc_ids=["d1"], answerable=True)
     assert parse_context(dump_context(ctx)) == ctx
     assert parse_metadata(dump_metadata(meta)) == meta
+
+
+def test_context_roundtrip_keeps_operational_fields() -> None:
+    raw = {
+        "documents": [{"id": "d1", "text": "doc body"}],
+        "search_query": "sq",
+        "latency_ms": 42.5,
+        "prompt_tokens": 10.0,
+        "completion_tokens": 5.0,
+        "total_tokens": 15.0,
+        "cost_usd": 0.001,
+        "tool_calls": [{"name": "search", "success": True}],
+        "custom_stage": "rerank",
+    }
+    ctx = parse_context(raw)
+    assert ctx is not None
+    dumped = dump_context(ctx)
+    assert dumped is not None
+    assert dumped["latency_ms"] == 42.5
+    assert dumped["prompt_tokens"] == 10.0
+    assert dumped["completion_tokens"] == 5.0
+    assert dumped["total_tokens"] == 15.0
+    assert dumped["cost_usd"] == 0.001
+    assert dumped["tool_calls"] == [{"name": "search", "success": True}]
+    assert dumped["custom_stage"] == "rerank"
+    assert parse_context(dumped) == ctx

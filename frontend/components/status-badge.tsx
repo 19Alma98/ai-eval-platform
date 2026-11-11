@@ -29,7 +29,7 @@ const STATUS_LABELS: Record<string, string> = {
   unavailable: "Unavailable",
   config_mismatch: "Config mismatch",
   insufficient_n: "Insufficient n",
-  unset: "Unset",
+  unset: "OK",
 };
 
 /** Job-level experiment status (not quality / evaluator pass-fail). */
@@ -62,7 +62,13 @@ export function formatStatusLabel(
 export function statusTone(status: string): string {
   const s = status.toLowerCase();
   if (s in STATUS_STYLES) return s;
-  if (s === "pass" || s === "passed" || s === "complete" || s === "completed") {
+  if (
+    s === "pass" ||
+    s === "passed" ||
+    s === "complete" ||
+    s === "completed" ||
+    s === "unset"
+  ) {
     return "ok";
   }
   if (s === "fail" || s === "failed") return "fail";

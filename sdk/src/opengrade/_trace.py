@@ -370,11 +370,23 @@ def _finish_span(
         span.set_attribute("output.value", truncate_value(value))
     if capture is not None:
         _production.after_call(production, rate, span, capture, args, kwargs, result, fn=fn)
+    _mark_ok_if_unset(span)
 
 
 def _record_error(span: Span, exc: BaseException) -> None:
     span.record_exception(exc)
     span.set_status(Status(StatusCode.ERROR, str(exc)))
+
+
+def _mark_ok_if_unset(span: Span) -> None:
+    """Successful spans should show as OK in UIs; do not overwrite ERROR."""
+    if not span.is_recording():
+        return
+    current = getattr(span, "status", None)
+    code = getattr(current, "status_code", None) if current is not None else None
+    if code is StatusCode.ERROR:
+        return
+    span.set_status(Status(StatusCode.OK))
 
 
 _FAILURES_WARNED: set[str] = set()
@@ -1147,6 +1159,8 @@ class span:  # noqa: N801 — used like a function: ``with opengrade.span(...)``
     def __exit__(self, exc_type: Any, exc: BaseException | None, tb: Any) -> None:
         if isinstance(exc, Exception) and self._span is not None:
             _guarded("error recording", _record_error, self._span, exc)
+        elif exc is None and self._span is not None:
+            _guarded("ok status", _mark_ok_if_unset, self._span)
         self._exit_quietly(exc_type, exc, tb)
 
     def _exit_quietly(self, exc_type: Any, exc: BaseException | None, tb: Any) -> None:

@@ -1,4 +1,7 @@
 import asyncio
+import gc
+import threading
+import time
 import zlib
 from collections.abc import AsyncGenerator
 from pathlib import Path
@@ -84,11 +87,11 @@ def init_db(settings: Settings | None = None) -> async_sessionmaker[AsyncSession
     file_backed_sqlite = False
     if is_sqlite_url(url):
         file_backed_sqlite = not _is_memory_sqlite_url(url)
+        kwargs["connect_args"] = {"check_same_thread": False}
         if _is_memory_sqlite_url(url):
-            kwargs["connect_args"] = {"check_same_thread": False}
             kwargs["poolclass"] = StaticPool
         else:
-            kwargs["connect_args"] = {"check_same_thread": False}
+            kwargs["poolclass"] = NullPool
 
     _engine = create_async_engine(url, **kwargs)
 
@@ -221,6 +224,36 @@ async def get_session() -> AsyncGenerator[AsyncSession, None]:
         yield session
 
 
+def _aiosqlite_worker_threads() -> list[threading.Thread]:
+    return [
+        thread
+        for thread in threading.enumerate()
+        if getattr(getattr(thread, "_target", None), "__name__", None)
+        == "_connection_worker_thread"
+    ]
+
+
+async def _drain_aiosqlite_workers(*, timeout: float = 0.5) -> None:
+    """Finish aiosqlite worker callbacks while the current event loop is still open.
+
+    SQLAlchemy may call ``Connection.stop()`` without awaiting its future (pool
+    terminate / GC). Those workers then ``call_soon_threadsafe`` after pytest-asyncio
+    closes the function-scoped loop, which surfaces as
+    ``PytestUnhandledThreadExceptionWarning: Event loop is closed``.
+    """
+    if not _aiosqlite_worker_threads():
+        return
+    gc.collect()
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        workers = [thread for thread in _aiosqlite_worker_threads() if thread.is_alive()]
+        if not workers:
+            return
+        await asyncio.sleep(0)
+        for thread in workers:
+            thread.join(timeout=0.01)
+
+
 async def dispose_db() -> None:
     """Drain in-process scoring tasks, then dispose the engine."""
     global _engine, _session_factory
@@ -237,7 +270,7 @@ async def dispose_db() -> None:
     _session_factory = None
     if engine is not None:
         await engine.dispose()
-        await asyncio.sleep(0)
+    await _drain_aiosqlite_workers()
 
 
 async def check_db_ready() -> bool:

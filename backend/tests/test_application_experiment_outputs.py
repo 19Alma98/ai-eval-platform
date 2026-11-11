@@ -19,7 +19,7 @@ from opengrade_server.domain.dataset import DatasetItem
 from opengrade_server.domain.evaluator import Evaluator
 from opengrade_server.domain.experiment import Experiment
 from opengrade_server.domain.experiment_output import ExperimentItemOutput
-from opengrade_server.domain.rag_models import RagItemContext, RagItemMetadata
+from opengrade_server.domain.rag_models import RagItemContext, RagItemMetadata, dump_context
 from opengrade_server.evaluation.deterministic import register_deterministic_evaluators
 from opengrade_server.evaluation.registry import clear_registry
 from opengrade_server.evaluation.runner import EvaluationRunner
@@ -86,6 +86,21 @@ def test_merge_dataset_item_keeps_id_and_resolves_fields() -> None:
     assert merged.input == "q"
     assert merged.actual_output == "exp"
     assert merged.context == ctx
+
+
+def test_merge_dataset_item_keeps_latency_ms_for_scoring() -> None:
+    item = DatasetItem.create(uuid.uuid4(), input="q")
+    out = ExperimentItemOutput.create(
+        uuid.uuid4(),
+        item.id,
+        actual_output="a",
+        context={"latency_ms": 42.0, "documents": [{"id": "d1", "text": "chunk"}]},
+    )
+    merged = merge_dataset_item(item, out, fallback_to_item=False)
+    dumped = dump_context(merged.context)
+    assert dumped is not None
+    assert dumped["latency_ms"] == 42.0
+    assert dumped["documents"] == [{"id": "d1", "text": "chunk"}]
 
 
 @dataclass

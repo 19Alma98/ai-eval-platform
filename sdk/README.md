@@ -83,11 +83,11 @@ contoso = Opengrade(project="contoso", service_name="worker-contoso")
 
 
 @acme.trace
-def acme_job(payload: dict) -> str: ...      # always traced into "acme"
+def acme_job(payload: dict) -> str: ...  # always traced into "acme"
 
 
-acme.client.datasets.list()                   # control plane of "acme"
-contoso.evaluate(dataset=rows, task=task)     # experiment in "contoso"
+acme.client.datasets.list()  # control plane of "acme"
+contoso.evaluate(dataset=rows, task=task)  # experiment in "contoso"
 ```
 
 When **the same function serves several projects** (multi-tenant API), decorate it with the module-level `@opengrade.trace` and pick the instance per request:
@@ -100,7 +100,7 @@ import opengrade
 def answer(question: str) -> str: ...
 
 
-with tenant_og.activate():   # routes this call (and what it calls) to tenant_og
+with tenant_og.activate():  # routes this call (and what it calls) to tenant_og
     answer(question)
 ```
 
@@ -340,7 +340,7 @@ rows = [
 @og.trace
 def chat(history: list[dict], question: str) -> str:
     query = rewrite(history, question)  # "How much does the Pro plan cost?"
-    og.set_search_query(query)          # what you searched for → query_rewrite_faithfulness
+    og.set_search_query(query)  # what you searched for → query_rewrite_faithfulness
     docs = retriever.search(query)
     og.set_retrieval_documents(docs)
     return llm.generate(history, question, docs)
@@ -355,11 +355,12 @@ result = og.evaluate(
     dataset=rows,  # chat-shaped inputs → task_type "rag_chat"
     task=task,
     metrics=[
-        "hit_at_k", "must_contain",                 # deterministic, last turn
-        "groundedness",                             # judges that score the last turn
-        "query_rewrite_faithfulness",               # is the search query faithful to the conversation?
-        "conversation_consistency",                 # does the answer contradict earlier turns?
-        "resolution",                               # was the user's need resolved?
+        "hit_at_k",
+        "must_contain",  # deterministic, last turn
+        "groundedness",  # judges that score the last turn
+        "query_rewrite_faithfulness",  # is the search query faithful to the conversation?
+        "conversation_consistency",  # does the answer contradict earlier turns?
+        "resolution",  # was the user's need resolved?
     ],
 )
 ```

@@ -318,6 +318,8 @@ class Experiment:
                     span.record_exception(exc)
                     span.set_status(Status(StatusCode.ERROR, str(exc)))
                     raise
+                else:
+                    span.set_status(Status(StatusCode.OK))
                 finally:
                     if record.has_output:
                         span.set_attribute("output.value", truncate_value(record.output))
