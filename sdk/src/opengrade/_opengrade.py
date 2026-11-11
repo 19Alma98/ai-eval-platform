@@ -3,15 +3,18 @@
 from __future__ import annotations
 
 import asyncio
+import functools
+import inspect
 import logging
 import threading
 import weakref
-from collections.abc import Callable, Iterator, Mapping, Sequence
-from contextlib import contextmanager
+from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
+from contextlib import AbstractContextManager, contextmanager
 from contextvars import ContextVar, Token
 from typing import TYPE_CHECKING, Any, Literal
 
-from opengrade import _config, _state
+from opengrade import _config, _state, _trace_attrs
+from opengrade import _trace as _trace_mod
 from opengrade._config import DEFAULT_TRACKING_URI, RedactFn, RedactOutputFn, _normalize_uri
 from opengrade.async_client import AsyncClient
 from opengrade.client import Client
@@ -107,6 +110,17 @@ def ambient() -> Opengrade | None:
     return traced[0] if len(traced) == 1 else None
 
 
+def default_instance() -> Opengrade:
+    """Instance for a call that names none: the active one, else the only one alive."""
+    og = _CURRENT.get()
+    if og is not None:
+        return og
+    instances = _all_instances()
+    if len(instances) == 1:
+        return instances[0]
+    return current()  # raises with the usual hint
+
+
 def _register_instance(og: Opengrade) -> None:
     with _INSTANCES_LOCK:
         _INSTANCES.add(og)
@@ -122,18 +136,160 @@ def _all_instances() -> list[Opengrade]:
         return [og for og in _INSTANCES]
 
 
+def _bind_traced(og: Opengrade, traced: Callable[..., Any]) -> Callable[..., Any]:
+    """Run ``traced`` (an ``opengrade.trace`` wrapper) with ``og`` as the current instance.
+
+    Generators are advanced one step at a time inside the scope, so ``og`` is never left
+    active in the consumer's code between two items.
+    """
+    target = traced
+    while isinstance(target, functools.partial):
+        target = target.func
+
+    if inspect.isasyncgenfunction(target):
+
+        @functools.wraps(traced)
+        async def bound_agen(*args: Any, **kwargs: Any) -> Any:
+            og._ensure_tracing()
+            agen = traced(*args, **kwargs)
+            try:
+                while True:
+                    token = _CURRENT.set(og)
+                    try:
+                        item = await agen.__anext__()
+                    except StopAsyncIteration:
+                        return
+                    finally:
+                        _CURRENT.reset(token)
+                    yield item
+            finally:
+                token = _CURRENT.set(og)
+                try:
+                    await agen.aclose()
+                finally:
+                    _CURRENT.reset(token)
+
+        return bound_agen
+
+    if inspect.isgeneratorfunction(target):
+
+        @functools.wraps(traced)
+        def bound_gen(*args: Any, **kwargs: Any) -> Any:
+            og._ensure_tracing()
+            gen = traced(*args, **kwargs)
+            try:
+                while True:
+                    token = _CURRENT.set(og)
+                    try:
+                        item = next(gen)
+                    except StopIteration:
+                        return
+                    finally:
+                        _CURRENT.reset(token)
+                    yield item
+            finally:
+                token = _CURRENT.set(og)
+                try:
+                    gen.close()
+                finally:
+                    _CURRENT.reset(token)
+
+        return bound_gen
+
+    if inspect.iscoroutinefunction(target):
+
+        @functools.wraps(traced)
+        async def bound_async(*args: Any, **kwargs: Any) -> Any:
+            og._ensure_tracing()
+            token = _CURRENT.set(og)
+            try:
+                return await traced(*args, **kwargs)
+            finally:
+                _CURRENT.reset(token)
+
+        return bound_async
+
+    @functools.wraps(traced)
+    def bound(*args: Any, **kwargs: Any) -> Any:
+        og._ensure_tracing()
+        token = _CURRENT.set(og)
+        try:
+            return traced(*args, **kwargs)
+        finally:
+            _CURRENT.reset(token)
+
+    return bound
+
+
+class _BoundSpan(_trace_mod.span):
+    """``opengrade.span`` routed to one instance for the duration of the block."""
+
+    __slots__ = ("_og", "_token")
+
+    def __init__(self, og: Opengrade, *args: Any, **kwargs: Any) -> None:
+        super().__init__(*args, **kwargs)
+        self._og = og
+        self._token: Token[Opengrade | None] | None = None
+
+    def __enter__(self) -> _trace_mod.SpanHandle:
+        self._og._ensure_tracing()
+        self._token = _CURRENT.set(self._og)
+        try:
+            return super().__enter__()
+        except BaseException:
+            self._reset()
+            raise
+
+    def __exit__(self, exc_type: Any, exc: BaseException | None, tb: Any) -> None:
+        try:
+            super().__exit__(exc_type, exc, tb)
+        finally:
+            self._reset()
+
+    def _reset(self) -> None:
+        token, self._token = self._token, None
+        if token is not None:
+            try:
+                _CURRENT.reset(token)
+            except ValueError:  # exited in another context (e.g. a different task)
+                pass
+
+
 class Opengrade:
     """Configurable opengrade runtime (settings, client, tracing, evaluate)."""
 
-    __slots__ = ("_runtime", "tracing_enabled", "_activate_token", "_instance_id", "__weakref__")
+    __slots__ = (
+        "_runtime",
+        "tracing_enabled",
+        "_activate_token",
+        "_instance_id",
+        "_auto_init_done",
+        "_wants_tracing",
+        "_auto_init_lock",
+        "__weakref__",
+    )
 
     def __init__(self, settings: _state.Settings | None = None, **kwargs: Any) -> None:
+        """``Opengrade(project="my-app")`` is enough: the rest comes from ``OPENGRADE_*``.
+
+        ``project`` is a name, created on the platform if missing. ``project_id`` /
+        ``project_slug`` point at an existing project instead. Any other ``Settings``
+        field can be passed as a keyword.
+        """
         _state.check_setting_names(kwargs, where="Opengrade()")
         if settings is None:
             settings = _state.Settings.from_env(**kwargs)
         elif kwargs:
             settings = settings.with_updates(**kwargs)
+        if settings.project and not settings.project_id and not settings.project_slug:
+            from opengrade._context import _slugify
+
+            settings = settings.with_updates(project_slug=_slugify(settings.project))
         from opengrade import _otel
+
+        self._auto_init_done = False
+        self._wants_tracing = False  # set once anything is decorated with og.trace / og.span
+        self._auto_init_lock = threading.Lock()
 
         self._runtime = _state._Runtime.fresh()
         self._runtime.settings = settings
@@ -149,7 +305,13 @@ class Opengrade:
 
     @property
     def client(self) -> Client:
-        return client_for_runtime(self._runtime)
+        rt = self._runtime
+        client = client_for_runtime(rt)
+        if rt.settings.project and not rt.settings.project_id:
+            from opengrade._context import ensure_project
+
+            ensure_project(rt, client)  # find or create; quiet when unreachable
+        return client
 
     def async_client(self) -> AsyncClient:
         rt = self._runtime
@@ -265,11 +427,108 @@ class Opengrade:
             **kwargs,
         )
 
-    @property
-    def trace(self) -> Any:
-        from opengrade._trace import trace
+    # --- tracing -----------------------------------------------------------------------
 
-        return trace
+    def _ensure_tracing(self) -> None:
+        """Start tracing with defaults the first time ``og.trace`` / ``og.span`` runs."""
+        if self._auto_init_done or self._runtime.initialized:
+            return
+        with self._auto_init_lock:
+            if self._auto_init_done:
+                return
+            self._auto_init_done = True  # one attempt: init logs its own failure
+            if not self._runtime.initialized:
+                self.init_tracing()
+
+    def trace(self, name: Any = None, **options: Any) -> Any:
+        """Trace a function in this instance's project: ``@og.trace`` or ``@og.trace(...)``.
+
+        Same options as ``opengrade.trace`` (``name``, ``kind``, ``metrics``, ``redact``,
+        ...). Unlike it, the call is routed to this instance without ``activate()``, and
+        tracing starts by itself (``init_tracing()`` defaults) if it was not initialized.
+        """
+        from opengrade._trace import trace as _trace
+
+        self._wants_tracing = True
+        if callable(name) and not options:
+            return _bind_traced(self, _trace(name))
+        decorate: Callable[[Callable[..., Any]], Callable[..., Any]] = _trace(name, **options)
+
+        def bind(fn: Callable[..., Any]) -> Callable[..., Any]:
+            return _bind_traced(self, decorate(fn))
+
+        return bind
+
+    def span(
+        self,
+        name: str,
+        kind: str = "CHAIN",
+        *,
+        input: object = None,  # noqa: A002 — mirrors OpenInference ``input.value``
+        attributes: dict[str, object] | None = None,
+        live: bool | None = None,
+    ) -> _trace_mod.span:
+        """Trace a block as a span of this instance (``with`` or ``async with``)."""
+        self._wants_tracing = True
+        return _BoundSpan(self, name, kind, input=input, attributes=attributes, live=live)
+
+    def set_input(self, value: object) -> None:
+        """Set the input shown for the current span."""
+        _trace_mod.set_input(value)
+
+    def set_output(self, value: object) -> None:
+        """Set the output shown for the current span."""
+        _trace_mod.set_output(value)
+
+    def set_attribute(self, key: str, value: object) -> None:
+        _trace_mod.set_attribute(key, value)
+
+    def set_attributes(self, attrs: dict[str, object] | None = None, **kwargs: object) -> None:
+        _trace_mod.set_attributes(attrs, **kwargs)
+
+    def set_error(self, description: str, *, exception: BaseException | None = None) -> None:
+        """Mark the current span as failed without raising."""
+        _trace_mod.set_error(description, exception=exception)
+
+    def current_trace_id(self) -> str | None:
+        """Id of the trace in progress (what feedback and scores attach to)."""
+        return _trace_mod.current_trace_id()
+
+    def set_user(self, user_id: str) -> None:
+        _trace_attrs.set_user(user_id)
+
+    def set_session(self, session_id: str) -> None:
+        _trace_attrs.set_session(session_id)
+
+    def set_tags(self, *tags: Any) -> None:
+        _trace_attrs.set_tags(*tags)
+
+    def set_metadata(self, metadata: Mapping[str, Any] | None = None, **kwargs: Any) -> None:
+        _trace_attrs.set_metadata(metadata, **kwargs)
+
+    def using_attributes(
+        self,
+        *,
+        user_id: str | None = None,
+        session_id: str | None = None,
+        tags: Iterable[str] | None = None,
+        metadata: Mapping[str, object] | None = None,
+    ) -> AbstractContextManager[None]:
+        """Context manager: user / session / tags / metadata for every span in the block."""
+        return _trace_attrs.using_attributes(
+            user_id=user_id, session_id=session_id, tags=tags, metadata=metadata
+        )
+
+    def set_retrieval_documents(self, documents: Iterable[object]) -> None:
+        """Record the retrieved documents (dicts or objects with an ``id``)."""
+        from opengrade._eval_run import set_retrieval_documents
+
+        set_retrieval_documents(documents)
+
+    def set_search_query(self, query: str) -> None:
+        from opengrade._eval_run import set_search_query
+
+        set_search_query(query)
 
     def flush(self, timeout_millis: int = 5000) -> bool:
         from opengrade import _otel
@@ -348,7 +607,7 @@ class Opengrade:
         project: str | None = None,
         version: str | None = None,
         git: bool | Mapping[str, Any] = True,
-        task_type: str = "rag_qa",
+        task_type: str | None = None,
         app_config_id: str | None = None,
         app_config_alias: str | None = None,
         repeats: int = 1,
@@ -392,7 +651,7 @@ class Opengrade:
         project: str | None = None,
         version: str | None = None,
         git: bool | Mapping[str, Any] = True,
-        task_type: str = "rag_qa",
+        task_type: str | None = None,
         app_config_id: str | None = None,
         app_config_alias: str | None = None,
         raise_on_error: bool = False,
@@ -447,7 +706,7 @@ class Opengrade:
         project: str | None = None,
         version: str | None = None,
         git: bool | Mapping[str, Any] = True,
-        task_type: str = "rag_qa",
+        task_type: str | None = None,
         raise_on_error: bool = False,
         timeout: float = 600.0,
         og: Any = None,

@@ -61,7 +61,7 @@ def test_resolve_config_dual_env_id_wins(monkeypatch: pytest.MonkeyPatch) -> Non
 
 
 def test_resolve_config_rejects_neither() -> None:
-    with pytest.raises(ValueError, match="project_id or project_slug"):
+    with pytest.raises(ValueError, match="no project configured"):
         resolve_config()
 
 

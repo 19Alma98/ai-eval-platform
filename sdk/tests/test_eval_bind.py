@@ -8,7 +8,7 @@ from opentelemetry import trace
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import SimpleSpanProcessor
 from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
-from tests.support.instance import activated, init_og, make_og
+from tests.support.instance import activated, init_og
 from tests.support.reset import reset_sdk
 
 import opengrade
@@ -88,11 +88,64 @@ def test_set_retrieval_documents_sets_count_and_payload(
         [{"id": "   "}],
     ],
 )
-def test_set_retrieval_documents_requires_document_id(documents: list[dict[str, object]]) -> None:
-    og = make_og(project_id="p-eval-bind")
-    with pytest.raises(ValueError, match="id"):
-        with activated(og):
-            opengrade.set_retrieval_documents(documents)
+def test_set_retrieval_documents_skips_documents_without_id(
+    documents: list[dict[str, object]],
+    spans: InMemorySpanExporter,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """Tracing never raises into the app: a document without an id is skipped."""
+    from opengrade import _eval_run
+
+    _eval_run._warned.clear()
+
+    @opengrade.trace(name="retrieval", capture_input=False, capture_output=False)
+    def run() -> str:
+        opengrade.set_retrieval_documents([*documents, {"id": "kept"}])
+        return "ok"
+
+    with caplog.at_level("WARNING", logger="opengrade"):
+        assert run() == "ok"
+    attrs = dict(spans.get_finished_spans()[0].attributes or {})
+    assert attrs["retrieval.document_count"] == 1
+    assert attrs["retrieval.documents.0.document.id"] == "kept"
+    assert any("has no id" in r.message for r in caplog.records)
+
+
+def test_set_retrieval_documents_accepts_document_objects(
+    spans: InMemorySpanExporter,
+) -> None:
+    class Chunk:
+        def __init__(self, id: str, text: str, score: float) -> None:  # noqa: A002
+            self.id, self.text, self.score = id, text, score
+
+    class LangChainLike:
+        id = None
+        page_content = "body"
+        metadata = {"id": "lc-1", "source": "kb"}
+
+    @opengrade.trace(name="retrieval", capture_input=False, capture_output=False)
+    def run() -> None:
+        opengrade.set_retrieval_documents([Chunk("c-1", "hello", 0.9), LangChainLike()])
+
+    run()
+    attrs = dict(spans.get_finished_spans()[0].attributes or {})
+    assert attrs["retrieval.document_count"] == 2
+    assert attrs["retrieval.documents.0.document.id"] == "c-1"
+    assert attrs["retrieval.documents.0.document.content"] == "hello"
+    assert attrs["retrieval.documents.0.document.score"] == 0.9
+    assert attrs["retrieval.documents.1.document.id"] == "lc-1"
+    assert attrs["retrieval.documents.1.document.content"] == "body"
+
+
+def test_set_search_query_ignores_empty_query(spans: InMemorySpanExporter) -> None:
+    @opengrade.trace(name="rewrite", capture_input=False, capture_output=False)
+    def run() -> str:
+        opengrade.set_search_query("   ")
+        return "ok"
+
+    assert run() == "ok"
+    attrs = dict(spans.get_finished_spans()[0].attributes or {})
+    assert "retrieval.query" not in attrs
 
 
 def test_eval_bind_helpers_exported_in_public_api() -> None:

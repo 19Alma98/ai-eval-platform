@@ -1241,3 +1241,25 @@ def test_summary_explains_skipped_metrics() -> None:
         "to the test case",
         "  note: my_metric skipped on 1/2 items: the test case lacks the data this metric needs",
     ]
+
+
+def test_manual_experiment_loop_needs_no_activate(server: FakeServer) -> None:
+    """The experiment remembers its instance: run / finish work outside ``activate()``."""
+    from opengrade._opengrade import _CURRENT
+
+    og = current()
+    exp = og.start_experiment("manual", dataset=ROWS, metrics=["hit_at_k"])
+    token = _CURRENT.set(None)  # as in a script that never activates anything
+    try:
+        seen = []
+        for item in exp.items():
+            with exp.run(item) as run:
+                seen.append(current())  # the item runs inside the experiment's instance
+                run.log(f"answer to {item.input}")
+        result = exp.finish()
+    finally:
+        _CURRENT.reset(token)
+
+    assert seen == [og, og]
+    assert result.status is not None
+    assert len(server.outputs[exp.id]) == 2

@@ -183,16 +183,35 @@ def _item_body(row: dict[str, Any], index: int) -> dict[str, Any]:
     return body
 
 
+def _infer_task_type(bodies: list[dict[str, Any]]) -> str:
+    """Task type of inline rows when the caller gave none.
+
+    Chat-shaped inputs are ``rag_chat``, rows with gold document ids are ``rag_qa``,
+    anything else is ``generic`` (plain input → output, no RAG fields required).
+    """
+    for body in bodies:
+        value = body.get("input")
+        if isinstance(value, Mapping) and "question" in value:
+            return "rag_chat"
+    for body in bodies:
+        metadata = body.get("metadata")
+        if isinstance(metadata, Mapping) and metadata.get("expected_doc_ids"):
+            return "rag_qa"
+    return "generic"
+
+
 def _inline_dataset_id(
     client: Client,
     project_id: str,
     records: list[dict[str, Any]],
     *,
-    task_type: str,
+    task_type: str | None,
 ) -> str:
     if not records:
         raise ValueError("dataset is empty")
     bodies = [_item_body(row, i) for i, row in enumerate(records)]
+    if task_type is None:
+        task_type = _infer_task_type(bodies)
     # Content-addressed name: re-running on the same rows reuses the dataset, so runs
     # stay comparable against each other.
     name = f"inline-{_digest([task_type, bodies])[:12]}"
@@ -224,7 +243,7 @@ def _inline_dataset_id(
 
 
 def _resolve_dataset(
-    client: Client, project_id: str, dataset: DatasetLike, *, task_type: str
+    client: Client, project_id: str, dataset: DatasetLike, *, task_type: str | None
 ) -> str:
     if isinstance(dataset, DatasetResponse):
         return dataset.id

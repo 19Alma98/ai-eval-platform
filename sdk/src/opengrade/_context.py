@@ -97,6 +97,47 @@ def _activate_project(
     return project
 
 
+def ensure_project(rt: _state._Runtime, client: Client | None = None) -> str | None:
+    """Find or create the project named by ``Settings.project``; its id, or None.
+
+    Used where no one called ``set_project``: before the first span export (on the
+    exporter's thread, never on the traced call) and on the first control-plane call.
+    Quiet on failure (the caller reports it) and retried on the next call.
+    """
+    with rt.ensure_project_lock:
+        if rt.settings.project_id:
+            return rt.settings.project_id
+        name = (rt.settings.project or "").strip()
+        if not name:
+            return None
+        slug = rt.settings.project_slug or _slugify(name)
+        if client is None:
+            from opengrade._opengrade import client_for_runtime
+
+            client = client_for_runtime(rt)
+        try:
+            project = _find_project(client, name, slug)
+            if project is None:
+                try:
+                    project = client.projects.create(name=name, slug=slug)
+                    logger.info("opengrade created project %r (slug=%s)", name, slug)
+                except OpengradeAPIError as exc:
+                    if exc.status != 409:
+                        raise
+                    project = _find_project(client, name, slug)  # created concurrently
+                    if project is None:
+                        raise
+        except OpengradeError as exc:
+            logger.debug("opengrade: could not find or create project %r: %s", name, exc)
+            return None
+        rt.active_project = project
+        _state.set_active_project(rt, project_id=project.id, project_slug=project.slug)
+        for bound in (rt.client, rt.async_client_no_loop, *list(rt.async_clients.values())):
+            if bound is not None:
+                bound._project_id = project.id
+        return project.id
+
+
 def resolve_or_create_project(
     name: str,
     client: Client,

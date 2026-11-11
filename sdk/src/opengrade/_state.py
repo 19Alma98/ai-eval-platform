@@ -22,6 +22,9 @@ if TYPE_CHECKING:
 class Settings:
     tracking_uri: str | None = None
     api_key: str | None = None
+    # Project by name, created on the platform if missing. ``project_id`` /
+    # ``project_slug`` instead point at a project that must already exist.
+    project: str | None = None
     project_id: str | None = None
     project_slug: str | None = None
     service_name: str | None = None
@@ -40,6 +43,7 @@ class Settings:
         env_map = {
             "tracking_uri": "OPENGRADE_TRACKING_URI",
             "api_key": "OPENGRADE_API_KEY",
+            "project": "OPENGRADE_PROJECT",
             "project_id": "OPENGRADE_PROJECT_ID",
             "project_slug": "OPENGRADE_PROJECT_SLUG",
             "service_name": "OPENGRADE_SERVICE_NAME",
@@ -134,6 +138,7 @@ class _Runtime:
     capture_redact_output: Any | None = None
 
     slug_not_found: set[str] = field(default_factory=set)
+    ensure_project_lock: threading.Lock = field(default_factory=threading.Lock)
 
     @classmethod
     def fresh(cls) -> _Runtime:
@@ -167,6 +172,7 @@ class _Runtime:
         self.exit_deadline = None
         self.capture_redact = None
         self.capture_redact_output = None
+        self.ensure_project_lock = threading.Lock()
 
 
 _MISSING = object()

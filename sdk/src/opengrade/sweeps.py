@@ -261,7 +261,7 @@ def sweep(
     project: str | None = None,
     version: str | None = None,
     git: bool | Mapping[str, Any] = True,
-    task_type: str = "rag_qa",
+    task_type: str | None = None,
     raise_on_error: bool = False,
     timeout: float = 600.0,
     og: Any = None,
