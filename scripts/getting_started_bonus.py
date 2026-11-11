@@ -5,16 +5,9 @@ from __future__ import annotations
 import os
 
 from openai import OpenAI
-from opengrade import Opengrade, Settings
+from opengrade import Opengrade
 
-og = Opengrade(
-    settings=Settings(
-        tracking_uri=os.getenv("OPENGRADE_TRACKING_URI", "http://127.0.0.1:8000"),
-        project_slug=os.getenv("OPENGRADE_PROJECT_SLUG", "demo"),
-    )
-)
-og.set_project(os.getenv("OPENGRADE_PROJECT_SLUG", "demo"))
-og.init_tracing(service_name="getting-started-bonus", instrument="auto")
+og = Opengrade(project="demo", service_name="getting-started-bonus")
 
 base = os.getenv("OPENAI_BASE_URL") or (
     os.getenv("OLLAMA_HOST", "http://127.0.0.1:11434") + "/v1"
@@ -36,10 +29,11 @@ ROWS = [
 ]
 
 
-def task(item) -> str:
+@og.trace
+def ask(question: str) -> str:
     r = client.chat.completions.create(
         model=MODEL,
-        messages=[{"role": "user", "content": str(item.input)}],
+        messages=[{"role": "user", "content": question}],
     )
     return r.choices[0].message.content or ""
 
@@ -47,8 +41,7 @@ def task(item) -> str:
 def main() -> None:
     result = og.evaluate(
         dataset=ROWS,
-        task=task,
-        task_type="rag_qa",
+        task=lambda item: ask(str(item.input)),  # each item becomes a trace
         metrics=["correctness", "latency"],
         name="getting-started-bonus",
         params={"model": MODEL},

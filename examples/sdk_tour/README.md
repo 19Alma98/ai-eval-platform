@@ -15,7 +15,7 @@ Two AI applications are considered:
 
 | # | Question you have | Script | SDK features | Where to look in the UI |
 |---|---|---|---|---|
-| 1 | *Does everything run fine? What happened in this request?* | [`01_tracing.py`](01_tracing.py) | `@opengrade.trace`, `opengrade.span`, `set_user` / `set_session` / `set_tags` / `set_metadata`, `using_attributes`, `set_error` | Production → Traces |
+| 1 | *Does everything run fine? What happened in this request?* | [`01_tracing.py`](01_tracing.py) | `@og.trace`, `og.span`, `set_user` / `set_session` / `set_tags` / `set_metadata`, `using_attributes`, `set_error` | Production → Traces |
 | 2 | *Does my RAG give the right answers?* | [`02_verify_rag.py`](02_verify_rag.py) | gold dataset, `evaluate_retrieval`, `evaluate`, built-in + custom metrics, baseline, quality gate | Datasets, Experiments |
 | 3 | *Which architecture / model is best?* | [`03_compare_architectures.py`](03_compare_architectures.py) | `sweep` (grid of configurations), leaderboard, baseline comparison | Experiments → Compare |
 | 4 | *How do I monitor it live with metrics made for my product?* | [`04_custom_metrics_and_monitoring.py`](04_custom_metrics_and_monitoring.py) | `@opengrade.metric`, `@trace(metrics=...)`, `log_score`, `log_feedback`, `LlmJudge`, alerts as code | Production → Health, Live, Alerts |
@@ -64,6 +64,7 @@ sdk_tour/
 ├── 04_custom_metrics_and_monitoring.py use case 4: production metrics, feedback, alerts
 ├── 05_prompt_ab.py                     use case 5: App Config prompt A/B
 ├── nimbus_apps/                        "your" code: the apps under test
+│   ├── telemetry.py     the one OpenGrade handle: og = Opengrade(project=...)
 │   ├── rag.py           RAG pipeline + its tracing (read this one first)
 │   ├── retrieval.py     knowledge base, keyword and BM25 retrievers (no OpenGrade code)
 │   ├── llm.py           real OpenAI-compatible client or offline fake models
@@ -87,27 +88,24 @@ sdk_tour/
 A **trace** is the record of one request. It is made of **spans**, one per step, each with input, output, duration, status and attributes. Instrumenting the RAG takes a decorator, two `with` blocks and one call (simplified from [`nimbus_apps/rag.py`](nimbus_apps/rag.py)):
 
 ```python
-@opengrade.trace(name="support_assistant")  # 1 call = 1 trace
+@og.trace(name="support_assistant")  # 1 call = 1 trace
 def answer_question(question: str, config: RagConfig = DEFAULT_CONFIG) -> str:
-    with opengrade.span("retrieve", kind="RETRIEVER", input=question):  # one step
+    with og.span("retrieve", kind="RETRIEVER", input=question):  # one step
         docs = search(question, strategy=config.retriever, top_k=config.top_k)
-        opengrade.set_retrieval_documents(docs)  # what the model saw → metrics, judges
-    with opengrade.span("generate", kind="CHAIN", input=question):
+        og.set_retrieval_documents(docs)  # what the model saw → metrics, judges
+    with og.span("generate", kind="CHAIN", input=question):
         return generate_answer(question, docs, model=config.model, system=PROMPTS[config.prompt])
 ```
 
 and once at startup:
 
 ```python
-from opengrade import Opengrade, Settings
+from opengrade import Opengrade
 
-og = Opengrade(Settings(tracking_uri="http://localhost:8000", project_slug="nimbus-support"))
-og.set_project("nimbus-support")
-og.init_tracing(service_name="nimbus-support", instrument="auto", version="1.4.0", environment="dev")
+og = Opengrade(project="nimbus-support")  # created if missing; see nimbus_apps/telemetry.py
 
-with og.activate():
-    ...  # traced handlers and business logic
-og.flush()
+# Optional: only to pass options (the defaults start by themselves on the first traced call).
+og.init_tracing(service_name="nimbus-support", version="1.4.0", environment="dev")
 ```
 
 `instrument="auto"` makes calls to OpenAI, Anthropic, LangChain, LlamaIndex or Bedrock appear as LLM spans with prompt, tokens and cost, with no extra code. For a provider without an instrumentor, open the `LLM` span yourself: see `_fake_llm_call` in [`nimbus_apps/llm.py`](nimbus_apps/llm.py).
@@ -254,7 +252,7 @@ In production there is no expected answer, but you can still measure a lot on re
 
 | What | How | Example in the script |
 |---|---|---|
-| Your Python metrics, on every call or a sample | `@opengrade.trace(metrics=[...], metrics_sample_rate=...)` | `cites_retrieved_source`, `answer_is_concise` (the **same** functions used in the tests of script 2) and `retrieval_confidence` (production only) |
+| Your Python metrics, on every call or a sample | `@og.trace(metrics=[...], metrics_sample_rate=...)` | `cites_retrieved_source`, `answer_is_concise` (the **same** functions used in the tests of script 2) and `retrieval_confidence` (production only) |
 | Values your code already knows | `og.log_score(name, value)` | `resolved_by_assistant`: answered, or handed over to a human? |
 | What users think | `og.log_feedback(positive, trace_id=...)` | thumbs up / down from the chat widget |
 | A quality an LLM has to judge | `opengrade.LlmJudge("support_tone", criteria="...", live=True)` | only with `TOUR_LLM_JUDGES=1` |
@@ -264,23 +262,21 @@ In production there is no expected answer, but you can still measure a lot on re
 og.init_tracing(service_name="nimbus-support", environment="prod", version="1.4.0", live=True)
 
 
-@opengrade.trace(name="assistant", metrics=PRODUCTION_METRICS, metrics_sample_rate=1.0)
+@og.trace(name="assistant", metrics=PRODUCTION_METRICS, metrics_sample_rate=1.0)
 def assistant(question: str) -> str:
     return answer_question(question)  # metrics run after return, in the background
 
 
-@opengrade.trace(name="support_chat")
+@og.trace(name="support_chat")
 def support_chat(question, *, user_id, conversation_id) -> dict:
     ...
-    with og.activate():
-        answer = assistant(question)
-        og.log_score("resolved_by_assistant", not is_refusal(answer))
-    return {"answer": answer, "trace_id": opengrade.current_trace_id()}
+    answer = assistant(question)
+    og.log_score("resolved_by_assistant", not is_refusal(answer))
+    return {"answer": answer, "trace_id": og.current_trace_id()}
 
 
 # later, when the user clicks a thumb in the UI of your product:
-with og.activate():
-    og.log_feedback(False, trace_id=trace_id, user_id="u-03", comment="I needed a real answer")
+og.log_feedback(False, trace_id=trace_id, user_id="u-03", comment="I needed a real answer")
 ```
 
 The script sends 14 simulated chat messages, then lists the answers that need attention, with the reason (a score below threshold or a thumbs-down):
@@ -319,7 +315,7 @@ For OpenAI set `LLM_BASE_URL=https://api.openai.com/v1`, `LLM_API_KEY=sk-...` an
 
 ## Apply it to your own application
 
-1. **Trace** the entry point with `@opengrade.trace`, each stage with `opengrade.span`, and call `opengrade.set_retrieval_documents(docs)` where your retriever returns. Add user, session and tags in your request handler.
+1. **Trace** the entry point with `@og.trace`, each stage with `og.span`, and call `og.set_retrieval_documents(docs)` where your retriever returns. Add user, session and tags in your request handler.
 2. **Write a gold set:** 20–50 real questions with gold document ids and the facts the answer must contain. Start from production traces you have reviewed.
 3. **Write two or three metrics** for what "good" means in your product (citations, format, length, refusals, a business rule) with `@opengrade.metric`.
 4. **Run `evaluate`** on every change, keep a baseline alias, and gate on it in CI.

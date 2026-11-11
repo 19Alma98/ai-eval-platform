@@ -53,8 +53,8 @@ trace (root span wins on conflicts, later batches merge in):
 | `tag.tags` | `tags` | list of strings (a JSON array string or a single string also work); union across spans, ≤ 50 |
 | `metadata` | merged into `metadata` | JSON object string; `_`-prefixed keys are reserved and dropped; non-scalar values stored as JSON text; ≤ 50 keys |
 
-The SDK writes them with `opengrade.set_user` / `set_session` / `set_tags` / `set_metadata` or
-`opengrade.using_attributes(...)`; OpenInference's own `using_attributes` produces the same keys.
+The SDK writes them with `og.set_user` / `set_session` / `set_tags` / `set_metadata` or
+`og.using_attributes(...)`; OpenInference's own `using_attributes` produces the same keys.
 Tags and scalar metadata are indexed in `trace_attributes` (`key="tag"` or `metadata.<key>`) so
 the trace list can filter by them (`?tag=…&metadata=key:value`).
 

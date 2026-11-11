@@ -8,7 +8,7 @@ The same functions are used in two places, so tests and production measure the s
 
 - in experiments, ``og.evaluate(..., metrics=[cites_retrieved_source])``
   (scripts 02 and 03): ``Sample.expected`` and ``Sample.metadata`` come from the dataset;
-- in production, ``@opengrade.trace(metrics=[cites_retrieved_source])`` (script 04):
+- in production, ``@og.trace(metrics=[cites_retrieved_source])`` (script 04):
   there is no expected answer, so metrics that ``requires=("expected",)`` are skipped.
 
 Scores are stored on the platform, shown per item in the UI, compared with the baseline

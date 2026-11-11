@@ -2,6 +2,14 @@
 
 Export OTLP spans to OpenGrade and annotate them.
 
+Use the methods of your `Opengrade` instance: `og.trace`, `og.span`, `og.set_user`, … They take
+the same arguments as the module-level functions documented below, and always go to that
+instance. The module-level functions go to the instance activated with `og.activate()`.
+
+::: opengrade._opengrade.Opengrade.trace
+
+::: opengrade._opengrade.Opengrade.span
+
 ::: opengrade._opengrade.Opengrade.init_tracing
 
 ::: opengrade._otel.flush

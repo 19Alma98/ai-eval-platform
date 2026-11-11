@@ -11,6 +11,32 @@ breaking changes; they are listed under **Changed** with a migration note.
 
 ### Changed
 
+- **SDK: two lines and a decorator.** `og = Opengrade(project="my-app")` then `@og.trace`.
+  `project` (also `Settings(project=...)` / `OPENGRADE_PROJECT`) is a name: the project is found
+  or created on the platform, in the background before the first export and on the first
+  control-plane call. `project_id` / `project_slug` still point at a project that must exist.
+  Tracing starts on the first `og.trace` / `og.span` call with the `init_tracing()` defaults;
+  call `og.init_tracing(...)` only to pass options.
+- **SDK: everything on the instance.** `og.trace`, `og.span`, `og.set_input` / `set_output` /
+  `set_attribute(s)` / `set_error`, `og.current_trace_id`, `og.set_user` / `set_session` /
+  `set_tags` / `set_metadata`, `og.using_attributes`, `og.set_retrieval_documents`,
+  `og.set_search_query`. `og.trace` / `og.span` always go to that instance, with no
+  `og.activate()` (sync, async, generators, worker threads). An `Experiment` remembers the
+  instance that started it, so a manual `exp.run(...)` / `exp.finish()` loop needs no activation
+  either. The module-level `opengrade.trace` / `span` / `set_*` are unchanged: they act on the
+  activated instance, for a function shared by several projects. **Breaking:** `og.trace` was a
+  property returning `opengrade.trace`; it is now a method bound to the instance.
+- **Breaking (SDK):** `set_retrieval_documents` and `set_search_query` no longer raise into the
+  traced function. Documents may be dicts or objects (`id`, `text` / `content` / `page_content`,
+  `score`, `title`, `metadata`; the id may also be in `metadata`); a document without an id is
+  skipped with one warning, an empty query is ignored.
+- **Breaking (SDK):** `evaluate` / `start_experiment` / `sweep` take `task_type=None` and infer it
+  for inline rows: `rag_chat` for chat inputs, `rag_qa` when rows carry `expected_doc_ids`,
+  otherwise the new `generic` type. A plain `{"input", "expected_output"}` list no longer fails
+  with `expected_doc_ids is required`. Pass `task_type` to force one.
+- SDK: traces rejected by the platform are reported: one warning with the HTTP status and what
+  to check (404 unknown project, 401 / 403 API key). An unreachable platform is now also
+  reported when batches hold a single span (low-traffic apps), with the usual cooldown.
 - **Breaking (SDK):** Removed module-level process helpers — `opengrade.init`, `set_project`,
   `aset_project`, `evaluate`, `evaluate_retrieval`, `sweep`, `start_experiment`, `flush`,
   `log_score`, `log_feedback`, `score_trace`, `log_params`, `log_metrics`, `set_tracking_uri`,
@@ -30,6 +56,9 @@ breaking changes; they are listed under **Changed** with a migration note.
 
 ### Added
 
+- Datasets: task type `generic` (plain input → output, no RAG fields required).
+- SDK fix: scores from `log_score`, `log_feedback` and `@trace(metrics=...)` were dropped by the
+  background sender with "No active Opengrade instance"; it now posts through its own instance.
 - API/SDK: `GET /api/v1/experiments/{id}/outputs?key={dataset_item_id}:{repeat}` filters rows; SDK `list_outputs(..., keys=...)` and the experiment bind poller use it for pending keys only.
 - API: `GET /api/v1/projects/by-slug/{slug}` returns one project or 404.
 - SDK: `Client.projects.get_by_slug` / async equivalent; lazy slug resolve uses it and caches 404s for the process lifetime.

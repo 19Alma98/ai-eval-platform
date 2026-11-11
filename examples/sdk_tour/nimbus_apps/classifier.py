@@ -15,9 +15,8 @@ from __future__ import annotations
 
 import re
 
-import opengrade
-
 from nimbus_apps.llm import chat
+from nimbus_apps.telemetry import og
 
 LABELS = ("billing", "technical", "account", "sales")
 
@@ -72,15 +71,15 @@ def _rules(text: str, rules: dict[str, list[str]], *, first_match: bool) -> str:
     return best if scores[best] else "technical"
 
 
-@opengrade.trace(name="ticket_classifier")
+@og.trace(name="ticket_classifier")
 def classify_ticket(text: str, model: str = "rules-v1") -> str:
     """Route a support ticket to a queue. One call = one trace."""
-    opengrade.set_input(text)
-    opengrade.set_metadata(app="ticket-classifier", classifier=model)
+    og.set_input(text)
+    og.set_metadata(app="ticket-classifier", classifier=model)
 
     # 1. Guardrail: never send personal data to a model. The span records how many
     #    items were masked, so you can count PII-carrying tickets in the trace list.
-    with opengrade.span("pii_guardrail", kind="GUARDRAIL", input=text) as span:
+    with og.span("pii_guardrail", kind="GUARDRAIL", input=text) as span:
         clean, masked = redact_pii(text)
         span.set_attribute("guardrail.pii_masked", masked)
         span.set_output(clean)

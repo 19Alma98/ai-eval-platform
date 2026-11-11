@@ -62,7 +62,7 @@ Fields:
 - name
 - version
 - description
-- task_type (optional; allowlist: `rag_qa`, `rag_chat`, `classification`, `agent_tools`)
+- task_type (optional; allowlist: `rag_qa`, `rag_chat`, `classification`, `agent_tools`, `generic`)
 - created_at
 
 ## DatasetItem
@@ -97,7 +97,7 @@ When `task_type=rag_chat`, each item is one conversational state plus the last u
 - **expected_output** — reference answer for the **last** turn only
 - **expected_doc_ids** / **must_contain** / **answerable** — same semantics as `rag_qa`, for the last turn
 
-Existing last-turn judges (`groundedness`, `citation_accuracy`, …) read `input.question`. Conversation judges (`query_rewrite_faithfulness`, `conversation_consistency`, `resolution`) also use `history` and optional `context.search_query` (from `opengrade.set_search_query`).
+Existing last-turn judges (`groundedness`, `citation_accuracy`, …) read `input.question`. Conversation judges (`query_rewrite_faithfulness`, `conversation_consistency`, `resolution`) also use `history` and optional `context.search_query` (from `og.set_search_query`).
 
 ## Metrics set (project-scoped)
 

@@ -5,12 +5,16 @@ Generated from the docstrings of the `opengrade-ai` package ([`sdk/src/opengrade
 Everything documented here is importable from the top-level package, whatever module it is defined in:
 
 ```python
-import opengrade
+from opengrade import Opengrade
 
-og = opengrade.Opengrade(tracking_uri="http://127.0.0.1:8000")
-og.init_tracing(instrument="auto")
-with og:
-    result = og.evaluate(dataset="rag_qa", task=answer, metrics=[...])
+og = Opengrade(project="my-app")  # tracking_uri defaults to http://localhost:8000
+
+
+@og.trace
+def answer(question: str) -> str: ...
+
+
+result = og.evaluate(dataset="gold.jsonl", task=lambda item: answer(item.input), metrics=[...])
 ```
 
 | Page | Contents |

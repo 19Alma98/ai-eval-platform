@@ -4,18 +4,12 @@ from __future__ import annotations
 
 import os
 
-import opengrade
 from openai import OpenAI
-from opengrade import Opengrade, Settings
+from opengrade import Opengrade
 
-og = Opengrade(
-    settings=Settings(
-        tracking_uri=os.getenv("OPENGRADE_TRACKING_URI", "http://localhost:8000"),
-        project_slug=os.getenv("OPENGRADE_PROJECT_SLUG", "demo"),
-    )
-)
-og.set_project(os.getenv("OPENGRADE_PROJECT_SLUG", "demo"))
-og.init_tracing(service_name="sdk-hello", instrument="auto")
+# Platform URL from OPENGRADE_TRACKING_URI (default http://localhost:8000). The project
+# is created if it does not exist; tracing starts on the first traced call.
+og = Opengrade(project=os.getenv("OPENGRADE_PROJECT", "demo"), service_name="sdk-hello")
 
 client = OpenAI(
     base_url=os.getenv("OLLAMA_HOST", "http://localhost:11434") + "/v1",
@@ -24,7 +18,7 @@ client = OpenAI(
 MODEL = os.getenv("OLLAMA_MODEL", "gemma4:e2b")
 
 
-@opengrade.trace
+@og.trace
 def ask(q: str) -> str:
     r = client.chat.completions.create(
         model=MODEL,
@@ -34,8 +28,7 @@ def ask(q: str) -> str:
 
 
 def main() -> None:
-    with og.activate():
-        print(ask("ping"))
+    print(ask("ping"))
     og.flush()
 
 

@@ -122,10 +122,10 @@ CONTENT_CAPTURE_ENABLED=false opengrade ui        # local server (or backend/.en
 
 ### SDK: per function
 
-`@opengrade.trace` records arguments and the return value as `input.value` / `output.value`. Turn capture off entirely where a function handles secrets or personal data, so the text never leaves the process:
+`@og.trace` records arguments and the return value as `input.value` / `output.value`. Turn capture off entirely where a function handles secrets or personal data, so the text never leaves the process:
 
 ```python
-@opengrade.trace(capture_input=False, capture_output=False)
+@og.trace(capture_input=False, capture_output=False)
 def lookup_customer(customer_id: str, api_key: str) -> dict: ...
 ```
 
@@ -139,14 +139,14 @@ og.configure_capture(
     redact_output=lambda value: {"ok": True},
 )
 
-@opengrade.trace(
+@og.trace(
     redact=lambda name, value: value if name != "ssn" else "<redacted>",
     redact_output=lambda value: {"ok": True},
 )
 def lookup(customer_id: str, api_key: str) -> dict: ...
 ```
 
-Automatic `input.value` from `@opengrade.trace` is a flat JSON object mapping **bound parameter names** to values (not `{"args": [...], "kwargs": {...}}`). Bound names come from the function signature; `self` and `cls` are omitted. Redactors run before serialization; failures become the string `"<redact error>"` and never raise into your application code. Manual `opengrade.set_input()` / `set_output()` on a span are not passed through these hooks (only the automatic capture path).
+Automatic `input.value` from `@og.trace` is a flat JSON object mapping **bound parameter names** to values (not `{"args": [...], "kwargs": {...}}`). Bound names come from the function signature; `self` and `cls` are omitted. Redactors run before serialization; failures become the string `"<redact error>"` and never raise into your application code. Manual `og.set_input()` / `set_output()` on a span are not passed through these hooks (only the automatic capture path).
 
 `OPENGRADE_DISABLED=1` disables the SDK entirely (no spans, scores or feedback are sent).
 
