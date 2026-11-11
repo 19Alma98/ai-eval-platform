@@ -158,11 +158,9 @@ def main() -> None:
         baseline=baseline.id,
         metrics=metrics,
     )
-    print(candidate.summary())
 
     step(3, "Compare candidate vs baseline")
-    compare = client.experiments.compare(candidate.id, baseline.id)
-    print(compare.model_dump_json(indent=2))
+    print(candidate.summary())
     note(
         """In the UI, open each run and check App config snapshot: you should see the two
         different system prompts. With fake models the quality delta may be tiny; with a

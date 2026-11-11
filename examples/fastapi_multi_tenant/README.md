@@ -6,8 +6,7 @@ its own `project_slug`; each HTTP request calls `with og.activate():` so tracing
 
 ## Prerequisites
 
-Platform API on `:8000` with projects **acme** and **contoso** (slugs), or let `set_project` create
-them on first traced request. See [getting started](../../docs/getting-started.md).
+Platform API on `:8000`. Startup calls `aset_project` once per tenant (creates **acme**/**contoso** if missing). See [getting started](../../docs/getting-started.md).
 
 ## Run
 
@@ -28,5 +27,5 @@ Expected UI: traces under **acme** or **contoso** depending on `X-Tenant`.
 
 - `OPENGRADE_TRACKING_URI` overrides the default `http://localhost:8000`.
 - Tenant slugs default to `acme` / `contoso`; override with `TENANT_ACME_SLUG` / `TENANT_CONTOSO_SLUG`.
-- For background threads, wrap work with `contextvars.copy_context().run(...)` or open `activate()`
-  inside the thread so `ContextVar` routing matches the request.
+- Per request: only `with og.activate():` — no sync `set_project` / `flush()` in the async handler. Spans flush on the batch exporter schedule and again on shutdown.
+- For background threads, wrap work with `contextvars.copy_context().run(...)` or open `activate()` inside the thread so `ContextVar` routing matches the request.
