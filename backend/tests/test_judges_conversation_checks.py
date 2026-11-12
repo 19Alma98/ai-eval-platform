@@ -11,6 +11,10 @@ from support.fake_llm import ScriptedJudgeLlm
 
 _DEFAULTS = JudgeDefaults(model="judge-default")
 
+_CONVERSATION_CONSISTENCY_SKIP = (
+    "fewer than two assistant turns; consistency is only scored on multi-turn dialogs"
+)
+
 
 def _judge(kind: str, llm: ScriptedJudgeLlm, config: dict[str, Any] | None = None):
     return create_llm_judge(kind, config or {}, llm, defaults=_DEFAULTS)
@@ -88,4 +92,28 @@ async def test_conversation_consistency_skips_without_two_assistant_turns() -> N
     )
     result = await _judge("conversation_consistency", llm).evaluate(sample)
     assert result.label == "SKIPPED"
+    assert result.explanation == _CONVERSATION_CONSISTENCY_SKIP
+    assert llm.calls == []
+
+
+@pytest.mark.asyncio
+async def test_conversation_consistency_skips_single_assistant_in_nonempty_history() -> None:
+    llm = ScriptedJudgeLlm()
+    sample = EvaluationSample(
+        input={
+            "history": [
+                {"role": "user", "content": "What is the Pro plan price?"},
+                {"role": "assistant", "content": "Pro costs $49/month."},
+                {"role": "user", "content": "Thanks."},
+            ],
+            "question": "Can you confirm once more?",
+        },
+        expected_output=None,
+        actual_output="",
+        context=None,
+        metadata={},
+    )
+    result = await _judge("conversation_consistency", llm).evaluate(sample)
+    assert result.label == "SKIPPED"
+    assert result.explanation == _CONVERSATION_CONSISTENCY_SKIP
     assert llm.calls == []
