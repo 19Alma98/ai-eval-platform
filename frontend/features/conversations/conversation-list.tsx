@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
@@ -35,7 +36,8 @@ export function ConversationList() {
     enabled: Boolean(projectId),
   });
 
-  const rows = query.data ?? [];
+  const rows = query.data?.items ?? [];
+  const sessionJudgesEnabled = query.data?.session_judges_enabled ?? true;
 
   const onRowActivate = useCallback(
     (row: ConversationSummary) => {
@@ -113,9 +115,22 @@ export function ConversationList() {
     );
   }
 
+  const metricsHref = withProjectQuery("/metrics", projectId);
+
   return (
     <div className="flex flex-col gap-4">
       <ProductionHeader active="conversations" />
+      {!sessionJudgesEnabled ? (
+        <p className="rounded-md border border-border bg-surface px-3 py-2 text-sm text-muted-foreground">
+          Session judges are off in the project default metrics set, so conversations
+          stay open without scores. Enable query rewrite, conversation consistency, or
+          resolution in{" "}
+          <Link href={metricsHref} className="text-primary hover:underline">
+            Metrics
+          </Link>
+          .
+        </p>
+      ) : null}
       <div className="flex items-center gap-2">
         <Input
           value={search}

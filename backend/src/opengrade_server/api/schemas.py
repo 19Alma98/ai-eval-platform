@@ -1420,6 +1420,7 @@ class ConversationSummaryResponse(BaseModel):
 
 class ConversationListResponse(BaseModel):
     items: list[ConversationSummaryResponse]
+    session_judges_enabled: bool = False
 
 
 class ConversationTurnResponse(BaseModel):
@@ -1449,6 +1450,7 @@ class ConversationDetailResponse(BaseModel):
     turns: list[ConversationTurnResponse]
     scores: list[ConversationScoreResponse]
     live_interactions: list[LiveInteractionResponse]
+    session_judges_enabled: bool = False
 
 
 class PromoteConversationRequest(BaseModel):

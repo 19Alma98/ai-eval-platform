@@ -6,6 +6,7 @@ from datetime import datetime
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 
 from opengrade_server.api.deps import (
+    get_ensure_project_default_metrics_set,
     get_get_conversation,
     get_list_conversations,
     get_promote_conversation,
@@ -22,14 +23,17 @@ from opengrade_server.api.schemas import (
     PromoteConversationRequest,
 )
 from opengrade_server.application.conversations import (
+    ConversationDetail,
     ConversationNotFoundError,
     GetConversation,
     ListConversations,
     PromoteConversation,
     PromoteConversationCommand,
     ScoreConversation,
+    session_judges_enabled,
 )
 from opengrade_server.application.datasets import DatasetNotFoundError
+from opengrade_server.application.metrics_sets import EnsureProjectDefaultMetricsSet
 from opengrade_server.application.projects import ProjectNotFoundError
 from opengrade_server.domain.conversation import ConversationScore, ConversationSummary
 from opengrade_server.domain.live_interaction import LiveInteraction
@@ -86,6 +90,28 @@ def _live(interaction: LiveInteraction) -> LiveInteractionResponse:
     )
 
 
+def _detail(detail: ConversationDetail, *, judges_enabled: bool) -> ConversationDetailResponse:
+    return ConversationDetailResponse(
+        summary=_summary(detail.summary),
+        judge_status=detail.conversation.judge_status if detail.conversation else None,
+        turns=[
+            ConversationTurnResponse(
+                trace_id=t.trace_id,
+                start_time=t.start_time,
+                question=t.question,
+                answer=t.answer,
+                user_id=t.user_id,
+                live_interaction_id=t.live_interaction_id,
+                search_query=t.search_query,
+            )
+            for t in detail.turns
+        ],
+        scores=[_score(s) for s in detail.scores],
+        live_interactions=[_live(i) for i in detail.live_interactions],
+        session_judges_enabled=judges_enabled,
+    )
+
+
 @router.get("", response_model=ConversationListResponse)
 async def list_conversations(
     project_id: uuid.UUID,
@@ -97,6 +123,9 @@ async def list_conversations(
     limit: int = Query(50, ge=1, le=200),
     offset: int = Query(0, ge=0),
     use_case: ListConversations = Depends(get_list_conversations),
+    ensure_default: EnsureProjectDefaultMetricsSet = Depends(
+        get_ensure_project_default_metrics_set
+    ),
 ) -> ConversationListResponse:
     try:
         rows = await use_case.execute(
@@ -109,9 +138,13 @@ async def list_conversations(
             limit=limit,
             offset=offset,
         )
+        metrics_set = await ensure_default.execute(project_id)
     except ProjectNotFoundError as exc:
         raise HTTPException(status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
-    return ConversationListResponse(items=[_summary(r) for r in rows])
+    return ConversationListResponse(
+        items=[_summary(r) for r in rows],
+        session_judges_enabled=session_judges_enabled(metrics_set),
+    )
 
 
 @router.get("/{session_id}", response_model=ConversationDetailResponse)
@@ -119,31 +152,18 @@ async def get_conversation(
     project_id: uuid.UUID,
     session_id: str,
     use_case: GetConversation = Depends(get_get_conversation),
+    ensure_default: EnsureProjectDefaultMetricsSet = Depends(
+        get_ensure_project_default_metrics_set
+    ),
 ) -> ConversationDetailResponse:
     try:
         detail = await use_case.execute(project_id, session_id)
+        metrics_set = await ensure_default.execute(project_id)
     except ProjectNotFoundError as exc:
         raise HTTPException(status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
     except ConversationNotFoundError as exc:
         raise HTTPException(status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
-    return ConversationDetailResponse(
-        summary=_summary(detail.summary),
-        judge_status=detail.conversation.judge_status if detail.conversation else None,
-        turns=[
-            ConversationTurnResponse(
-                trace_id=t.trace_id,
-                start_time=t.start_time,
-                question=t.question,
-                answer=t.answer,
-                user_id=t.user_id,
-                live_interaction_id=t.live_interaction_id,
-                search_query=t.search_query,
-            )
-            for t in detail.turns
-        ],
-        scores=[_score(s) for s in detail.scores],
-        live_interactions=[_live(i) for i in detail.live_interactions],
-    )
+    return _detail(detail, judges_enabled=session_judges_enabled(metrics_set))
 
 
 @router.post("/{session_id}/score", response_model=ConversationDetailResponse)
@@ -151,33 +171,20 @@ async def score_conversation(
     project_id: uuid.UUID,
     session_id: str,
     use_case: ScoreConversation = Depends(get_score_conversation),
+    ensure_default: EnsureProjectDefaultMetricsSet = Depends(
+        get_ensure_project_default_metrics_set
+    ),
 ) -> ConversationDetailResponse:
     try:
         detail = await use_case.execute(project_id, session_id)
+        metrics_set = await ensure_default.execute(project_id)
     except ProjectNotFoundError as exc:
         raise HTTPException(status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
     except ConversationNotFoundError as exc:
         raise HTTPException(status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
     except ValueError as exc:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
-    return ConversationDetailResponse(
-        summary=_summary(detail.summary),
-        judge_status=detail.conversation.judge_status if detail.conversation else None,
-        turns=[
-            ConversationTurnResponse(
-                trace_id=t.trace_id,
-                start_time=t.start_time,
-                question=t.question,
-                answer=t.answer,
-                user_id=t.user_id,
-                live_interaction_id=t.live_interaction_id,
-                search_query=t.search_query,
-            )
-            for t in detail.turns
-        ],
-        scores=[_score(s) for s in detail.scores],
-        live_interactions=[_live(i) for i in detail.live_interactions],
-    )
+    return _detail(detail, judges_enabled=session_judges_enabled(metrics_set))
 
 
 @router.post(

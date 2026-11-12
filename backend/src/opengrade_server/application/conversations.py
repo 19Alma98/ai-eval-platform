@@ -25,6 +25,7 @@ from opengrade_server.domain.conversation import (
 )
 from opengrade_server.domain.dataset import DatasetItem
 from opengrade_server.domain.live_interaction import LiveInteraction
+from opengrade_server.domain.metrics_set import MetricsSet, MetricsSetEntry
 from opengrade_server.domain.rag_input import build_chat_input
 from opengrade_server.domain.repositories import (
     DatasetRepository,
@@ -46,6 +47,15 @@ logger = logging.getLogger(__name__)
 CONVERSATION_JUDGE_KINDS = frozenset(
     {"query_rewrite_faithfulness", "conversation_consistency", "resolution"}
 )
+
+
+def session_judges_enabled(metrics_set: MetricsSet) -> bool:
+    """True when the project default set has at least one active conversation judge."""
+    return any(e.enabled and e.kind in CONVERSATION_JUDGE_KINDS for e in metrics_set.entries)
+
+
+def enabled_conversation_judge_entries(metrics_set: MetricsSet) -> list[MetricsSetEntry]:
+    return [e for e in metrics_set.entries if e.enabled and e.kind in CONVERSATION_JUDGE_KINDS]
 
 
 @dataclass(frozen=True, slots=True)
@@ -259,6 +269,11 @@ class ScoreConversation:
         if not turns:
             raise ConversationNotFoundError(session_id)
 
+        metrics_set = await self._ensure_default.execute(project_id)
+        entries = enabled_conversation_judge_entries(metrics_set)
+        if not entries:
+            return detail
+
         history: list[dict[str, str]] = []
         for turn in turns[:-1]:
             if turn.question:
@@ -290,10 +305,6 @@ class ScoreConversation:
         )
         conversation = await self._conversations.update(conversation.with_status("running"))
 
-        metrics_set = await self._ensure_default.execute(project_id)
-        entries = [
-            e for e in metrics_set.entries if e.enabled and e.kind in CONVERSATION_JUDGE_KINDS
-        ]
         sample = EvaluationSample(
             input=chat_input,
             expected_output=None,
@@ -437,8 +448,15 @@ async def score_idle_conversations(
         idle = await conversations.list_idle(
             idle_before=idle_before, statuses={"open", "pending"}, limit=limit
         )
+        judges_by_project: dict[uuid.UUID, bool] = {}
         for conv in idle:
-            # Deterministic sample by session id hash.
+            enabled = judges_by_project.get(conv.project_id)
+            if enabled is None:
+                metrics_set = await ensure.execute(conv.project_id)
+                enabled = session_judges_enabled(metrics_set)
+                judges_by_project[conv.project_id] = enabled
+            if not enabled:
+                continue
             if sample_rate < 1.0:
                 bucket = (hash(conv.session_id) % 10_000) / 10_000.0
                 if bucket >= sample_rate:

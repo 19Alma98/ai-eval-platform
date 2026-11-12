@@ -132,6 +132,8 @@ export function ConversationDetail({ sessionId }: { sessionId: string }) {
 
   const detail = query.data;
   const listHref = withProjectQuery("/conversations", projectId);
+  const metricsHref = withProjectQuery("/metrics", projectId);
+  const sessionJudgesEnabled = detail.session_judges_enabled;
   const docPreview = docsFromConversationLives(detail.live_interactions);
 
   function onPromote(e: SubmitEvent) {
@@ -161,7 +163,12 @@ export function ConversationDetail({ sessionId }: { sessionId: string }) {
               <Button
                 size="sm"
                 onClick={() => scoreMutation.mutate()}
-                disabled={scoreMutation.isPending}
+                disabled={scoreMutation.isPending || !sessionJudgesEnabled}
+                title={
+                  sessionJudgesEnabled
+                    ? undefined
+                    : "Enable session judges in Metrics first"
+                }
               >
                 {scoreMutation.isPending ? "Scoring…" : "Run session judges"}
               </Button>
@@ -272,6 +279,17 @@ export function ConversationDetail({ sessionId }: { sessionId: string }) {
         }
       />
 
+      {!sessionJudgesEnabled ? (
+        <p className="rounded-md border border-border bg-surface px-3 py-2 text-sm text-muted-foreground">
+          Session judges are off in the project default metrics set. Enable query
+          rewrite, conversation consistency, or resolution in{" "}
+          <Link href={metricsHref} className="text-primary hover:underline">
+            Metrics
+          </Link>{" "}
+          to score this conversation.
+        </p>
+      ) : null}
+
       {detail.scores.length > 0 ? (
         <section className="flex flex-col gap-2">
           <h2 className="text-sm font-medium">Session scores</h2>
@@ -296,6 +314,13 @@ export function ConversationDetail({ sessionId }: { sessionId: string }) {
               </li>
             ))}
           </ul>
+        </section>
+      ) : !sessionJudgesEnabled ? (
+        <section className="flex flex-col gap-2">
+          <h2 className="text-sm font-medium">Session scores</h2>
+          <p className="text-sm text-muted-foreground">
+            No session scores — enable session judges in Metrics.
+          </p>
         </section>
       ) : null}
 

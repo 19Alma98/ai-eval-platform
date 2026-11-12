@@ -40,6 +40,12 @@ export type ConversationDetail = {
   turns: ConversationTurn[];
   scores: ConversationScore[];
   live_interactions: LiveInteraction[];
+  session_judges_enabled: boolean;
+};
+
+export type ConversationListResult = {
+  items: ConversationSummary[];
+  session_judges_enabled: boolean;
 };
 
 export async function listConversations(
@@ -53,7 +59,7 @@ export async function listConversations(
     limit?: number;
     offset?: number;
   } = {},
-): Promise<ConversationSummary[]> {
+): Promise<ConversationListResult> {
   const qs = new URLSearchParams();
   if (params.since) qs.set("since", params.since);
   if (params.until) qs.set("until", params.until);
@@ -63,10 +69,9 @@ export async function listConversations(
   if (params.limit != null) qs.set("limit", String(params.limit));
   if (params.offset != null) qs.set("offset", String(params.offset));
   const suffix = qs.toString() ? `?${qs}` : "";
-  const data = await apiGet<{ items: ConversationSummary[] }>(
+  return apiGet<ConversationListResult>(
     `/api/v1/projects/${projectId}/conversations${suffix}`,
   );
-  return data.items;
 }
 
 export async function getConversation(

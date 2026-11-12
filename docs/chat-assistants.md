@@ -107,8 +107,10 @@ the whole conversation:
 - automatically, once a session has been idle for 15 minutes (checked every minute);
 - on demand, with **Run session judges** on the conversation page.
 
-They are off in the default metrics set: enable them in **Metrics** for the project. A new turn
-after scoring re-opens the conversation, so it is scored again when it goes idle.
+They are off in the default metrics set: enable them in **Metrics** for the project.
+**Conversations** shows a link to Metrics when they are off, instead of leaving only an `open`
+status with no scores. A new turn after scoring re-opens the conversation, so it is scored
+again when it goes idle.
 `resolution` uses the documents of the last turn, so enable live scoring
 (`og.init_tracing(live=True)`) for the documents to be stored with the turn.
 
