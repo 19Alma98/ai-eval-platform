@@ -364,9 +364,7 @@ async def _load_reference_claims(
         if cached:
             return ExtractedClaims(claims=cached, calls=0, cache_hit=True)
     if include_history:
-        user = _with_optional_history(
-            sample, question=question, reference_answer=reference
-        )
+        user = _with_optional_history(sample, question=question, reference_answer=reference)
     else:
         user = prompts.sections(question=question, reference_answer=reference)
     extracted = await extract_claims(
@@ -410,9 +408,7 @@ class CorrectnessJudge(_LlmJudge):
                 )
             )
 
-        gold = await _load_reference_claims(
-            self, sample, question, reference, include_history=True
-        )
+        gold = await _load_reference_claims(self, sample, question, reference, include_history=True)
         gold_claims, truncated = limit_claims(gold.claims, self._config.max_claims)
         if not gold_claims:
             return skip(

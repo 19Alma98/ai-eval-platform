@@ -7,7 +7,7 @@ from typing import Any
 from opengrade_server.domain.rag_input import resolve_chat_history
 from opengrade_server.domain.rag_models import ChatTurn
 from opengrade_server.evaluation.judges import prompts
-from opengrade_server.evaluation.judges.evaluators import _LlmJudge, _documents
+from opengrade_server.evaluation.judges.evaluators import _documents, _LlmJudge
 from opengrade_server.evaluation.outcomes import skip
 from opengrade_server.evaluation.protocol import EvaluationResult, EvaluationSample
 
@@ -99,9 +99,7 @@ class ConversationConsistencyJudge(_LlmJudge):
                 "fewer than two assistant turns; consistency is only scored on multi-turn dialogs",
                 metadata=self._meta(),
             )
-        return await self._rubric(
-            prompts.sections(conversation=prompts.render_history(turns))
-        )
+        return await self._rubric(prompts.sections(conversation=prompts.render_history(turns)))
 
 
 class ResolutionJudge(_LlmJudge):

@@ -468,8 +468,8 @@ RUBRICS: dict[str, str] = {
         rules=_bullets(
             "Ignore whether the answer is factually correct.",
             "Score only how well the answer addresses what was asked.",
-            "If CONVERSATION HISTORY is present, use it to interpret the QUESTION; still score the latest turn.",
-            "Keep reasoning short.",
+            "If CONVERSATION HISTORY is present, use it to interpret the QUESTION; "
+            "still score the latest turn. Keep reasoning short.",
         ),
         scale=_bullets(
             "5: fully addresses what was asked",
@@ -487,8 +487,8 @@ RUBRICS: dict[str, str] = {
         task="Rate how well the ANSWER is supported by the DOCUMENTS.",
         rules=_bullets(
             "Use only the documents; never outside knowledge.",
-            "If CONVERSATION HISTORY is present, use it to interpret the QUESTION; still score the latest turn.",
-            "Keep reasoning short.",
+            "If CONVERSATION HISTORY is present, use it to interpret the QUESTION; "
+            "still score the latest turn. Keep reasoning short.",
         ),
         scale=_bullets(
             "5: every factual statement is supported by the documents",
@@ -506,8 +506,8 @@ RUBRICS: dict[str, str] = {
         task="Rate how well the ANSWER matches the REFERENCE ANSWER.",
         rules=_bullets(
             "Extra correct details in the answer are fine; contradictions are not.",
-            "If CONVERSATION HISTORY is present, use it to interpret the QUESTION; still score the latest turn.",
-            "Keep reasoning short.",
+            "If CONVERSATION HISTORY is present, use it to interpret the QUESTION; "
+            "still score the latest turn. Keep reasoning short.",
         ),
         scale=_bullets(
             "5: conveys every fact of the reference, no contradictions",
@@ -983,7 +983,7 @@ def optional_history_text(value: Any) -> str | None:
     if isinstance(value, str) or not is_chat_input(value):
         return None
     try:
-        history = resolve_chat_history(value)  # type: ignore[arg-type]
+        history = resolve_chat_history(value)
     except (TypeError, ValueError):
         return None
     if not history:
