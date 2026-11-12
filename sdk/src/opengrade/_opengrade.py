@@ -596,24 +596,28 @@ class Opengrade:
         with self.activate():
             from opengrade.experiment import start_experiment as impl
 
+            kwargs.setdefault("client", self.client)
             return impl(*args, **kwargs)
 
     def evaluate(self, *args: Any, **kwargs: Any) -> ExperimentResult:
         with self.activate():
             from opengrade.experiment import evaluate as impl
 
+            kwargs.setdefault("client", self.client)
             return impl(*args, **kwargs)
 
     def sweep(self, *args: Any, **kwargs: Any) -> SweepResult:
         with self.activate():
             from opengrade.sweeps import sweep as impl
 
+            kwargs.setdefault("client", self.client)
             return impl(*args, **kwargs)
 
     def evaluate_retrieval(self, *args: Any, **kwargs: Any) -> ExperimentResult:
         with self.activate():
             from opengrade.retrieval import evaluate_retrieval as impl
 
+            kwargs.setdefault("client", self.client)
             return impl(*args, **kwargs)
 
     def log_params(self, **params: Any) -> dict[str, Any]:

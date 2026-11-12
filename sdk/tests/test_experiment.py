@@ -937,6 +937,37 @@ def test_evaluate_explicit_client_project_does_not_mutate_global(
     assert any(created_pid in path for path in exp_posts)
 
 
+def test_evaluate_instance_project_override_does_not_mutate_active(
+    server: FakeServer, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """og.evaluate(project=...) must not switch the instance's active project."""
+    monkeypatch.delenv("OPENGRADE_PROJECT_ID", raising=False)
+    before = current().get_project()
+    settings_before = (
+        current().settings.project_id,
+        current().settings.project_slug,
+    )
+    current().evaluate(
+        dataset=ROWS,
+        task=_task,
+        metrics=["hit_at_k"],
+        project="Other Project",
+    )
+    assert current().get_project() is before
+    assert (
+        current().settings.project_id,
+        current().settings.project_slug,
+    ) == settings_before
+    assert server.projects[0]["slug"] == "other-project"
+    created_pid = server.projects[0]["id"]
+    exp_posts = [
+        path
+        for method, path, _ in server.calls
+        if method == "POST" and path.endswith("/experiments")
+    ]
+    assert any(created_pid in path for path in exp_posts)
+
+
 def test_non_json_metadata_becomes_item_error(server: FakeServer) -> None:
     def bad_meta(item: Any, output: Any) -> opengrade.Score:
         return opengrade.Score(1.0, metadata={"x": float("nan")})
