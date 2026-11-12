@@ -365,7 +365,7 @@ wheels = [
 
 [[package]]
 name = "opengrade-ai"
-version = "0.2.0"
+version = "0.2.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "httpx2" },
@@ -374,9 +374,9 @@ dependencies = [
     { name = "opentelemetry-sdk" },
     { name = "pydantic" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/e6/1a/6dff01d60054f1016409bb2120bc1100e90a92b97533ac3ce3ae25c59415/opengrade_ai-0.2.0.tar.gz", hash = "sha256:e34bf5fa6a25daea5aece2b67e36cbf1f4ae00a7fb44ad85d56f457d2b3e3bf4", size = 429375, upload-time = "2026-11-11T13:45:50.1Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/65/e6/870c71e545ac25907279417fb1972db54ff785c4cc311a2e4e275a2e95d0/opengrade_ai-0.2.1.tar.gz", hash = "sha256:d327815c93f3e3d5216de7c1d4bd20e861772fbb1ff1713826f21072aa532f18", size = 430994, upload-time = "2026-11-12T15:29:42.22Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/13/f9/c0a89d17267f1ca3dfd0f8a12b066c159c91f0b5b79a34ec03f14a537de7/opengrade_ai-0.2.0-py3-none-any.whl", hash = "sha256:acb2efb8b3325f834ff4bd028ace0ae4380be992fc14437fa0d18d2dd9cec9f0", size = 135067, upload-time = "2026-11-11T13:45:46.812Z" },
+    { url = "https://files.pythonhosted.org/packages/ff/ce/93b03a045003341353a350ae96bb7016bf5373b93e6cc7335956e9cd498c/opengrade_ai-0.2.1-py3-none-any.whl", hash = "sha256:bf593efe37b7bf41384763b1f4eacf2aa65db04ef76d7493c1a6c97659511035", size = 135697, upload-time = "2026-11-12T15:29:38.372Z" },
 ]
 
 [package.optional-dependencies]
@@ -407,8 +407,8 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "openai", marker = "extra == 'llm'", specifier = ">=1.50" },
-    { name = "opengrade-ai", specifier = ">=0.2.0" },
-    { name = "opengrade-ai", extras = ["openai"], marker = "extra == 'llm'", specifier = ">=0.2.0" },
+    { name = "opengrade-ai", specifier = ">=0.2.1" },
+    { name = "opengrade-ai", extras = ["openai"], marker = "extra == 'llm'", specifier = ">=0.2.1" },
 ]
 provides-extras = ["llm"]
 

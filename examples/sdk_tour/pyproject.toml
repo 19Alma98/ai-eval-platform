@@ -5,12 +5,12 @@ description = "Guided tour of the OpenGrade Python SDK: tracing, RAG verificatio
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
-    "opengrade-ai>=0.2.0",
+    "opengrade-ai>=0.2.1",
 ]
 
 [project.optional-dependencies]
 llm = [
-    "opengrade-ai[openai]>=0.2.0",
+    "opengrade-ai[openai]>=0.2.1",
     "openai>=1.50",
 ]
 
