@@ -9,7 +9,8 @@ GitHub, so it links to files outside docs/: ``../examples/...``, ``../sdk/README
 - any other repository path becomes a GitHub URL.
 
 It also expands ``--8<-- "path/from/repo/root"`` lines with that file's content
-(before rewriting, so links in the included file are fixed too).
+(before rewriting, so links in the included file are fixed too). Relative links in the
+included file are first rebased from its own directory onto the including page.
 """
 
 from __future__ import annotations
@@ -23,7 +24,11 @@ BRANCH = "main"
 ROOT = Path(__file__).resolve().parents[2]
 DOCS = "docs"
 # Repository files rendered as a site page: repo path -> docs page.
-PAGES = {"sdk/README.md": "sdk.md"}
+PAGES = {
+    "sdk/README.md": "sdk.md",
+    "CHANGELOG.md": "changelog.md",
+    "CONTRIBUTING.md": "contributing.md",
+}
 
 _INCLUDE = re.compile(r'^--8<-- "(?P<path>[^"]+)"[ \t]*$', re.M)
 _LINK = re.compile(r"(?<!!)\]\((?P<url>[^)\s]+)\)")
@@ -61,11 +66,37 @@ def _rewrite(url: str, page_src: str) -> str:
     return f"{REPO_URL}/{kind}/{BRANCH}/{repo_path}" + (f"#{frag}" if frag else "")
 
 
-def _include(m: re.Match[str]) -> str:
+def _rebase(text: str, included: str, page_src: str) -> str:
+    """Make relative links of ``included`` (repo path) relative to docs page ``page_src``."""
+    src_dir = posixpath.dirname(included)
+    page_dir = posixpath.join(DOCS, posixpath.dirname(page_src))
+
+    def fix(m: re.Match[str]) -> str:
+        url = m["url"]
+        if re.match(r"^[a-z][a-z0-9+.-]*:|^#|^/", url, re.I):
+            return m.group(0)
+        path, sep, frag = url.partition("#")
+        target = posixpath.normpath(posixpath.join(src_dir, path))
+        return f"]({posixpath.relpath(target, page_dir)}{sep}{frag})"
+
+    return _map_outside_fences(text, lambda chunk: _LINK.sub(fix, chunk))
+
+
+def _include(m: re.Match[str], page_src: str) -> str:
     path = (ROOT / m["path"]).resolve()
     if not path.is_relative_to(ROOT) or not path.is_file():
         raise FileNotFoundError(f"docs include not found: {m['path']}")
-    return path.read_text(encoding="utf-8")
+    return _rebase(path.read_text(encoding="utf-8"), m["path"], page_src)
+
+
+def _map_outside_fences(markdown: str, fn) -> str:  # noqa: ANN001 — str -> str
+    out, last = [], 0
+    for fence in _FENCE.finditer(markdown):  # leave fenced code blocks alone
+        out.append(fn(markdown[last : fence.start()]))
+        out.append(fence.group(0))
+        last = fence.end()
+    out.append(fn(markdown[last:]))
+    return "".join(out)
 
 
 def on_page_markdown(markdown: str, page, **_) -> str:
@@ -73,12 +104,7 @@ def on_page_markdown(markdown: str, page, **_) -> str:
     for repo_path, docs_page in PAGES.items():
         if src == docs_page:  # "Edit this page" opens the real source
             page.edit_url = f"{REPO_URL}/edit/{BRANCH}/{repo_path}"
-    markdown = _INCLUDE.sub(_include, markdown)
-    out, last = [], 0
-    # Leave fenced code blocks alone.
-    for fence in _FENCE.finditer(markdown):
-        out.append(_LINK.sub(lambda m: f"]({_rewrite(m['url'], src)})", markdown[last : fence.start()]))
-        out.append(fence.group(0))
-        last = fence.end()
-    out.append(_LINK.sub(lambda m: f"]({_rewrite(m['url'], src)})", markdown[last:]))
-    return "".join(out)
+    markdown = _INCLUDE.sub(lambda m: _include(m, src), markdown)
+    return _map_outside_fences(
+        markdown, lambda chunk: _LINK.sub(lambda m: f"]({_rewrite(m['url'], src)})", chunk)
+    )
