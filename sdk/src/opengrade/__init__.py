@@ -5,7 +5,7 @@ from __future__ import annotations
 from importlib import import_module
 from importlib.metadata import PackageNotFoundError
 from importlib.metadata import version as _version
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from opengrade._trace import (
     current_trace_id,
@@ -51,6 +51,30 @@ _LAZY: dict[str, tuple[str, str]] = {
     "set_retrieval_documents": ("opengrade._eval_run", "set_retrieval_documents"),
     "set_search_query": ("opengrade._eval_run", "set_search_query"),
 }
+
+if TYPE_CHECKING:
+    from opengrade._errors import OpengradeAPIError as OpengradeAPIError
+    from opengrade._errors import OpengradeConnectionError as OpengradeConnectionError
+    from opengrade._errors import OpengradeError as OpengradeError
+    from opengrade._eval_run import bind_evaluation as bind_evaluation
+    from opengrade._eval_run import set_retrieval_documents as set_retrieval_documents
+    from opengrade._eval_run import set_search_query as set_search_query
+    from opengrade._opengrade import Opengrade as Opengrade
+    from opengrade._opengrade import current as current
+    from opengrade._state import Settings as Settings
+    from opengrade.async_client import AsyncClient as AsyncClient
+    from opengrade.chat import ChatTurn as ChatTurn
+    from opengrade.chat import RagChatInput as RagChatInput
+    from opengrade.chat import chat_input as chat_input
+    from opengrade.client import Client as Client
+    from opengrade.experiment import DatasetColumnError as DatasetColumnError
+    from opengrade.experiment import Experiment as Experiment
+    from opengrade.experiment import ExperimentResult as ExperimentResult
+    from opengrade.experiment import ItemRun as ItemRun
+    from opengrade.judges import LlmJudge as LlmJudge
+    from opengrade.registry import AppConfigClient as AppConfigClient
+    from opengrade.sweeps import SweepResult as SweepResult
+    from opengrade.sweeps import SweepRun as SweepRun
 
 __all__ = [
     "__version__",

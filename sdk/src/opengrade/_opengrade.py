@@ -11,7 +11,7 @@ import weakref
 from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
 from contextlib import AbstractContextManager, contextmanager
 from contextvars import ContextVar, Token
-from typing import TYPE_CHECKING, Any, Literal
+from typing import TYPE_CHECKING, Any, Concatenate, Literal, cast
 
 from opengrade import _config, _state, _trace_attrs
 from opengrade import _trace as _trace_mod
@@ -21,10 +21,11 @@ from opengrade.client import Client
 from opengrade.models import ProjectResponse
 
 if TYPE_CHECKING:
-    from opengrade.experiment.result import ExperimentResult
-    from opengrade.experiment.runtime import Experiment
+    from opengrade.experiment.api import evaluate as _evaluate_fn
+    from opengrade.experiment.api import start_experiment as _start_experiment_fn
     from opengrade.metrics import LocalMetric, Sample
-    from opengrade.sweeps import SweepResult
+    from opengrade.retrieval import evaluate_retrieval as _evaluate_retrieval_fn
+    from opengrade.sweeps import sweep as _sweep_fn
 
 logger = logging.getLogger("opengrade")
 
@@ -32,6 +33,25 @@ _CURRENT: ContextVar[Opengrade | None] = ContextVar("opengrade_current", default
 
 _INSTANCES: weakref.WeakSet[Opengrade] = weakref.WeakSet()
 _INSTANCES_LOCK = threading.Lock()
+
+
+def _client_delegate[**P, R](fn: Callable[P, R]) -> Callable[Concatenate[Opengrade, P], R]:
+    """Bind ``fn`` as an ``Opengrade`` method: activate, default ``client``, keep types + help()."""
+
+    @functools.wraps(fn)
+    def method(self: Opengrade, *args: P.args, **kwargs: P.kwargs) -> R:
+        with self.activate():
+            call: Callable[..., R] = fn
+            if "client" not in kwargs:
+                return call(*args, **kwargs, client=self.client)
+            return call(*args, **kwargs)
+
+    target_sig = inspect.signature(fn)
+    self_param = inspect.Parameter("self", inspect.Parameter.POSITIONAL_OR_KEYWORD)
+    method.__signature__ = target_sig.replace(  # type: ignore[attr-defined]
+        parameters=(self_param, *target_sig.parameters.values())
+    )
+    return cast(Callable[Concatenate[Opengrade, P], R], method)
 
 
 def _tracking_uri_for_runtime(rt: _state._Runtime) -> str:
@@ -592,33 +612,11 @@ class Opengrade:
 
             return feedback.score_trace(metric, sample, trace_id=trace_id)
 
-    def start_experiment(self, *args: Any, **kwargs: Any) -> Experiment:
-        with self.activate():
-            from opengrade.experiment import start_experiment as impl
-
-            kwargs.setdefault("client", self.client)
-            return impl(*args, **kwargs)
-
-    def evaluate(self, *args: Any, **kwargs: Any) -> ExperimentResult:
-        with self.activate():
-            from opengrade.experiment import evaluate as impl
-
-            kwargs.setdefault("client", self.client)
-            return impl(*args, **kwargs)
-
-    def sweep(self, *args: Any, **kwargs: Any) -> SweepResult:
-        with self.activate():
-            from opengrade.sweeps import sweep as impl
-
-            kwargs.setdefault("client", self.client)
-            return impl(*args, **kwargs)
-
-    def evaluate_retrieval(self, *args: Any, **kwargs: Any) -> ExperimentResult:
-        with self.activate():
-            from opengrade.retrieval import evaluate_retrieval as impl
-
-            kwargs.setdefault("client", self.client)
-            return impl(*args, **kwargs)
+    if TYPE_CHECKING:
+        start_experiment = _client_delegate(_start_experiment_fn)
+        evaluate = _client_delegate(_evaluate_fn)
+        sweep = _client_delegate(_sweep_fn)
+        evaluate_retrieval = _client_delegate(_evaluate_retrieval_fn)
 
     def log_params(self, **params: Any) -> dict[str, Any]:
         with self.activate():
@@ -651,26 +649,16 @@ class Opengrade:
         self.close()
 
 
-def _attach_delegate_signature(method: Any, target: Callable[..., Any]) -> None:
-    """Give ``Opengrade`` thin delegates the concrete signature of ``target`` (+ ``self``)."""
-    target_sig = inspect.signature(target)
-    self_param = inspect.Parameter("self", inspect.Parameter.POSITIONAL_OR_KEYWORD)
-    method.__signature__ = target_sig.replace(
-        parameters=(self_param, *target_sig.parameters.values())
-    )
-    method.__doc__ = target.__doc__
-
-
-def _attach_experiment_delegate_signatures() -> None:
+def _install_experiment_delegates() -> None:
     from opengrade.experiment.api import evaluate as evaluate_fn
     from opengrade.experiment.api import start_experiment as start_experiment_fn
     from opengrade.retrieval import evaluate_retrieval as evaluate_retrieval_fn
     from opengrade.sweeps import sweep as sweep_fn
 
-    _attach_delegate_signature(Opengrade.start_experiment, start_experiment_fn)
-    _attach_delegate_signature(Opengrade.evaluate, evaluate_fn)
-    _attach_delegate_signature(Opengrade.sweep, sweep_fn)
-    _attach_delegate_signature(Opengrade.evaluate_retrieval, evaluate_retrieval_fn)
+    Opengrade.start_experiment = _client_delegate(start_experiment_fn)
+    Opengrade.evaluate = _client_delegate(evaluate_fn)
+    Opengrade.sweep = _client_delegate(sweep_fn)
+    Opengrade.evaluate_retrieval = _client_delegate(evaluate_retrieval_fn)
 
 
-_attach_experiment_delegate_signatures()
+_install_experiment_delegates()

@@ -1,6 +1,10 @@
 from __future__ import annotations
 
 import inspect
+import subprocess
+import sys
+import textwrap
+from pathlib import Path
 
 from opengrade._opengrade import Opengrade
 from opengrade._otel import init_for_instance
@@ -45,3 +49,31 @@ def test_init_tracing_exposes_init_for_instance_kwargs() -> None:
     assert og_names == init_names
     assert "project_id" in og_names
     assert og_names != ["kwargs"]
+
+
+def test_opengrade_evaluate_static_types_reject_typo_kwargs(tmp_path: Path) -> None:
+    """``*args/**kwargs: Any`` + ``__signature__`` is not enough for mypy/IDE checks."""
+    src = tmp_path / "og_evaluate_types.py"
+    src.write_text(
+        textwrap.dedent(
+            """\
+            from opengrade import Opengrade
+
+            og = Opengrade()
+            reveal_type(og.evaluate)
+            og.evaluate(datset="x", taks=1)
+            """
+        ),
+        encoding="utf-8",
+    )
+    result = subprocess.run(
+        [sys.executable, "-m", "mypy", str(src), "--strict", "--no-error-summary"],
+        check=False,
+        capture_output=True,
+        text=True,
+        cwd=Path(__file__).resolve().parents[1],
+    )
+    out = result.stdout + result.stderr
+    assert 'Revealed type is "Any"' not in out, out
+    assert result.returncode != 0, out
+    assert "datset" in out or "Unexpected keyword" in out, out
