@@ -770,3 +770,41 @@ async def test_groundedness_rubric_includes_history_for_rag_chat() -> None:
     user = llm.calls[0]["user"]
     assert "CONVERSATION HISTORY:" in user
     assert "Do you have a Pro plan?" in user
+
+
+@pytest.mark.asyncio
+async def test_context_recall_claims_omits_history_for_rag_chat() -> None:
+    llm = ScriptedJudgeLlm(
+        {
+            "extract_reference_claims": {"claims": ["Pro costs $49 per month"]},
+            "verify_context_coverage": _coverage("covered"),
+        }
+    )
+    await _judge("context_recall", llm).evaluate(
+        _sample(
+            input=_CHAT_FOLLOWUP,
+            expected_output="Pro costs $49 per month.",
+            actual_output=None,
+        )
+    )
+    assert llm.steps()[0] == "extract_reference_claims"
+    assert "CONVERSATION HISTORY:" not in llm.calls[0]["user"]
+
+
+@pytest.mark.asyncio
+async def test_correctness_claims_includes_history_for_rag_chat() -> None:
+    llm = ScriptedJudgeLlm(
+        {
+            "extract_reference_claims": {"claims": ["Pro costs $49 per month"]},
+            "verify_reference_coverage": _coverage("covered"),
+        }
+    )
+    await _judge("correctness", llm, {"scoring": "recall"}).evaluate(
+        _sample(
+            input=_CHAT_FOLLOWUP,
+            expected_output="Pro costs $49 per month.",
+            actual_output="Pro is $49/month.",
+        )
+    )
+    assert llm.steps()[0] == "extract_reference_claims"
+    assert "CONVERSATION HISTORY:" in llm.calls[0]["user"]

@@ -349,6 +349,8 @@ async def _load_reference_claims(
     sample: EvaluationSample,
     question: str,
     reference: str,
+    *,
+    include_history: bool = False,
 ) -> ExtractedClaims:
     model = judge._config.options.model or ""
     key = claim_cache_key(
@@ -358,12 +360,16 @@ async def _load_reference_claims(
         cached = await judge._cache.get(key)
         if cached:
             return ExtractedClaims(claims=cached, calls=0, cache_hit=True)
+    if include_history:
+        user = _with_optional_history(
+            sample, question=question, reference_answer=reference
+        )
+    else:
+        user = prompts.sections(question=question, reference_answer=reference)
     extracted = await extract_claims(
         judge._llm,
         system=prompts.EXTRACT_REFERENCE_CLAIMS,
-        user=_with_optional_history(
-            sample, question=question, reference_answer=reference
-        ),
+        user=user,
         options=judge._config.options,
     )
     if judge._cache is not None and extracted.claims:
@@ -401,7 +407,9 @@ class CorrectnessJudge(_LlmJudge):
                 )
             )
 
-        gold = await _load_reference_claims(self, sample, question, reference)
+        gold = await _load_reference_claims(
+            self, sample, question, reference, include_history=True
+        )
         gold_claims, truncated = limit_claims(gold.claims, self._config.max_claims)
         if not gold_claims:
             return skip(
