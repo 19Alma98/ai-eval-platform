@@ -186,6 +186,22 @@ async def test_unusable_output_and_provider_errors_become_error_results() -> Non
     assert "provider down" in (result.explanation or "")
 
 
+@pytest.mark.asyncio
+async def test_judge_not_configured_is_skipped() -> None:
+    from opengrade_server.evaluation.judges.errors import (
+        JUDGE_NOT_CONFIGURED_MSG,
+        LLM_NOT_CONFIGURED,
+        JudgeNotConfiguredError,
+    )
+
+    llm = ScriptedJudgeLlm({"custom_judge_rubric": JudgeNotConfiguredError()})
+    result = await _judge(llm).evaluate(_sample())
+    assert result.label == "SKIPPED"
+    assert result.explanation == JUDGE_NOT_CONFIGURED_MSG
+    assert result.metadata["skip_reason"] == LLM_NOT_CONFIGURED
+    assert result.score is None
+
+
 def test_registered_with_llm_only() -> None:
     clear_registry()
     bootstrap_evaluators(None)

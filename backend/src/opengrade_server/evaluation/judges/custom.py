@@ -37,6 +37,8 @@ from pydantic import BaseModel, field_validator
 from opengrade_server.evaluation.judges import prompts
 from opengrade_server.evaluation.judges.errors import (
     JUDGE_OUTPUT_INVALID,
+    LLM_NOT_CONFIGURED,
+    JudgeNotConfiguredError,
     JudgeOutputError,
     classify_llm_error,
     explain_llm_error,
@@ -454,6 +456,11 @@ class CustomLlmJudge:
                 metadata=self._meta(
                     verdict=binary.value.verdict, reasoning=reasoning, llm_calls=binary.calls
                 ),
+            )
+        except JudgeNotConfiguredError as exc:
+            return skip(
+                str(exc),
+                metadata=self._meta(skip_reason=LLM_NOT_CONFIGURED),
             )
         except JudgeOutputError as exc:
             return error(

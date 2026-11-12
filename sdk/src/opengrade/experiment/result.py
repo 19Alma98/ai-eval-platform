@@ -307,6 +307,10 @@ class ExperimentResult:
 
 
 _MAX_ERROR_LINKS = 5
+_JUDGE_CONFIG_HINT = (
+    "set LLM_MODEL and LLM_API_KEY (or provider credentials such as OPENAI_API_KEY)"
+)
+
 _SKIP_HINTS: dict[str, str] = {
     "must_contain": 'add `"must_contain": ["phrase", ...]` to the test case',
     "exact_match": "add `expected_output` to the test case",
@@ -314,6 +318,20 @@ _SKIP_HINTS: dict[str, str] = {
     "hit_at_k": "add `expected_doc_ids` to the test case",
     "recall_at_k": "add `expected_doc_ids` to the test case",
     "mrr": "add `expected_doc_ids` to the test case",
+    # Built-in LLM judges: all-skip is usually missing server judge config, not missing gold.
+    "answer_relevance": _JUDGE_CONFIG_HINT,
+    "groundedness": _JUDGE_CONFIG_HINT,
+    "correctness": _JUDGE_CONFIG_HINT,
+    "context_precision": _JUDGE_CONFIG_HINT,
+    "context_recall": _JUDGE_CONFIG_HINT,
+    "citation_accuracy": _JUDGE_CONFIG_HINT,
+    "refusal": _JUDGE_CONFIG_HINT,
+    "query_rewrite_faithfulness": _JUDGE_CONFIG_HINT,
+    "conversation_consistency": _JUDGE_CONFIG_HINT,
+    "resolution": _JUDGE_CONFIG_HINT,
+    "pii": _JUDGE_CONFIG_HINT,
+    "toxicity": _JUDGE_CONFIG_HINT,
+    "prompt_injection": _JUDGE_CONFIG_HINT,
 }
 
 

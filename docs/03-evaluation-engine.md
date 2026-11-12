@@ -162,6 +162,7 @@ Gold claims extracted from `expected_output` are stored in `judge_claim_cache`, 
 Every step parses tolerantly (code fences, JSON wrapped in prose) and validates against a schema (enum verdicts, `level` 1-5, one verdict per claim sent). On failure, a **format-only repair** call rewrites the invalid draft into schema-shaped JSON (max 2 LLM calls per step; the judge task is not re-asked). Failures after repair produce an `ERROR` result with `metadata.error_type`:
 
 - `judge_output_invalid`: the model did not follow the format after format repair; `metadata.raw_output` holds the first 2000 characters.
+- `llm_not_configured`: provider auth failure (bad/missing credentials after a call). Missing model/API key before any call is **SKIPPED** instead (`metadata.skip_reason: llm_not_configured`); it does not fail the experiment.
 - `llm_unavailable`: timeout, connection, rate-limit or provider 5xx after LiteLLM retries.
 - `context_overflow`: context window exceeded. Documents are never truncated silently.
 - `llm_error`: any other provider error.
@@ -257,8 +258,8 @@ SKIPPED
 
 Outcome classes:
 
-- **ERROR** — judge/infra failure (timeout, exception). `score` is null; run becomes `ERROR`.
-- **SKIPPED** — metric cannot be evaluated (missing gold / required fields). `score` is null; excluded from mean/pass_rate.
+- **ERROR** — judge/infra failure (timeout, auth, exception). `score` is null; run becomes `ERROR` and the experiment becomes `failed`.
+- **SKIPPED** — metric cannot be evaluated (missing gold / required fields, or judge model/API key not configured). `score` is null; excluded from mean/pass_rate; does not fail the experiment.
 - **FAIL** with minimum score (usually `0.0`) — quality miss, including empty/missing retrieval when gold is present. Lowers mean/pass_rate and can fail gates.
 
 Helpers: `opengrade.evaluation.outcomes` (`skip`, `fail_min`, `error`, `pass_`).

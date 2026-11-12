@@ -1286,6 +1286,7 @@ def test_summary_explains_skipped_metrics() -> None:
             EvaluatorSummaryResponse(evaluator_name="must_contain", n_items=2, n_skipped=2),
             EvaluatorSummaryResponse(evaluator_name="hit_at_k", n_items=2, n_skipped=0),
             EvaluatorSummaryResponse(evaluator_name="my_metric", n_items=2, n_skipped=1),
+            EvaluatorSummaryResponse(evaluator_name="answer_relevance", n_items=2, n_skipped=2),
         ],
     )
     lines = ExperimentResult._skipped_lines(SimpleNamespace(server_summary=summary))  # type: ignore[arg-type]
@@ -1294,6 +1295,8 @@ def test_summary_explains_skipped_metrics() -> None:
         '  note: must_contain skipped on 2/2 items: add `"must_contain": ["phrase", ...]` '
         "to the test case",
         "  note: my_metric skipped on 1/2 items: the test case lacks the data this metric needs",
+        "  note: answer_relevance skipped on 2/2 items: set LLM_MODEL and LLM_API_KEY "
+        "(or provider credentials such as OPENAI_API_KEY)",
     ]
 
 

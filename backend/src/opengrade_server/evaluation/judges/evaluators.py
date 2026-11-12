@@ -23,6 +23,8 @@ from opengrade_server.evaluation.judges.claims import (
 )
 from opengrade_server.evaluation.judges.errors import (
     JUDGE_OUTPUT_INVALID,
+    LLM_NOT_CONFIGURED,
+    JudgeNotConfiguredError,
     JudgeOutputError,
     classify_llm_error,
     explain_llm_error,
@@ -229,6 +231,11 @@ class _LlmJudge:
             return early
         try:
             return await self._evaluate(sample)
+        except JudgeNotConfiguredError as exc:
+            return skip(
+                str(exc),
+                metadata=self._meta(skip_reason=LLM_NOT_CONFIGURED),
+            )
         except JudgeOutputError as exc:
             return error(
                 f"judge output invalid after format repair: {exc}",

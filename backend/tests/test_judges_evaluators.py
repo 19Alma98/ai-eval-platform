@@ -408,6 +408,22 @@ async def test_provider_failure_is_classified_error() -> None:
 
 
 @pytest.mark.asyncio
+async def test_judge_not_configured_is_skipped() -> None:
+    from opengrade_server.evaluation.judges.errors import (
+        JUDGE_NOT_CONFIGURED_MSG,
+        LLM_NOT_CONFIGURED,
+        JudgeNotConfiguredError,
+    )
+
+    llm = ScriptedJudgeLlm({"rubric_answer_relevance": JudgeNotConfiguredError()})
+    result = await _judge("answer_relevance", llm).evaluate(_sample())
+    assert result.label == "SKIPPED"
+    assert result.explanation == JUDGE_NOT_CONFIGURED_MSG
+    assert result.metadata["skip_reason"] == LLM_NOT_CONFIGURED
+    assert result.score is None
+
+
+@pytest.mark.asyncio
 async def test_auth_failure_explanation_is_one_line_config_hint() -> None:
     from litellm import exceptions as llm_exc
 
