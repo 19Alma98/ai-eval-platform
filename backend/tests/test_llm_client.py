@@ -42,7 +42,9 @@ def _response(content: str | None) -> SimpleNamespace:
 
 @pytest.mark.asyncio
 async def test_complete_defaults_to_deterministic_settings() -> None:
-    client = LiteLlmClient(Settings(llm_model="m", llm_temperature=0.0, llm_seed=42))
+    client = LiteLlmClient(
+        Settings(llm_model="m", llm_api_key="test", llm_temperature=0.0, llm_seed=42)
+    )
     with patch(
         "opengrade_server.infrastructure.llm.litellm.acompletion",
         new_callable=AsyncMock,
@@ -64,7 +66,7 @@ async def test_complete_defaults_to_deterministic_settings() -> None:
 
 @pytest.mark.asyncio
 async def test_complete_overrides_and_history() -> None:
-    client = LiteLlmClient(Settings(llm_model="m", llm_seed=None))
+    client = LiteLlmClient(Settings(llm_model="m", llm_api_key="test", llm_seed=None))
     history = [
         {"role": "assistant", "content": "oops"},
         {"role": "user", "content": "fix it"},
@@ -87,10 +89,27 @@ async def test_complete_overrides_and_history() -> None:
 
 @pytest.mark.asyncio
 async def test_complete_returns_empty_string_for_empty_content() -> None:
-    client = LiteLlmClient(Settings(llm_model="m"))
+    client = LiteLlmClient(Settings(llm_model="m", llm_api_key="test"))
     with patch(
         "opengrade_server.infrastructure.llm.litellm.acompletion",
         new_callable=AsyncMock,
         return_value=_response(None),
     ):
         assert await client.complete(system="s", user="u") == ""
+
+
+@pytest.mark.asyncio
+async def test_complete_refuses_cloud_model_without_api_key() -> None:
+    from opengrade_server.evaluation.judges.errors import (
+        JUDGE_NOT_CONFIGURED_MSG,
+        JudgeNotConfiguredError,
+    )
+
+    client = LiteLlmClient(Settings(llm_model="gemini/gemini-3.8-flash", llm_api_key=None))
+    with patch(
+        "opengrade_server.infrastructure.llm.litellm.acompletion",
+        new_callable=AsyncMock,
+    ) as mock_complete:
+        with pytest.raises(JudgeNotConfiguredError, match=JUDGE_NOT_CONFIGURED_MSG):
+            await client.complete(system="s", user="u")
+    mock_complete.assert_not_awaited()

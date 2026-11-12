@@ -41,7 +41,7 @@ from typing import Any
 import opengrade
 
 from nimbus_apps import settings
-from nimbus_apps.console import note, step, title
+from nimbus_apps.console import note, preview_item_input, step, title
 from nimbus_apps.datasets import RAG_CHAT_GOLD, ensure_dataset
 from nimbus_apps.llm import is_fake
 from nimbus_apps.rag import DEFAULT_CONFIG, answer_chat
@@ -65,14 +65,6 @@ def task(item: Any) -> str:
     return answer_chat(history, turn.question, DEFAULT_CONFIG)
 
 
-def _question_preview(raw_input: Any) -> str:
-    if isinstance(raw_input, dict):
-        question = raw_input.get("question")
-        if isinstance(question, str) and question.strip():
-            return question
-    return str(raw_input)
-
-
 def print_failures(result: opengrade.ExperimentResult) -> None:
     problems: dict[str, list[str]] = defaultdict(list)
     for item_id, metrics in result.by_item.items():
@@ -86,12 +78,11 @@ def print_failures(result: opengrade.ExperimentResult) -> None:
         return
     for item_id, reasons in problems.items():
         run = by_id[item_id]
-        print(f"  x {_question_preview(run.item.input)}")
+        print(f"  x {preview_item_input(run.item.input)}")
         print(f"      answer:   {run.output}")
         print(f"      expected: {run.item.expected_output}")
         for reason in reasons:
             print(f"      - {reason}")
-
 
 def _judge_labels(result: opengrade.ExperimentResult) -> dict[str, list[str]]:
     """Map judge kind -> labels seen across items (PASS/FAIL/SKIPPED/ERROR/...)."""

@@ -39,6 +39,7 @@ from opengrade_server.evaluation.judges.errors import (
     JUDGE_OUTPUT_INVALID,
     JudgeOutputError,
     classify_llm_error,
+    explain_llm_error,
 )
 from opengrade_server.evaluation.judges.parsing import CallOptions, call_structured
 from opengrade_server.evaluation.judges.rubric import level_to_score
@@ -462,7 +463,7 @@ class CustomLlmJudge:
             )
         except Exception as exc:  # noqa: BLE001 — provider failures become ERROR results
             return error(
-                f"{type(exc).__name__}: {exc}"[:2000],
+                explain_llm_error(exc),
                 error_type=classify_llm_error(exc),
                 metadata=self._meta(),
             )

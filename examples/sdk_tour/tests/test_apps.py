@@ -61,6 +61,21 @@ def test_rag_chat_gold_is_wired() -> None:
         assert "history" in row["input"] and "question" in row["input"]
 
 
+def test_preview_item_input_shows_question_not_chatturn_repr() -> None:
+    from nimbus_apps.console import preview_item_input
+
+    chat = opengrade.RagChatInput.model_validate(
+        {
+            "history": [{"role": "user", "content": "Do you have a Pro plan?"}],
+            "question": "How much does it cost?",
+        }
+    )
+    assert preview_item_input(chat) == "How much does it cost?"
+    assert "ChatTurn" not in preview_item_input(chat)
+    assert preview_item_input({"question": "plain dict?"}) == "plain dict?"
+    assert preview_item_input("already a string") == "already a string"
+
+
 def test_rewrite_search_query_uses_prior_user_turn() -> None:
     history = [
         {"role": "user", "content": "Do you have a Pro plan?"},

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import textwrap
+from typing import Any
 
 
 def title(text: str) -> None:
@@ -15,3 +16,16 @@ def step(number: int | str, text: str) -> None:
 
 def note(text: str) -> None:
     print(textwrap.indent(textwrap.fill(" ".join(text.split()), 76), "  > "))
+
+
+def preview_item_input(raw_input: Any) -> str:
+    """Human-readable dataset input: the chat question, not ``ChatTurn(...)`` repr."""
+    if isinstance(raw_input, dict):
+        question = raw_input.get("question")
+        if isinstance(question, str) and question.strip():
+            return question
+        return str(raw_input)
+    question = getattr(raw_input, "question", None)
+    if isinstance(question, str) and question.strip():
+        return question
+    return str(raw_input)

@@ -145,6 +145,14 @@ breaking changes; they are listed under **Changed** with a migration note.
 
 ### Fixed
 
+- Server: missing judge credentials no longer put a LiteLLM traceback in the item
+  explanation; ERROR results say `judge not configured: set LLM_MODEL and LLM_API_KEY`
+  (and cloud models are refused before the provider call when `LLM_API_KEY` is unset).
+- SDK tour: `examples/sdk_tour` requires `opengrade-ai>=0.2.0` so `uv sync` cannot
+  reinstall 0.1.1 (which has no `Opengrade` export) even if an old lock is reused.
+- SDK tour script 06: failed items print the chat `question`, not
+  `history=[ChatTurn(...)] question=...` (`DatasetItemResponse.input` is a `RagChatInput`).
+
 - SDK: `@opengrade.trace` / `opengrade.span` no longer raise when no `Opengrade` is active (they run untraced) and internal tracing failures are logged instead of raised — previously the decorated body ran and then its return value was lost to a `RuntimeError`.
 - SDK: with several `Opengrade` instances every span was exported once per extra instance (the routing processor was attached to the shared provider on each `init_tracing`).
 - SDK: a child span joins its parent's instance instead of whichever instance is active when it starts, so traces are not split or dropped; root spans in threads without a copied context go to the only traced instance when there is exactly one.

@@ -371,6 +371,23 @@ async def test_provider_failure_is_classified_error() -> None:
     assert "slow provider" in result.explanation
 
 
+@pytest.mark.asyncio
+async def test_auth_failure_explanation_is_one_line_config_hint() -> None:
+    from litellm import exceptions as llm_exc
+
+    from opengrade_server.evaluation.judges.errors import JUDGE_NOT_CONFIGURED_MSG
+
+    dump = "AuthenticationError: Traceback (most recent call last):\n  File x\nMissing key"
+    exc = llm_exc.AuthenticationError.__new__(llm_exc.AuthenticationError)
+    exc.args = (dump,)
+    llm = ScriptedJudgeLlm({"rubric_answer_relevance": exc})
+    result = await _judge("answer_relevance", llm).evaluate(_sample())
+    assert result.label == "ERROR"
+    assert result.metadata["error_type"] == "llm_not_configured"
+    assert result.explanation == JUDGE_NOT_CONFIGURED_MSG
+    assert "\n" not in (result.explanation or "")
+
+
 # --- review fixes ----------------------------------------------------------------
 
 

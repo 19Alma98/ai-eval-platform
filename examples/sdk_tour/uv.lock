@@ -407,8 +407,8 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "openai", marker = "extra == 'llm'", specifier = ">=1.50" },
-    { name = "opengrade-ai" },
-    { name = "opengrade-ai", extras = ["openai"], marker = "extra == 'llm'" },
+    { name = "opengrade-ai", specifier = ">=0.2.0" },
+    { name = "opengrade-ai", extras = ["openai"], marker = "extra == 'llm'", specifier = ">=0.2.0" },
 ]
 provides-extras = ["llm"]
 

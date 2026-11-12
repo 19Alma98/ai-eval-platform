@@ -7,10 +7,14 @@ from pydantic import BaseModel
 
 from opengrade_server.evaluation.judges.errors import (
     CONTEXT_OVERFLOW,
+    JUDGE_NOT_CONFIGURED_MSG,
     LLM_ERROR,
+    LLM_NOT_CONFIGURED,
     LLM_UNAVAILABLE,
+    JudgeNotConfiguredError,
     JudgeOutputError,
     classify_llm_error,
+    explain_llm_error,
 )
 from opengrade_server.evaluation.judges.parsing import (
     CallOptions,
@@ -149,6 +153,26 @@ def test_classify_llm_error() -> None:
     assert classify_llm_error(bare(llm_exc.APIConnectionError)) == LLM_UNAVAILABLE
     assert classify_llm_error(TimeoutError()) == LLM_UNAVAILABLE
     assert classify_llm_error(RuntimeError("boom")) == LLM_ERROR
+    assert classify_llm_error(bare(llm_exc.AuthenticationError)) == LLM_NOT_CONFIGURED
+    assert classify_llm_error(JudgeNotConfiguredError()) == LLM_NOT_CONFIGURED
+
+
+def test_explain_llm_error_hides_litellm_auth_traceback() -> None:
+    from litellm import exceptions as llm_exc
+
+    dump = (
+        "AuthenticationError: litellm.AuthenticationError: GeminiException - "
+        + "Traceback (most recent call last):\n"
+        + '  File "/x/litellm/main.py", line 1, in completion\n'
+        + "    raise AuthenticationError(...)\n"
+        + "Missing key\n"
+    )
+    exc = llm_exc.AuthenticationError.__new__(llm_exc.AuthenticationError)
+    exc.args = (dump,)
+    assert explain_llm_error(exc) == JUDGE_NOT_CONFIGURED_MSG
+    assert "\n" not in explain_llm_error(exc)
+    assert explain_llm_error(JudgeNotConfiguredError()) == JUDGE_NOT_CONFIGURED_MSG
+    assert explain_llm_error(TimeoutError("slow")) == "TimeoutError: slow"
 
 
 def test_extract_claims_unwraps_single_string_dict() -> None:

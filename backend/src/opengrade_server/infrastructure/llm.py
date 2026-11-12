@@ -50,9 +50,19 @@ class LiteLlmClient:
         seed: int | None = None,
         history: list[dict[str, str]] | None = None,
     ) -> str:
+        from opengrade_server.evaluation.judges.errors import (
+            JudgeNotConfiguredError,
+            judge_needs_api_key,
+        )
+
         cfg = self._resolve()
+        resolved_model = model or cfg.model
+        if not (resolved_model or "").strip():
+            raise JudgeNotConfiguredError()
+        if not cfg.api_key and judge_needs_api_key(resolved_model, cfg.api_base):
+            raise JudgeNotConfiguredError()
         kwargs: dict[str, Any] = {
-            "model": model or cfg.model,
+            "model": resolved_model,
             "messages": [
                 {"role": "system", "content": system},
                 {"role": "user", "content": user},
