@@ -365,8 +365,8 @@ result = og.evaluate(
 )
 ```
 
-- The judges need a judge model on the server (`LLM_MODEL`); without one they are reported as "could not run", not as a score of 0. `hit_at_k`, `recall_at_k`, `mrr` and `must_contain` need none.
-- In production, call `og.set_session(conversation_id)` in the traced handler: Production → Conversations groups the turns into a timeline, runs the session judges and lets you promote a conversation to a `rag_chat` test case.
+- The judges need a judge model on the server (`LLM_MODEL`); without one they are skipped with `judge not configured`, not scored as 0. `hit_at_k`, `recall_at_k`, `mrr` and `must_contain` need none.
+- In production, call `og.set_session(conversation_id)` in the traced handler: Production → Conversations groups the turns into a timeline, runs the session judges and lets you promote a conversation to a `rag_chat` test case. Full recipe: [Evaluate a chat assistant](../docs/chat-assistants.md).
 
 ### Custom metrics
 
