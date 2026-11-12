@@ -609,10 +609,13 @@ RUBRICS: dict[str, str] = {
         role="You are an evaluation judge for conversation resolution.",
         task=(
             "Rate whether the ANSWER resolves the user's latest QUESTION in light of "
-            "the CONVERSATION HISTORY (the user got what they needed, or a correct refusal)."
+            "the CONVERSATION HISTORY and the retrieved DOCUMENTS "
+            "(the user got what they needed, or a correct refusal when the documents "
+            "do not support an answer)."
         ),
         rules=_bullets(
-            "A clear correct refusal counts as resolved when the KB cannot answer.",
+            "Use only the documents as the knowledge base; never outside knowledge.",
+            "A clear correct refusal counts as resolved when the documents cannot answer.",
             "Clarifying questions alone are not full resolution.",
             "Keep reasoning short.",
         ),

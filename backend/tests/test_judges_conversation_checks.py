@@ -117,3 +117,38 @@ async def test_conversation_consistency_skips_single_assistant_in_nonempty_histo
     assert result.label == "SKIPPED"
     assert result.explanation == _CONVERSATION_CONSISTENCY_SKIP
     assert llm.calls == []
+
+
+_DOCS = {"documents": [{"id": "kb-1", "text": "Pro plan costs $49 per month."}]}
+
+
+@pytest.mark.asyncio
+async def test_resolution_skips_without_documents() -> None:
+    llm = ScriptedJudgeLlm()
+    sample = _chat_sample(context=None, actual_output="Pro is $49/month.")
+    result = await _judge("resolution", llm).evaluate(sample)
+    assert result.label == "SKIPPED"
+    assert "document" in (result.explanation or "").lower()
+    assert llm.calls == []
+
+
+@pytest.mark.asyncio
+async def test_resolution_includes_documents_and_turns_when_resolved() -> None:
+    llm = ScriptedJudgeLlm({"rubric_resolution": {"reasoning": "fully answers", "level": 5}})
+    sample = _chat_sample(context=_DOCS, actual_output="Pro costs $49 per month.")
+    result = await _judge("resolution", llm).evaluate(sample)
+    assert result.label == "resolved"
+    assert result.metadata.get("resolved") is True
+    assert result.metadata["turns_to_resolution"] == 3  # 2 user turns in history + question
+    assert "DOCUMENTS:" in llm.calls[0]["user"]
+    assert "Pro plan costs $49" in llm.calls[0]["user"]
+
+
+@pytest.mark.asyncio
+async def test_resolution_omits_turns_when_unresolved() -> None:
+    llm = ScriptedJudgeLlm({"rubric_resolution": {"reasoning": "still unclear", "level": 2}})
+    sample = _chat_sample(context=_DOCS, actual_output="Could you clarify which plan?")
+    result = await _judge("resolution", llm).evaluate(sample)
+    assert result.label == "unresolved"
+    assert result.metadata.get("resolved") is False
+    assert "turns_to_resolution" not in result.metadata

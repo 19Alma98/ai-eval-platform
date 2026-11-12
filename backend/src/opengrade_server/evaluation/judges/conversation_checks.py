@@ -7,7 +7,7 @@ from typing import Any
 from opengrade_server.domain.rag_input import resolve_chat_history
 from opengrade_server.domain.rag_models import ChatTurn
 from opengrade_server.evaluation.judges import prompts
-from opengrade_server.evaluation.judges.evaluators import _LlmJudge
+from opengrade_server.evaluation.judges.evaluators import _LlmJudge, _documents
 from opengrade_server.evaluation.outcomes import skip
 from opengrade_server.evaluation.protocol import EvaluationResult, EvaluationSample
 
@@ -107,13 +107,31 @@ class ConversationConsistencyJudge(_LlmJudge):
 class ResolutionJudge(_LlmJudge):
     kind = "resolution"
 
+    def _precheck(self, sample: EvaluationSample) -> EvaluationResult | None:
+        early = super()._precheck(sample)
+        if early is not None:
+            return early
+        documents = _documents(sample.context)
+        if not documents:
+            return skip(
+                "context.documents are missing or empty",
+                metadata=self._meta(),
+            )
+        if not any(str(d.get("text") or "").strip() for d in documents):
+            return skip(
+                "retrieved documents have no text (only ids were stored, e.g. "
+                "CONTENT_CAPTURE_ENABLED=false)",
+                metadata=self._meta(),
+            )
+        return None
+
     async def _evaluate(self, sample: EvaluationSample) -> EvaluationResult:
         history = _history_or_skip(sample, self._meta())
         if isinstance(history, EvaluationResult):
             return history
         answer = prompts.as_text(sample.actual_output)
         question = prompts.question_text(sample.input)
-        # User turns in history + the final question ≈ turns toward resolution.
+        documents = prompts.render_documents(_documents(sample.context))
         user_turns = sum(
             1
             for turn in history
@@ -123,13 +141,15 @@ class ResolutionJudge(_LlmJudge):
             prompts.sections(
                 conversation_history=prompts.render_history(history),
                 question=question,
+                documents=documents,
                 answer=answer,
             )
         )
         meta = dict(result.metadata or {})
-        meta["turns_to_resolution"] = user_turns
         resolved = (result.score or 0.0) >= 0.75
         meta["resolved"] = resolved
+        if resolved:
+            meta["turns_to_resolution"] = user_turns
         return EvaluationResult(
             score=result.score,
             label="resolved" if resolved else "unresolved",
