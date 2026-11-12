@@ -1,7 +1,7 @@
 # OpenGrade
 
 **Unit tests for your LLM app.** Trace it, score it on a test set, and fail the pull request
-when answer quality drops — self-hosted, one `pip install`, no SaaS.
+when answer quality drops — self-hosted, one package, no SaaS.
 
 [![Documentation](https://img.shields.io/badge/docs-latest-blue)](https://opengrade-docs.vercel.app/)
 [![CI](https://github.com/19Alma98/ai-eval-platform/actions/workflows/ci.yml/badge.svg)](https://github.com/19Alma98/ai-eval-platform/actions/workflows/ci.yml)
@@ -110,14 +110,22 @@ local Ollama.
 
 ## Quickstart
 
-Python ≥ 3.12.
+Python ≥ 3.12 and [`uv`](https://docs.astral.sh/uv/).
+
+Try the dashboard without installing anything:
 
 ```bash
-pip install 'opengrade-ai[ui]'
-opengrade ui                 # dashboard + API on http://127.0.0.1:8000, data in ./opengrade.db
+uvx --from 'opengrade-ai[ui]' opengrade ui   # http://127.0.0.1:8000, data in ./opengrade.db
 ```
 
-No Docker, no database server. For the LLM judges, add a `.env` next to it:
+Add it to your project:
+
+```bash
+uv add 'opengrade-ai[ui]'
+uv run opengrade ui
+```
+
+No Docker, no database server. (`pip install 'opengrade-ai[ui]'` works too.) For the LLM judges, add a `.env` next to it:
 
 ```bash
 LLM_MODEL=openai/gpt-4o-mini       # or ollama/gemma4:e2b with LLM_API_BASE=http://localhost:11434
