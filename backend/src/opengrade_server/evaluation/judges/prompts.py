@@ -969,6 +969,21 @@ def render_history(history: list[dict[str, str]] | list[ChatTurn]) -> str:
     return "\n".join(lines)
 
 
+def optional_history_text(value: Any) -> str | None:
+    """Rendered prior turns for chat-shaped input with non-empty history; else None."""
+    from opengrade_server.domain.rag_input import is_chat_input, resolve_chat_history
+
+    if isinstance(value, str) or not is_chat_input(value):
+        return None
+    try:
+        history = resolve_chat_history(value)  # type: ignore[arg-type]
+    except (TypeError, ValueError):
+        return None
+    if not history:
+        return None
+    return render_history(history)
+
+
 def render_claims(claims: list[str]) -> str:
     n = len(claims)
     header = (
