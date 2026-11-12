@@ -6,7 +6,10 @@ CONTEXT_OVERFLOW = "context_overflow"
 LLM_ERROR = "llm_error"
 LLM_NOT_CONFIGURED = "llm_not_configured"
 
-JUDGE_NOT_CONFIGURED_MSG = "judge not configured: set LLM_MODEL and LLM_API_KEY"
+JUDGE_NOT_CONFIGURED_MSG = (
+    "judge not configured: set LLM_MODEL and LLM_API_KEY "
+    "(or provider credentials such as OPENAI_API_KEY)"
+)
 
 
 class JudgeOutputError(Exception):
@@ -24,13 +27,30 @@ class JudgeNotConfiguredError(RuntimeError):
         super().__init__(message)
 
 
+def _provider_env_credentials_present(model: str) -> bool:
+    """True when LiteLLM reports the model's native env credentials are set."""
+    import litellm
+
+    try:
+        result = litellm.validate_environment(model=model)
+    except Exception:
+        return False
+    return bool(result.get("keys_in_environment"))
+
+
 def judge_needs_api_key(model: str, api_base: str | None) -> bool:
-    """Same rule as the ``opengrade ui`` startup warning for missing ``LLM_API_KEY``."""
-    if model.startswith("gemini/"):
-        return True
+    """True when ``LLM_API_KEY`` is required before calling the provider.
+
+    Same rule as the ``opengrade ui`` startup warning. Local Ollama (and any
+    non-Gemini model with ``api_base``) does not need a key. Cloud providers are
+    fine when LiteLLM can find native env credentials (``OPENAI_API_KEY``,
+    ``ANTHROPIC_API_KEY``, AWS/Azure/Vertex/Gemini, …).
+    """
     if model.startswith("ollama/"):
         return False
-    if api_base:
+    if api_base and not model.startswith("gemini/"):
+        return False
+    if _provider_env_credentials_present(model):
         return False
     return True
 

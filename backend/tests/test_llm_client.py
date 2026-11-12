@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from types import SimpleNamespace
 from typing import Any
 from unittest.mock import AsyncMock, patch
@@ -99,17 +100,81 @@ async def test_complete_returns_empty_string_for_empty_content() -> None:
 
 
 @pytest.mark.asyncio
-async def test_complete_refuses_cloud_model_without_api_key() -> None:
+async def test_complete_refuses_cloud_model_without_api_key(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     from opengrade_server.evaluation.judges.errors import (
         JUDGE_NOT_CONFIGURED_MSG,
         JudgeNotConfiguredError,
     )
 
-    client = LiteLlmClient(Settings(llm_model="gemini/gemini-3.8-flash", llm_api_key=None))
+    for key in (
+        "LLM_API_KEY",
+        "GEMINI_API_KEY",
+        "GOOGLE_API_KEY",
+        "OPENAI_API_KEY",
+        "ANTHROPIC_API_KEY",
+    ):
+        monkeypatch.delenv(key, raising=False)
+
+    client = LiteLlmClient(
+        Settings(llm_model="gemini/gemini-3.8-flash", llm_api_key=None, llm_api_base=None)
+    )
     with patch(
         "opengrade_server.infrastructure.llm.litellm.acompletion",
         new_callable=AsyncMock,
     ) as mock_complete:
-        with pytest.raises(JudgeNotConfiguredError, match=JUDGE_NOT_CONFIGURED_MSG):
+        with pytest.raises(JudgeNotConfiguredError, match=re.escape(JUDGE_NOT_CONFIGURED_MSG)):
             await client.complete(system="s", user="u")
     mock_complete.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("model", "env"),
+    [
+        ("openai/gpt-4o-mini", {"OPENAI_API_KEY": "sk-test"}),
+        ("anthropic/claude-3-5-haiku-latest", {"ANTHROPIC_API_KEY": "sk-ant-test"}),
+        (
+            "bedrock/anthropic.claude-3-haiku-20240307-v1:0",
+            {
+                "AWS_ACCESS_KEY_ID": "AKIATEST",
+                "AWS_SECRET_ACCESS_KEY": "secret",
+            },
+        ),
+        (
+            "vertex_ai/gemini-1.5-flash",
+            {"VERTEXAI_PROJECT": "proj", "VERTEXAI_LOCATION": "us-central1"},
+        ),
+        (
+            "azure/gpt-4o",
+            {
+                "AZURE_API_KEY": "azure-key",
+                "AZURE_API_BASE": "https://example.openai.azure.com",
+                "AZURE_API_VERSION": "2024-02-01",
+            },
+        ),
+        ("gemini/gemini-3.8-flash", {"GEMINI_API_KEY": "gemini-key"}),
+    ],
+)
+async def test_complete_allows_provider_env_credentials(
+    monkeypatch: pytest.MonkeyPatch,
+    model: str,
+    env: dict[str, str],
+) -> None:
+    """LiteLLM reads provider env vars; LLM_API_KEY must not be required."""
+    monkeypatch.delenv("LLM_API_KEY", raising=False)
+    for key, value in env.items():
+        monkeypatch.setenv(key, value)
+
+    client = LiteLlmClient(Settings(llm_model=model, llm_api_key=None, llm_api_base=None))
+    with patch(
+        "opengrade_server.infrastructure.llm.litellm.acompletion",
+        new_callable=AsyncMock,
+        return_value=_response('{"ok": true}'),
+    ) as mock_complete:
+        text = await client.complete(system="s", user="u")
+
+    assert text == '{"ok": true}'
+    mock_complete.assert_awaited_once()
+    assert "api_key" not in mock_complete.await_args.kwargs

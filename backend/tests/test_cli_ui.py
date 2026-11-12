@@ -53,7 +53,9 @@ def test_ui_exits_when_port_busy() -> None:
     run_mock.assert_not_called()
 
 
-def test_ui_config_warnings_missing_gemini_key() -> None:
+def test_ui_config_warnings_missing_gemini_key(monkeypatch: pytest.MonkeyPatch) -> None:
+    for key in ("LLM_API_KEY", "GEMINI_API_KEY", "GOOGLE_API_KEY"):
+        monkeypatch.delenv(key, raising=False)
     settings = Settings(
         llm_model="gemini/gemini-3.8-flash",
         llm_api_key=None,
@@ -61,6 +63,20 @@ def test_ui_config_warnings_missing_gemini_key() -> None:
     )
     warnings = ui_config_warnings(settings)
     assert any("LLM_API_KEY" in w for w in warnings)
+
+
+def test_ui_config_warnings_accepts_provider_env_key(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("LLM_API_KEY", raising=False)
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
+    settings = Settings(
+        llm_model="openai/gpt-4o-mini",
+        llm_api_key=None,
+        llm_api_base=None,
+    )
+    warnings = ui_config_warnings(settings)
+    assert not any("LLM_API_KEY" in w for w in warnings)
 
 
 def test_ui_config_warnings_docker_internal() -> None:

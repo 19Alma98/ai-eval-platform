@@ -145,14 +145,14 @@ def ui_config_warnings(settings: Settings) -> list[str]:
             "LLM_API_BASE uses host.docker.internal (for containers). "
             "On the host, use http://localhost:11434 (or your local API URL)."
         )
-    needs_key = not settings.llm_api_key and (
-        settings.llm_model.startswith("gemini/")
-        or (not api_base and not settings.llm_model.startswith("ollama/"))
-    )
-    if needs_key:
+    from opengrade_server.evaluation.judges.errors import judge_needs_api_key
+
+    if not settings.llm_api_key and judge_needs_api_key(settings.llm_model, api_base or None):
         warnings.append(
-            f"Judge model is {settings.llm_model} but LLM_API_KEY is unset. "
-            "Set LLM_API_KEY, or point LLM_MODEL / LLM_API_BASE at a local provider "
+            f"Judge model is {settings.llm_model} but LLM_API_KEY is unset "
+            "(and no provider credentials were found in the environment). "
+            "Set LLM_API_KEY or a provider env var (e.g. OPENAI_API_KEY), "
+            "or point LLM_MODEL / LLM_API_BASE at a local provider "
             "(e.g. ollama/… + http://localhost:11434)."
         )
     return warnings
