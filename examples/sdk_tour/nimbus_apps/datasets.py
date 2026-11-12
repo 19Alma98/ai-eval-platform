@@ -17,7 +17,7 @@ from typing import Any
 from nimbus_apps.settings import DATA_DIR
 
 RAG_GOLD = "nimbus-rag-gold-v1"
-RAG_CHAT_GOLD = "nimbus-rag-chat-gold-v1"
+RAG_CHAT_GOLD = "nimbus-rag-chat-gold-v3"
 TICKETS_GOLD = "nimbus-tickets-gold-v1"
 
 _FILES = {

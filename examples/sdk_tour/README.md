@@ -355,10 +355,14 @@ TOUR_MODEL=gemma4:e2b uv run python 05_prompt_ab.py   # real model: quality delt
 
 **Question:** the assistant is a conversation — does the rewritten search query stay faithful, does the answer contradict earlier turns, and was the user’s need resolved?
 
-Script [`06_verify_rag_chat.py`](06_verify_rag_chat.py) registers `data/gold_rag_chat.jsonl` as a `rag_chat` dataset, runs `answer_chat` (rewrite → `set_search_query` → retrieve → generate) via `opengrade.chat_input`, and scores `hit_at_k`, `must_contain`, plus the three conversational judges.
+Script [`06_verify_rag_chat.py`](06_verify_rag_chat.py) registers `data/gold_rag_chat.jsonl` as a `rag_chat` dataset, runs `answer_chat` (rewrite → `set_search_query` → retrieve → generate with history in the prompt) via `opengrade.chat_input`, and scores `hit_at_k`, `must_contain`, plus the three conversational judges.
 
 ```bash
 uv run python 06_verify_rag_chat.py
+# Real generation with Ollama:
+uv sync --extra llm
+ollama pull gemma4:e2b
+TOUR_MODEL=gemma4:e2b uv run python 06_verify_rag_chat.py
 ```
 
 **In the UI:** Datasets shows history + last question; Experiments shows the same in the case table and a readable conversation in the detail panel. Eval traces that call `set_session` are filtered out of Production → Conversations on the server.

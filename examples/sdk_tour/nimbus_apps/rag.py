@@ -132,6 +132,13 @@ def answer_chat(
     og.set_search_query(search_query)
     docs = retrieve(search_query, config)
     with og.span("generate", kind="CHAIN", input=question) as span:
-        answer = generate_answer(question, docs, model=config.model, system=system_prompt)
+        answer = generate_answer(
+            question,
+            docs,
+            model=config.model,
+            system=system_prompt,
+            history=history,
+            match_query=search_query,
+        )
         span.set_output(answer)
     return answer

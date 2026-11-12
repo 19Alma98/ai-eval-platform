@@ -19,7 +19,16 @@ What this script shows:
      resolution) so you can verify them when the platform has LLM_MODEL set.
   4. Print per-metric results, including ERROR if judges could not run.
 
-Run:  uv run python 06_verify_rag_chat.py
+Offline (default fake model):
+
+  uv run python 06_verify_rag_chat.py
+
+Real generation via Ollama (OpenAI-compatible API on :11434):
+
+  uv sync --extra llm
+  ollama pull gemma4:e2b
+  TOUR_MODEL=gemma4:e2b uv run python 06_verify_rag_chat.py
+
 Then: UI -> Experiments (and Datasets for the chat-shaped items).
 """
 
@@ -34,6 +43,7 @@ import opengrade
 from nimbus_apps import settings
 from nimbus_apps.console import note, step, title
 from nimbus_apps.datasets import RAG_CHAT_GOLD, ensure_dataset
+from nimbus_apps.llm import is_fake
 from nimbus_apps.rag import DEFAULT_CONFIG, answer_chat
 from nimbus_apps.telemetry import og
 
@@ -45,7 +55,7 @@ CONVERSATION_JUDGES = (
 
 GATE = {
     "hit_at_k": 0.90,
-    "must_contain": 0.50,  # only one of the two gold rows has must_contain
+    "must_contain": 0.90,
 }
 
 
@@ -112,6 +122,17 @@ def main() -> None:
     step(0, "Connect")
     if og.set_project(settings.PROJECT) is None:
         sys.exit(f"OpenGrade is not reachable at {settings.TRACKING_URI}: start it first.")
+    model = DEFAULT_CONFIG.model
+    print(f"  generation model: {model}")
+    if is_fake(model):
+        note(
+            f"Using offline {model}. For a real Ollama run: "
+            f"`uv sync --extra llm && TOUR_MODEL=<ollama-tag> uv run python 06_verify_rag_chat.py` "
+            f"(endpoint {settings.LLM_BASE_URL})."
+        )
+    else:
+        print(f"  LLM endpoint:    {settings.LLM_BASE_URL}")
+        note("Real model: answer_chat sends history + retrieved docs to the OpenAI-compatible API.")
     og.init_tracing(service_name="nimbus-support-chat-eval", instrument="auto")
     client = og.client
 

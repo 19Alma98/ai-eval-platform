@@ -55,7 +55,7 @@ def test_refusal_outcomes() -> None:
 
 
 def test_rag_chat_gold_is_wired() -> None:
-    assert RAG_CHAT_GOLD == "nimbus-rag-chat-gold-v1"
+    assert RAG_CHAT_GOLD == "nimbus-rag-chat-gold-v3"
     assert len(RAG_CHAT) == 2
     for row in RAG_CHAT:
         assert "history" in row["input"] and "question" in row["input"]
@@ -71,9 +71,21 @@ def test_rewrite_search_query_uses_prior_user_turn() -> None:
     assert "How much does it cost?" in query
 
 
-def test_answer_chat_returns_string_for_gold_rows() -> None:
+@pytest.mark.parametrize("row", RAG_CHAT, ids=lambda r: r["input"]["question"][:40])
+def test_bm25_chat_finds_gold_document(row: dict) -> None:
+    history = row["input"]["history"]
+    question = row["input"]["question"]
+    query = rewrite_search_query(history, question)
+    ids = {d["id"] for d in search(query, strategy="bm25", top_k=3)}
+    assert ids & set(row["metadata"]["expected_doc_ids"])
+
+
+def test_answer_chat_resolves_gold_rows_with_fake_large() -> None:
     for row in RAG_CHAT:
         history = row["input"]["history"]
         question = row["input"]["question"]
         answer = answer_chat(history, question)
         assert isinstance(answer, str) and answer.strip()
+        assert answer != REFUSAL
+        for phrase in row["metadata"].get("must_contain", []):
+            assert phrase.lower() in answer.lower()
