@@ -371,15 +371,8 @@ class PromoteConversation:
         if not turns:
             raise ConversationNotFoundError(command.session_id)
         last = turns[-1]
-        if command.mode == "last_turn":
-            history: list[dict[str, str]] = []
-            for turn in turns[:-1]:
-                if turn.question:
-                    history.append({"role": "user", "content": turn.question})
-                if turn.answer:
-                    history.append({"role": "assistant", "content": turn.answer})
-        else:
-            history = []
+        history: list[dict[str, str]] = []
+        if command.mode != "last_turn":
             for turn in turns[:-1]:
                 if turn.question:
                     history.append({"role": "user", "content": turn.question})
