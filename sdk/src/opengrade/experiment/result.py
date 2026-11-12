@@ -268,6 +268,13 @@ class ExperimentResult:
         """Explain metrics that did not apply to some items (a ``-`` mean is otherwise opaque)."""
         if self.server_summary is None:
             return []
+        evaluation = getattr(self, "evaluation", None)
+        names = {
+            row.evaluator_id: (row.evaluator_name or row.evaluator_id or "?")
+            for row in self.server_summary.evaluators
+            if row.evaluator_id
+        }
+        llm_skips = _metrics_skipped_for_llm(evaluation, names)
         lines: list[str] = []
         for ev in self.server_summary.evaluators:
             skipped = ev.n_skipped or 0
@@ -275,7 +282,10 @@ class ExperimentResult:
                 continue
             name = ev.evaluator_name or ev.evaluator_id or "?"
             total = ev.n_items if ev.n_items is not None else skipped
-            hint = _SKIP_HINTS.get(name, "the test case lacks the data this metric needs")
+            if name in llm_skips:
+                hint = _JUDGE_CONFIG_HINT
+            else:
+                hint = _SKIP_HINTS.get(name, "the test case lacks the data this metric needs")
             lines.append(
                 _style(f"  note: {name} skipped on {skipped}/{total} items: {hint}", _YELLOW)
             )
@@ -318,21 +328,24 @@ _SKIP_HINTS: dict[str, str] = {
     "hit_at_k": "add `expected_doc_ids` to the test case",
     "recall_at_k": "add `expected_doc_ids` to the test case",
     "mrr": "add `expected_doc_ids` to the test case",
-    # Built-in LLM judges: all-skip is usually missing server judge config, not missing gold.
-    "answer_relevance": _JUDGE_CONFIG_HINT,
-    "groundedness": _JUDGE_CONFIG_HINT,
-    "correctness": _JUDGE_CONFIG_HINT,
-    "context_precision": _JUDGE_CONFIG_HINT,
-    "context_recall": _JUDGE_CONFIG_HINT,
-    "citation_accuracy": _JUDGE_CONFIG_HINT,
-    "refusal": _JUDGE_CONFIG_HINT,
-    "query_rewrite_faithfulness": _JUDGE_CONFIG_HINT,
-    "conversation_consistency": _JUDGE_CONFIG_HINT,
-    "resolution": _JUDGE_CONFIG_HINT,
-    "pii": _JUDGE_CONFIG_HINT,
-    "toxicity": _JUDGE_CONFIG_HINT,
-    "prompt_injection": _JUDGE_CONFIG_HINT,
 }
+
+
+def _metrics_skipped_for_llm(
+    evaluation: EvaluateResponse | None, names: dict[str, str]
+) -> set[str]:
+    """Metric names whose skips include ``metadata.skip_reason == llm_not_configured``."""
+    out: set[str] = set()
+    if evaluation is None:
+        return out
+    for run in evaluation.runs:
+        name = names.get(run.evaluator_id or "", run.evaluator_id or "?")
+        for result in run.results:
+            if (result.label or "").strip().upper() != "SKIPPED":
+                continue
+            if (result.metadata or {}).get("skip_reason") == "llm_not_configured":
+                out.add(name)
+    return out
 
 
 def announce(result: ExperimentResult) -> None:

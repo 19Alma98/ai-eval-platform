@@ -1278,18 +1278,69 @@ def test_summary_explains_skipped_metrics() -> None:
     from types import SimpleNamespace
 
     from opengrade.experiment import ExperimentResult
-    from opengrade.models import EvaluatorSummaryResponse, ExperimentSummaryResponse
+    from opengrade.models import (
+        EvaluateResponse,
+        EvaluationResultResponse,
+        EvaluationRunResponse,
+        EvaluatorSummaryResponse,
+        ExperimentResponse,
+        ExperimentSummaryResponse,
+    )
 
     summary = ExperimentSummaryResponse(
         experiment_id="exp-1",
         evaluators=[
-            EvaluatorSummaryResponse(evaluator_name="must_contain", n_items=2, n_skipped=2),
-            EvaluatorSummaryResponse(evaluator_name="hit_at_k", n_items=2, n_skipped=0),
-            EvaluatorSummaryResponse(evaluator_name="my_metric", n_items=2, n_skipped=1),
-            EvaluatorSummaryResponse(evaluator_name="answer_relevance", n_items=2, n_skipped=2),
+            EvaluatorSummaryResponse(
+                evaluator_id="ev-mc", evaluator_name="must_contain", n_items=2, n_skipped=2
+            ),
+            EvaluatorSummaryResponse(
+                evaluator_id="ev-hit", evaluator_name="hit_at_k", n_items=2, n_skipped=0
+            ),
+            EvaluatorSummaryResponse(
+                evaluator_id="ev-my", evaluator_name="my_metric", n_items=2, n_skipped=1
+            ),
+            EvaluatorSummaryResponse(
+                evaluator_id="ev-ar", evaluator_name="answer_relevance", n_items=2, n_skipped=2
+            ),
+            EvaluatorSummaryResponse(
+                evaluator_id="ev-cor", evaluator_name="correctness", n_items=2, n_skipped=2
+            ),
         ],
     )
-    lines = ExperimentResult._skipped_lines(SimpleNamespace(server_summary=summary))  # type: ignore[arg-type]
+    evaluation = EvaluateResponse(
+        experiment=ExperimentResponse(id="exp-1", name="t", status="completed"),
+        runs=[
+            EvaluationRunResponse(
+                id="run-ar",
+                evaluator_id="ev-ar",
+                status="completed",
+                results=[
+                    EvaluationResultResponse(
+                        label="SKIPPED",
+                        metadata={"skip_reason": "llm_not_configured"},
+                    ),
+                    EvaluationResultResponse(
+                        label="SKIPPED",
+                        metadata={"skip_reason": "llm_not_configured"},
+                    ),
+                ],
+            ),
+            EvaluationRunResponse(
+                id="run-cor",
+                evaluator_id="ev-cor",
+                status="completed",
+                results=[
+                    EvaluationResultResponse(label="SKIPPED", metadata={}),
+                    EvaluationResultResponse(
+                        label="SKIPPED", explanation="expected_output is missing"
+                    ),
+                ],
+            ),
+        ],
+    )
+    lines = ExperimentResult._skipped_lines(
+        SimpleNamespace(server_summary=summary, evaluation=evaluation)  # type: ignore[arg-type]
+    )
 
     assert lines == [
         '  note: must_contain skipped on 2/2 items: add `"must_contain": ["phrase", ...]` '
@@ -1297,6 +1348,7 @@ def test_summary_explains_skipped_metrics() -> None:
         "  note: my_metric skipped on 1/2 items: the test case lacks the data this metric needs",
         "  note: answer_relevance skipped on 2/2 items: set LLM_MODEL and LLM_API_KEY "
         "(or provider credentials such as OPENAI_API_KEY)",
+        "  note: correctness skipped on 2/2 items: the test case lacks the data this metric needs",
     ]
 
 

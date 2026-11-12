@@ -159,7 +159,12 @@ def main() -> None:
         print(
             f"  {kind:<32} labels={seen}"
             + ("  <- configure server LLM_MODEL to score" if errors else "")
-            + ("  (skipped: missing history/search_query)" if skipped and not errors else "")
+            + (
+                "  (skipped: set LLM_MODEL + API key on the server, "
+                "or the item lacks history/search_query)"
+                if skipped and not errors
+                else ""
+            )
         )
 
     step(4, "Which items failed")
