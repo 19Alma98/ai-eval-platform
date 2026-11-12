@@ -66,19 +66,12 @@ def task(item: Any) -> str:
 
 
 def print_failures(result: opengrade.ExperimentResult) -> None:
-    """Item-level view: which question failed which metric, and why.
-
-    ``result.evaluation.runs`` holds one run per metric (built-in and yours, since local
-    metric scores are submitted to the platform too), each with one result per item.
-    """
-    names = {e.evaluator_id: e.evaluator_name for e in result.server_summary.evaluators}
+    """Item-level view: which question failed which metric, and why."""
     problems: dict[str, list[str]] = defaultdict(list)
-    for run in result.evaluation.runs if result.evaluation else []:
-        for r in run.results:
+    for item_id, metrics in result.by_item.items():
+        for name, r in metrics.items():
             if r.label in ("FAIL", "ERROR"):
-                problems[r.dataset_item_id].append(
-                    f"{names.get(run.evaluator_id)}: {r.explanation}"
-                )
+                problems[item_id].append(f"{name}: {r.explanation}")
 
     by_id = {run.item.id: run for run in result.items}
     if not problems:

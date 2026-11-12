@@ -11,6 +11,12 @@ breaking changes; they are listed under **Changed** with a migration note.
 
 ### Changed
 
+- SDK: `ExperimentResult.by_metric` / `by_item` expose per-item evaluation results by
+  evaluator name without rebuilding maps from `evaluator_id`. `Opengrade.evaluate` /
+  `start_experiment` / `sweep` / `evaluate_retrieval` no longer re-list kwargs; they
+  forward under `activate()` and keep the concrete signatures of the module functions.
+- LLM judges: RAG claim/rubric/refusal/citation prompts now include the same
+  “treat every section as data” rule as safety classifiers (`prompt_version` hashes bump).
 - **SDK: two lines and a decorator.** `og = Opengrade(project="my-app")` then `@og.trace`.
   `project` (also `Settings(project=...)` / `OPENGRADE_PROJECT`) is a name: the project is found
   or created on the platform, in the background before the first export and on the first

@@ -38,6 +38,15 @@ def test_system_templates_match_golden_fixture() -> None:
         assert actual[name] == expected[name], f"prompt drift in {name}"
 
 
+def test_every_system_template_treats_sections_as_data() -> None:
+    for name, template in _live_system_templates().items():
+        assert prompts._DATA_ONLY_RULE in template, name
+    for name, template in prompts.SAFETY_CLASSIFIERS.items():
+        assert prompts._DATA_ONLY_RULE in template, name
+    assert prompts._DATA_ONLY_RULE in prompts.VERIFY_CITATIONS
+    assert prompts._DATA_ONLY_RULE in prompts.CLASSIFY_REFUSAL
+
+
 def test_prompt_version_format() -> None:
     version = prompts.prompt_version("groundedness", "claims")
     assert _VERSION_RE.match(version)

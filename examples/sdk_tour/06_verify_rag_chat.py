@@ -74,17 +74,11 @@ def _question_preview(raw_input: Any) -> str:
 
 
 def print_failures(result: opengrade.ExperimentResult) -> None:
-    names = {
-        e.evaluator_id: e.evaluator_name
-        for e in (result.server_summary.evaluators if result.server_summary else [])
-    }
     problems: dict[str, list[str]] = defaultdict(list)
-    for run in result.evaluation.runs if result.evaluation else []:
-        for r in run.results:
+    for item_id, metrics in result.by_item.items():
+        for name, r in metrics.items():
             if r.label in ("FAIL", "ERROR"):
-                problems[r.dataset_item_id].append(
-                    f"{names.get(run.evaluator_id)}: {r.explanation}"
-                )
+                problems[item_id].append(f"{name}: {r.explanation}")
 
     by_id = {run.item.id: run for run in result.items}
     if not problems:
@@ -101,17 +95,12 @@ def print_failures(result: opengrade.ExperimentResult) -> None:
 
 def _judge_labels(result: opengrade.ExperimentResult) -> dict[str, list[str]]:
     """Map judge kind -> labels seen across items (PASS/FAIL/SKIPPED/ERROR/...)."""
-    names = {
-        e.evaluator_id: (e.evaluator_name or "")
-        for e in (result.server_summary.evaluators if result.server_summary else [])
-    }
     out: dict[str, list[str]] = {kind: [] for kind in CONVERSATION_JUDGES}
-    for run in result.evaluation.runs if result.evaluation else []:
-        name = names.get(run.evaluator_id, "")
+    for name, results in result.by_metric.items():
         kind = next((k for k in CONVERSATION_JUDGES if k == name or k in name), None)
         if kind is None:
             continue
-        for r in run.results:
+        for r in results:
             out[kind].append(r.label or "UNKNOWN")
     return out
 

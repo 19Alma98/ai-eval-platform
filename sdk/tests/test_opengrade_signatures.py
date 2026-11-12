@@ -17,16 +17,24 @@ def _param_names(fn: object, *, skip_self: bool = False) -> list[str]:
     return params
 
 
+def _signature_without_self(fn: object) -> inspect.Signature:
+    sig = inspect.signature(fn)
+    params = list(sig.parameters.values())
+    if params and params[0].name == "self":
+        params = params[1:]
+    return sig.replace(parameters=params)
+
+
 def test_opengrade_delegates_keep_concrete_signatures() -> None:
     assert _param_names(Opengrade.log_score, skip_self=True) == _param_names(log_score)
     assert _param_names(Opengrade.log_feedback, skip_self=True) == _param_names(log_feedback)
     assert _param_names(Opengrade.score_trace, skip_self=True) == _param_names(score_trace)
-    assert _param_names(Opengrade.start_experiment, skip_self=True) == _param_names(
+    assert _signature_without_self(Opengrade.start_experiment) == inspect.signature(
         start_experiment
     )
-    assert _param_names(Opengrade.evaluate, skip_self=True) == _param_names(evaluate)
-    assert _param_names(Opengrade.sweep, skip_self=True) == _param_names(sweep)
-    assert _param_names(Opengrade.evaluate_retrieval, skip_self=True) == _param_names(
+    assert _signature_without_self(Opengrade.evaluate) == inspect.signature(evaluate)
+    assert _signature_without_self(Opengrade.sweep) == inspect.signature(sweep)
+    assert _signature_without_self(Opengrade.evaluate_retrieval) == inspect.signature(
         evaluate_retrieval
     )
 

@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING
 
 from opengrade.models import (
     EvaluateResponse,
+    EvaluationResultResponse,
     ExperimentCompareResponse,
     ExperimentResponse,
     ExperimentSummaryResponse,
@@ -47,6 +48,40 @@ class ExperimentResult:
     def repeats(self) -> int:
         """Runs per item (``evaluate(repeats=...)``)."""
         return max((run.repeat for run in self.items), default=0) + 1
+
+    def _evaluator_names(self) -> dict[str, str]:
+        """``evaluator_id`` → display name (same keying as ``metrics``)."""
+        if self.server_summary is None:
+            return {}
+        return {
+            row.evaluator_id: (row.evaluator_name or row.evaluator_id or "?")
+            for row in self.server_summary.evaluators
+            if row.evaluator_id
+        }
+
+    @property
+    def by_metric(self) -> dict[str, list[EvaluationResultResponse]]:
+        """Evaluator name → per-item results from the last ``evaluate()``."""
+        if self.evaluation is None:
+            return {}
+        names = self._evaluator_names()
+        out: dict[str, list[EvaluationResultResponse]] = {}
+        for run in self.evaluation.runs:
+            name = names.get(run.evaluator_id or "", run.evaluator_id or "?")
+            out.setdefault(name, []).extend(run.results)
+        return out
+
+    @property
+    def by_item(self) -> dict[str, dict[str, EvaluationResultResponse]]:
+        """Dataset item id → evaluator name → result from the last ``evaluate()``."""
+        out: dict[str, dict[str, EvaluationResultResponse]] = {}
+        for name, results in self.by_metric.items():
+            for result in results:
+                item_id = result.dataset_item_id
+                if not item_id:
+                    continue
+                out.setdefault(item_id, {})[name] = result
+        return out
 
     @property
     def local_metrics(self) -> dict[str, float | None]:

@@ -1315,3 +1315,72 @@ def test_summary_reports_metrics_that_could_not_run() -> None:
 
     assert len(lines) == 1
     assert "groundedness could not run on 2/2 items" in lines[0]
+
+
+def test_experiment_result_by_metric_and_by_item() -> None:
+    from opengrade.experiment import ExperimentResult
+    from opengrade.models import (
+        EvaluateResponse,
+        EvaluationResultResponse,
+        EvaluationRunResponse,
+        EvaluatorSummaryResponse,
+        ExperimentResponse,
+        ExperimentSummaryResponse,
+    )
+
+    experiment = ExperimentResponse(
+        id="exp-1",
+        project_id="p1",
+        name="t",
+        status="completed",
+    )
+    evaluation = EvaluateResponse(
+        experiment=experiment,
+        runs=[
+            EvaluationRunResponse(
+                id="run-hit",
+                evaluator_id="ev-hit",
+                status="completed",
+                results=[
+                    EvaluationResultResponse(
+                        dataset_item_id="item-a", score=1.0, label="PASS", explanation="ok"
+                    ),
+                    EvaluationResultResponse(
+                        dataset_item_id="item-b", score=0.0, label="FAIL", explanation="miss"
+                    ),
+                ],
+            ),
+            EvaluationRunResponse(
+                id="run-mc",
+                evaluator_id="ev-mc",
+                status="completed",
+                results=[
+                    EvaluationResultResponse(
+                        dataset_item_id="item-a", score=1.0, label="PASS", explanation="ok"
+                    ),
+                ],
+            ),
+        ],
+    )
+    summary = ExperimentSummaryResponse(
+        experiment_id="exp-1",
+        evaluators=[
+            EvaluatorSummaryResponse(evaluator_id="ev-hit", evaluator_name="hit_at_k"),
+            EvaluatorSummaryResponse(evaluator_id="ev-mc", evaluator_name="must_contain"),
+        ],
+    )
+    result = ExperimentResult(
+        experiment=experiment,
+        url="http://x",
+        items=[],
+        evaluation=evaluation,
+        server_summary=summary,
+    )
+
+    assert list(result.by_metric) == ["hit_at_k", "must_contain"]
+    assert [r.label for r in result.by_metric["hit_at_k"]] == ["PASS", "FAIL"]
+    assert result.by_item["item-a"]["hit_at_k"].label == "PASS"
+    assert result.by_item["item-b"]["hit_at_k"].explanation == "miss"
+    assert "must_contain" not in result.by_item["item-b"]
+    assert ExperimentResult(experiment=experiment, url="http://x", items=[]).by_metric == {}
+    assert ExperimentResult(experiment=experiment, url="http://x", items=[]).by_item == {}
