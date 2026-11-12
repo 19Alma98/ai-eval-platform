@@ -468,6 +468,7 @@ RUBRICS: dict[str, str] = {
         rules=_bullets(
             "Ignore whether the answer is factually correct.",
             "Score only how well the answer addresses what was asked.",
+            "If CONVERSATION HISTORY is present, use it to interpret the QUESTION; still score the latest turn.",
             "Keep reasoning short.",
         ),
         scale=_bullets(
@@ -486,6 +487,7 @@ RUBRICS: dict[str, str] = {
         task="Rate how well the ANSWER is supported by the DOCUMENTS.",
         rules=_bullets(
             "Use only the documents; never outside knowledge.",
+            "If CONVERSATION HISTORY is present, use it to interpret the QUESTION; still score the latest turn.",
             "Keep reasoning short.",
         ),
         scale=_bullets(
@@ -504,6 +506,7 @@ RUBRICS: dict[str, str] = {
         task="Rate how well the ANSWER matches the REFERENCE ANSWER.",
         rules=_bullets(
             "Extra correct details in the answer are fine; contradictions are not.",
+            "If CONVERSATION HISTORY is present, use it to interpret the QUESTION; still score the latest turn.",
             "Keep reasoning short.",
         ),
         scale=_bullets(

@@ -731,3 +731,42 @@ async def test_answer_judges_still_skip_without_answer(kind: str) -> None:
     result = await _judge(kind, llm).evaluate(_sample(actual_output=None))
     assert result.label == "SKIPPED"
     assert llm.calls == []
+
+
+_CHAT_FOLLOWUP = {
+    "history": [
+        {"role": "user", "content": "Do you have a Pro plan?"},
+        {"role": "assistant", "content": "Yes, we offer Pro."},
+    ],
+    "question": "How much does it cost?",
+}
+
+
+@pytest.mark.asyncio
+async def test_answer_relevance_includes_history_for_rag_chat() -> None:
+    llm = ScriptedJudgeLlm()
+    await _judge("answer_relevance", llm).evaluate(
+        _sample(input=_CHAT_FOLLOWUP, actual_output="Pro is $49/month.")
+    )
+    user = llm.calls[0]["user"]
+    assert "CONVERSATION HISTORY:" in user
+    assert "Do you have a Pro plan?" in user
+    assert "How much does it cost?" in user
+
+
+@pytest.mark.asyncio
+async def test_answer_relevance_omits_history_for_string_input() -> None:
+    llm = ScriptedJudgeLlm()
+    await _judge("answer_relevance", llm).evaluate(_sample())
+    assert "CONVERSATION HISTORY:" not in llm.calls[0]["user"]
+
+
+@pytest.mark.asyncio
+async def test_groundedness_rubric_includes_history_for_rag_chat() -> None:
+    llm = ScriptedJudgeLlm()
+    await _judge("groundedness", llm, {"method": "rubric"}).evaluate(
+        _sample(input=_CHAT_FOLLOWUP, actual_output="Pro is $49/month.")
+    )
+    user = llm.calls[0]["user"]
+    assert "CONVERSATION HISTORY:" in user
+    assert "Do you have a Pro plan?" in user

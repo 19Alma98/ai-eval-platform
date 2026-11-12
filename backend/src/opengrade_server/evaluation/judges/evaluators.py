@@ -190,6 +190,15 @@ def _with_lists(head: str, records: list[dict[str, Any]], verdicts: tuple[str, .
     return "; ".join(parts)
 
 
+def _with_optional_history(sample: EvaluationSample, **parts: str) -> str:
+    history = prompts.optional_history_text(sample.input)
+    ordered: dict[str, str] = {}
+    if history is not None:
+        ordered["conversation_history"] = history
+    ordered.update(parts)
+    return prompts.sections(**ordered)
+
+
 class _LlmJudge:
     kind: str
     # Context judges grade the retrieved documents against the question and the reference
@@ -288,11 +297,17 @@ class GroundednessJudge(_LlmJudge):
         documents = prompts.render_documents(_documents(sample.context))
         if self._config.method == "rubric":
             return await self._rubric(
-                prompts.sections(question=question, documents=documents, answer=answer)
+                _with_optional_history(
+                    sample,
+                    question=question,
+                    documents=documents,
+                    answer=answer,
+                )
             )
 
         extracted, claims, truncated = await self._extract(
-            prompts.EXTRACT_ANSWER_CLAIMS, prompts.sections(question=question, answer=answer)
+            prompts.EXTRACT_ANSWER_CLAIMS,
+            _with_optional_history(sample, question=question, answer=answer),
         )
         if not claims:
             return skip(
@@ -346,7 +361,9 @@ async def _load_reference_claims(
     extracted = await extract_claims(
         judge._llm,
         system=prompts.EXTRACT_REFERENCE_CLAIMS,
-        user=prompts.sections(question=question, reference_answer=reference),
+        user=_with_optional_history(
+            sample, question=question, reference_answer=reference
+        ),
         options=judge._config.options,
     )
     if judge._cache is not None and extracted.claims:
@@ -376,7 +393,12 @@ class CorrectnessJudge(_LlmJudge):
         reference = prompts.as_text(sample.expected_output)
         if self._config.method == "rubric":
             return await self._rubric(
-                prompts.sections(question=question, reference_answer=reference, answer=answer)
+                _with_optional_history(
+                    sample,
+                    question=question,
+                    reference_answer=reference,
+                    answer=answer,
+                )
             )
 
         gold = await _load_reference_claims(self, sample, question, reference)
@@ -389,7 +411,8 @@ class CorrectnessJudge(_LlmJudge):
         verdicts, coverage_calls = await verify_coverage(
             self._llm,
             system=prompts.VERIFY_REFERENCE_COVERAGE,
-            user=prompts.sections(
+            user=_with_optional_history(
+                sample,
                 question=question,
                 reference_claims=prompts.render_claims(gold_claims),
                 answer=answer,
@@ -411,7 +434,8 @@ class CorrectnessJudge(_LlmJudge):
 
         if self._config.scoring == "f1":
             extracted, answer_claims, answer_truncated = await self._extract(
-                prompts.EXTRACT_ANSWER_CLAIMS, prompts.sections(question=question, answer=answer)
+                prompts.EXTRACT_ANSWER_CLAIMS,
+                _with_optional_history(sample, question=question, answer=answer),
             )
             calls += extracted.calls
             truncated = truncated or answer_truncated
@@ -465,7 +489,8 @@ class AnswerRelevanceJudge(_LlmJudge):
 
     async def _evaluate(self, sample: EvaluationSample) -> EvaluationResult:
         return await self._rubric(
-            prompts.sections(
+            _with_optional_history(
+                sample,
                 question=prompts.question_text(sample.input),
                 answer=prompts.as_text(sample.actual_output),
             )
