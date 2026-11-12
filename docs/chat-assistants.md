@@ -117,7 +117,11 @@ again when it goes idle.
 ## 5. Turn a bad conversation into a test case
 
 A conversation that went wrong in production becomes a `rag_chat` test case with a
-reviewed reference answer for the last turn:
+reviewed reference answer for the last turn. On the conversation page, **Add to test set**
+asks for the test set, the correct answer and, for RAG test sets, the expected document ids.
+The production answer is never copied as the reference: it is what is being tested.
+
+The same from a script, with the REST API:
 
 ```bash
 curl -X POST "$OPENGRADE/api/v1/projects/$PROJECT_ID/conversations/$SESSION_ID/promote" \
@@ -125,6 +129,6 @@ curl -X POST "$OPENGRADE/api/v1/projects/$PROJECT_ID/conversations/$SESSION_ID/p
   -d '{"dataset_id": "<dataset id>", "expected_output": "The Pro plan costs 8 dollars per user per month.", "expected_doc_ids": ["plans"]}'
 ```
 
-Into a `rag_chat` dataset the item keeps the earlier turns as `history`; into a `rag_qa`
-dataset it keeps only the last question. From the next run on, the gate catches that
+Into a `rag_chat` dataset the item keeps the earlier turns as `history` (`"mode": "last_turn"`
+drops them); into a `rag_qa` dataset it keeps only the last question. From the next run on, the gate catches that
 regression before it ships again.
