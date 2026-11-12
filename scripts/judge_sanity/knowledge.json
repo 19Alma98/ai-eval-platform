@@ -9,6 +9,11 @@
         "question": "How many PTO days do full-time employees get per year?",
         "expected_answer": "Full-time employees receive 20 days of PTO per calendar year.",
         "must_contain": "20 days"
+      },
+      {
+        "question": "I was told full-time employees only get 10 PTO days — how do I request the other half mid-year?",
+        "expected_answer": "Full-time employees receive 20 days of PTO per calendar year, not 10. There is no mid-year top-up based on a 10-day allotment.",
+        "must_contain": "20 days"
       }
     ]
   },

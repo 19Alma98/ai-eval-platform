@@ -181,7 +181,7 @@ async def test_correctness_recall_ignores_extra_answer_facts() -> None:
             "verify_reference_coverage": _coverage("covered", "missing"),
         }
     )
-    result = await _judge("correctness", llm).evaluate(_sample())
+    result = await _judge("correctness", llm, {"scoring": "recall"}).evaluate(_sample())
     assert result.score == 0.5
     assert result.label is None
     assert result.explanation == '1/2 reference facts covered; missing: "via the portal"'
@@ -201,10 +201,36 @@ async def test_correctness_contradiction_scores_zero() -> None:
             "verify_reference_coverage": _coverage("contradicted", "covered"),
         }
     )
-    result = await _judge("correctness", llm).evaluate(_sample(actual_output="20 days"))
+    result = await _judge("correctness", llm, {"scoring": "recall"}).evaluate(
+        _sample(actual_output="20 days")
+    )
     assert result.score == 0.0
     assert result.metadata["n_contradicted"] == 1
     assert "contradicted:" in result.explanation
+
+
+@pytest.mark.asyncio
+async def test_correctness_default_scoring_is_f1() -> None:
+    llm = ScriptedJudgeLlm(
+        {
+            "extract_reference_claims": {"claims": ["26 days", "via the portal"]},
+            "verify_reference_coverage": _coverage("covered", "missing"),
+            "extract_answer_claims": {"claims": ["26 days", "unlimited carry-over"]},
+            "verify_against_reference": {
+                "verdicts": [
+                    {"reasoning": "r", "verdict": "supported"},
+                    {"reasoning": "r", "verdict": "not_supported"},
+                ]
+            },
+        }
+    )
+    result = await _judge("correctness", llm).evaluate(_sample())
+    assert result.metadata["scoring"] == "f1"
+    assert result.metadata["precision"] == 0.5
+    assert result.metadata["recall"] == 0.5
+    assert result.score == pytest.approx(0.5)
+    assert len(result.metadata["answer_claims"]) == 2
+    assert result.metadata["llm_calls"] == 4
 
 
 @pytest.mark.asyncio
@@ -234,12 +260,12 @@ async def test_correctness_f1() -> None:
 async def test_correctness_reuses_cached_gold_claims() -> None:
     cache = InMemoryJudgeClaimCache()
     first_llm = ScriptedJudgeLlm({"extract_reference_claims": {"claims": ["26 days"]}})
-    await _judge("correctness", first_llm, cache=cache).evaluate(_sample())
+    await _judge("correctness", first_llm, {"scoring": "recall"}, cache=cache).evaluate(_sample())
 
     second_llm = ScriptedJudgeLlm(
         {"extract_reference_claims": AssertionError("gold must come from the cache")}
     )
-    result = await _judge("correctness", second_llm, cache=cache).evaluate(
+    result = await _judge("correctness", second_llm, {"scoring": "recall"}, cache=cache).evaluate(
         _sample(actual_output="A different candidate answer")
     )
     assert result.metadata["cache_hit"] is True
@@ -270,7 +296,9 @@ class _RacingCache(InMemoryJudgeClaimCache):
 async def test_correctness_scores_against_stored_claims_after_concurrent_write() -> None:
     cache = _RacingCache(["other gold claim"])
     llm = ScriptedJudgeLlm({"extract_reference_claims": {"claims": ["my own claim"]}})
-    result = await _judge("correctness", llm, cache=cache).evaluate(_sample())
+    result = await _judge("correctness", llm, {"scoring": "recall"}, cache=cache).evaluate(
+        _sample()
+    )
 
     coverage_prompts = [c["user"] for c in llm.calls if c["step"] == "verify_reference_coverage"]
     assert len(coverage_prompts) == 1
@@ -285,11 +313,15 @@ async def test_correctness_scores_against_stored_claims_after_concurrent_write()
 async def test_correctness_invalid_extract_is_not_cached() -> None:
     cache = InMemoryJudgeClaimCache()
     bad = ScriptedJudgeLlm({"extract_reference_claims": ["nope", "nope"]})
-    result = await _judge("correctness", bad, cache=cache).evaluate(_sample())
+    result = await _judge("correctness", bad, {"scoring": "recall"}, cache=cache).evaluate(
+        _sample()
+    )
     assert result.label == "ERROR"
 
     good = ScriptedJudgeLlm()
-    result = await _judge("correctness", good, cache=cache).evaluate(_sample())
+    result = await _judge("correctness", good, {"scoring": "recall"}, cache=cache).evaluate(
+        _sample()
+    )
     assert result.metadata["cache_hit"] is False
 
 
@@ -297,14 +329,18 @@ async def test_correctness_invalid_extract_is_not_cached() -> None:
 async def test_correctness_empty_extract_is_not_cached() -> None:
     cache = InMemoryJudgeClaimCache()
     empty = ScriptedJudgeLlm({"extract_reference_claims": {"claims": []}})
-    skipped = await _judge("correctness", empty, cache=cache).evaluate(_sample())
+    skipped = await _judge("correctness", empty, {"scoring": "recall"}, cache=cache).evaluate(
+        _sample()
+    )
     assert skipped.label == "SKIPPED"
     assert skipped.explanation.startswith("no_gold_claims")
     assert skipped.metadata["cache_hit"] is False
 
     # A later non-empty extract must not be blocked by a poisoned empty cache row.
     good = ScriptedJudgeLlm({"extract_reference_claims": {"claims": ["26 days"]}})
-    result = await _judge("correctness", good, cache=cache).evaluate(_sample())
+    result = await _judge("correctness", good, {"scoring": "recall"}, cache=cache).evaluate(
+        _sample()
+    )
     assert result.label != "SKIPPED"
     assert result.metadata["cache_hit"] is False
     assert result.metadata["n_gold"] == 1
@@ -321,7 +357,7 @@ async def test_correctness_skips_without_expected_or_gold_claims() -> None:
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("config", [{}, {"scoring": "f1"}])
+@pytest.mark.parametrize("config", [{"scoring": "recall"}, {"scoring": "f1"}, {}])
 async def test_correctness_never_sees_documents_or_gold_doc_ids(config: dict[str, Any]) -> None:
     llm = ScriptedJudgeLlm()
     result = await _judge("correctness", llm, config).evaluate(_sample())

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import math
 import re
 from typing import Any
 
@@ -384,6 +385,69 @@ class MRREvaluator:
         )
 
 
+class PrecisionAtKEvaluator:
+    name = "precision_at_k"
+
+    def __init__(self, config: dict[str, Any]) -> None:
+        self._k = _parse_k(self.name, config)
+
+    async def evaluate(self, sample: EvaluationSample) -> EvaluationResult:
+        early, expected, top_k, meta = _retrieval_inputs(sample, k=self._k)
+        if early is not None:
+            return early
+        assert expected is not None and top_k is not None
+        expected_set = set(expected)
+        hits = len(expected_set & set(top_k))
+        score = hits / self._k
+        meta = {**meta, "hits": hits, "n_expected": len(expected_set)}
+        return EvaluationResult(
+            score=score,
+            label=None,
+            explanation=f"{hits}/{self._k} retrieved docs in top-{self._k} are expected",
+            metadata=meta,
+        )
+
+
+def _binary_dcg(relevances: list[float]) -> float:
+    return sum(
+        (math.pow(2.0, rel) - 1.0) / math.log2(i + 1) for i, rel in enumerate(relevances, start=1)
+    )
+
+
+class NdcgEvaluator:
+    name = "ndcg"
+
+    def __init__(self, config: dict[str, Any]) -> None:
+        self._k = _parse_k(self.name, config)
+
+    async def evaluate(self, sample: EvaluationSample) -> EvaluationResult:
+        early, expected, top_k, meta = _retrieval_inputs(sample, k=self._k)
+        if early is not None:
+            return early
+        assert expected is not None and top_k is not None
+        expected_set = set(expected)
+        relevances = [1.0 if doc_id in expected_set else 0.0 for doc_id in top_k]
+        hits = int(sum(relevances))
+        dcg = _binary_dcg(relevances)
+        if hits == 0:
+            score = 0.0
+        else:
+            ideal_len = min(len(expected_set), self._k)
+            idcg = _binary_dcg([1.0] * ideal_len)
+            score = dcg / idcg if idcg > 0 else 0.0
+        meta = {**meta, "hits": hits, "n_expected": len(expected_set), "dcg": dcg}
+        return EvaluationResult(
+            score=score,
+            label=None,
+            explanation=(
+                f"nDCG@{self._k}={score:.4f} ({hits} expected in top-{self._k})"
+                if hits
+                else f"no expected doc in top-{self._k}"
+            ),
+            metadata=meta,
+        )
+
+
 class ToolCallSuccessEvaluator:
     name = "tool_call_success"
 
@@ -474,4 +538,6 @@ def register_deterministic_evaluators() -> None:
     register_evaluator("hit_at_k", HitAtKEvaluator)
     register_evaluator("recall_at_k", RecallAtKEvaluator)
     register_evaluator("mrr", MRREvaluator)
+    register_evaluator("precision_at_k", PrecisionAtKEvaluator)
+    register_evaluator("ndcg", NdcgEvaluator)
     register_evaluator("must_contain", MustContainEvaluator)

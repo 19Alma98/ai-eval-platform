@@ -6,7 +6,7 @@ import opengrade
 import pytest
 
 from nimbus_apps.classifier import classify_ticket, redact_pii
-from nimbus_apps.datasets import RAG_CHAT_GOLD, read_jsonl
+from nimbus_apps.datasets import RAG_CHAT_GOLD, RAG_GOLD as RAG_GOLD_NAME, items_digest, read_jsonl
 from nimbus_apps.llm import REFUSAL, _fake_answer
 from nimbus_apps.quality import cites_retrieved_source, refusal_is_correct
 from nimbus_apps.rag import answer_chat, rewrite_search_query
@@ -17,10 +17,30 @@ RAG_CHAT = read_jsonl("gold_rag_chat.jsonl")
 TICKETS = read_jsonl("gold_tickets.jsonl")
 
 
-@pytest.mark.parametrize("row", RAG_GOLD, ids=lambda r: r["input"][:40])
+@pytest.mark.parametrize(
+    "row",
+    [r for r in RAG_GOLD if r["metadata"].get("expected_doc_ids")],
+    ids=lambda r: r["input"][:40],
+)
 def test_bm25_finds_a_gold_document(row: dict) -> None:
     ids = {d["id"] for d in search(row["input"], strategy="bm25", top_k=3)}
     assert ids & set(row["metadata"]["expected_doc_ids"])
+
+
+def test_gold_includes_hard_negatives() -> None:
+    by_cat = {}
+    for row in RAG_GOLD:
+        by_cat.setdefault(row["metadata"]["category"], []).append(row)
+    assert len(by_cat["out_of_scope"]) == 4
+    assert len(by_cat["quasi_answerable"]) == 3
+    assert len(by_cat["false_premise"]) == 3
+    for row in by_cat["out_of_scope"] + by_cat["quasi_answerable"]:
+        assert row["metadata"]["answerable"] is False
+        assert not row["metadata"].get("expected_doc_ids")
+    for row in by_cat["false_premise"]:
+        assert row["metadata"]["answerable"] is True
+        assert row.get("expected_output")
+        assert row["metadata"].get("expected_doc_ids")
 
 
 def test_fake_models_differ_on_out_of_scope_questions() -> None:
@@ -54,11 +74,20 @@ def test_refusal_outcomes() -> None:
     assert refusal_is_correct.fn(missed).explanation == "missed_refusal"
 
 
+def test_gold_dataset_names_are_stable() -> None:
+    assert RAG_GOLD_NAME == "nimbus-rag-gold"
+    assert RAG_CHAT_GOLD == "nimbus-rag-chat-gold"
+    assert len(items_digest(RAG_GOLD)) == 64
+    assert items_digest(RAG_GOLD) == items_digest(RAG_GOLD)
+
+
 def test_rag_chat_gold_is_wired() -> None:
-    assert RAG_CHAT_GOLD == "nimbus-rag-chat-gold-v3"
-    assert len(RAG_CHAT) == 2
+    assert len(RAG_CHAT) == 3
     for row in RAG_CHAT:
         assert "history" in row["input"] and "question" in row["input"]
+    oos = [r for r in RAG_CHAT if r["metadata"].get("answerable") is False]
+    assert len(oos) == 1
+    assert oos[0]["metadata"]["category"] == "out_of_scope"
 
 
 def test_preview_item_input_shows_question_not_chatturn_repr() -> None:
@@ -86,7 +115,11 @@ def test_rewrite_search_query_uses_prior_user_turn() -> None:
     assert "How much does it cost?" in query
 
 
-@pytest.mark.parametrize("row", RAG_CHAT, ids=lambda r: r["input"]["question"][:40])
+@pytest.mark.parametrize(
+    "row",
+    [r for r in RAG_CHAT if r["metadata"].get("expected_doc_ids")],
+    ids=lambda r: r["input"]["question"][:40],
+)
 def test_bm25_chat_finds_gold_document(row: dict) -> None:
     history = row["input"]["history"]
     question = row["input"]["question"]
@@ -101,6 +134,9 @@ def test_answer_chat_resolves_gold_rows_with_fake_large() -> None:
         question = row["input"]["question"]
         answer = answer_chat(history, question)
         assert isinstance(answer, str) and answer.strip()
+        if row["metadata"].get("answerable") is False:
+            assert answer == REFUSAL
+            continue
         assert answer != REFUSAL
         for phrase in row["metadata"].get("must_contain", []):
             assert phrase.lower() in answer.lower()

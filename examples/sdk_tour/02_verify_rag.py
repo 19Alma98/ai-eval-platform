@@ -10,7 +10,7 @@ a test set with the expected results, the "gold" set: data/gold_rag.jsonl. Each 
   metadata.expected_doc_ids   documents that contain the answer   -> retrieval metrics
   metadata.must_contain       facts the answer must state          -> must_contain
   metadata.answerable         false = the docs do not cover it     -> refusal metric
-  metadata.category           billing / files / security / ...     -> per-group scores
+  metadata.category           billing / out_of_scope / quasi_answerable / false_premise / ...
 
 What this script shows, step by step:
 

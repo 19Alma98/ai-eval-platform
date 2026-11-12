@@ -59,6 +59,7 @@ def test_default_rag_set_includes_core_retrieval_and_judge_metrics() -> None:
     assert by_kind["context_recall"].threshold == 0.7
     assert by_kind["answer_relevance"].threshold == 0.7
     assert by_kind["context_recall"].enabled is True
+    assert by_kind["correctness"].config == {"scoring": "f1"}
 
 
 def test_create_custom_never_sets_project_default() -> None:

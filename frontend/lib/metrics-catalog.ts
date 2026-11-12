@@ -30,7 +30,8 @@ export const METRIC_CATEGORY_ORDER: MetricCategory[] = [
 const CATALOG: Record<string, MetricInfo> = {
   correctness: {
     label: "Correctness",
-    description: "Does the answer match the facts in the expected answer?",
+    description:
+      "Does the answer match the facts in the expected answer? Default F1 also penalizes extra unsupported claims (use scoring: recall to ignore them).",
     category: "generation",
   },
   groundedness: {
@@ -134,6 +135,17 @@ const CATALOG: Record<string, MetricInfo> = {
     label: "Ranking (MRR)",
     description:
       "How high the first expected document ranks in the results (1 = first position).",
+    category: "retrieval",
+  },
+  precision_at_k: {
+    label: "Precision@k",
+    description: "Share of the top-k retrieved documents that are expected (binary relevance).",
+    category: "retrieval",
+  },
+  ndcg: {
+    label: "nDCG",
+    description:
+      "Normalized discounted cumulative gain over the top-k (binary relevance on expected docs).",
     category: "retrieval",
   },
   context_precision: {

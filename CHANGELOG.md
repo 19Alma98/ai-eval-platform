@@ -11,6 +11,9 @@ breaking changes; they are listed under **Changed** with a migration note.
 
 ### Changed
 
+- **Correctness (claims):** default `scoring` is `f1` (penalizes answer claims unsupported
+  by the reference). Opt into the old behaviour with `config: {"scoring": "recall"}`.
+  The default RAG metrics set seeds `correctness` with `scoring: f1`.
 - SDK: `ExperimentResult.by_metric` / `by_item` expose per-item evaluation results by
   evaluator name without rebuilding maps from `evaluator_id`. `Opengrade.evaluate` /
   `start_experiment` / `sweep` / `evaluate_retrieval` no longer re-list kwargs; they
@@ -62,6 +65,14 @@ breaking changes; they are listed under **Changed** with a migration note.
 
 ### Added
 
+- Deterministic retrieval metrics `precision_at_k` and `ndcg` (binary relevance on
+  `expected_doc_ids`; available to pass explicitly, not seeded in the default RAG set or
+  `evaluate_retrieval` defaults).
+- SDK tour gold: hard-negatives in `gold_rag.jsonl` / `gold_rag_chat.jsonl`
+  (`out_of_scope`, `quasi_answerable`, `false_premise`); stable dataset names
+  (`nimbus-rag-gold`, `nimbus-rag-chat-gold`) with auto version bump on content hash.
+- Judge sanity: false-premise gold row under the PTO policy in
+  `scripts/judge_sanity/knowledge.json`.
 - Datasets: task type `generic` (plain input → output, no RAG fields required).
 - UI fix: the conversation detail page (`/conversations/<session id>`) returned 404 from the
   packaged UI (`opengrade ui`); the dynamic route was missing from the static-export rewrites.

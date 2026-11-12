@@ -3,12 +3,13 @@
 Use case: "My assistant is a chat. Does it stay consistent, rewrite the query
 faithfully, and resolve the user's need?"
 
-The gold set is data/gold_rag_chat.jsonl (two follow-up turns). Each row has:
+The gold set is data/gold_rag_chat.jsonl (three follow-up turns, one out-of-scope).
+Each row has:
 
   input.history     prior user/assistant turns
   input.question    the last user question (what the experiment scores)
-  expected_output   reference answer for that last turn
-  metadata          expected_doc_ids / must_contain for retrieval + facts
+  expected_output   reference answer for that last turn (omitted when answerable is false)
+  metadata          expected_doc_ids / must_contain / answerable for retrieval + refusals
 
 What this script shows:
 

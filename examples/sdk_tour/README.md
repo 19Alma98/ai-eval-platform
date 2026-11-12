@@ -77,8 +77,8 @@ sdk_tour/
 │   └── settings.py      environment variables (.env)
 ├── data/
 │   ├── knowledge_base.json   13 help-center articles
-│   ├── gold_rag.jsonl        18 questions with reference answer, gold documents, facts
-│   ├── gold_rag_chat.jsonl   2 multi-turn chat items (history + last question)
+│   ├── gold_rag.jsonl        28 questions (answerable + out-of-scope / quasi / false-premise)
+│   ├── gold_rag_chat.jsonl   3 multi-turn chat items (history + last question; one OOS)
 │   └── gold_tickets.jsonl    16 tickets with the expected queue
 └── tests/test_apps.py   offline unit tests of the apps and metrics (uv run pytest)
 ```
@@ -152,13 +152,13 @@ Traces tell you *what happened*; to know whether it was *right* you need expecte
 
 The script goes through five steps:
 
-1. **Register the gold set** as `nimbus-rag-gold-v1` ([`nimbus_apps/datasets.py`](nimbus_apps/datasets.py)). When you change the questions, bump the version: runs are only comparable on the same set.
+1. **Register the gold set** as `nimbus-rag-gold` ([`nimbus_apps/datasets.py`](nimbus_apps/datasets.py)). Editing the JSONL creates a new platform version automatically (content hash); runs are only comparable on the same version.
 2. **Test the retriever alone** with `og.evaluate_retrieval`: no LLM call, so it is cheap enough to run on every change to chunking or embeddings.
 3. **Test the whole pipeline** with `og.evaluate`:
 
    ```python
    result = og.evaluate(
-       dataset="nimbus-rag-gold-v1",
+       dataset="nimbus-rag-gold",
        task=lambda item: answer_question(item.input),  # your app, unchanged
        metrics=[
            "hit_at_k",
@@ -218,7 +218,7 @@ def full_pipeline(item, params):
 
 
 result = og.sweep(
-    dataset="nimbus-rag-gold-v1",
+    dataset="nimbus-rag-gold",
     task=full_pipeline,
     grid={"model": ["fake-small", "fake-large"], "retriever": ["keyword", "bm25"]},
     params={"top_k": 3, "prompt": "v2"},  # fixed, stored with every run

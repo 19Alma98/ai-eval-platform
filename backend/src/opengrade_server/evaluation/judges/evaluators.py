@@ -107,7 +107,7 @@ class JudgeConfig:
             raise ValueError(
                 f"{kind} judge: method must be one of {sorted(allowed)}, got {method!r}"
             )
-        scoring = str(config.get("scoring") or "recall").strip().lower()
+        scoring = str(config.get("scoring") or "f1").strip().lower()
         if scoring not in _SCORINGS:
             raise ValueError(
                 f"{kind} judge: scoring must be one of {sorted(_SCORINGS)}, got {scoring!r}"

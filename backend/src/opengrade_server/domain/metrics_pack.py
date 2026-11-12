@@ -87,7 +87,7 @@ DEFAULT_RAG_ENTRIES: tuple[MetricsPackEntry, ...] = (
         kind="correctness",
         enabled=True,
         threshold=0.7,
-        config={},
+        config={"scoring": "f1"},
         evaluator_id=None,
         removable=False,
     ),
