@@ -10,6 +10,8 @@ ChatRole = Literal["user", "assistant", "system"]
 
 
 class ChatTurn(BaseModel):
+    """One earlier turn of the conversation: ``role`` (user, assistant, system), ``content``."""
+
     role: ChatRole
     content: str
 
@@ -32,6 +34,8 @@ class ChatTurn(BaseModel):
 
 
 class RagChatInput(BaseModel):
+    """Input of a ``rag_chat`` test case: the earlier ``history`` and the last ``question``."""
+
     history: list[ChatTurn] = Field(default_factory=list)
     question: str
 

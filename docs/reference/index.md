@@ -20,7 +20,7 @@ result = og.evaluate(dataset="gold.jsonl", task=lambda item: answer(item.input),
 | Page | Contents |
 |---|---|
 | [Tracing](tracing.md) | `init_tracing`, `flush`, `@trace`, `span`, span attributes, users / sessions / tags |
-| [Experiments](experiments.md) | `evaluate`, `start_experiment`, `Experiment`, `ExperimentResult`, `sweep`, `evaluate_retrieval` |
+| [Experiments](experiments.md) | `evaluate`, `start_experiment`, `Experiment`, `ExperimentResult`, `sweep`, `evaluate_retrieval`, chat test cases (`chat_input`, `set_search_query`) |
 | [Metrics and judges](metrics.md) | `metric`, `LocalMetric`, `Sample`, `Score`, `LlmJudge` |
 | [Production scores and feedback](feedback.md) | `score_trace`, `log_score`, `log_feedback` |
 | [Control plane client](client.md) | `Client`, `AsyncClient`, `AppConfigClient` |
