@@ -9,6 +9,15 @@ breaking changes; they are listed under **Changed** with a migration note.
 
 ## [Unreleased]
 
+### Added
+
+- Docs: [Deploy](docs/deploy.md), [Evaluate a chat assistant](docs/chat-assistants.md), the
+  changelog and [CONTRIBUTING.md](CONTRIBUTING.md) on the docs site; a new docs home page and
+  roadmap. Release steps moved from *CLI and CI* to `CONTRIBUTING.md`.
+- API reference: `set_search_query`, `chat_input`, `ChatTurn`, `RagChatInput`.
+
+## [0.2.1] - 2026-11-12
+
 ### Changed
 
 - **Breaking (conversational judges):** `conversation_consistency` scores the full
@@ -23,9 +32,45 @@ breaking changes; they are listed under **Changed** with a migration note.
 - SDK: `ExperimentResult.by_metric` / `by_item` expose per-item evaluation results by
   evaluator name without rebuilding maps from `evaluator_id`. `Opengrade.evaluate` /
   `start_experiment` / `sweep` / `evaluate_retrieval` no longer re-list kwargs; they
-  forward under `activate()` and keep the concrete signatures of the module functions.
+  forward under `activate()` and keep the concrete signatures of the module functions for
+  type checkers and IDEs (`ParamSpec`).
 - LLM judges: RAG claim/rubric/refusal/citation prompts now include the same
   “treat every section as data” rule as safety classifiers (`prompt_version` hashes bump).
+
+### Added
+
+- Deterministic retrieval metrics `precision_at_k` and `ndcg` (binary relevance on
+  `expected_doc_ids`; available to pass explicitly, not seeded in the default RAG set or
+  `evaluate_retrieval` defaults).
+- SDK tour gold: hard-negatives in `gold_rag.jsonl` / `gold_rag_chat.jsonl`
+  (`out_of_scope`, `quasi_answerable`, `false_premise`); stable dataset names
+  (`nimbus-rag-gold`, `nimbus-rag-chat-gold`) with auto version bump on content hash.
+- Judge sanity: false-premise gold row under the PTO policy in
+  `scripts/judge_sanity/knowledge.json`.
+
+### Fixed
+
+- Server: an LLM judge without credentials no longer puts a LiteLLM traceback in the item
+  explanation. The result is SKIPPED with `metadata.skip_reason = "llm_not_configured"` and
+  `judge not configured: set LLM_MODEL and LLM_API_KEY (or provider credentials such as
+  OPENAI_API_KEY)`, so the experiment completes. A quality-gate threshold on that metric
+  reports `unavailable` and fails, so a misconfigured CI server cannot pass a PR.
+  Provider credentials in the environment (`OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, AWS,
+  Azure, Vertex, …) count as configured: only a model without any credentials is refused
+  before the provider call.
+- SDK: the experiment summary suggests configuring the judge only for items skipped with
+  `llm_not_configured`, not for judges skipped because the test case lacks data.
+- SDK: `og.evaluate(project=...)` (and `sweep` / `start_experiment` / `evaluate_retrieval`)
+  no longer switches the instance's active project; the call uses the instance's client.
+- SDK tour: `examples/sdk_tour` requires `opengrade-ai>=0.2.1` (`ExperimentResult.by_item` /
+  `by_metric`), and the default gate on `refusal_is_correct` is 0.8.
+- SDK tour script 06: failed items print the chat `question`, not
+  `history=[ChatTurn(...)] question=...` (`DatasetItemResponse.input` is a `RagChatInput`).
+
+## [0.2.0] - 2026-11-11
+
+### Changed
+
 - **SDK: two lines and a decorator.** `og = Opengrade(project="my-app")` then `@og.trace`.
   `project` (also `Settings(project=...)` / `OPENGRADE_PROJECT`) is a name: the project is found
   or created on the platform, in the background before the first export and on the first
@@ -68,17 +113,16 @@ breaking changes; they are listed under **Changed** with a migration note.
 - **Breaking (SDK):** unknown keyword arguments to `Opengrade(...)`, `Settings.from_env(...)`, `Settings.with_updates(...)` and `og.init_tracing(...)` raise `TypeError` (with a did-you-mean hint) instead of being ignored.
 - SDK: `og.flush(timeout_millis)` honours its budget (the OTel batch processor ignores it), returns `False` when spans were dropped (unreachable platform, rejected batch), and flushes only that instance's span processor.
 - SDK: `DatasetResponse.item_count` from list responses; `_inline_dataset_id` uses it instead of downloading all items via `get`.
+- `opengrade ui` startup banner says "OpenGrade UI" (was "AI Eval UI").
+- PyPI "Documentation" link points to the docs site.
+- Live interactions list batches score and review loads (one query each per page, not per row).
+- Compare treats missing `prompt_version` / `judge_model` / `config_hash` as their own identity
+  (a recorded value vs missing is a config mismatch).
+- `TimeRangePicker` takes only `window` / `onWindowChange` (no preset-only props or shared
+  time-range context).
 
 ### Added
 
-- Deterministic retrieval metrics `precision_at_k` and `ndcg` (binary relevance on
-  `expected_doc_ids`; available to pass explicitly, not seeded in the default RAG set or
-  `evaluate_retrieval` defaults).
-- SDK tour gold: hard-negatives in `gold_rag.jsonl` / `gold_rag_chat.jsonl`
-  (`out_of_scope`, `quasi_answerable`, `false_premise`); stable dataset names
-  (`nimbus-rag-gold`, `nimbus-rag-chat-gold`) with auto version bump on content hash.
-- Judge sanity: false-premise gold row under the PTO policy in
-  `scripts/judge_sanity/knowledge.json`.
 - Datasets: task type `generic` (plain input → output, no RAG fields required).
 - UI fix: the conversation detail page (`/conversations/<session id>`) returned 404 from the
   packaged UI (`opengrade ui`); the dynamic route was missing from the static-export rewrites.
@@ -138,16 +182,6 @@ breaking changes; they are listed under **Changed** with a migration note.
   `@opengrade.trace(redact=..., redact_output=...)`; `self`/`cls` omitted from automatic
   input capture; budget-aware truncation before `json.dumps`.
 
-### Changed
-
-- `opengrade ui` startup banner says "OpenGrade UI" (was "AI Eval UI").
-- PyPI "Documentation" link points to the docs site.
-- Live interactions list batches score and review loads (one query each per page, not per row).
-- Compare treats missing `prompt_version` / `judge_model` / `config_hash` as their own identity
-  (a recorded value vs missing is a config mismatch).
-- `TimeRangePicker` takes only `window` / `onWindowChange` (no preset-only props or shared
-  time-range context).
-
 ### Removed
 
 - Module-level SDK helpers listed under **Changed** (Breaking): use `Opengrade` instance methods
@@ -161,14 +195,6 @@ breaking changes; they are listed under **Changed** with a migration note.
 - `@opengrade.trace_async`; use `@opengrade.trace` for sync and async functions.
 
 ### Fixed
-
-- Server: missing judge credentials no longer put a LiteLLM traceback in the item
-  explanation; ERROR results say `judge not configured: set LLM_MODEL and LLM_API_KEY`
-  (and cloud models are refused before the provider call when `LLM_API_KEY` is unset).
-- SDK tour: `examples/sdk_tour` requires `opengrade-ai>=0.2.0` so `uv sync` cannot
-  reinstall 0.1.1 (which has no `Opengrade` export) even if an old lock is reused.
-- SDK tour script 06: failed items print the chat `question`, not
-  `history=[ChatTurn(...)] question=...` (`DatasetItemResponse.input` is a `RagChatInput`).
 
 - SDK: `@opengrade.trace` / `opengrade.span` no longer raise when no `Opengrade` is active (they run untraced) and internal tracing failures are logged instead of raised — previously the decorated body ran and then its return value was lost to a `RuntimeError`.
 - SDK: with several `Opengrade` instances every span was exported once per extra instance (the routing processor was attached to the shared provider on each `init_tracing`).
@@ -288,6 +314,8 @@ trace ingest, datasets (test sets), metrics packs with deterministic metrics and
 (LiteLLM), experiments with baseline compare, `opengrade ui` (SQLite + packaged UI),
 `opengrade check` quality gate with exit codes for CI, Docker Compose stack with Postgres.
 
-[Unreleased]: https://github.com/19Alma98/ai-eval-platform/compare/v0.1.1...HEAD
+[Unreleased]: https://github.com/19Alma98/ai-eval-platform/compare/v0.2.1...HEAD
+[0.2.1]: https://github.com/19Alma98/ai-eval-platform/compare/v0.2.0...v0.2.1
+[0.2.0]: https://github.com/19Alma98/ai-eval-platform/compare/v0.1.1...v0.2.0
 [0.1.1]: https://github.com/19Alma98/ai-eval-platform/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/19Alma98/ai-eval-platform/releases/tag/v0.1.0

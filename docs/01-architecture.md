@@ -40,7 +40,7 @@ AI applications
 ## Layering
 
 ### API
-FastAPI routers, request/response schemas, pagination. No required auth middleware in v0.1.
+FastAPI routers, request/response schemas, pagination. Optional API-key auth (`admin` / `read` / `ingest` scopes), off when `OPENGRADE_API_KEY` is unset.
 
 ### Application
 Use cases such as:
@@ -94,9 +94,9 @@ repo/
 
 ## Platform boundaries
 
-v0.1 is a self-hosted platform component, not a multi-tenant SaaS control plane.
+OpenGrade is a self-hosted platform component, not a multi-tenant SaaS control plane.
 
-- No built-in auth middleware is required for MVP.
+- Auth is optional API keys; there are no user accounts or identity features.
 - Project is an isolation/organization boundary for data, not a tenancy/billing model.
 - Operators may place the stack behind reverse proxy, SSO, or private network controls.
 - Extension happens through registries and adapters (evaluators, providers, redaction, normalization), not by embedding product-specific identity features in the domain.

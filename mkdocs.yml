@@ -85,9 +85,12 @@ nav:
       - Python SDK: sdk.md
       - CLI and CI: 08-cli-ci.md
       - Metrics and judges: 03-evaluation-engine.md
+      - Evaluate a chat assistant: chat-assistants.md
       - Custom evaluators: 16-custom-evaluators.md
+      - Deploy: deploy.md
       - Security and API keys: 10-security-privacy.md
       - Examples: examples.md
+      - Changelog: changelog.md
   - API reference:
       - reference/index.md
       - Tracing: reference/tracing.md
@@ -98,6 +101,7 @@ nav:
       - Configuration and errors: reference/config.md
   - Design notes:
       - Project overview: 00-project-overview.md
+      - Contributing: contributing.md
       - Architecture: 01-architecture.md
       - Domain model: 02-domain-model.md
       - Tracing and OpenTelemetry: 04-tracing-and-otel.md

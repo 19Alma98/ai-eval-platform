@@ -1,8 +1,11 @@
-# OpenGrade — Technical Specification
+# OpenGrade — Project overview
 
 ## Status
 
-Draft v0.1 — implementation baseline
+Alpha (`0.x`), released on PyPI and GHCR. The workflow on this page is implemented end to end;
+see the [changelog](changelog.md) for what changed in each release and the
+[roadmap](11-roadmap.md) for what comes next. While the version is `0.x`, minor releases may
+contain breaking changes, always listed with a migration note.
 
 ## Platform thesis
 
@@ -48,7 +51,7 @@ Secondary fit (use carefully):
 - LLM-as-judge metrics (relevance, groundedness, correctness) as **noisy signals**,
   versioned and thresholded — not as sole release truth without human review
 
-## What this is not for (v0.1)
+## What this is not for
 
 Out of product fit — not merely “not built yet”:
 
@@ -76,7 +79,7 @@ evaluators + thresholds, this platform will not invent that definition for you.
 10. Keep the domain/evaluation core independent from FastAPI.
 11. Expose stable extension points (evaluators, providers, redaction, ingestion normalization).
 
-## Non-goals for v0.1
+## Non-goals
 
 Product / engineering non-goals (complement the fit section above):
 
@@ -86,7 +89,7 @@ Product / engineering non-goals (complement the fit section above):
 - Implementing a proprietary tracing protocol.
 - Full distributed event streaming.
 - Multi-region HA.
-- Built-in authentication, SSO, or RBAC (deployment/network concern; see Security).
+- User accounts, SSO or RBAC (API keys are the only built-in access control; see Security).
 - Multi-tenant SaaS tenancy or billing.
 - A hosted cloud offering.
 - A second MCP-focused product.
@@ -94,12 +97,15 @@ Product / engineering non-goals (complement the fit section above):
 
 ## Deployment model
 
-v0.1 assumes a **trusted network**:
+Self-hosted, in one of two shapes ([Deploy](deploy.md)):
 
-- local Docker Compose for development and demos;
-- self-hosted containers behind the operator’s reverse proxy, VPN, or cluster network policy when exposed beyond localhost.
+- `opengrade ui` with SQLite for a single developer;
+- Docker Compose (API + UI image and PostgreSQL) for a team, CI baselines and production traffic,
+  behind the operator's reverse proxy, VPN or cluster network policy when exposed beyond localhost.
 
-Identity and access control are intentionally left to the surrounding infrastructure. The platform may later accept an optional trust boundary (for example a reverse-proxy identity header or API key), but that is not required for MVP completeness.
+Access control is optional API keys with `admin`, `read` and `ingest` scopes
+([Security and API keys](10-security-privacy.md)). There are no user accounts, SSO or RBAC by
+design: identity stays with the surrounding infrastructure.
 
 ## Design principles
 
@@ -113,4 +119,4 @@ Identity and access control are intentionally left to the surrounding infrastruc
 - Local-first developer experience.
 - Extensible by design (registry/adapters, not forks of core).
 - Observable by design.
-- Auth is infrastructure; the platform stays usable without an identity system.
+- Identity is infrastructure; API keys are the only built-in access control.
