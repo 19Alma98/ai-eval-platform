@@ -146,7 +146,9 @@ APM. OpenGrade measures what you define; it doesn't invent a quality oracle.
 | [Python SDK](sdk/README.md) | tracing, experiments, metrics, production API |
 | [CLI and CI](docs/08-cli-ci.md) | `opengrade evaluate`, policy reference, GitHub Actions |
 | [Metrics and judges](docs/03-evaluation-engine.md) | how each metric and judge scores |
+| [Evaluate a chat assistant](docs/chat-assistants.md) | multi-turn test cases, conversation judges, sessions in production |
 | [Custom evaluators](docs/16-custom-evaluators.md) | Python metrics and custom LLM judges |
+| [Deploy](docs/deploy.md) | Docker Compose, configuration, exposing the server safely |
 | [Security](docs/10-security-privacy.md) | API keys, content capture, trust model |
 | [Changelog](CHANGELOG.md) | what changed in each release |
 
@@ -159,12 +161,13 @@ cp backend/.env.example backend/.env   # judges, API key, all settings with defa
 docker compose pull && docker compose up   # http://localhost:8000
 ```
 
-Before exposing it beyond localhost, set `OPENGRADE_API_KEY` and put TLS in front:
-see [Security](docs/10-security-privacy.md).
+Before exposing it beyond localhost, set `OPENGRADE_API_KEY` and put TLS in front.
+Configuration and checklist: [Deploy](docs/deploy.md).
 
 ## Development
 
 The repository holds the SDK (`sdk/`), the API server (`backend/`) and the Next.js UI (`frontend/`).
+Checks, docs preview and releases: [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ```bash
 python scripts/package_ui.py                        # build the UI into the server package
