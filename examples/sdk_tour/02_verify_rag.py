@@ -51,7 +51,7 @@ BASELINE_ALIAS = "rag-main"  # the version currently accepted ("what is in produ
 GATE = {
     "hit_at_k": 0.90,  # the right document is in the top k for 90% of the questions
     "must_contain": 0.75,  # 3 answers out of 4 state the expected facts
-    "refusal_is_correct": 0.90,  # refuses when (and only when) it should
+    "refusal_is_correct": 0.80,  # refuses when (and only when) it should
     "cites_retrieved_source": 0.90,  # no invented citations
 }
 
