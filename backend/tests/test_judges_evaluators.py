@@ -792,6 +792,33 @@ async def test_context_recall_claims_omits_history_for_rag_chat() -> None:
 
 
 @pytest.mark.asyncio
+async def test_correctness_history_extract_does_not_reuse_non_history_claim_cache() -> None:
+    cache = InMemoryJudgeClaimCache()
+    await _judge(
+        "context_recall",
+        ScriptedJudgeLlm({"extract_reference_claims": {"claims": ["26 days"]}}),
+        cache=cache,
+    ).evaluate(_sample())
+
+    llm = ScriptedJudgeLlm(
+        {
+            "extract_reference_claims": {"claims": ["Pro costs $49 per month"]},
+            "verify_reference_coverage": _coverage("covered"),
+        }
+    )
+    result = await _judge("correctness", llm, {"scoring": "recall"}, cache=cache).evaluate(
+        _sample(
+            input=_CHAT_FOLLOWUP,
+            expected_output="Pro costs $49 per month.",
+            actual_output="Pro is $49/month.",
+        )
+    )
+    assert result.metadata["cache_hit"] is False
+    assert llm.steps()[0] == "extract_reference_claims"
+    assert "CONVERSATION HISTORY:" in llm.calls[0]["user"]
+
+
+@pytest.mark.asyncio
 async def test_correctness_claims_includes_history_for_rag_chat() -> None:
     llm = ScriptedJudgeLlm(
         {

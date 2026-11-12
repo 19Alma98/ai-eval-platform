@@ -354,7 +354,10 @@ async def _load_reference_claims(
 ) -> ExtractedClaims:
     model = judge._config.options.model or ""
     key = claim_cache_key(
-        [sample.input, sample.expected_output], prompt_version=judge.prompt_version, model=model
+        [sample.input, sample.expected_output],
+        prompt_version=judge.prompt_version,
+        model=model,
+        include_history=include_history,
     )
     if judge._cache is not None:
         cached = await judge._cache.get(key)

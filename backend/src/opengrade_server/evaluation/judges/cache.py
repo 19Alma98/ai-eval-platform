@@ -5,10 +5,13 @@ import json
 from typing import Any
 
 
-def claim_cache_key(reference: Any, *, prompt_version: str, model: str) -> str:
-    payload = json.dumps(
-        [reference, prompt_version, model], sort_keys=True, ensure_ascii=False, default=str
-    )
+def claim_cache_key(
+    reference: Any, *, prompt_version: str, model: str, include_history: bool = False
+) -> str:
+    parts: list[Any] = [reference, prompt_version, model]
+    if include_history:
+        parts.append("include_history")
+    payload = json.dumps(parts, sort_keys=True, ensure_ascii=False, default=str)
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
 

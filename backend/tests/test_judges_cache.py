@@ -17,6 +17,12 @@ def test_key_is_stable_and_sensitive_to_inputs() -> None:
     assert base != claim_cache_key(
         ["q", "gold"], prompt_version="correctness.claims.v3", model="m2"
     )
+    assert base != claim_cache_key(
+        ["q", "gold"], prompt_version="correctness.claims.v3", model="m", include_history=True
+    )
+    assert base == claim_cache_key(
+        ["q", "gold"], prompt_version="correctness.claims.v3", model="m", include_history=False
+    )
 
 
 @pytest.mark.asyncio
