@@ -353,7 +353,7 @@ TOUR_MODEL=gemma4:e2b uv run python 05_prompt_ab.py   # real model: quality delt
 
 ## 6. Multi-turn RAG chat
 
-**Question:** the assistant is a conversation — does the rewritten search query stay faithful, does the answer contradict earlier turns, and was the user’s need resolved?
+**Question:** the assistant is a conversation — does the rewritten search query stay faithful, is there consistency across assistant turns in the conversation, and was the user’s need resolved?
 
 Script [`06_verify_rag_chat.py`](06_verify_rag_chat.py) registers `data/gold_rag_chat.jsonl` as a `rag_chat` dataset, runs `answer_chat` (rewrite → `set_search_query` → retrieve → generate with history in the prompt) via `opengrade.chat_input`, and scores `hit_at_k`, `must_contain`, plus the three conversational judges.
 

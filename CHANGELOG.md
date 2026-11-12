@@ -11,6 +11,12 @@ breaking changes; they are listed under **Changed** with a migration note.
 
 ### Changed
 
+- **Breaking (conversational judges):** `conversation_consistency` scores the full
+  transcript (all assistant turns), not only the latest answer.
+  `resolution` requires last-turn `context.documents` (skips if missing) and sets
+  `turns_to_resolution` only when resolved. `answer_relevance`, `groundedness`,
+  and `correctness` include chat `history` when present so follow-ups are judged
+  with context (`prompt_version` hashes bump).
 - **Correctness (claims):** default `scoring` is `f1` (penalizes answer claims unsupported
   by the reference). Opt into the old behaviour with `config: {"scoring": "recall"}`.
   The default RAG metrics set seeds `correctness` with `scoring: f1`.

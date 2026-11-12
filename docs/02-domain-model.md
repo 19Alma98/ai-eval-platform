@@ -97,7 +97,13 @@ When `task_type=rag_chat`, each item is one conversational state plus the last u
 - **expected_output** — reference answer for the **last** turn only
 - **expected_doc_ids** / **must_contain** / **answerable** — same semantics as `rag_qa`, for the last turn
 
-Existing last-turn judges (`groundedness`, `citation_accuracy`, …) read `input.question`. Conversation judges (`query_rewrite_faithfulness`, `conversation_consistency`, `resolution`) also use `history` and optional `context.search_query` (from `og.set_search_query`).
+Last-turn judges (`answer_relevance`, `groundedness`, `correctness`, …) read
+`input.question` and, when `history` is non-empty, also receive that history to
+disambiguate the latest turn. Conversation judges:
+`query_rewrite_faithfulness` (history + search query), `conversation_consistency`
+(full transcript including the latest assistant answer), and `resolution`
+(history + latest Q/A + last-turn `context.documents`; skips without documents;
+`turns_to_resolution` only when resolved).
 
 ## Metrics set (project-scoped)
 
