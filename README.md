@@ -1,14 +1,14 @@
 # OpenGrade
 
-**Unit tests for your LLM app.** Trace it, score it on a test set, and fail the pull request
-when answer quality drops — self-hosted, one package, no SaaS.
-
 [![Documentation](https://img.shields.io/badge/docs-latest-blue)](https://opengrade-docs.vercel.app/)
 [![CI](https://github.com/19Alma98/ai-eval-platform/actions/workflows/ci.yml/badge.svg)](https://github.com/19Alma98/ai-eval-platform/actions/workflows/ci.yml)
 [![PyPI](https://img.shields.io/pypi/v/opengrade-ai)](https://pypi.org/project/opengrade-ai/)
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue)](LICENSE)
 
 ![OpenGrade walkthrough: overview, traces, experiments, baseline compare, quality gate, production judge](docs/images/hero.gif)
+
+**Unit tests for your LLM app.** Trace it, score it on a test set, and fail the pull request
+when answer quality drops — self-hosted, one package, no SaaS.
 
 ## The problem
 
@@ -36,8 +36,6 @@ Test cases worse than baseline (4):
 │ regression.hit_at_k.new_failures │ 4     │ 0      │ failed │
 Result: FAILED          ← exit code 1, the PR is red
 ```
-
-Run it yourself in 30 seconds, offline: [`examples/ci_regression_gate`](examples/ci_regression_gate/README.md).
 
 ## How it works
 
@@ -102,11 +100,7 @@ opengrade evaluate --config opengrade.yaml --require-baseline   # exit 1 when qu
 | **Deterministic** | `exact_match`, `must_contain`, `regex`, `json_schema`, `latency`, `cost`, `tool_call_success` | no |
 | **Your own** | `@opengrade.metric` (Python) or `LlmJudge("tone", criteria="…")` | your choice |
 
-`groundedness`, `correctness` and the context judges break the text into individual claims and
-check each one, so a failing score comes with the exact sentence that is unsupported and the
-document it was checked against.
-They run on any model [LiteLLM](https://docs.litellm.ai/docs/providers) supports, including a
-local Ollama.
+They run on any model [LiteLLM](https://docs.litellm.ai/docs/providers) supports.
 
 ## Quickstart
 
@@ -144,11 +138,6 @@ classification, extraction, tool calls with a fixed schema.
 **No**, if "good" is purely subjective (open-ended creative agents), or if you need a general
 APM. OpenGrade measures what you define; it doesn't invent a quality oracle.
 
-**Compared with** observability platforms such as Langfuse or Arize Phoenix, OpenGrade is built
-around the **pre-release gate**: paired statistical comparison with a baseline, per-question
-diffs and a CI exit code. Compared with metric libraries such as Ragas or DeepEval, it adds
-tracing, storage, a UI and production monitoring around the metrics.
-
 ## Learn more
 
 | | |
@@ -163,7 +152,7 @@ tracing, storage, a UI and production monitoring around the metrics.
 
 ## Run it for a team
 
-API, UI and PostgreSQL in containers (image on GHCR, runs as non-root):
+API, UI and PostgreSQL in containers:
 
 ```bash
 cp backend/.env.example backend/.env   # judges, API key, all settings with defaults
