@@ -213,19 +213,37 @@ class SqlAlchemyConversationRepository:
         idle_before: datetime,
         statuses: frozenset[str] | set[str],
         limit: int = 100,
+        project_ids: frozenset[uuid.UUID] | set[uuid.UUID] | None = None,
     ) -> list[Conversation]:
-        if not statuses:
+        """Oldest idle conversations; ``project_ids`` restricts them to those projects."""
+        if not statuses or (project_ids is not None and not project_ids):
             return []
+        query = select(ConversationModel).where(
+            ConversationModel.judge_status.in_(tuple(statuses)),
+            ConversationModel.last_activity_at < idle_before,
+        )
+        if project_ids is not None:
+            query = query.where(ConversationModel.project_id.in_(tuple(project_ids)))
         result = await self._session.execute(
-            select(ConversationModel)
+            query.order_by(ConversationModel.last_activity_at.asc()).limit(max(1, min(limit, 500)))
+        )
+        return [_to_domain(row) for row in result.scalars().all()]
+
+    async def idle_project_ids(
+        self, *, idle_before: datetime, statuses: frozenset[str] | set[str]
+    ) -> set[uuid.UUID]:
+        """Projects that have at least one idle conversation in ``statuses``."""
+        if not statuses:
+            return set()
+        result = await self._session.execute(
+            select(ConversationModel.project_id)
             .where(
                 ConversationModel.judge_status.in_(tuple(statuses)),
                 ConversationModel.last_activity_at < idle_before,
             )
-            .order_by(ConversationModel.last_activity_at.asc())
-            .limit(max(1, min(limit, 500)))
+            .distinct()
         )
-        return [_to_domain(row) for row in result.scalars().all()]
+        return set(result.scalars().all())
 
     async def list_summaries(
         self,

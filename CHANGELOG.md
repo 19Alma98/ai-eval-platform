@@ -9,6 +9,12 @@ breaking changes; they are listed under **Changed** with a migration note.
 
 ## [Unreleased]
 
+### Fixed
+
+- Server: the idle conversation scorer picks conversations only from projects with session
+  judges enabled. Before, 20 or more idle conversations in projects with the judges off (the
+  default) filled every batch, so conversations of other projects were never scored.
+
 ### Added
 
 - Docs: [Deploy](docs/deploy.md), [Evaluate a chat assistant](docs/chat-assistants.md), the

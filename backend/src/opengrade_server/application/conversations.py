@@ -445,18 +445,22 @@ async def score_idle_conversations(
         scorer = ScoreConversation(
             conversations, traces, live, ensure, evaluators, create_eval, projects
         )
+        statuses = {"open", "pending"}
+        # Filter by project in SQL: conversations of projects without session judges stay
+        # "open" (so enabling the judges later scores them), and must not fill the batch.
+        enabled_projects: set[uuid.UUID] = set()
+        for project_id in await conversations.idle_project_ids(
+            idle_before=idle_before, statuses=statuses
+        ):
+            if session_judges_enabled(await ensure.execute(project_id)):
+                enabled_projects.add(project_id)
         idle = await conversations.list_idle(
-            idle_before=idle_before, statuses={"open", "pending"}, limit=limit
+            idle_before=idle_before,
+            statuses=statuses,
+            limit=limit,
+            project_ids=enabled_projects,
         )
-        judges_by_project: dict[uuid.UUID, bool] = {}
         for conv in idle:
-            enabled = judges_by_project.get(conv.project_id)
-            if enabled is None:
-                metrics_set = await ensure.execute(conv.project_id)
-                enabled = session_judges_enabled(metrics_set)
-                judges_by_project[conv.project_id] = enabled
-            if not enabled:
-                continue
             if sample_rate < 1.0:
                 bucket = (hash(conv.session_id) % 10_000) / 10_000.0
                 if bucket >= sample_rate:
