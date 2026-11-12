@@ -585,11 +585,12 @@ RUBRICS: dict[str, str] = {
         step="rubric_conversation_consistency",
         role="You are an evaluation judge for multi-turn assistant consistency.",
         task=(
-            "Rate whether the ANSWER is consistent with earlier assistant turns and "
-            "respects constraints the user stated in the CONVERSATION HISTORY."
+            "Rate whether the assistant turns in CONVERSATION are consistent with each "
+            "other and respect constraints the user stated anywhere in the conversation."
         ),
         rules=_bullets(
-            "Flag contradictions of prior assistant claims.",
+            "Scan every assistant turn, not only the last one.",
+            "Flag contradictions between assistant claims across turns.",
             "Flag forgotten user constraints (budget, locale, product, etc.).",
             "Keep reasoning short.",
         ),

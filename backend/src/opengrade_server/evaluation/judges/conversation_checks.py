@@ -80,19 +80,27 @@ class ConversationConsistencyJudge(_LlmJudge):
         history = _history_or_skip(sample, self._meta())
         if isinstance(history, EvaluationResult):
             return history
-        if not history:
+        question = prompts.question_text(sample.input)
+        answer = prompts.as_text(sample.actual_output)
+        turns: list[dict[str, str]] = [
+            {
+                "role": (t["role"] if isinstance(t, dict) else t.role),
+                "content": (t["content"] if isinstance(t, dict) else t.content),
+            }
+            for t in history
+        ]
+        if question:
+            turns.append({"role": "user", "content": question})
+        if answer:
+            turns.append({"role": "assistant", "content": answer})
+        n_assistant = sum(1 for t in turns if t["role"] == "assistant")
+        if n_assistant < 2:
             return skip(
-                "no conversation history; consistency is only scored on multi-turn items",
+                "fewer than two assistant turns; consistency is only scored on multi-turn dialogs",
                 metadata=self._meta(),
             )
-        answer = prompts.as_text(sample.actual_output)
-        question = prompts.question_text(sample.input)
         return await self._rubric(
-            prompts.sections(
-                conversation_history=prompts.render_history(history),
-                question=question,
-                answer=answer,
-            )
+            prompts.sections(conversation=prompts.render_history(turns))
         )
 
 
