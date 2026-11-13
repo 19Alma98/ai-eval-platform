@@ -7,19 +7,11 @@ Python SDK for **OpenGrade**: OTLP/HTTP export with optional OpenInference instr
 ```bash
 uv add opengrade-ai
 uv add 'opengrade-ai[openai]'
+uv add 'opengrade-ai[ai]'   # all tier-1 OpenInference instrumentors
 uv add 'opengrade-ai[ui]'   # also installs opengrade-ai-server (API + packaged UI)
 ```
 
-Pip remains supported:
-
-```bash
-pip install opengrade-ai
-pip install 'opengrade-ai[openai]'
-pip install 'opengrade-ai[ai]'   # all tier-1 OpenInference instrumentors
-pip install 'opengrade-ai[ui]'  # also installs opengrade-ai-server (API + packaged UI)
-```
-
-Individual extras: `openai`, `anthropic`, `langchain`, `llama-index`, `bedrock`, `ui`.
+Pick the extra that matches the LLM stack you instrument: `openai`, `anthropic`, `langchain`, `llama-index`, or `bedrock`. Use `[ai]` for all of those at once, and `[ui]` for the local API + dashboard.
 
 Import path remains `import opengrade`. Local platform (SQLite + UI):
 
@@ -111,31 +103,6 @@ with tenant_og.activate():  # routes this call (and what it calls) to tenant_og
 - **Tracing never breaks your code:** without an active instance `@opengrade.trace` / `opengrade.span` run the function untraced, and an internal tracing failure is logged once, never raised.
 
 Runnable multi-tenant FastAPI sample: [`examples/fastapi_multi_tenant/`](https://github.com/19Alma98/ai-eval-platform/blob/main/examples/fastapi_multi_tenant/README.md).
-
-#### Testing with `Opengrade` and `httpx2.MockTransport`
-
-Isolate SDK state in pytest without a live platform: construct `Opengrade` with `Settings`, inject a `Client` that uses `httpx2.MockTransport`, and scope calls with `activate()`. Helpers: `tests.support.instance.make_og` / `init_og` / `activated`, and `tests.support.reset.reset_sdk`.
-
-```python
-import httpx2
-import opengrade
-from opengrade import Opengrade, Settings
-
-
-def test_two_projects(mock_handler):
-    cap_a: list[httpx2.Request] = []
-    a = Opengrade(settings=Settings(tracking_uri="http://a", project_id="proj-a"))
-    a._runtime.client = opengrade.Client(
-        "http://a",
-        transport=httpx2.MockTransport(mock_handler(cap_a)),
-        project_id="proj-a",
-    )
-    with a.activate():
-        a.client.projects.list()
-    assert cap_a and "proj-a" in cap_a[0].url.path
-```
-
-See `sdk/tests/test_opengrade.py` and `sdk/tests/test_client.py` for full handlers. Running the suite in parallel (`pytest-xdist`) is optional; tests call `reset_sdk()` where needed.
 
 ### API summary
 
@@ -820,7 +787,6 @@ With the platform running and a project created:
 
 ```bash
 cd sdk && uv sync --extra anthropic
-uv pip install anthropic
 uv run python -c "
 import anthropic
 from opengrade import Opengrade
